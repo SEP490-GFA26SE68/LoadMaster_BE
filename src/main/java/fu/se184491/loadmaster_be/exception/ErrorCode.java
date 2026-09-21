@@ -1,5 +1,13 @@
 package fu.se184491.loadmaster_be.exception;
 
+import fu.se184491.loadmaster_be.entity.company.Company;
+import fu.se184491.loadmaster_be.entity.vehicle.Vehicle;
+import fu.se184491.loadmaster_be.entity.billing.Subscription;
+import fu.se184491.loadmaster_be.entity.account.Role;
+import fu.se184491.loadmaster_be.entity.account.User;
+import fu.se184491.loadmaster_be.entity.trip.Trip;
+
+
 import lombok.Getter;
 import org.springframework.http.HttpStatus;
 
