@@ -1,4 +1,4 @@
-package fu.se184491.loadmaster_be.service.vehicle;
+package fu.se184491.loadmaster_be.service.vehicle.Impl;
 
 import fu.se184491.loadmaster_be.dto.vehicle.VehicleTypeRequest;
 import fu.se184491.loadmaster_be.dto.vehicle.VehicleTypeResponse;
