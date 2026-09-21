@@ -1,4 +1,4 @@
-package fu.se184491.loadmaster_be.dto.vehicle;
+package fu.se184491.loadmaster_be.dto.response.vehicle;
 
 import lombok.AllArgsConstructor;
 import lombok.Builder;

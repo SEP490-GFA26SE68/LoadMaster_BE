@@ -1,6 +1,6 @@
 package fu.se184491.loadmaster_be.exception;
 
-import fu.se184491.loadmaster_be.dto.response.ApiResponse;
+import fu.se184491.loadmaster_be.dto.ApiResponse;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;

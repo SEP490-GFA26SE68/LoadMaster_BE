@@ -1,4 +1,4 @@
-package fu.se184491.loadmaster_be.dto.response;
+package fu.se184491.loadmaster_be.dto;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 import lombok.AllArgsConstructor;

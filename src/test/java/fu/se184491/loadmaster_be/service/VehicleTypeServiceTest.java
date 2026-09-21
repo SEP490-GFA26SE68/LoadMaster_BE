@@ -1,30 +1,19 @@
 package fu.se184491.loadmaster_be.service;
 
 import fu.se184491.loadmaster_be.dto.request.VehicleTypeRequest;
-import fu.se184491.loadmaster_be.dto.response.VehicleTypeResponse;
 import fu.se184491.loadmaster_be.entity.Company;
 import fu.se184491.loadmaster_be.entity.VehicleType;
-import fu.se184491.loadmaster_be.exception.AppException;
 import fu.se184491.loadmaster_be.repository.VehicleTypeRepository;
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageImpl;
-import org.springframework.data.domain.PageRequest;
-import org.springframework.data.domain.Pageable;
 
 import java.math.BigDecimal;
-import java.util.List;
-import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
 class VehicleTypeServiceTest {
