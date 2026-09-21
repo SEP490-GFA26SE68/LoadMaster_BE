@@ -84,7 +84,7 @@
             <artifactId>spring-boot-starter-webmvc-test</artifactId>
             <scope>test</scope>
         </dependency>
-        
+
         <!-- Swagger UI / OpenAPI -->
         <dependency>
             <groupId>org.springdoc</groupId>
@@ -145,6 +145,10 @@
                         </configuration>
                     </execution>
                 </executions>
+                <configuration>
+                    <source>8</source>
+                    <target>8</target>
+                </configuration>
             </plugin>
         </plugins>
     </build>

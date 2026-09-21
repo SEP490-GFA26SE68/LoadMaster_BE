@@ -1,7 +1,7 @@
-package fu.se184491.loadmaster_be.service.vehicle;
+package fu.se184491.loadmaster_be.service.vehicle.Impl;
 
-import fu.se184491.loadmaster_be.dto.vehicle.VehicleTypeRequest;
-import fu.se184491.loadmaster_be.dto.vehicle.VehicleTypeResponse;
+import fu.se184491.loadmaster_be.dto.request.vehicle.VehicleTypeRequest;
+import fu.se184491.loadmaster_be.dto.response.vehicle.VehicleTypeResponse;
 import fu.se184491.loadmaster_be.entity.company.Company;
 import fu.se184491.loadmaster_be.entity.vehicle.VehicleType;
 import fu.se184491.loadmaster_be.exception.AppException;

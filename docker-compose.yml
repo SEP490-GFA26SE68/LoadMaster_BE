@@ -1,0 +1,99 @@
+services:
+
+  loadmaster-postgres:
+    image: postgres:17
+    container_name: loadmaster-postgres
+    restart: unless-stopped
+
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+
+    ports:
+      - "${POSTGRES_PORT}:5432"
+
+    volumes:
+      - loadmaster_postgres_data:/var/lib/postgresql/data
+
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+    networks:
+      - loadmaster-network
+
+
+  keycloak-postgres:
+    image: postgres:17
+    container_name: keycloak-postgres
+    restart: unless-stopped
+
+    environment:
+      POSTGRES_DB: ${KEYCLOAK_DB}
+      POSTGRES_USER: ${KEYCLOAK_DB_USER}
+      POSTGRES_PASSWORD: ${KEYCLOAK_DB_PASSWORD}
+
+    volumes:
+      - keycloak_postgres_data:/var/lib/postgresql/data
+
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U ${KEYCLOAK_DB_USER} -d ${KEYCLOAK_DB}"
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+    networks:
+      - loadmaster-network
+
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.7.4
+    container_name: loadmaster-keycloak
+    restart: unless-stopped
+
+    command:
+      - start-dev
+
+    environment:
+      KC_DB: postgres
+
+      KC_DB_URL: jdbc:postgresql://keycloak-postgres:5432/${KEYCLOAK_DB}
+      KC_DB_USERNAME: ${KEYCLOAK_DB_USER}
+      KC_DB_PASSWORD: ${KEYCLOAK_DB_PASSWORD}
+
+      KC_BOOTSTRAP_ADMIN_USERNAME: ${KEYCLOAK_ADMIN}
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD}
+
+      KC_HEALTH_ENABLED: "true"
+      KC_METRICS_ENABLED: "true"
+
+    ports:
+      - "${KEYCLOAK_PORT}:8080"
+
+    depends_on:
+      keycloak-postgres:
+        condition: service_healthy
+
+    networks:
+      - loadmaster-network
+
+
+volumes:
+  loadmaster_postgres_data:
+  keycloak_postgres_data:
+
+
+networks:
+  loadmaster-network:
+    driver: bridge

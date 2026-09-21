@@ -1,7 +1,7 @@
 package fu.se184491.loadmaster_be.controller.vehicle;
 
-import fu.se184491.loadmaster_be.dto.vehicle.VehicleTypeRequest;
-import fu.se184491.loadmaster_be.dto.vehicle.VehicleTypeResponse;
+import fu.se184491.loadmaster_be.dto.request.vehicle.VehicleTypeRequest;
+import fu.se184491.loadmaster_be.dto.response.vehicle.VehicleTypeResponse;
 import fu.se184491.loadmaster_be.service.vehicle.VehicleTypeService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
