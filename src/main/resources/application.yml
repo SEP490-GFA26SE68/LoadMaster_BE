@@ -1,1 +1,13 @@
-spring.application.name=LoadMaster_BE
+spring:
+  datasource:
+    url: jdbc:postgresql://localhost:5432/loadmaster
+    username: ${POSTGRES_USER}
+    password: ${POSTGRES_PASSWORD}
+
+  jpa:
+    hibernate:
+      ddl-auto: update
+    properties:
+      hibernate:
+        format_sql: true
+    show-sql: true

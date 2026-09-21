@@ -4,7 +4,8 @@ import fu.se184491.loadmaster_be.constant.UserStatus;
 import jakarta.persistence.*;
 import lombok.*;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
+
 
 @Entity
 @Table(name = "users")
@@ -34,5 +35,5 @@ public class User {
     private UserStatus status;
 
     @Column(name = "created_at")
-    private LocalDateTime createdAt;
+    private Instant createdAt;
 }
