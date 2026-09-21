@@ -1,5 +1,8 @@
 package fu.se184491.loadmaster_be.entity;
 
+import fu.se184491.loadmaster_be.entity.company.Company;
+
+
 import jakarta.persistence.*;
 import lombok.*;
 

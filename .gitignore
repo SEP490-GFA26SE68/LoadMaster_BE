@@ -33,4 +33,10 @@ build/
 .vscode/
 .md
 
+### Environment Variables ###
 .env
+*.env.local
+
+### Internal Issue Tracker ###
+issues/
+issues.md
