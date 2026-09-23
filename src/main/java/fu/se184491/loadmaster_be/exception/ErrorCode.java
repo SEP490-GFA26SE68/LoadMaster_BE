@@ -59,6 +59,9 @@ public enum ErrorCode {
     OPTIMIZATION_JOB_NOT_FOUND("Không tìm thấy tác vụ tối ưu hóa", HttpStatus.NOT_FOUND),
     OPTIMIZATION_FAILED("Quá trình tính toán tối ưu xếp hàng thất bại", HttpStatus.INTERNAL_SERVER_ERROR),
     LOAD_PLAN_NOT_FOUND("Không tìm thấy kế hoạch xếp hàng", HttpStatus.NOT_FOUND),
+    PLAN_HAS_NO_PLACEMENTS("Kế hoạch xếp hàng chưa có kiện hàng nào được xếp", HttpStatus.UNPROCESSABLE_ENTITY),
+    PLAN_LIFO_INVALID("Kế hoạch xếp hàng vi phạm quy tắc LIFO (thứ tự bốc hàng không hợp lệ)", HttpStatus.UNPROCESSABLE_ENTITY),
+    PLAN_ALREADY_APPROVED("Kế hoạch xếp hàng đã được duyệt trước đó", HttpStatus.CONFLICT),
 
     // -------------------------------------------------------------------------
     // Subscription & Payment errors
