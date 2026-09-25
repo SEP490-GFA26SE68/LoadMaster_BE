@@ -1,4 +1,21 @@
 spring:
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: http://localhost:8180/realms/loadmaster
+      client:
+        registration:
+          optimization-client:
+            provider: keycloak
+            client-id: loadmaster-backend-service
+            client-secret: ${LOADMASTER_BACKEND_CLIENT_SECRET}
+            authorization-grant-type: client_credentials
+            scope:
+              - optimization.execute
+        provider:
+          keycloak:
+            token-uri: http://localhost:8180/realms/loadmaster/protocol/openid-connect/token
   datasource:
     url: jdbc:postgresql://localhost:5432/loadmaster
     username: ${POSTGRES_USER}
