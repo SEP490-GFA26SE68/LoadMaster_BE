@@ -20,7 +20,10 @@ public class WebSecurityConfig {
                                 "/v3/api-docs/**",
                                 "/swagger-ui/**",
                                 "/swagger-ui.html",
-                                "/api/vehicle-types")
+                                "/api/vehicle-types",
+                                "/api/load-plans/**",
+                                "/api/warehouse/**",
+                                "/api/driver/**")
                         .permitAll()
                         .anyRequest().authenticated());
 
