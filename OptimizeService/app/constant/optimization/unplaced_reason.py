@@ -1,0 +1,12 @@
+from enum import Enum
+
+
+class UnplacedReason(str, Enum):
+    """Lý do kiện hàng không thể xếp lên xe."""
+    OVER_WEIGHT = "OVER_WEIGHT"
+    OUT_OF_SPACE = "OUT_OF_SPACE"
+    STACKING_CONFLICT = "STACKING_CONFLICT"
+    LIFO_BLOCK = "LIFO_BLOCK"
+    DOES_NOT_FIT_DIMENSIONS = "DOES_NOT_FIT_DIMENSIONS"
+    WEIGHT_LIMIT_EXCEEDED = "WEIGHT_LIMIT_EXCEEDED"
+    VOLUME_EXCEEDED = "VOLUME_EXCEEDED"
