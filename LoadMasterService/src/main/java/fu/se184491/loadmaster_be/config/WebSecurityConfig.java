@@ -1,4 +1,4 @@
-package fu.se184491.loadmaster_be.config.security;
+package fu.se184491.loadmaster_be.config;
 
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -27,7 +27,10 @@ public class WebSecurityConfig {
                                 "/swagger-ui/**",
                                 "/swagger-ui.html",
                                 "/api/vehicle-types",
-                                "/api/test/public/**")
+                                "/api/test/public/**",
+                                "/api/load-plans/**",
+                                "/api/warehouse/**",
+                                "/api/driver/**")
                         .permitAll()
                         .anyRequest().authenticated()
                 )

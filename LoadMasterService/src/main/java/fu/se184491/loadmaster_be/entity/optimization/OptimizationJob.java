@@ -36,4 +36,10 @@ public class OptimizationJob {
 
     @Column(name = "computation_ms")
     private Long computationMs;
+
+    @Column(name = "parent_plan_id")
+    private Long parentPlanId;
+
+    @Column(name = "seed")
+    private Integer seed;
 }
