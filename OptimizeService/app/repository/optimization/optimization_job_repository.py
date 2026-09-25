@@ -15,11 +15,8 @@ class OptimizationJobRepository:
     def find_by_id(self, job_id: int, db: Session) -> Optional[OptimizationJob]:
         return db.query(OptimizationJob).filter(OptimizationJob.id == job_id).first()
 
-    def find_by_job_uuid(self, job_uuid: str, db: Session) -> Optional[OptimizationJob]:
-        return db.query(OptimizationJob).filter(OptimizationJob.job_uuid == str(job_uuid)).first()
-
-    def find_by_trip_id(self, trip_id: str, db: Session) -> list[OptimizationJob]:
-        return db.query(OptimizationJob).filter(OptimizationJob.trip_id == str(trip_id)).all()
+    def find_by_trip_id(self, trip_id: int, db: Session) -> list[OptimizationJob]:
+        return db.query(OptimizationJob).filter(OptimizationJob.trip_id == trip_id).all()
 
     def find_by_status(self, status: Union[OptimizationJobStatus, str], db: Session) -> list[OptimizationJob]:
         status_value = status.value if isinstance(status, OptimizationJobStatus) else str(status)

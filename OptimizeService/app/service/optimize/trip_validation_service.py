@@ -12,11 +12,9 @@ Acceptance Criteria (FR-OPT-01):
 """
 from __future__ import annotations
 
-import uuid
 from dataclasses import dataclass, field
 from itertools import permutations
 from typing import Optional, Any
-from uuid import UUID
 
 from app.dto.response.validation_response import ValidationResponse
 from app.exception.app_exception import AppException
@@ -30,16 +28,16 @@ from app.exception.error_code import ErrorCode
 @dataclass
 class VehicleTypeData:
     """Thông số thùng xe."""
-    inner_l: float  # chiều dài trong (m)
-    inner_w: float  # chiều rộng trong (m)
-    inner_h: float  # chiều cao trong (m)
+    inner_l: float  # chiều dài trong (m), converted from schema mm
+    inner_w: float  # chiều rộng trong (m), converted from schema mm
+    inner_h: float  # chiều cao trong (m), converted from schema mm
     max_payload_kg: float
 
 
 @dataclass
 class PackageData:
     """Thông số một kiện hàng."""
-    id: UUID | Any
+    id: int | Any
     length: float
     width: float
     height: float
@@ -49,7 +47,7 @@ class PackageData:
 @dataclass
 class TripData:
     """Dữ liệu trip cần validate."""
-    id: UUID | Any
+    id: int | Any
     vehicle_type: Optional[VehicleTypeData]
     packages: list[PackageData] = field(default_factory=list)
 
@@ -65,16 +63,16 @@ class TripValidationService:
 
     WEIGHT_WARNING_THRESHOLD = 0.90
 
-    def validate_trip_by_id(self, trip_id: UUID, db: Any) -> ValidationResponse:
+    def validate_trip_by_id(self, trip_id: int, db: Any) -> ValidationResponse:
         """
         Validate trip bằng cách load từ database qua Session SQLAlchemy.
         """
-        from app.entity.trip_model import Trip, CargoPackage, TransportOrder, DeliveryStop
+        from app.entity.trip_model import DeliveryStop, Order, Package, Trip
 
         if db is None:
             raise AppException(ErrorCode.TRIP_NOT_FOUND)
 
-        trip = db.query(Trip).filter(Trip.id == str(trip_id)).first()
+        trip = db.query(Trip).filter(Trip.id == trip_id).first()
         if not trip:
             raise AppException(ErrorCode.TRIP_NOT_FOUND)
 
@@ -82,9 +80,9 @@ class TripValidationService:
         vehicle_type_data = None
         if trip.vehicle and trip.vehicle.vehicle_type:
             vt = trip.vehicle.vehicle_type
-            inner_l = float(vt.inner_length) / 1000.0 if (vt.inner_length and vt.inner_length > 50) else float(vt.inner_length or 0)
-            inner_w = float(vt.inner_width) / 1000.0 if (vt.inner_width and vt.inner_width > 50) else float(vt.inner_width or 0)
-            inner_h = float(vt.inner_height) / 1000.0 if (vt.inner_height and vt.inner_height > 50) else float(vt.inner_height or 0)
+            inner_l = float(vt.inner_length or 0) / 1000.0
+            inner_w = float(vt.inner_width or 0) / 1000.0
+            inner_h = float(vt.inner_height or 0) / 1000.0
             payload = float(vt.max_payload_kg or 0)
             vehicle_type_data = VehicleTypeData(
                 inner_l=inner_l,
@@ -93,12 +91,12 @@ class TripValidationService:
                 max_payload_kg=payload,
             )
 
-        # Packages via DeliveryStop -> Order -> CargoPackage
+        # Packages via DeliveryStop -> Order -> Package
         packages_query = (
-            db.query(CargoPackage)
-            .join(TransportOrder, CargoPackage.order_id == TransportOrder.id)
-            .join(DeliveryStop, TransportOrder.delivery_stop_id == DeliveryStop.id)
-            .filter(DeliveryStop.trip_id == str(trip_id))
+            db.query(Package)
+            .join(Order, Package.order_id == Order.id)
+            .join(DeliveryStop, Order.delivery_stop_id == DeliveryStop.id)
+            .filter(DeliveryStop.trip_id == trip_id)
             .all()
         )
 
@@ -107,21 +105,15 @@ class TripValidationService:
             w = float(pkg.actual_weight_kg or 0)
             if pkg.package_type:
                 pt = pkg.package_type
-                l = float(pt.length) / 1000.0 if (pt.length and pt.length > 50) else float(pt.length or 0)
-                width = float(pt.width) / 1000.0 if (pt.width and pt.width > 50) else float(pt.width or 0)
-                h = float(pt.height) / 1000.0 if (pt.height and pt.height > 50) else float(pt.height or 0)
+                l = float(pkg.actual_length or 0) / 1000.0
+                width = float(pt.width or 0) / 1000.0
+                h = float(pt.height or 0) / 1000.0
             else:
                 l, width, h = 0.0, 0.0, 0.0
 
-            pkg_id = pkg.id
-            try:
-                pkg_id = UUID(str(pkg.id))
-            except Exception:
-                pass
-
             packages_data.append(
                 PackageData(
-                    id=pkg_id,
+                    id=pkg.id,
                     length=l,
                     width=width,
                     height=h,

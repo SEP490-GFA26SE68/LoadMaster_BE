@@ -13,4 +13,4 @@ class UnplacedPackage(Base):
     rejection_reason = Column(String(50), nullable=True)
 
     load_plan = relationship("LoadPlan", back_populates="unplaced")
-    cargo_package = relationship("CargoPackage")
+    cargo_package = relationship("Package")

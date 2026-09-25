@@ -3,8 +3,8 @@ from app.entity.trip_model import (
     Vehicle,
     Trip,
     DeliveryStop,
-    TransportOrder,
-    CargoPackage,
+    Order,
+    Package,
     PackageType,
 )
 
@@ -13,7 +13,7 @@ __all__ = [
     "Vehicle",
     "Trip",
     "DeliveryStop",
-    "TransportOrder",
-    "CargoPackage",
+    "Order",
+    "Package",
     "PackageType",
 ]

@@ -1,4 +1,3 @@
-from uuid import UUID
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
@@ -16,7 +15,7 @@ def get_trip_validation_service() -> TripValidationService:
 
 @router.get("/trips/{trip_id}", response_model=ApiResponse[ValidationResponse])
 async def validate_trip(
-    trip_id: UUID,
+    trip_id: int,
     db: Session = Depends(get_db),
     validation_service: TripValidationService = Depends(get_trip_validation_service),
 ) -> ApiResponse[ValidationResponse]:

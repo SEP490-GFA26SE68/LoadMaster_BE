@@ -21,4 +21,4 @@ class PackagePlacement(Base):
     pinned = Column(Boolean, default=False)
 
     load_plan = relationship("LoadPlan", back_populates="placements")
-    cargo_package = relationship("CargoPackage")
+    cargo_package = relationship("Package")
