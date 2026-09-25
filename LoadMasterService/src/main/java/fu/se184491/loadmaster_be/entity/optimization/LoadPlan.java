@@ -36,4 +36,11 @@ public class LoadPlan {
 
     @ManyToOne(fetch = FetchType.LAZY) @JoinColumn(name = "approved_by")
     private User approvedBy;
+
+    @Builder.Default
+    @Column(name = "version")
+    private Integer version = 1;
+
+    @Column(name = "parent_plan_id")
+    private Long parentPlanId;
 }

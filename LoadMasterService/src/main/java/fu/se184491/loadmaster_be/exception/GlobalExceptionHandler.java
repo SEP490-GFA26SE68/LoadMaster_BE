@@ -33,6 +33,62 @@ public class GlobalExceptionHandler {
                         .build());
     }
 
+    @ExceptionHandler(IncompleteLoadingException.class)
+    public ResponseEntity<ApiResponse<Void>> handleIncompleteLoadingException(
+            IncompleteLoadingException ex, HttpServletRequest request) {
+        log.warn("Incomplete loading exception at {}: {}", request.getRequestURI(), ex.getMessage());
+
+        return ResponseEntity
+                .status(HttpStatus.BAD_REQUEST)
+                .body(ApiResponse.<Void>builder()
+                        .success(false)
+                        .message(ex.getMessage())
+                        .data(null)
+                        .build());
+    }
+
+    @ExceptionHandler(DuplicateUnloadException.class)
+    public ResponseEntity<ApiResponse<Void>> handleDuplicateUnloadException(
+            DuplicateUnloadException ex, HttpServletRequest request) {
+        log.warn("Duplicate unload exception at {}: {}", request.getRequestURI(), ex.getMessage());
+
+        return ResponseEntity
+                .status(HttpStatus.CONFLICT)
+                .body(ApiResponse.<Void>builder()
+                        .success(false)
+                        .message(ex.getMessage())
+                        .data(null)
+                        .build());
+    }
+
+    @ExceptionHandler(WrongStopException.class)
+    public ResponseEntity<ApiResponse<Void>> handleWrongStopException(
+            WrongStopException ex, HttpServletRequest request) {
+        log.warn("Wrong stop exception at {}: {}", request.getRequestURI(), ex.getMessage());
+
+        return ResponseEntity
+                .status(HttpStatus.BAD_REQUEST)
+                .body(ApiResponse.<Void>builder()
+                        .success(false)
+                        .message(ex.getMessage())
+                        .data(null)
+                        .build());
+    }
+
+    @ExceptionHandler(IncompleteStopException.class)
+    public ResponseEntity<ApiResponse<Void>> handleIncompleteStopException(
+            IncompleteStopException ex, HttpServletRequest request) {
+        log.warn("Incomplete stop exception at {}: {}", request.getRequestURI(), ex.getMessage());
+
+        return ResponseEntity
+                .status(HttpStatus.BAD_REQUEST)
+                .body(ApiResponse.<Void>builder()
+                        .success(false)
+                        .message(ex.getMessage())
+                        .data(null)
+                        .build());
+    }
+
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ResponseEntity<ApiResponse<Void>> handleValidationExceptions(
             MethodArgumentNotValidException ex, HttpServletRequest request) {
