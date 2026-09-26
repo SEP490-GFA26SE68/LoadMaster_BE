@@ -10,6 +10,9 @@ from app.constant.optimization.job_status import OptimizationJobStatus
 from app.constant.optimization.objective import OptimizationObjective
 from app.dto.request.optimization_request import OptimizationJobRequest
 from app.entity.trip_model import Trip
+from app.exception.app_exception import AppException
+from app.exception.error_code import ErrorCode
+from app.repository.optimization.optimization_job_repository import OptimizationJobRepository
 from app.service.optimize.optimization_job_service import OptimizationJobService
 
 
@@ -161,3 +164,168 @@ def test_jobs_can_be_found_by_numeric_trip_id_and_status(db_session, existing_tr
 
     assert [job.id for job in trip_jobs] == [first.id, second.id]
     assert [job.id for job in pending_jobs] == [first.id, 3]
+
+
+def test_get_job_exposes_camel_case_properties_and_to_dict(db_session, existing_trip):
+    service = OptimizationJobService()
+    job = service.create_job(
+        existing_trip.id,
+        OptimizationJobRequest(
+            trip_id=str(existing_trip.id),
+            objective=OptimizationObjective.MAX_VOLUME,
+        ),
+        db_session,
+    )
+    service.update_status(
+        job.id,
+        OptimizationJobStatus.COMPLETED,
+        execution_time_ms=850,
+        db=db_session,
+    )
+
+    found = service.get_job(job.id, db_session)
+    # AC: get_job(job_id) -> trả id, tripId, algorithmObjective, executionTimeMs, status
+    assert found.id == job.id
+    assert found.tripId == existing_trip.id
+    assert found.algorithmObjective == "MAX_VOLUME"
+    assert found.executionTimeMs == 850
+    assert found.status == OptimizationJobStatus.COMPLETED.value
+
+    job_dict = found.to_dict()
+    assert job_dict == {
+        "id": job.id,
+        "tripId": existing_trip.id,
+        "algorithmObjective": "MAX_VOLUME",
+        "executionTimeMs": 850,
+        "status": OptimizationJobStatus.COMPLETED.value,
+    }
+
+
+def test_create_job_raises_when_trip_not_found(db_session):
+    service = OptimizationJobService()
+    request = OptimizationJobRequest(
+        trip_id="99999",
+        objective=OptimizationObjective.MAX_VOLUME,
+    )
+    with pytest.raises(AppException) as exc_info:
+        service.create_job(99999, request, db_session)
+    assert exc_info.value.error_code == ErrorCode.TRIP_NOT_FOUND
+
+
+def test_create_job_with_invalid_trip_id_string_raises_trip_not_found(db_session):
+    service = OptimizationJobService()
+    request = OptimizationJobRequest(
+        trip_id="not-a-number",
+        objective=OptimizationObjective.MAX_VOLUME,
+    )
+    with pytest.raises(AppException) as exc_info:
+        service.create_job("not-a-number", request, db_session)
+    assert exc_info.value.error_code == ErrorCode.TRIP_NOT_FOUND
+
+
+def test_create_job_with_numeric_string_trip_id(db_session, existing_trip):
+    service = OptimizationJobService()
+    request = OptimizationJobRequest(
+        trip_id=str(existing_trip.id),
+        objective=OptimizationObjective.MAX_VOLUME,
+    )
+    job = service.create_job(str(existing_trip.id), request, db_session)
+    assert job.trip_id == existing_trip.id
+
+
+def test_get_job_raises_when_job_not_found(db_session):
+    service = OptimizationJobService()
+    with pytest.raises(AppException) as exc_info:
+        service.get_job(99999, db_session)
+    assert exc_info.value.error_code == ErrorCode.OPTIMIZATION_JOB_NOT_FOUND
+
+
+def test_get_job_with_string_id(db_session, existing_trip):
+    service = OptimizationJobService()
+    created = service.create_job(
+        existing_trip.id,
+        OptimizationJobRequest(
+            trip_id=str(existing_trip.id),
+            objective=OptimizationObjective.MAX_VOLUME,
+        ),
+        db_session,
+    )
+    found = service.get_job(str(created.id), db_session)
+    assert found.id == created.id
+
+
+def test_get_job_with_invalid_string_id_raises_not_found(db_session):
+    service = OptimizationJobService()
+    with pytest.raises(AppException) as exc_info:
+        service.get_job("invalid-id", db_session)
+    assert exc_info.value.error_code == ErrorCode.OPTIMIZATION_JOB_NOT_FOUND
+
+
+def test_update_status_raises_when_job_not_found(db_session):
+    service = OptimizationJobService()
+    with pytest.raises(AppException) as exc_info:
+        service.update_status(99999, OptimizationJobStatus.RUNNING, db=db_session)
+    assert exc_info.value.error_code == ErrorCode.OPTIMIZATION_JOB_NOT_FOUND
+
+
+def test_update_status_with_string_job_id(db_session, existing_trip):
+    service = OptimizationJobService()
+    created = service.create_job(
+        existing_trip.id,
+        OptimizationJobRequest(
+            trip_id=str(existing_trip.id),
+            objective=OptimizationObjective.MAX_VOLUME,
+        ),
+        db_session,
+    )
+    updated = service.update_status(
+        str(created.id),
+        OptimizationJobStatus.RUNNING,
+        db=db_session,
+    )
+    assert updated.status == OptimizationJobStatus.RUNNING.value
+
+
+def test_find_by_trip_id_returns_empty_when_no_jobs_exist(db_session):
+    service = OptimizationJobService()
+    jobs = service.find_by_trip_id(99999, db_session)
+    assert jobs == []
+
+
+def test_find_by_trip_id_with_string_trip_id(db_session, existing_trip):
+    service = OptimizationJobService()
+    created = service.create_job(
+        existing_trip.id,
+        OptimizationJobRequest(
+            trip_id=str(existing_trip.id),
+            objective=OptimizationObjective.MAX_VOLUME,
+        ),
+        db_session,
+    )
+    jobs = service.find_by_trip_id(str(existing_trip.id), db_session)
+    assert len(jobs) == 1
+    assert jobs[0].id == created.id
+
+
+def test_find_by_trip_id_with_invalid_string_returns_empty(db_session):
+    service = OptimizationJobService()
+    assert service.find_by_trip_id("not-a-number", db_session) == []
+
+
+def test_find_by_status_with_string_value(db_session, existing_trip):
+    service = OptimizationJobService()
+    service.create_job(
+        existing_trip.id,
+        OptimizationJobRequest(
+            trip_id=str(existing_trip.id),
+            objective=OptimizationObjective.MAX_VOLUME,
+        ),
+        db_session,
+    )
+    jobs = service.find_by_status("PENDING", db_session)
+    assert len(jobs) == 1
+
+
+def test_repository_find_by_id_invalid_id_returns_none(db_session):
+    repo = OptimizationJobRepository()
+    assert repo.find_by_id("not-a-number", db_session) is None

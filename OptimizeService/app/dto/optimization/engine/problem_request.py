@@ -17,7 +17,7 @@ class VehicleData(BaseModel):
 
 class PackageData(BaseModel):
     """Thông số một kiện hàng gửi tới Optimization Engine."""
-    id: Union[UUID, str]
+    id: Union[int, str, UUID]
     l: float
     w: float
     h: float
@@ -36,7 +36,7 @@ class StopData(BaseModel):
 
 class PinnedData(BaseModel):
     """Kiện hàng đã được cố định vị trí trước (nếu có)."""
-    package_id: Union[UUID, str]
+    package_id: Union[int, str, UUID]
     pos_x: float
     pos_y: float
     pos_z: float
@@ -49,6 +49,7 @@ class ProblemRequest(BaseModel):
     packages: List[PackageData]
     stops: List[StopData] = Field(default_factory=list)
     pinned: List[PinnedData] = Field(default_factory=list)
+    pinned_package_ids: List[int] = Field(default_factory=list)
     objective: str = "MAX_VOLUME_UTIL"  # "MAX_VOLUME_UTIL" | "AXLE_BALANCE" | "MIN_HEIGHT"
     time_limit_sec: int = 60
     seed: Optional[int] = None

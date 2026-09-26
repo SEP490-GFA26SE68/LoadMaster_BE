@@ -259,3 +259,108 @@ class TestIntegrationEndToEndPlansApi:
         assert len(plans_data[0]["placements"]) >= 1
 
         app.dependency_overrides.clear()
+
+
+class TestOptimizationPersistenceSchemaV34:
+    def test_save_with_numeric_job_id_and_schema_v34_properties(self, db_session, sample_job):
+        """save() với numeric job_id lưu LoadPlan, PackagePlacement và UnplacedPackage theo Schema v3.4"""
+        service = OptimizationResultPersistenceService()
+
+        pkg1 = db_session.query(CargoPackage).filter(CargoPackage.id == 1).first()
+        pkg2 = db_session.query(CargoPackage).filter(CargoPackage.id == 2).first()
+
+        engine_response = EngineOptimizationResponse(
+            placements=[
+                PlacementData(
+                    package_id=pkg1.id,
+                    x=100.0,
+                    y=200.0,
+                    z=300.0,
+                    loading_sequence=1,
+                )
+            ],
+            unplaced=[
+                UnplacedData(
+                    package_id=pkg2.id,
+                    reason_code="EXCEED_AXLE_WEIGHT",
+                )
+            ],
+            metrics=MetricsData(
+                volume_utilization=0.75,
+                weight_utilization=0.60,
+                packed_count=1,
+                computation_ms=180,
+            ),
+        )
+
+        plan = service.save(job_id=sample_job.id, result=engine_response, db=db_session)
+
+        assert plan is not None
+        assert plan.job_id == sample_job.id
+        assert plan.plan_version == 1
+        assert float(plan.volume_utilization_percent) == 0.75
+        assert plan.is_approved is False
+
+        # Placements check
+        placements = db_session.query(PackagePlacement).filter(PackagePlacement.load_plan_id == plan.id).all()
+        assert len(placements) == 1
+        assert placements[0].package_id == pkg1.id
+        assert placements[0].loading_sequence == 1
+
+        # Unplaced check
+        unplaced = db_session.query(UnplacedPackage).filter(UnplacedPackage.load_plan_id == plan.id).all()
+        assert len(unplaced) == 1
+        assert unplaced[0].package_id == pkg2.id
+        assert unplaced[0].reason_code == "EXCEED_AXLE_WEIGHT"
+
+        # OptimizationJob status check (PARTIAL because unplaced is non-empty)
+        db_session.refresh(sample_job)
+        assert sample_job.status == OptimizationJobStatus.PARTIAL.value
+        assert sample_job.execution_time_ms == 180
+
+    def test_save_all_placed_updates_job_status_completed(self, db_session, sample_job):
+        """save() với tất cả kiện hàng được xếp -> job.status = COMPLETED"""
+        service = OptimizationResultPersistenceService()
+        pkg1 = db_session.query(CargoPackage).filter(CargoPackage.id == 1).first()
+
+        engine_response = EngineOptimizationResponse(
+            placements=[
+                PlacementData(package_id=pkg1.id, x=0, y=0, z=0, loading_sequence=1)
+            ],
+            unplaced=[],
+            metrics=MetricsData(volume_utilization=0.9, computation_ms=150),
+        )
+
+        plan = service.save(job_id=sample_job.id, result=engine_response, db=db_session)
+        db_session.refresh(sample_job)
+        assert sample_job.status == OptimizationJobStatus.COMPLETED.value
+        assert sample_job.execution_time_ms == 150
+
+    def test_save_upserts_center_of_gravity(self, db_session, sample_job):
+        """save() lưu và cập nhật CenterOfGravity liên kết với LoadPlan"""
+        service = OptimizationResultPersistenceService()
+        from app.entity.optimization.center_of_gravity import CenterOfGravity
+
+        engine_response = EngineOptimizationResponse(
+            placements=[],
+            unplaced=[],
+            metrics=MetricsData(volume_utilization=0.0, computation_ms=50),
+        )
+
+        cog_data = {
+            "cog_x": 1.55,
+            "cog_y": 0.0,
+            "cog_z": 0.85,
+            "front_axle_load_kg": 450.0,
+            "rear_axle_load_kg": 550.0,
+            "is_balanced": True,
+        }
+
+        plan = service.save(job_id=sample_job.id, result=engine_response, db=db_session, cog_data=cog_data)
+
+        cog = db_session.query(CenterOfGravity).filter(CenterOfGravity.load_plan_id == plan.id).first()
+        assert cog is not None
+        assert float(cog.cog_x) == 1.55
+        assert float(cog.front_axle_load_kg) == 450.0
+        assert cog.is_balanced is True
+

@@ -201,3 +201,78 @@ class TestLoadPlanApproveApi:
         assert len(plan_data["placements"]) == 2
 
         app.dependency_overrides.clear()
+
+
+class TestLoadPlanApprovalSchemaV34:
+    def test_approve_plan_sets_approved_at_and_schema_v34_fields(self, db_session, plan_with_placements):
+        """
+        Acceptance Criteria 3:
+          Set is_approved = True, approved_at = now(), approved_by_user_id = current_user.id
+        """
+        service = LoadPlanService()
+        user_id = 999
+
+        approved_plan = service.approve_plan(
+            plan_with_placements.id,
+            current_user_id=user_id,
+            db=db_session,
+        )
+
+        assert approved_plan.is_approved is True
+        assert approved_plan.approved_by_user_id == user_id
+        assert approved_plan.approved_at is not None
+
+        # Kiểm tra to_response
+        response_dto = service.to_response(approved_plan, db_session)
+        assert response_dto.is_approved is True
+        assert response_dto.approved_by_user_id == user_id
+        assert response_dto.approved_at is not None
+        assert response_dto.job_id == approved_plan.job_id
+
+    def test_approve_plan_validates_lifo_with_loading_sequence_duplicates(self, db_session):
+        """
+        Acceptance Criteria 2:
+          Verify LIFO valid (loading_sequence không bị duplicate)
+        """
+        service = LoadPlanService()
+        job = db_session.query(OptimizationJob).first()
+        plan = LoadPlan(job_id=job.id, plan_name="Duplicate Loading Sequence Plan", approved=False)
+        db_session.add(plan)
+        db_session.commit()
+
+        # Tạo placements với loading_sequence bị trùng lặp
+        p1 = PackagePlacement(load_plan_id=plan.id, package_id=1, step_sequence=2)
+        p2 = PackagePlacement(load_plan_id=plan.id, package_id=2, step_sequence=2)
+        p1.loading_sequence = 2
+        p2.loading_sequence = 2
+        db_session.add_all([p1, p2])
+        db_session.commit()
+
+        with pytest.raises(AppException) as exc_info:
+            service.approve_plan(plan.id, current_user_id=1, db=db_session)
+        assert exc_info.value.error_code == ErrorCode.PLAN_LIFO_INVALID
+
+    def test_api_approve_plan_returns_schema_v34_payload(self, db_session, plan_with_placements):
+        """
+        Acceptance Criteria 1, 3, 5:
+          POST /api/v1/load-plans/{id}/approve trả 200 OK + LoadPlanResponse với is_approved, approved_at, approved_by_user_id
+        """
+        app.dependency_overrides[get_db] = lambda: db_session
+        client = TestClient(app)
+        dispatcher_token = make_jwt_token(["DISPATCHER"], user_id=789)
+
+        response = client.post(
+            f"/api/v1/load-plans/{plan_with_placements.id}/approve",
+            headers={"Authorization": f"Bearer {dispatcher_token}"},
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["success"] is True
+        plan_data = data["data"]
+        assert plan_data["is_approved"] is True
+        assert plan_data["approved_by_user_id"] == 789
+        assert plan_data["approved_at"] is not None
+        assert plan_data["job_id"] is not None
+
+        app.dependency_overrides.clear()
+

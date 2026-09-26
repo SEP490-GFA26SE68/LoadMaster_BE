@@ -38,14 +38,28 @@ class AsyncOptimizationRunner:
         self.persistence_service = persistence_service or OptimizationResultPersistenceService(job_service=self.job_service)
         self.session_factory = session_factory or SessionLocal
 
-    def build_problem_request(self, job_uuid: Union[str, UUID], db: Session) -> ProblemRequest:
+    def build_problem_request(
+        self,
+        job_id: Union[int, str, UUID],
+        db: Session,
+        job_uuid: Optional[Union[str, UUID, int]] = None,
+    ) -> ProblemRequest:
         """
         Xây dựng ProblemRequest từ Trip, Vehicle, Package lưu trong DB.
         """
         from app.entity.trip_model import Trip, CargoPackage, TransportOrder, DeliveryStop
 
-        job = self.job_service.get_job(str(job_uuid), db)
-        trip = db.query(Trip).filter(Trip.id == str(job.trip_id)).first()
+        target_id = job_id if job_id is not None else job_uuid
+        job = self.job_service.get_job(target_id, db)
+
+        trip = getattr(job, "trip", None)
+        if not trip:
+            try:
+                numeric_trip_id = int(job.trip_id)
+                trip = db.query(Trip).filter(Trip.id == numeric_trip_id).first()
+            except (ValueError, TypeError):
+                trip = db.query(Trip).filter(Trip.id == str(job.trip_id)).first()
+
         if not trip:
             raise AppException(ErrorCode.TRIP_NOT_FOUND)
 
@@ -66,12 +80,19 @@ class AsyncOptimizationRunner:
             max_payload_kg=payload,
         )
 
+        try:
+            numeric_trip_id = int(job.trip_id)
+            stops_query = db.query(DeliveryStop).filter(DeliveryStop.trip_id == numeric_trip_id).all()
+        except (ValueError, TypeError):
+            stops_query = db.query(DeliveryStop).filter(DeliveryStop.trip_id == str(job.trip_id)).all()
+
+        stop_ids = [s.id for s in stops_query]
         packages_query = (
             db.query(CargoPackage)
             .join(TransportOrder, CargoPackage.order_id == TransportOrder.id)
-            .join(DeliveryStop, TransportOrder.delivery_stop_id == DeliveryStop.id)
-            .filter(DeliveryStop.trip_id == str(job.trip_id))
+            .filter(TransportOrder.delivery_stop_id.in_(stop_ids))
             .all()
+            if stop_ids else []
         )
 
         package_items: list[PackageData] = []
@@ -87,7 +108,7 @@ class AsyncOptimizationRunner:
 
             package_items.append(
                 PackageData(
-                    id=str(pkg.id),
+                    id=pkg.id,
                     l=l,
                     w=width,
                     h=h,
@@ -98,15 +119,16 @@ class AsyncOptimizationRunner:
         return ProblemRequest(
             vehicle=vehicle_data,
             packages=package_items,
-            objective=job.objective or "MAX_VOLUME_UTIL",
-            time_limit_sec=job.time_limit_sec or 60,
+            objective=getattr(job, "algorithm_objective", None) or getattr(job, "objective", "MAX_VOLUME_UTIL"),
+            time_limit_sec=getattr(job, "time_limit_sec", 60),
         )
 
     async def run(
         self,
-        job_uuid: Union[str, UUID],
+        job_id: Union[int, str, UUID],
         problem: Optional[ProblemRequest] = None,
         db: Optional[Session] = None,
+        job_uuid: Optional[Union[str, UUID, int]] = None,
     ) -> None:
         """
         Thực thi thuật toán tối ưu bất đồng bộ trong BackgroundTasks.
@@ -118,7 +140,8 @@ class AsyncOptimizationRunner:
           5. handle_result qua engine_exception_handler (COMPLETED / PARTIAL / NO_SOLUTION)
           6. Nếu có exception -> engine_exception_handler.handle(exc)
         """
-        job_uuid_str = str(job_uuid)
+        target_id = job_id if job_id is not None else job_uuid
+        target_id_str = str(target_id)
         session = db
         should_close = False
         if session is None:
@@ -126,23 +149,25 @@ class AsyncOptimizationRunner:
             should_close = True
 
         try:
-            logger.info(f"Starting async optimization job: {job_uuid_str}")
-            self.job_service.update_status(job_uuid_str, OptimizationJobStatus.RUNNING, db=session)
+            logger.info(f"Starting async optimization job: {target_id_str}")
+            self.job_service.update_status(target_id, OptimizationJobStatus.RUNNING, db=session)
 
             if problem is None:
-                problem = self.build_problem_request(job_uuid_str, session)
+                problem = self.build_problem_request(target_id, session)
 
             result = await self.optimization_client.solve(problem)
 
+            saved_plan = None
             if self.persistence_service is not None and hasattr(self.persistence_service, "save"):
-                self.persistence_service.save(job_uuid_str, result, session)
+                saved_plan = self.persistence_service.save(target_id, result, session)
 
-            self.engine_exception_handler.handle_result(result, job_uuid_str, session)
-            logger.info(f"Finished async optimization job: {job_uuid_str}")
+            plan_id = getattr(saved_plan, "id", None)
+            self.engine_exception_handler.handle_result(result, target_id, session, plan_id=plan_id)
+            logger.info(f"Finished async optimization job: {target_id_str}")
 
         except Exception as exc:
-            logger.error(f"Error executing async optimization job {job_uuid_str}: {exc}")
-            self.engine_exception_handler.handle(exc, job_uuid_str, session)
+            logger.error(f"Error executing async optimization job {target_id_str}: {exc}")
+            self.engine_exception_handler.handle(exc, target_id, session)
         finally:
             if should_close and session is not None:
                 session.close()

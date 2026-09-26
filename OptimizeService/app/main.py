@@ -41,16 +41,19 @@ from fastapi import WebSocket, WebSocketDisconnect
 from app.service.optimize.job_notification_service import get_job_notification_service
 
 
-@app.websocket("/ws/jobs/{job_uuid}")
-async def ws_job_status(websocket: WebSocket, job_uuid: str):
+@app.websocket("/ws/jobs/{job_id}")
+async def ws_job_status(websocket: WebSocket, job_id: str):
     """
     WebSocket endpoint thông báo trạng thái real-time của optimization job (S3-10).
+    Hỗ trợ job_id kiểu BIGINT (Schema v3.4) hoặc UUID/str.
     """
     notification_service = get_job_notification_service()
     await websocket.accept()
-    await notification_service.connect(job_uuid, websocket)
+    await notification_service.connect(job_id=job_id, websocket=websocket)
     try:
         while True:
             await websocket.receive_text()
-    except WebSocketDisconnect:
-        await notification_service.disconnect(job_uuid, websocket)
+    except (WebSocketDisconnect, Exception):
+        pass
+    finally:
+        await notification_service.disconnect(job_id=job_id, websocket=websocket)

@@ -22,3 +22,11 @@ class PackagePlacement(Base):
 
     load_plan = relationship("LoadPlan", back_populates="placements")
     cargo_package = relationship("Package")
+
+    @property
+    def loading_sequence(self) -> int:
+        return self.step_sequence or 1
+
+    @loading_sequence.setter
+    def loading_sequence(self, val: int) -> None:
+        self.step_sequence = val

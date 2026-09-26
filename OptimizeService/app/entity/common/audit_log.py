@@ -16,3 +16,12 @@ class AuditLog(Base):
     new_values = Column(JSON, nullable=True)
     ip_address = Column(String(50), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
+
+    @property
+    def action(self) -> str:
+        return self.action_type
+
+    @action.setter
+    def action(self, val: str) -> None:
+        self.action_type = val
+

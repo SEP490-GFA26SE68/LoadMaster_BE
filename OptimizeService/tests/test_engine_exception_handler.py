@@ -287,3 +287,39 @@ class TestEngineExceptionHandlerNotification:
             OptimizationJobStatus.COMPLETED,
             computation_ms=200,
         )
+
+
+class TestEngineExceptionHandlerSchemaV34:
+    def test_handle_with_numeric_job_id_updates_db(self, db_session, sample_job):
+        """EngineExceptionHandler.handle hoạt động chuẩn xác với numeric job_id (Schema v3.4)"""
+        handler = EngineExceptionHandler()
+        exc = httpx.ConnectError("Connection refused")
+
+        status = handler.handle(exc, job_id=sample_job.id, db=db_session)
+
+        assert status == OptimizationJobStatus.FAILED
+        db_session.refresh(sample_job)
+        assert sample_job.status == OptimizationJobStatus.FAILED.value
+
+    def test_handle_result_with_numeric_job_id_updates_db(self, db_session, sample_job):
+        """EngineExceptionHandler.handle_result hoạt động chuẩn xác với numeric job_id (Schema v3.4)"""
+        handler = EngineExceptionHandler()
+        response = EngineOptimizationResponse(
+            placements=[
+                PlacementData(
+                    package_id=101, x=0, y=0, z=0,
+                    packed_l=100, packed_w=100, packed_h=100,
+                    loading_sequence=1,
+                )
+            ],
+            unplaced=[],
+            metrics=MetricsData(volume_utilization=0.85, computation_ms=120),
+        )
+
+        status = handler.handle_result(response, job_id=sample_job.id, db=db_session)
+
+        assert status == OptimizationJobStatus.COMPLETED
+        db_session.refresh(sample_job)
+        assert sample_job.status == OptimizationJobStatus.COMPLETED.value
+        assert sample_job.execution_time_ms == 120
+

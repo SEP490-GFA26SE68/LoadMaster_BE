@@ -45,9 +45,11 @@ async def submit_job(
     Trả về 202 Accepted kèm job_id.
     """
     job = job_service.create_job(trip_id=request.trip_id, config=request, db=db)
-    background_tasks.add_task(runner.run, job.job_uuid, db=db)
+    run_id = job.id if job.id is not None else job.job_uuid
+    background_tasks.add_task(runner.run, run_id, db=db)
+    returned_job_id = job.id if job.id is not None else job.job_uuid
     return ApiResponse.ok(
-        data={"job_id": job.job_uuid},
+        data={"job_id": returned_job_id},
         message="Tác vụ tối ưu đã được khởi tạo",
     )
 
@@ -68,13 +70,18 @@ async def get_job(
     job = job_service.get_job(id, db)
     job_response = OptimizationJobResponse(
         id=job.id,
-        job_uuid=job.job_uuid,
         trip_id=job.trip_id,
-        objective=job.objective,
-        time_limit_sec=job.time_limit_sec,
+        algorithm_objective=getattr(job, "algorithm_objective", None) or getattr(job, "objective", None),
+        execution_time_ms=getattr(job, "execution_time_ms", None),
         status=job.status,
-        computation_ms=job.computation_ms,
-        created_at=job.created_at,
+        tripId=getattr(job, "tripId", job.trip_id),
+        algorithmObjective=getattr(job, "algorithmObjective", None) or getattr(job, "algorithm_objective", None),
+        executionTimeMs=getattr(job, "executionTimeMs", None) or getattr(job, "execution_time_ms", None),
+        job_uuid=getattr(job, "_job_uuid", None) or job.id,
+        objective=getattr(job, "objective", None) or getattr(job, "algorithm_objective", None),
+        time_limit_sec=getattr(job, "time_limit_sec", 60),
+        computation_ms=getattr(job, "computation_ms", None) or getattr(job, "execution_time_ms", None),
+        created_at=getattr(job, "created_at", None),
     )
     return ApiResponse.ok(
         data=job_response,

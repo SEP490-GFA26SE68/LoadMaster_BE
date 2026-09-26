@@ -47,65 +47,67 @@ class EngineExceptionHandler:
     def handle(
         self,
         exc: Exception,
-        job_uuid: Union[str, UUID],
+        job_id: Union[int, str, UUID],
         db: Session,
         computation_ms: Optional[int] = None,
+        job_uuid: Optional[Union[str, UUID, int]] = None,
     ) -> OptimizationJobStatus:
         """
         Xử lý ngoại lệ, cập nhật trạng thái job và ghi log tương ứng.
         Trả về OptimizationJobStatus đã cập nhật.
         """
-        job_uuid_str = str(job_uuid)
+        target_id = job_id if job_id is not None else job_uuid
+        target_id_str = str(target_id)
         status = OptimizationJobStatus.FAILED
 
         if isinstance(exc, httpx.TimeoutException):
             status = OptimizationJobStatus.TIMEOUT
-            log_message = f"TIMEOUT: Engine request timed out for job {job_uuid_str}: {exc}. Time limit exceeded."
+            log_message = f"TIMEOUT: Engine request timed out for job {target_id_str}: {exc}. Time limit exceeded."
             logger.warning(log_message)
 
         elif isinstance(exc, httpx.HTTPStatusError):
             code = exc.response.status_code if exc.response is not None else 500
             if code == 401:
                 status = OptimizationJobStatus.FAILED
-                log_message = f"AUTH_ERROR: Optimization engine returned 401 Unauthorized for job {job_uuid_str}: {exc}"
+                log_message = f"AUTH_ERROR: Optimization engine returned 401 Unauthorized for job {target_id_str}: {exc}"
                 logger.error(log_message)
             elif code == 403:
                 status = OptimizationJobStatus.FAILED
-                log_message = f"AUTH_FORBIDDEN: Optimization engine returned 403 Forbidden for job {job_uuid_str}: {exc}"
+                log_message = f"AUTH_FORBIDDEN: Optimization engine returned 403 Forbidden for job {target_id_str}: {exc}"
                 logger.error(log_message)
             else:
                 status = OptimizationJobStatus.FAILED
-                log_message = f"ENGINE_HTTP_ERROR: Status {code} for job {job_uuid_str}: {exc}"
+                log_message = f"ENGINE_HTTP_ERROR: Status {code} for job {target_id_str}: {exc}"
                 logger.error(log_message)
 
         elif isinstance(exc, (httpx.ConnectError, httpx.NetworkError, httpx.RequestError)):
             status = OptimizationJobStatus.FAILED
-            log_message = f"SERVICE_UNAVAILABLE: Cannot connect to Optimization engine for job {job_uuid_str}: {exc}"
+            log_message = f"SERVICE_UNAVAILABLE: Cannot connect to Optimization engine for job {target_id_str}: {exc}"
             logger.error(log_message)
 
         elif isinstance(exc, ServiceAuthenticationException):
             status = OptimizationJobStatus.FAILED
-            log_message = f"AUTH_ERROR: Service authentication failed for job {job_uuid_str}: {exc}"
+            log_message = f"AUTH_ERROR: Service authentication failed for job {target_id_str}: {exc}"
             logger.error(log_message)
 
         else:
             status = OptimizationJobStatus.FAILED
-            log_message = f"UNEXPECTED_ERROR: Optimization job {job_uuid_str} encountered unexpected error: {exc}"
+            log_message = f"UNEXPECTED_ERROR: Optimization job {target_id_str} encountered unexpected error: {exc}"
             logger.exception(log_message)
 
         # Cập nhật status trong database
         try:
             self.job_service.update_status(
-                job_uuid=job_uuid_str,
+                job_id=target_id,
                 status=status,
                 computation_ms=computation_ms,
                 db=db,
             )
         except Exception as db_exc:
-            logger.error(f"Failed to update job status in DB for {job_uuid_str}: {db_exc}")
+            logger.error(f"Failed to update job status in DB for {target_id_str}: {db_exc}")
 
         # Gửi thông báo WebSocket nếu notification_service có sẵn
-        self._notify_status(job_uuid_str, status, computation_ms=computation_ms)
+        self._notify_status(target_id_str, status, computation_ms=computation_ms)
 
         return status
 
@@ -130,14 +132,17 @@ class EngineExceptionHandler:
     def handle_result(
         self,
         result: EngineOptimizationResponse,
-        job_uuid: Union[str, UUID],
+        job_id: Union[int, str, UUID],
         db: Session,
         computation_ms: Optional[int] = None,
+        job_uuid: Optional[Union[str, UUID, int]] = None,
+        plan_id: Optional[Union[int, str]] = None,
     ) -> OptimizationJobStatus:
         """
         Xử lý kết quả trả về từ Engine, cập nhật trạng thái job tương ứng.
         """
-        job_uuid_str = str(job_uuid)
+        target_id = job_id if job_id is not None else job_uuid
+        target_id_str = str(target_id)
         status = self.classify_result(result)
 
         comp_ms = computation_ms
@@ -146,15 +151,15 @@ class EngineExceptionHandler:
 
         try:
             self.job_service.update_status(
-                job_uuid=job_uuid_str,
+                job_id=target_id,
                 status=status,
                 computation_ms=comp_ms,
                 db=db,
             )
         except Exception as db_exc:
-            logger.error(f"Failed to update job status in DB for {job_uuid_str}: {db_exc}")
+            logger.error(f"Failed to update job status in DB for {target_id_str}: {db_exc}")
 
-        self._notify_status(job_uuid_str, status, computation_ms=comp_ms)
+        self._notify_status(target_id_str, status, computation_ms=comp_ms, plan_id=plan_id)
         return status
 
     def _notify_status(
@@ -162,13 +167,17 @@ class EngineExceptionHandler:
         job_uuid: str,
         status: OptimizationJobStatus,
         computation_ms: Optional[int] = None,
+        plan_id: Optional[Union[int, str]] = None,
     ) -> None:
         if self.notification_service is not None and hasattr(self.notification_service, "notify_status"):
             try:
+                kwargs = {"computation_ms": computation_ms}
+                if plan_id is not None:
+                    kwargs["plan_id"] = plan_id
                 self.notification_service.notify_status(
                     job_uuid,
                     status,
-                    computation_ms=computation_ms,
+                    **kwargs,
                 )
             except Exception as notify_exc:
                 logger.warning(f"Failed to send status notification for {job_uuid}: {notify_exc}")

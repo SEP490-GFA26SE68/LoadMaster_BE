@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import List, Optional, Union
 from sqlalchemy.orm import Session
 
@@ -82,12 +83,16 @@ class LoadPlanService:
         if not self._validate_lifo(placements):
             raise AppException(ErrorCode.PLAN_LIFO_INVALID)
 
+        now = datetime.utcnow()
         user_id_int = None
         if current_user_id is not None and str(current_user_id).isdigit():
             user_id_int = int(current_user_id)
 
         plan.approved = True
+        plan.is_approved = True
         plan.approved_by_id = user_id_int
+        plan.approved_by_user_id = user_id_int
+        plan.approved_at = now
         self.load_plan_repository.update(plan, db)
 
         audit = AuditLog(
@@ -95,7 +100,14 @@ class LoadPlanService:
             entity_name="LOAD_PLAN",
             entity_id=str(plan.id),
             user_id=user_id_int,
-            new_values={"approved": True, "approved_by": user_id_int},
+            new_values={
+                "approved": True,
+                "is_approved": True,
+                "approved_by": user_id_int,
+                "approved_by_user_id": user_id_int,
+                "approved_at": now.isoformat(),
+            },
+            created_at=now,
         )
         db.add(audit)
         db.flush()
@@ -106,10 +118,15 @@ class LoadPlanService:
     def _validate_lifo(placements: List[PackagePlacement]) -> bool:
         """
         Kiểm tra tính hợp lệ của thứ tự xếp dỡ LIFO.
-        Các step_sequence phải duy nhất và không bị duplicate.
+        Các loading_sequence / step_sequence phải duy nhất và không bị duplicate.
         """
-        sequences = [p.step_sequence for p in placements if p.step_sequence is not None]
-        return len(sequences) == len(placements) and len(sequences) == len(set(sequences))
+        sequences = [
+            getattr(p, "loading_sequence", None)
+            if getattr(p, "loading_sequence", None) is not None
+            else getattr(p, "step_sequence", None)
+            for p in placements
+        ]
+        return len(sequences) == len(placements) and None not in sequences and len(sequences) == len(set(sequences))
 
     def to_response(self, plan: LoadPlan, db: Session) -> LoadPlanResponse:
         """
@@ -119,8 +136,10 @@ class LoadPlanService:
         placement_dtos = [
             PackagePlacementResponse(
                 id=item.id,
+                load_plan_id=item.load_plan_id,
                 package_id=str(item.package_id) if item.package_id is not None else "",
-                step_sequence=item.step_sequence or 1,
+                loading_sequence=getattr(item, "loading_sequence", getattr(item, "step_sequence", 1)),
+                step_sequence=getattr(item, "step_sequence", getattr(item, "loading_sequence", 1)),
                 pos_x=float(item.pos_x or 0),
                 pos_y=float(item.pos_y or 0),
                 pos_z=float(item.pos_z or 0),
@@ -134,11 +153,18 @@ class LoadPlanService:
 
         return LoadPlanResponse(
             id=plan.id,
+            job_id=plan.job_id,
             plan_name=plan.plan_name,
+            plan_version=getattr(plan, "plan_version", getattr(plan, "version", 1)),
             packed_items_count=plan.packed_items_count,
             volume_utilization=float(plan.volume_utilization) if plan.volume_utilization is not None else 0.0,
+            volume_utilization_percent=float(plan.volume_utilization) if plan.volume_utilization is not None else 0.0,
             weight_utilization=float(plan.weight_utilization) if plan.weight_utilization is not None else 0.0,
+            is_approved=bool(plan.approved),
             approved=bool(plan.approved),
             approved_by_id=plan.approved_by_id,
+            approved_by_user_id=plan.approved_by_id,
+            approved_at=plan.approved_at,
             placements=placement_dtos,
         )
+

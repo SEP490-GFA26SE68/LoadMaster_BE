@@ -332,3 +332,68 @@ class TestAsyncJobExecutionApi:
         assert poll_data["data"]["computation_ms"] is not None
 
         app.dependency_overrides.clear()
+
+
+@pytest.mark.asyncio
+class TestAsyncRunnerSchemaV34:
+    async def test_run_with_numeric_job_id_success(self, db_session, sample_problem):
+        """AsyncOptimizationRunner.run hoạt động chuẩn với numeric job_id (Schema v3.4)"""
+        trip = db_session.query(Trip).first()
+        job_service = OptimizationJobService()
+        job = OptimizationJob(
+            trip_id=trip.id,
+            status=OptimizationJobStatus.PENDING.value,
+            algorithm_objective="MAX_VOLUME",
+        )
+        db_session.add(job)
+        db_session.commit()
+        db_session.refresh(job)
+
+        mock_client = MagicMock(spec=OptimizationClient)
+        mock_response = EngineOptimizationResponse(
+            placements=[
+                PlacementData(
+                    package_id=1, x=0, y=0, z=0,
+                    packed_l=0.5, packed_w=0.4, packed_h=0.3, rotation_type=0, step_sequence=1,
+                )
+            ],
+            unplaced=[],
+            metrics=MetricsData(volume_utilization=0.6, computation_ms=95),
+        )
+        mock_client.solve = AsyncMock(return_value=mock_response)
+
+        runner = AsyncOptimizationRunner(
+            job_service=job_service,
+            optimization_client=mock_client,
+            engine_exception_handler=EngineExceptionHandler(job_service=job_service),
+        )
+
+        await runner.run(job_id=job.id, problem=sample_problem, db=db_session)
+
+        db_session.refresh(job)
+        assert job.status == OptimizationJobStatus.COMPLETED.value
+        assert job.execution_time_ms == 95
+        mock_client.solve.assert_awaited_once_with(sample_problem)
+
+    async def test_build_problem_request_with_numeric_job_id(self, db_session):
+        """build_problem_request hoạt động chuẩn với numeric job_id (Schema v3.4)"""
+        trip = db_session.query(Trip).first()
+        job_service = OptimizationJobService()
+        job = OptimizationJob(
+            trip_id=trip.id,
+            status=OptimizationJobStatus.PENDING.value,
+            algorithm_objective="MAX_VOLUME",
+        )
+        db_session.add(job)
+        db_session.commit()
+        db_session.refresh(job)
+
+        runner = AsyncOptimizationRunner(job_service=job_service)
+        problem = runner.build_problem_request(job_id=job.id, db=db_session)
+
+        assert problem.vehicle.inner_l == 3.0
+        assert problem.vehicle.inner_w == 1.8
+        assert problem.vehicle.max_payload_kg == 1000.0
+        assert len(problem.packages) == 1
+        assert problem.packages[0].weight == 15.0
+
