@@ -35,9 +35,4 @@ public class VehicleType {
     @Column(name = "max_payload_kg", precision = 10, scale = 2)
     private BigDecimal maxPayloadKg;
 
-    @Positive @Column(name = "door_width")
-    private Integer doorWidth;
-
-    @Positive @Column(name = "door_height")
-    private Integer doorHeight;
 }

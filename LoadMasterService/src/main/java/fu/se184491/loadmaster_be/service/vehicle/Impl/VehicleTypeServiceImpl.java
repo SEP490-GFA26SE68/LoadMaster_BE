@@ -31,8 +31,6 @@ public class VehicleTypeServiceImpl implements VehicleTypeService {
                 .innerWidth(entity.getInnerWidth())
                 .innerHeight(entity.getInnerHeight())
                 .maxPayloadKg(entity.getMaxPayloadKg())
-                .doorWidth(entity.getDoorWidth())
-                .doorHeight(entity.getDoorHeight())
                 .companyId(entity.getCompany() != null ? entity.getCompany().getId() : null)
                 .build();
     }
@@ -49,8 +47,6 @@ public class VehicleTypeServiceImpl implements VehicleTypeService {
                 .innerWidth(request.getInnerWidth())
                 .innerHeight(request.getInnerHeight())
                 .maxPayloadKg(request.getMaxPayloadKg())
-                .doorWidth(request.getDoorWidth())
-                .doorHeight(request.getDoorHeight())
                 .build();
                 
         type = vehicleTypeRepository.save(type);
@@ -72,8 +68,6 @@ public class VehicleTypeServiceImpl implements VehicleTypeService {
         type.setInnerWidth(request.getInnerWidth());
         type.setInnerHeight(request.getInnerHeight());
         type.setMaxPayloadKg(request.getMaxPayloadKg());
-        type.setDoorWidth(request.getDoorWidth());
-        type.setDoorHeight(request.getDoorHeight());
         
         type = vehicleTypeRepository.save(type);
         return mapToResponse(type);
