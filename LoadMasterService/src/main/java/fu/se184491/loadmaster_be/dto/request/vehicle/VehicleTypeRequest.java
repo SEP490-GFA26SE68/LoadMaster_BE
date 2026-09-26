@@ -35,11 +35,4 @@ public class VehicleTypeRequest {
     @Positive(message = "Tải trọng tối đa phải lớn hơn 0")
     private BigDecimal maxPayloadKg;
 
-    @NotNull(message = "Chiều rộng cửa không được để trống")
-    @Positive(message = "Chiều rộng cửa phải lớn hơn 0")
-    private Integer doorWidth;
-
-    @NotNull(message = "Chiều cao cửa không được để trống")
-    @Positive(message = "Chiều cao cửa phải lớn hơn 0")
-    private Integer doorHeight;
 }

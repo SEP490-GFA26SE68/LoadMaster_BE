@@ -18,7 +18,5 @@ public class VehicleTypeResponse {
     private Integer innerWidth;
     private Integer innerHeight;
     private BigDecimal maxPayloadKg;
-    private Integer doorWidth;
-    private Integer doorHeight;
     private Long companyId;
 }
