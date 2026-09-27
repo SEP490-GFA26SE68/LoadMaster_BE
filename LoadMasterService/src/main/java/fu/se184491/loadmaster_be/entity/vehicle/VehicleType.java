@@ -20,7 +20,7 @@ public class VehicleType {
     @JoinColumn(name = "company_id")
     private Company company;
 
-    @Column(name = "name", length = 100)
+    @Column(name = "name", length = 150)
     private String name;
 
     @Positive @Column(name = "inner_length")
@@ -35,9 +35,4 @@ public class VehicleType {
     @Column(name = "max_payload_kg", precision = 10, scale = 2)
     private BigDecimal maxPayloadKg;
 
-    @Positive @Column(name = "door_width")
-    private Integer doorWidth;
-
-    @Positive @Column(name = "door_height")
-    private Integer doorHeight;
 }
