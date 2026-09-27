@@ -36,10 +36,11 @@ build/
 ### Environment Variables ###
 .env
 *.env.local
+!.env.example
 
 ### Internal Issue Tracker ###
 issues/
 issues.md
 
 ### Local Notes ###
-Optimization.txt
+Optimization.txt

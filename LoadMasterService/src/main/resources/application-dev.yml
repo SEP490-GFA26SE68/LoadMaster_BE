@@ -1,0 +1,17 @@
+app:
+  bootstrap:
+    admin:
+      email: ${DEV_ADMIN_EMAIL}
+      password: ${DEV_ADMIN_PASSWORD}
+      full-name: ${DEV_ADMIN_FULL_NAME}
+  data:
+    redis:
+      host: localhost
+      port: 6379
+  brevo:
+    api-key: ${BREVO_API_KEY}
+    sender-email: ${BREVO_SENDER_EMAIL}
+    sender-name: ${BREVO_SENDER_NAME}
+
+    security:
+      otp-hmac-secret: ${OTP_HMAC_SECRET}

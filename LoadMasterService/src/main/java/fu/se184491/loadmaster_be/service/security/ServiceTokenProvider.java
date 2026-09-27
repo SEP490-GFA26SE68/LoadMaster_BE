@@ -14,20 +14,38 @@ import java.util.List;
 @RequiredArgsConstructor
 public class ServiceTokenProvider {
 
+
     private final OAuth2AuthorizedClientManager authorizedClientManager;
 
     public String getOptimizationServiceToken() {
+        return getToken(
+                "optimization-client",
+                "loadmaster-backend-service"
+        );
+    }
+
+    public String getKeycloakAdminToken() {
+        return getToken(
+                "keycloak-admin-client",
+                "loadmaster-user-admin-service"
+        );
+    }
+
+    private String getToken(
+            String registrationId,
+            String principalName
+    ) {
 
         Authentication principal =
                 new UsernamePasswordAuthenticationToken(
-                        "loadmaster-backend-service",
+                        principalName,
                         null,
                         List.of()
                 );
 
         OAuth2AuthorizeRequest request =
                 OAuth2AuthorizeRequest
-                        .withClientRegistrationId("optimization-client")
+                        .withClientRegistrationId(registrationId)
                         .principal(principal)
                         .build();
 
@@ -36,7 +54,7 @@ public class ServiceTokenProvider {
 
         if (client == null) {
             throw new IllegalStateException(
-                    "Cannot obtain optimization service access token"
+                    "Cannot obtain OAuth2 access token"
             );
         }
 
