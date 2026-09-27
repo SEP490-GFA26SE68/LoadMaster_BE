@@ -14,4 +14,6 @@ public interface VehicleRepository extends JpaRepository<Vehicle, Long>, JpaSpec
     Optional<Vehicle> findByLicensePlate(String licensePlate);
     Page<Vehicle> findByCompanyId(Long companyId, Pageable pageable);
     boolean existsByLicensePlate(String licensePlate);
+    boolean existsByDriver_Id(Long driverUserId);
+    boolean existsByDriver_IdAndIdNot(Long driverUserId, Long vehicleId);
 }

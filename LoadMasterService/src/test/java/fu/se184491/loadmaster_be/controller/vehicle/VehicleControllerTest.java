@@ -2,6 +2,7 @@ package fu.se184491.loadmaster_be.controller.vehicle;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import fu.se184491.loadmaster_be.config.security.WebSecurityConfig;
+import fu.se184491.loadmaster_be.dto.request.vehicle.AssignDriverRequest;
 import fu.se184491.loadmaster_be.dto.request.vehicle.VehicleRequest;
 import fu.se184491.loadmaster_be.dto.response.vehicle.VehicleResponse;
 import fu.se184491.loadmaster_be.service.vehicle.VehicleService;
@@ -96,5 +97,18 @@ public class VehicleControllerTest {
         mockMvc.perform(get("/api/vehicles"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.content[0].id").value(1L));
+    }
+    @Test
+    @WithMockUser(authorities = "VEHICLE_MANAGE")
+    void assignDriver_Success() throws Exception {
+        AssignDriverRequest assignRequest = new AssignDriverRequest(2L);
+        when(vehicleService.assignDriver(eq(1L), eq(1L), eq(2L))).thenReturn(response);
+
+        mockMvc.perform(put("/api/vehicles/1/driver")
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(assignRequest)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.driverUserId").value(2L));
     }
 }
