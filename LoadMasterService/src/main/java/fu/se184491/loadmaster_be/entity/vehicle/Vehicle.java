@@ -5,7 +5,6 @@ import fu.se184491.loadmaster_be.entity.account.User;
 import fu.se184491.loadmaster_be.entity.vehicle.VehicleType;
 
 
-import fu.se184491.loadmaster_be.constant.vehicle.VehicleStatus;
 import jakarta.persistence.*;
 import lombok.*;
 
@@ -24,10 +23,10 @@ public class Vehicle {
     @ManyToOne(fetch = FetchType.LAZY) @JoinColumn(name = "vehicle_type_id")
     private VehicleType vehicleType;
 
-    @ManyToOne(fetch = FetchType.LAZY) @JoinColumn(name = "driver_id")
+    @OneToOne(fetch = FetchType.LAZY) @JoinColumn(name = "driver_user_id", unique = true)
     private User driver;
 
-    @Column(name = "license_plate", length = 30, unique = true, nullable = false)
+    @Column(name = "license_plate", length = 50, unique = true, nullable = false)
     private String licensePlate;
 
     @Column(name = "front_axle_limit_kg", precision = 10, scale = 2)
@@ -36,6 +35,4 @@ public class Vehicle {
     @Column(name = "rear_axle_limit_kg", precision = 10, scale = 2)
     private BigDecimal rearAxleLimitKg;
 
-    @Enumerated(EnumType.STRING) @Column(name = "status")
-    private VehicleStatus status;
 }
