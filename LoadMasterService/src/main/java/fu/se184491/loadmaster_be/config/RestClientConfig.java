@@ -13,4 +13,18 @@ public class RestClientConfig {
                 .baseUrl("http://localhost:8000")
                 .build();
     }
+
+    @Bean
+    public RestClient keycloakAdminRestClient() {
+        return RestClient.builder()
+                .baseUrl("http://localhost:8180")
+                .build();
+    }
+
+    @Bean
+    public RestClient brevoRestClient() {
+        return RestClient.builder()
+                .baseUrl("https://api.brevo.com")
+                .build();
+    }
 }

@@ -31,6 +31,9 @@ public enum ErrorCode {
     USER_ALREADY_EXISTS("Người dùng với email này đã tồn tại", HttpStatus.CONFLICT),
     COMPANY_NOT_FOUND("Không tìm thấy thông tin công ty", HttpStatus.NOT_FOUND),
     ROLE_NOT_FOUND("Không tìm thấy vai trò người dùng", HttpStatus.NOT_FOUND),
+    EMAIL_ALREADY_EXISTS("Email đã được sử dụng", HttpStatus.CONFLICT),
+
+    USER_PROFILE_NOT_FOUND("Không tìm thấy thông tin hồ sơ người dùng", HttpStatus.NOT_FOUND),
 
     // -------------------------------------------------------------------------
     // Customer, Order & Cargo Package errors

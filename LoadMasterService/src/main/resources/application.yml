@@ -13,6 +13,11 @@ spring:
             authorization-grant-type: client_credentials
             scope:
               - optimization.execute
+          keycloak-admin-client:
+            provider: keycloak
+            client-id: loadmaster-user-admin-service
+            client-secret: ${KEYCLOAK_USER_ADMIN_CLIENT_SECRET}
+            authorization-grant-type: client_credentials
         provider:
           keycloak:
             token-uri: http://localhost:8180/realms/loadmaster/protocol/openid-connect/token

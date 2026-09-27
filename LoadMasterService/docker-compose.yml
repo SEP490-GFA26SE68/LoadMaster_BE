@@ -79,7 +79,7 @@ services:
       - "8180:8080"
 
     volumes:
-      - ./keycloak/import:/opt/keycloak/data/import
+      - ../keycloak/import:/opt/keycloak/data/import:ro
 
     depends_on:
       keycloak-postgres:
@@ -88,10 +88,36 @@ services:
     networks:
       - loadmaster-network
 
+  redis:
+    image: redis:7.4-alpine
+    container_name: loadmaster-redis
+    restart: unless-stopped
+
+    ports:
+      - "6379:6379"
+
+    volumes:
+      - loadmaster_redis_data:/data
+
+    command:
+      - redis-server
+      - --appendonly
+      - "yes"
+
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+    networks:
+      - loadmaster-network
+
 
 volumes:
   loadmaster_postgres_data:
   keycloak_postgres_data:
+  loadmaster_redis_data:
 
 
 networks:

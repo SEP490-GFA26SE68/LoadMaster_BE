@@ -4,6 +4,7 @@ import fu.se184491.loadmaster_be.constant.company.CompanyStatus;
 import jakarta.persistence.*;
 import lombok.*;
 
+import java.time.Instant;
 import java.time.LocalDateTime;
 
 @Entity
@@ -30,5 +31,5 @@ public class Company {
     private CompanyStatus status;
 
     @Column(name = "created_at")
-    private LocalDateTime createdAt;
+    private Instant createdAt;
 }
