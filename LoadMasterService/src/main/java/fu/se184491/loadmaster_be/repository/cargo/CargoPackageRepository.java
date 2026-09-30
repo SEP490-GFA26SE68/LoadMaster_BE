@@ -12,5 +12,13 @@ public interface CargoPackageRepository extends JpaRepository<CargoPackage, Long
 
     Optional<CargoPackage> findByTrackingBarcode(String trackingBarcode);
 
+    Optional<CargoPackage> findByQrToken(String qrToken);
+
+    boolean existsByQrToken(String qrToken);
+
+    Optional<CargoPackage> findByPackageCode(String packageCode);
+
+    boolean existsByOrderCompanyIdAndPackageCode(Long companyId, String packageCode);
+
     List<CargoPackage> findByOrderDeliveryStopId(Long stopId);
 }
