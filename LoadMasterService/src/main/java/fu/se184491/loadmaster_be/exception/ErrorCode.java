@@ -62,6 +62,24 @@ public enum ErrorCode {
     // -------------------------------------------------------------------------
     EXPORT_FAILED("Xuất dữ liệu thất bại", HttpStatus.INTERNAL_SERVER_ERROR),
     FILE_INVALID("File không hợp lệ hoặc vượt quá kích thước cho phép", HttpStatus.BAD_REQUEST),
+    UNSUPPORTED_FILE_TYPE("Loại file không được hỗ trợ. Chỉ chấp nhận .csv và .xlsx", HttpStatus.BAD_REQUEST),
+    EMPTY_FILE("File rỗng hoặc không có dữ liệu để xử lý", HttpStatus.BAD_REQUEST),
+    FILE_SIZE_LIMIT_EXCEEDED("Kích thước file vượt quá giới hạn tối đa cho phép (10MB)", HttpStatus.PAYLOAD_TOO_LARGE),
+    BATCH_SIZE_LIMIT_EXCEEDED("Số lượng bản ghi trong file vượt quá giới hạn tối đa cho phép (1000 dòng)", HttpStatus.BAD_REQUEST),
+
+    // -------------------------------------------------------------------------
+    // Import batch validation - row level
+    // -------------------------------------------------------------------------
+    IMPORT_DUPLICATE_CODE("Mã kiện bị trùng lặp trong cùng file", HttpStatus.BAD_REQUEST),
+    IMPORT_INVALID_LENGTH("Chiều dài phải là số nguyên dương (> 0 mm)", HttpStatus.BAD_REQUEST),
+    IMPORT_INVALID_WIDTH("Chiều rộng phải là số nguyên dương (> 0 mm)", HttpStatus.BAD_REQUEST),
+    IMPORT_INVALID_HEIGHT("Chiều cao phải là số nguyên dương (> 0 mm)", HttpStatus.BAD_REQUEST),
+    IMPORT_INVALID_WEIGHT("Khối lượng phải là số dương (> 0 kg)", HttpStatus.BAD_REQUEST),
+    IMPORT_INVALID_HANDLING_CLASS("Loại hàng không hợp lệ. Chỉ chấp nhận: STANDARD, FRAGILE, REFRIGERATED, HAZARDOUS, HIGH_VALUE", HttpStatus.BAD_REQUEST),
+    IMPORT_BLANK_DESTINATION("Điểm đến / nơi nhận hàng không được để trống", HttpStatus.BAD_REQUEST),
+    IMPORT_EXISTING_CODE("Mã kiện đã tồn tại trong hệ thống, hệ thống sẽ tạo bản ghi mới", HttpStatus.OK),
+    IMPORT_HAS_ERRORS("File import chứa lỗi dữ liệu, vui lòng kiểm tra preview trước khi xác nhận", HttpStatus.UNPROCESSABLE_ENTITY),
+    EXPORT_TOO_MANY_PACKAGES("Tối đa 200 package mỗi lần xuất PDF", HttpStatus.BAD_REQUEST),
 
     // -------------------------------------------------------------------------
     // Optimization & Load Plan errors
