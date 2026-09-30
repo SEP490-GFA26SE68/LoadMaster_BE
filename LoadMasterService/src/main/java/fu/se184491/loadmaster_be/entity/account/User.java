@@ -1,5 +1,6 @@
 package fu.se184491.loadmaster_be.entity.account;
 
+import fu.se184491.loadmaster_be.constant.account.UserRole;
 import fu.se184491.loadmaster_be.constant.account.UserStatus;
 import fu.se184491.loadmaster_be.entity.company.Company;
 import jakarta.persistence.*;
@@ -73,6 +74,14 @@ public class User {
             length = 20
     )
     private String phoneNumber;
+
+    @Enumerated(EnumType.STRING)
+    @Column(
+            name = "user_role_type",
+            length = 30,
+            nullable = false
+    )
+    private UserRole userRoleType;
 
     @Enumerated(EnumType.STRING)
     @Column(

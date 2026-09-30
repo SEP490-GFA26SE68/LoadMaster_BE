@@ -11,4 +11,5 @@ public interface VehicleService {
     VehicleResponse getVehicleById(Long companyId, Long id);
     Page<VehicleResponse> getAllVehicles(Long companyId, Long vehicleTypeId, Long driverUserId, Pageable pageable);
     void deleteVehicle(Long companyId, Long id);
+    VehicleResponse assignDriver(Long companyId, Long vehicleId, Long driverUserId);
 }

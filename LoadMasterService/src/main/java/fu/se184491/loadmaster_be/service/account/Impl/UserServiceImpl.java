@@ -1,6 +1,7 @@
 package fu.se184491.loadmaster_be.service.account.Impl;
 
 import fu.se184491.loadmaster_be.client.KeycloakAdminClient;
+import fu.se184491.loadmaster_be.constant.account.UserRole;
 import fu.se184491.loadmaster_be.constant.account.UserStatus;
 import fu.se184491.loadmaster_be.dto.request.account.CreateUserRequest;
 import fu.se184491.loadmaster_be.dto.response.account.CreateUserResponse;
@@ -86,6 +87,7 @@ public class UserServiceImpl implements UserService {
                     .email(request.email())
                     .fullName(request.fullName())
                     .phoneNumber(request.phoneNumber())
+                    .userRoleType(request.role())
                     .status(UserStatus.ACTIVE)
                     .build();
 
@@ -119,6 +121,7 @@ public class UserServiceImpl implements UserService {
                 .keycloakId(jwt.getSubject())
                 .email(jwt.getClaimAsString("email"))
                 .fullName(jwt.getClaimAsString("name"))
+                .userRoleType(UserRole.MANAGER) // Default fallback or extract from JWT if needed
                 .status(UserStatus.ACTIVE)
                 .build();
 

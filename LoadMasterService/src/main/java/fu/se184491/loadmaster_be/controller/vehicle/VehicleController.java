@@ -1,5 +1,6 @@
 package fu.se184491.loadmaster_be.controller.vehicle;
 
+import fu.se184491.loadmaster_be.dto.request.vehicle.AssignDriverRequest;
 import fu.se184491.loadmaster_be.dto.request.vehicle.VehicleRequest;
 import fu.se184491.loadmaster_be.dto.response.vehicle.VehicleResponse;
 import fu.se184491.loadmaster_be.service.vehicle.VehicleService;
@@ -58,5 +59,13 @@ public class VehicleController {
     public ResponseEntity<Void> deleteVehicle(@PathVariable Long id) {
         vehicleService.deleteVehicle(getCurrentCompanyId(), id);
         return ResponseEntity.noContent().build();
+    }
+
+    @PutMapping("/{id}/driver")
+    @PreAuthorize("hasAuthority('VEHICLE_MANAGE')")
+    public ResponseEntity<VehicleResponse> assignDriver(
+            @PathVariable Long id,
+            @Valid @RequestBody AssignDriverRequest request) {
+        return ResponseEntity.ok(vehicleService.assignDriver(getCurrentCompanyId(), id, request.getDriverUserId()));
     }
 }

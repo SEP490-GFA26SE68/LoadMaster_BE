@@ -1,5 +1,7 @@
 package fu.se184491.loadmaster_be.service.vehicle.Impl;
 
+import fu.se184491.loadmaster_be.constant.account.UserRole;
+
 import fu.se184491.loadmaster_be.dto.request.vehicle.VehicleRequest;
 import fu.se184491.loadmaster_be.dto.response.vehicle.VehicleResponse;
 import fu.se184491.loadmaster_be.entity.account.User;
@@ -46,6 +48,12 @@ public class VehicleServiceImpl implements VehicleService {
             if (!driver.getCompany().getId().equals(companyId)) {
                 throw new AppException(ErrorCode.UNAUTHORIZED);
             }
+            if (driver.getUserRoleType() != UserRole.DRIVER) {
+                throw new AppException(ErrorCode.INVALID_INPUT);
+            }
+            if (vehicleRepository.existsByDriver_Id(request.getDriverUserId())) {
+                throw new AppException(ErrorCode.INVALID_INPUT);
+            }
         }
 
         Vehicle vehicle = Vehicle.builder()
@@ -89,6 +97,12 @@ public class VehicleServiceImpl implements VehicleService {
             if (!driver.getCompany().getId().equals(companyId)) {
                 throw new AppException(ErrorCode.UNAUTHORIZED);
             }
+            if (driver.getUserRoleType() != UserRole.DRIVER) {
+                throw new AppException(ErrorCode.INVALID_INPUT);
+            }
+            if (vehicleRepository.existsByDriver_IdAndIdNot(request.getDriverUserId(), id)) {
+                throw new AppException(ErrorCode.INVALID_INPUT);
+            }
         }
 
         vehicle.setVehicleType(vehicleType);
@@ -130,6 +144,40 @@ public class VehicleServiceImpl implements VehicleService {
         }
 
         vehicleRepository.delete(vehicle);
+    }
+    
+    @Override
+    public VehicleResponse assignDriver(Long companyId, Long vehicleId, Long driverUserId) {
+        Vehicle vehicle = vehicleRepository.findById(vehicleId)
+                .orElseThrow(() -> new AppException(ErrorCode.VEHICLE_NOT_FOUND));
+
+        if (!vehicle.getCompany().getId().equals(companyId)) {
+            throw new AppException(ErrorCode.UNAUTHORIZED);
+        }
+
+        if (driverUserId == null) {
+            vehicle.setDriver(null);
+        } else {
+            User driver = userRepository.findById(driverUserId)
+                    .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
+
+            if (!driver.getCompany().getId().equals(companyId)) {
+                throw new AppException(ErrorCode.UNAUTHORIZED);
+            }
+            
+            if (driver.getUserRoleType() != UserRole.DRIVER) {
+                throw new AppException(ErrorCode.INVALID_INPUT);
+            }
+
+            if (vehicleRepository.existsByDriver_IdAndIdNot(driverUserId, vehicleId)) {
+                throw new AppException(ErrorCode.INVALID_INPUT);
+            }
+
+            vehicle.setDriver(driver);
+        }
+
+        vehicle = vehicleRepository.save(vehicle);
+        return mapToResponse(vehicle);
     }
     
     private VehicleResponse mapToResponse(Vehicle vehicle) {

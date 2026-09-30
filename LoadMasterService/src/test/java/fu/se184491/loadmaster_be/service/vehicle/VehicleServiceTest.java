@@ -2,6 +2,7 @@ package fu.se184491.loadmaster_be.service.vehicle;
 
 import fu.se184491.loadmaster_be.dto.request.vehicle.VehicleRequest;
 import fu.se184491.loadmaster_be.dto.response.vehicle.VehicleResponse;
+import fu.se184491.loadmaster_be.constant.account.UserRole;
 import fu.se184491.loadmaster_be.entity.account.User;
 import fu.se184491.loadmaster_be.entity.company.Company;
 import fu.se184491.loadmaster_be.entity.vehicle.Vehicle;
@@ -72,6 +73,7 @@ public class VehicleServiceTest {
         driver = User.builder()
                 .id(2L)
                 .company(company)
+                .userRoleType(UserRole.DRIVER)
                 .build();
 
         vehicle = Vehicle.builder()
@@ -147,5 +149,30 @@ public class VehicleServiceTest {
         vehicleService.deleteVehicle(1L, 1L);
 
         verify(vehicleRepository, times(1)).delete(vehicle);
+    }
+    @Test
+    void assignDriver_Success() {
+        when(vehicleRepository.findById(1L)).thenReturn(Optional.of(vehicle));
+        when(userRepository.findById(2L)).thenReturn(Optional.of(driver));
+        when(vehicleRepository.existsByDriver_IdAndIdNot(2L, 1L)).thenReturn(false);
+        when(vehicleRepository.save(any(Vehicle.class))).thenReturn(vehicle);
+
+        VehicleResponse response = vehicleService.assignDriver(1L, 1L, 2L);
+
+        assertNotNull(response);
+        assertEquals(2L, response.getDriverUserId());
+        verify(vehicleRepository, times(1)).save(vehicle);
+    }
+
+    @Test
+    void assignDriver_Unassign_Success() {
+        when(vehicleRepository.findById(1L)).thenReturn(Optional.of(vehicle));
+        when(vehicleRepository.save(any(Vehicle.class))).thenReturn(vehicle);
+
+        VehicleResponse response = vehicleService.assignDriver(1L, 1L, null);
+
+        assertNotNull(response);
+        verify(vehicleRepository, times(1)).save(vehicle);
+        assertNull(vehicle.getDriver());
     }
 }
