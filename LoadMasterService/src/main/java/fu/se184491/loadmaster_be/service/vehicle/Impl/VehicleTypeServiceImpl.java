@@ -32,6 +32,9 @@ public class VehicleTypeServiceImpl implements VehicleTypeService {
                 .innerHeight(entity.getInnerHeight())
                 .maxPayloadKg(entity.getMaxPayloadKg())
                 .companyId(entity.getCompany() != null ? entity.getCompany().getId() : null)
+                .frontAxleLimitKg(entity.getFrontAxleLimitKg())
+                .rearAxleLimitKg(entity.getRearAxleLimitKg())
+                .maxCogOffsetRatio(entity.getMaxCogOffsetRatio())
                 .build();
     }
 
@@ -47,6 +50,9 @@ public class VehicleTypeServiceImpl implements VehicleTypeService {
                 .innerWidth(request.getInnerWidth())
                 .innerHeight(request.getInnerHeight())
                 .maxPayloadKg(request.getMaxPayloadKg())
+                .frontAxleLimitKg(request.getFrontAxleLimitKg())
+                .rearAxleLimitKg(request.getRearAxleLimitKg())
+                .maxCogOffsetRatio(request.getMaxCogOffsetRatio() != null ? request.getMaxCogOffsetRatio() : new java.math.BigDecimal("0.15"))
                 .build();
                 
         type = vehicleTypeRepository.save(type);
@@ -68,6 +74,11 @@ public class VehicleTypeServiceImpl implements VehicleTypeService {
         type.setInnerWidth(request.getInnerWidth());
         type.setInnerHeight(request.getInnerHeight());
         type.setMaxPayloadKg(request.getMaxPayloadKg());
+        type.setFrontAxleLimitKg(request.getFrontAxleLimitKg());
+        type.setRearAxleLimitKg(request.getRearAxleLimitKg());
+        if (request.getMaxCogOffsetRatio() != null) {
+            type.setMaxCogOffsetRatio(request.getMaxCogOffsetRatio());
+        }
         
         type = vehicleTypeRepository.save(type);
         return mapToResponse(type);

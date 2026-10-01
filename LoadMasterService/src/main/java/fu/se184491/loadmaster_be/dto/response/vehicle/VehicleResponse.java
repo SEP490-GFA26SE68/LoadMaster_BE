@@ -12,8 +12,7 @@ public class VehicleResponse {
     private Long id;
     private Long vehicleTypeId;
     private String licensePlate;
-    private BigDecimal frontAxleLimitKg;
-    private BigDecimal rearAxleLimitKg;
+
     private Long companyId;
     private Long driverUserId;
 }

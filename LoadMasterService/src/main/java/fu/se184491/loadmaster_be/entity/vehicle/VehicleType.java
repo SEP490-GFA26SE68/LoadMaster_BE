@@ -42,6 +42,7 @@ public class VehicleType {
     private BigDecimal rearAxleLimitKg;
 
     @Builder.Default
-    @Column(name = "max_cog_offset_ratio", precision = 4, scale = 2)
+    @Column(name = "max_cog_offset_ratio", precision = 5, scale = 4)
     private BigDecimal maxCogOffsetRatio = new BigDecimal("0.15");
+
 }
