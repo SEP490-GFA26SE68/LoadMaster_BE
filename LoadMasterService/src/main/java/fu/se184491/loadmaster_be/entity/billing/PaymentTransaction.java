@@ -1,11 +1,8 @@
 package fu.se184491.loadmaster_be.entity.billing;
 
-import fu.se184491.loadmaster_be.entity.billing.Invoice;
-
-
-import fu.se184491.loadmaster_be.constant.billing.PaymentChannel;
 import fu.se184491.loadmaster_be.constant.billing.PaymentGateway;
 import fu.se184491.loadmaster_be.constant.billing.PaymentStatus;
+import fu.se184491.loadmaster_be.entity.company.Company;
 import jakarta.persistence.*;
 import lombok.*;
 
@@ -13,40 +10,57 @@ import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 @Entity
-@Table(name = "payment_transactions")
-@Getter @Setter @NoArgsConstructor @AllArgsConstructor @Builder
+@Table(name = "payment_transactions", uniqueConstraints = {
+        @UniqueConstraint(name = "uk_gateway_transaction_id", columnNames = {"gateway_transaction_id"})
+})
+@Getter
+@Setter
+@NoArgsConstructor
+@AllArgsConstructor
+@Builder
 public class PaymentTransaction {
-    @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "invoice_id")
-    private Invoice invoice;
-
-    @Column(name = "transaction_code", length = 100, unique = true)
-    private String transactionCode;
-
-    @Column(name = "gateway_trans_id", length = 100)
-    private String gatewayTransId;
+    @JoinColumn(name = "company_id", nullable = false)
+    private Company company;
 
     @Enumerated(EnumType.STRING)
-    @Column(name = "payment_gateway")
-    private PaymentGateway paymentGateway;
+    @Column(name = "gateway", length = 20, nullable = false)
+    private PaymentGateway gateway;
+
+    @Column(name = "gateway_transaction_id", length = 100, nullable = false)
+    private String gatewayTransactionId;
+
+    @Column(name = "amount_vnd", precision = 15, scale = 2, nullable = false)
+    private BigDecimal amountVnd;
 
     @Enumerated(EnumType.STRING)
-    @Column(name = "payment_channel")
-    private PaymentChannel paymentChannel;
+    @Column(name = "status", length = 20, nullable = false)
+    @Builder.Default
+    private PaymentStatus status = PaymentStatus.PENDING;
 
-    @Column(name = "amount", precision = 15, scale = 2)
-    private BigDecimal amount;
+    @Column(name = "order_type", length = 50)
+    private String orderType;
 
-    @Column(name = "signature", length = 500)
-    private String signature;
+    @Column(name = "target_id")
+    private Long targetId;
 
-    @Enumerated(EnumType.STRING)
-    @Column(name = "status")
-    private PaymentStatus status;
+    @Column(name = "payload", columnDefinition = "TEXT")
+    private String payload;
 
-    @Column(name = "completed_at")
-    private LocalDateTime completedAt;
+    @Builder.Default
+    @Column(name = "created_at", nullable = false)
+    private LocalDateTime createdAt = LocalDateTime.now();
+
+    @Column(name = "updated_at")
+    private LocalDateTime updatedAt;
+
+    @PreUpdate
+    public void preUpdate() {
+        this.updatedAt = LocalDateTime.now();
+    }
 }
