@@ -29,10 +29,4 @@ public class Vehicle {
     @Column(name = "license_plate", length = 50, unique = true, nullable = false)
     private String licensePlate;
 
-    @Column(name = "front_axle_limit_kg", precision = 10, scale = 2)
-    private BigDecimal frontAxleLimitKg;
-
-    @Column(name = "rear_axle_limit_kg", precision = 10, scale = 2)
-    private BigDecimal rearAxleLimitKg;
-
 }
