@@ -10,6 +10,8 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
 import org.springframework.stereotype.Component;
 
+import java.util.Objects;
+
 @Component
 @RequiredArgsConstructor
 public class CurrentUserService {
@@ -30,6 +32,21 @@ public class CurrentUserService {
                 .findByKeycloakId(keycloakId)
                 .orElseThrow(() ->
                         new AppException(ErrorCode.USER_PROFILE_NOT_FOUND)
+                );
+    }
+
+
+    public boolean hasRole(String role) {
+        Authentication authentication =
+                SecurityContextHolder
+                        .getContext()
+                        .getAuthentication();
+
+        assert authentication != null;
+        return authentication.getAuthorities()
+                .stream()
+                .anyMatch(authority ->
+                        Objects.equals(authority.getAuthority(), "ROLE_" + role)
                 );
     }
 

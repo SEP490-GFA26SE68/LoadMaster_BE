@@ -1,6 +1,7 @@
 package fu.se184491.loadmaster_be.bootstrap;
 
 import fu.se184491.loadmaster_be.client.KeycloakAdminClient;
+import fu.se184491.loadmaster_be.constant.account.UserRole;
 import fu.se184491.loadmaster_be.constant.account.UserStatus;
 import fu.se184491.loadmaster_be.entity.account.User;
 import fu.se184491.loadmaster_be.repository.account.UserRepository;
@@ -52,7 +53,7 @@ public class DevAdminInitializer implements ApplicationRunner {
 
             keycloakAdminClient.assignRealmRole(
                     keycloakUserId,
-                    "ADMIN"
+                    UserRole.SYSTEM_ADMIN.name()
             );
 
             User admin = User.builder()
@@ -60,6 +61,7 @@ public class DevAdminInitializer implements ApplicationRunner {
                     .email(adminEmail)
                     .fullName(adminFullName)
                     .status(UserStatus.ACTIVE)
+                    .userRoleType(UserRole.SYSTEM_ADMIN)
                     .build();
 
             userRepository.save(admin);
