@@ -13,4 +13,8 @@ public interface CargoPackageRepository extends JpaRepository<CargoPackage, Long
     Optional<CargoPackage> findByTrackingBarcode(String trackingBarcode);
 
     List<CargoPackage> findByOrderDeliveryStopId(Long stopId);
+
+    List<CargoPackage> findAllByIdInAndOrderCompanyId(List<Long> ids, Long companyId);
+
+    List<CargoPackage> findByOrderDeliveryStopTripIdOrderByIdAsc(Long tripId);
 }

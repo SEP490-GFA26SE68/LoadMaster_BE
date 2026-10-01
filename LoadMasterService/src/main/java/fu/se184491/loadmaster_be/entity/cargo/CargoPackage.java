@@ -5,6 +5,7 @@ import fu.se184491.loadmaster_be.entity.cargo.PackageType;
 
 
 import fu.se184491.loadmaster_be.constant.cargo.PackageStatus;
+import fu.se184491.loadmaster_be.constant.cargo.HandlingClass;
 import jakarta.persistence.*;
 import jakarta.validation.constraints.Positive;
 import lombok.*;
@@ -33,4 +34,9 @@ public class CargoPackage {
 
     @Enumerated(EnumType.STRING) @Column(name = "status")
     private PackageStatus status;
+
+    @Builder.Default
+    @Enumerated(EnumType.STRING)
+    @Column(name = "handling_class", length = 20, nullable = false)
+    private HandlingClass handlingClass = HandlingClass.STANDARD;
 }

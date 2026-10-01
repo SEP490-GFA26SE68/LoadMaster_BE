@@ -322,14 +322,14 @@ public class WarehouseServiceImpl implements WarehouseService {
         execution.setCompletedAt(LocalDateTime.now());
         loadingExecutionRepository.save(execution);
 
-        trip.setStatus(TripStatus.READY_FOR_DELIVERY);
+        trip.setStatus(TripStatus.IN_TRANSIT);
         tripRepository.save(trip);
 
         // Audit log LOADING_COMPLETED
         Map<String, Object> newValues = new HashMap<>();
         newValues.put("tripId", trip.getId());
         newValues.put("status", "COMPLETED");
-        newValues.put("tripStatus", "READY_FOR_DELIVERY");
+        newValues.put("tripStatus", "IN_TRANSIT");
         newValues.put("completedAt", execution.getCompletedAt().toString());
 
         AuditLog auditLog = AuditLog.builder()

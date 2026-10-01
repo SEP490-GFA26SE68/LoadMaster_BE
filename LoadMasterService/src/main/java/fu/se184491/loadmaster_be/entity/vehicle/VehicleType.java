@@ -35,4 +35,8 @@ public class VehicleType {
     @Column(name = "max_payload_kg", precision = 10, scale = 2)
     private BigDecimal maxPayloadKg;
 
+    @Builder.Default
+    @Column(name = "hazardous_capable", nullable = false)
+    private Boolean hazardousCapable = false;
+
 }

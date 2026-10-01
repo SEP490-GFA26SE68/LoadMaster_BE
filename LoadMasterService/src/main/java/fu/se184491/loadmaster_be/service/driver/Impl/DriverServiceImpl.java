@@ -60,8 +60,8 @@ public class DriverServiceImpl implements DriverService {
     @Transactional(readOnly = true)
     public List<DriverTripResponse> getDriverTrips(Long driverId) {
         List<Trip> trips = (driverId != null)
-                ? tripRepository.findByVehicleDriverIdAndStatus(driverId, TripStatus.READY_FOR_DELIVERY)
-                : tripRepository.findByStatus(TripStatus.READY_FOR_DELIVERY);
+                ? tripRepository.findByVehicleDriverIdAndStatus(driverId, TripStatus.IN_TRANSIT)
+                : tripRepository.findByStatus(TripStatus.IN_TRANSIT);
 
         List<DriverTripResponse> responses = new ArrayList<>();
         for (Trip trip : trips) {

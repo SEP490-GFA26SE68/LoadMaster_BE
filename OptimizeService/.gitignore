@@ -57,6 +57,7 @@ venv/
 ENV/
 env.bak/
 venv.bak/
+.idea
 
 # IDE / Editor files
 .idea/
@@ -68,3 +69,4 @@ venv.bak/
 # OS files
 .DS_Store
 Thumbs.db
+issues 2/
