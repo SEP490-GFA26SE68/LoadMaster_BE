@@ -9,4 +9,16 @@ LoadMaster_Updated_Business_Flows_After_Review1.md
 issues 2/
 luong-issue2-mermaid.md
 luong.md
-prd.md
+prd.md
+### IntelliJ IDEA ###
+.idea
+*.iws
+*.iml
+*.ipr
+
+### Internal planning & documentation (do not commit) ###
+luong.md
+prd.md
+LoadMaster_Updated_Business_Flows_After_Review1.md
+issues 2/
+luong-issue2-mermaid.md
