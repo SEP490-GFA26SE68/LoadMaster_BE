@@ -3,3 +3,10 @@
 *.iws
 *.iml
 *.ipr
+
+# Documentation & Issues
+LoadMaster_Updated_Business_Flows_After_Review1.md
+issues 2/
+luong-issue2-mermaid.md
+luong.md
+prd.md

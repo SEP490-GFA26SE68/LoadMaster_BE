@@ -221,7 +221,7 @@ class TestTripValidationWithRealSqliteDb:
         db_session.add(trip)
         db_session.flush()
 
-        stop = DeliveryStop(trip_id=str(trip_id), stop_sequence=1, stop_name="Stop 1")
+        stop = DeliveryStop(trip_id=str(trip_id), stop_sequence=1, stop_name="Stop 1", latitude=10.762622, longitude=106.660172)
         db_session.add(stop)
         db_session.flush()
 

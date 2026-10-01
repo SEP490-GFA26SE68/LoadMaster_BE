@@ -13,6 +13,16 @@ from app.dto.optimization.engine.engine_response import (
     MetricsData,
 )
 
+from app.dto.optimization.engine.zone_data import (
+    ZoneData,
+    StopZoneInput,
+    StopPackageData,
+    StopZoneCalculationRequest,
+    StopZoneCalculationResponse,
+)
+
+from app.dto.optimization.engine.constraint_result import ConstraintResult
+
 __all__ = [
     "ProblemRequest",
     "VehicleData",
@@ -24,4 +34,10 @@ __all__ = [
     "PlacementData",
     "UnplacedData",
     "MetricsData",
+    "ZoneData",
+    "StopZoneInput",
+    "StopPackageData",
+    "StopZoneCalculationRequest",
+    "StopZoneCalculationResponse",
+    "ConstraintResult",
 ]

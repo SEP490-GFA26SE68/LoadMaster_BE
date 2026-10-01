@@ -19,6 +19,7 @@ class PackagePlacement(Base):
     rotation_type = Column(Integer, nullable=True, default=0)
     step_sequence = Column(Integer, nullable=True, default=1)
     pinned = Column(Boolean, default=False)
+    stop_zone_id = Column(Integer().with_variant(BigInteger, "postgresql"), ForeignKey("delivery_stops.id"), nullable=True)
 
     load_plan = relationship("LoadPlan", back_populates="placements")
     cargo_package = relationship("CargoPackage")

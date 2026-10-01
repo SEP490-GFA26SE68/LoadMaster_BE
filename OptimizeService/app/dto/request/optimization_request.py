@@ -10,3 +10,5 @@ class OptimizationJobRequest(BaseModel):
     time_limit_sec: int = Field(default=60, ge=10, le=600)
     seed: Optional[int] = None
     algorithm_name: Optional[str] = None
+    company_id: Optional[str] = None
+    subscription_tier: Optional[str] = "BASIC"

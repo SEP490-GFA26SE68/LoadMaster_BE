@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, BigInteger, String, ForeignKey, Numeric, Boolean
+from sqlalchemy import Column, Integer, BigInteger, String, ForeignKey, Numeric, Boolean, DateTime
 from sqlalchemy.orm import relationship
 
 from app.config.database import Base
@@ -46,6 +46,7 @@ class Trip(Base):
     vehicle_id = fk_id("vehicles.id", nullable=True)
     trip_code = Column(String(50), nullable=True)
     status = Column(String(50), nullable=True)
+    override_reason = Column(String(255), nullable=True)
 
     vehicle = relationship("Vehicle", back_populates="trips")
     delivery_stops = relationship("DeliveryStop", back_populates="trip")
@@ -58,6 +59,10 @@ class DeliveryStop(Base):
     trip_id = Column(String(64), ForeignKey("trips.id"), nullable=False)
     stop_sequence = Column(Integer, nullable=False)
     stop_name = Column(String(150), nullable=True)
+    latitude = Column(Numeric(10, 6), nullable=True)
+    longitude = Column(Numeric(10, 6), nullable=True)
+    planned_arrival = Column(DateTime, nullable=True)
+    deadline = Column(DateTime, nullable=True)
 
     trip = relationship("Trip", back_populates="delivery_stops")
     orders = relationship("TransportOrder", back_populates="delivery_stop")
@@ -87,6 +92,7 @@ class PackageType(Base):
     allow_rotate_x = Column(Boolean, default=True)
     allow_rotate_y = Column(Boolean, default=True)
     allow_rotate_z = Column(Boolean, default=True)
+    is_fragile = Column(Boolean, default=False)
 
     packages = relationship("CargoPackage", back_populates="package_type")
 
@@ -99,6 +105,7 @@ class CargoPackage(Base):
     package_type_id = fk_id("package_types.id", nullable=True)
     tracking_barcode = Column(String(100), nullable=True)
     actual_weight_kg = Column(Numeric(10, 2), nullable=True)
+    handling_class = Column(String(20), nullable=True, default="STANDARD")
 
     order = relationship("TransportOrder", back_populates="packages")
     package_type = relationship("PackageType", back_populates="packages")

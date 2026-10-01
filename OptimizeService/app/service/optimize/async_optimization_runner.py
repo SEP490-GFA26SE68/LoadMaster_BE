@@ -7,7 +7,12 @@ from sqlalchemy.orm import Session
 
 from app.config.database import SessionLocal
 from app.constant.optimization.job_status import OptimizationJobStatus
-from app.dto.optimization.engine.problem_request import ProblemRequest, VehicleData, PackageData
+from app.dto.optimization.engine.problem_request import (
+    ProblemRequest,
+    VehicleData,
+    PackageData,
+    StopData,
+)
 from app.exception.app_exception import AppException
 from app.exception.error_code import ErrorCode
 from app.service.optimize.engine_exception_handler import EngineExceptionHandler
@@ -30,6 +35,7 @@ class AsyncOptimizationRunner:
         engine_exception_handler: Optional[EngineExceptionHandler] = None,
         persistence_service: Optional[Any] = None,
         session_factory: Optional[Callable[[], Session]] = None,
+        credit_client: Optional[Any] = None,
     ):
         self.job_service = job_service or OptimizationJobService()
         self.optimization_client = optimization_client or OptimizationClient()
@@ -37,10 +43,15 @@ class AsyncOptimizationRunner:
         from app.service.optimize.optimization_result_persistence_service import OptimizationResultPersistenceService
         self.persistence_service = persistence_service or OptimizationResultPersistenceService(job_service=self.job_service)
         self.session_factory = session_factory or SessionLocal
+        if credit_client is not None:
+            self.credit_client = credit_client
+        else:
+            from app.client.loadmaster_credit_client import LoadMasterCreditClient
+            self.credit_client = LoadMasterCreditClient()
 
     def build_problem_request(self, job_uuid: Union[str, UUID], db: Session) -> ProblemRequest:
         """
-        Xây dựng ProblemRequest từ Trip, Vehicle, Package lưu trong DB.
+        Xây dựng ProblemRequest từ Trip, Vehicle, Package lưu trong DB (S5b-04).
         """
         from app.entity.trip_model import Trip, CargoPackage, TransportOrder, DeliveryStop
 
@@ -64,10 +75,27 @@ class AsyncOptimizationRunner:
             inner_w=inner_w,
             inner_h=inner_h,
             max_payload_kg=payload,
+            front_axle_limit_kg=float(vt.front_axle_limit_kg) if getattr(vt, "front_axle_limit_kg", None) else None,
+            rear_axle_limit_kg=float(vt.rear_axle_limit_kg) if getattr(vt, "rear_axle_limit_kg", None) else None,
+            max_cog_offset_ratio=float(vt.max_cog_offset_ratio) if getattr(vt, "max_cog_offset_ratio", None) else 0.15,
         )
 
+        stops_query = (
+            db.query(DeliveryStop)
+            .filter(DeliveryStop.trip_id == str(job.trip_id))
+            .order_by(DeliveryStop.stop_sequence)
+            .all()
+        )
+        stops_items = [
+            StopData(
+                id=str(s.id),
+                sequence=s.stop_sequence if s.stop_sequence is not None else (idx + 1),
+            )
+            for idx, s in enumerate(stops_query)
+        ]
+
         packages_query = (
-            db.query(CargoPackage)
+            db.query(CargoPackage, DeliveryStop)
             .join(TransportOrder, CargoPackage.order_id == TransportOrder.id)
             .join(DeliveryStop, TransportOrder.delivery_stop_id == DeliveryStop.id)
             .filter(DeliveryStop.trip_id == str(job.trip_id))
@@ -75,15 +103,21 @@ class AsyncOptimizationRunner:
         )
 
         package_items: list[PackageData] = []
-        for pkg in packages_query:
+        for pkg, stop in packages_query:
             w = float(pkg.actual_weight_kg or 0)
-            if pkg.package_type:
-                pt = pkg.package_type
+            pt = pkg.package_type
+            if pt:
                 l = float(pt.length) / 1000.0 if (pt.length and pt.length > 50) else float(pt.length or 0)
                 width = float(pt.width) / 1000.0 if (pt.width and pt.width > 50) else float(pt.width or 0)
                 h = float(pt.height) / 1000.0 if (pt.height and pt.height > 50) else float(pt.height or 0)
+                fragile = getattr(pt, "is_fragile", None) or getattr(pt, "fragile", False) or False
+                rot_allowed = getattr(pt, "rotation_allowed", True) is not False
+                max_stack = getattr(pt, "max_stack_weight_kg", None)
             else:
                 l, width, h = 0.0, 0.0, 0.0
+                fragile = False
+                rot_allowed = True
+                max_stack = None
 
             package_items.append(
                 PackageData(
@@ -92,12 +126,17 @@ class AsyncOptimizationRunner:
                     w=width,
                     h=h,
                     weight=w,
+                    stop_index=stop.stop_sequence or 1,
+                    fragile=bool(fragile),
+                    rotation_allowed=bool(rot_allowed),
+                    max_stack_weight_kg=float(max_stack) if max_stack else None,
                 )
             )
 
         return ProblemRequest(
             vehicle=vehicle_data,
             packages=package_items,
+            stops=stops_items,
             objective=job.objective or "MAX_VOLUME_UTIL",
             time_limit_sec=job.time_limit_sec or 60,
         )
@@ -125,8 +164,29 @@ class AsyncOptimizationRunner:
             session = self.session_factory()
             should_close = True
 
+        is_credit_deducted = False
+        job = None
         try:
             logger.info(f"Starting async optimization job: {job_uuid_str}")
+            job = self.job_service.get_job(job_uuid_str, session)
+
+            # Đảm bảo algorithm_tier và algorithm_name được thiết lập
+            if job.subscription_tier and not job.algorithm_tier:
+                from app.service.optimize.algorithm_tier_service import AlgorithmTierService
+                job.algorithm_tier = AlgorithmTierService.get_algorithm_tier(job.subscription_tier)
+                job.algorithm_name = AlgorithmTierService.resolve_algorithm(job.algorithm_tier, job.algorithm_name)
+                session.commit()
+
+            # Trừ credit trước khi chạy (S5b-05)
+            if job.company_id and self.credit_client is not None:
+                try:
+                    await self.credit_client.deduct_credit(job.company_id, job_uuid_str)
+                    is_credit_deducted = True
+                except Exception as credit_err:
+                    logger.error(f"Credit deduction failed for job {job_uuid_str}: {credit_err}")
+                    self.job_service.update_status(job_uuid_str, OptimizationJobStatus.FAILED, db=session)
+                    return
+
             self.job_service.update_status(job_uuid_str, OptimizationJobStatus.RUNNING, db=session)
 
             if problem is None:
@@ -142,6 +202,13 @@ class AsyncOptimizationRunner:
 
         except Exception as exc:
             logger.error(f"Error executing async optimization job {job_uuid_str}: {exc}")
+            # Hoàn trả credit nếu job bị FAILED (fix B4 PRD)
+            if is_credit_deducted and job and job.company_id and self.credit_client is not None:
+                try:
+                    await self.credit_client.refund_credit(job.company_id, job_uuid_str)
+                except Exception as ref_err:
+                    logger.error(f"Error refunding credit for failed job {job_uuid_str}: {ref_err}")
+
             self.engine_exception_handler.handle(exc, job_uuid_str, session)
         finally:
             if should_close and session is not None:
