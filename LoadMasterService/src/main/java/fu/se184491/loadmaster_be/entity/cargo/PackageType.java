@@ -34,8 +34,11 @@ public class PackageType {
     @Positive @Column(name = "height")
     private Integer height;
 
+    @Positive @Column(name = "weight_kg", precision = 10, scale = 2)
+    private BigDecimal weightKg;
+
     @Column(name = "max_stack_weight_kg", precision = 10, scale = 2)
-    private BigDecimal maxStackWeightKg;
+    private BigDecimal maxStackingWeightKg;
 
     @Builder.Default @Column(name = "allow_rotate_x")
     private Boolean allowRotateX = true;
@@ -50,5 +53,21 @@ public class PackageType {
     private Boolean rotationAllowed = true;
 
     @Builder.Default @Column(name = "is_fragile")
-    private Boolean fragile = false;
+    private Boolean isFragile = false;
+
+    public BigDecimal getMaxStackWeightKg() {
+        return maxStackingWeightKg;
+    }
+
+    public void setMaxStackWeightKg(BigDecimal maxStackWeightKg) {
+        this.maxStackingWeightKg = maxStackWeightKg;
+    }
+
+    public Boolean getFragile() {
+        return isFragile;
+    }
+
+    public void setFragile(Boolean fragile) {
+        this.isFragile = fragile;
+    }
 }

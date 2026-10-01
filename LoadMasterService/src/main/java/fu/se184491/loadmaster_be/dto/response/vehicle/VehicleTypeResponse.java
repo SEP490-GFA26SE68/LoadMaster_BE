@@ -19,4 +19,7 @@ public class VehicleTypeResponse {
     private Integer innerHeight;
     private BigDecimal maxPayloadKg;
     private Long companyId;
+    private BigDecimal frontAxleLimitKg;
+    private BigDecimal rearAxleLimitKg;
+    private BigDecimal maxCogOffsetRatio;
 }
