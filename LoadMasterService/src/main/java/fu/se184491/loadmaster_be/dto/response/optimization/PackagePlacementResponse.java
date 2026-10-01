@@ -17,6 +17,8 @@ public class PackagePlacementResponse {
     private Long loadPlanId;
     private Long packageId;
     private String trackingBarcode;
+    private Long stopZoneId;
+    private String stopZoneName;
     private Integer posX;
     private Integer posY;
     private Integer posZ;

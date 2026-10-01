@@ -43,4 +43,23 @@ public class LoadPlan {
 
     @Column(name = "parent_plan_id")
     private Long parentPlanId;
+
+    @Column(name = "cog_x", precision = 10, scale = 3)
+    private BigDecimal cogX;
+
+    @Column(name = "cog_y", precision = 10, scale = 3)
+    private BigDecimal cogY;
+
+    @Column(name = "cog_z", precision = 10, scale = 3)
+    private BigDecimal cogZ;
+
+    @Column(name = "front_axle_load", precision = 10, scale = 2)
+    private BigDecimal frontAxleLoad;
+
+    @Column(name = "rear_axle_load", precision = 10, scale = 2)
+    private BigDecimal rearAxleLoad;
+
+    @Builder.Default
+    @Column(name = "rehandling_count")
+    private Integer rehandlingCount = 0;
 }

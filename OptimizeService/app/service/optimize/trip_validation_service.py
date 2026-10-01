@@ -37,6 +37,15 @@ class VehicleTypeData:
 
 
 @dataclass
+class StopData:
+    """Thông tin một điểm dừng giao hàng."""
+    id: Any
+    sequence: int = 1
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
+
+
+@dataclass
 class PackageData:
     """Thông số một kiện hàng."""
     id: UUID | Any
@@ -44,6 +53,10 @@ class PackageData:
     width: float
     height: float
     weight: float
+    handling_class: Optional[str] = "STANDARD"
+    fragile: bool = False
+    max_stack_weight_kg: Optional[float] = None
+    stop_id: Optional[Any] = None
 
 
 @dataclass
@@ -52,6 +65,8 @@ class TripData:
     id: UUID | Any
     vehicle_type: Optional[VehicleTypeData]
     packages: list[PackageData] = field(default_factory=list)
+    stops: list[StopData] = field(default_factory=list)
+    override_reason: Optional[str] = None
 
 
 # ---------------------------------------------------------------------------
@@ -60,7 +75,7 @@ class TripData:
 
 class TripValidationService:
     """
-    Validate trip trước khi submit optimization job.
+    Validate trip trước khi submit optimization job (S5b-06).
     """
 
     WEIGHT_WARNING_THRESHOLD = 0.90
@@ -93,9 +108,26 @@ class TripValidationService:
                 max_payload_kg=payload,
             )
 
+        # Stops
+        stops_query = (
+            db.query(DeliveryStop)
+            .filter(DeliveryStop.trip_id == str(trip_id))
+            .order_by(DeliveryStop.stop_sequence)
+            .all()
+        )
+        stops_data = [
+            StopData(
+                id=s.id,
+                sequence=s.stop_sequence if s.stop_sequence is not None else (idx + 1),
+                latitude=float(s.latitude) if getattr(s, "latitude", None) is not None else None,
+                longitude=float(s.longitude) if getattr(s, "longitude", None) is not None else None,
+            )
+            for idx, s in enumerate(stops_query)
+        ]
+
         # Packages via DeliveryStop -> Order -> CargoPackage
         packages_query = (
-            db.query(CargoPackage)
+            db.query(CargoPackage, DeliveryStop)
             .join(TransportOrder, CargoPackage.order_id == TransportOrder.id)
             .join(DeliveryStop, TransportOrder.delivery_stop_id == DeliveryStop.id)
             .filter(DeliveryStop.trip_id == str(trip_id))
@@ -103,21 +135,27 @@ class TripValidationService:
         )
 
         packages_data: list[PackageData] = []
-        for pkg in packages_query:
+        for pkg, stop in packages_query:
             w = float(pkg.actual_weight_kg or 0)
-            if pkg.package_type:
-                pt = pkg.package_type
+            pt = pkg.package_type
+            if pt:
                 l = float(pt.length) / 1000.0 if (pt.length and pt.length > 50) else float(pt.length or 0)
                 width = float(pt.width) / 1000.0 if (pt.width and pt.width > 50) else float(pt.width or 0)
                 h = float(pt.height) / 1000.0 if (pt.height and pt.height > 50) else float(pt.height or 0)
+                fragile = getattr(pt, "is_fragile", False) or getattr(pt, "fragile", False) or False
+                max_stack = float(pt.max_stack_weight_kg) if getattr(pt, "max_stack_weight_kg", None) is not None else None
             else:
                 l, width, h = 0.0, 0.0, 0.0
+                fragile = False
+                max_stack = None
 
             pkg_id = pkg.id
             try:
                 pkg_id = UUID(str(pkg.id))
             except Exception:
                 pass
+
+            handling_cls = getattr(pkg, "handling_class", "STANDARD") or "STANDARD"
 
             packages_data.append(
                 PackageData(
@@ -126,6 +164,10 @@ class TripValidationService:
                     width=width,
                     height=h,
                     weight=w,
+                    handling_class=handling_cls,
+                    fragile=bool(fragile),
+                    max_stack_weight_kg=max_stack,
+                    stop_id=stop.id,
                 )
             )
 
@@ -133,6 +175,8 @@ class TripValidationService:
             id=trip_id,
             vehicle_type=vehicle_type_data,
             packages=packages_data,
+            stops=stops_data,
+            override_reason=getattr(trip, "override_reason", None),
         )
 
         return self.validate(trip_data)
@@ -180,6 +224,67 @@ class TripValidationService:
                     f"không fit vào xe ({vt.inner_l}×{vt.inner_w}×{vt.inner_h}) "
                     f"ở bất kỳ rotation nào"
                 )
+
+        # AC6 — Tất cả packages có cùng handling_class (hoặc trip có override_reason)
+        if not trip.override_reason or not str(trip.override_reason).strip():
+            handling_classes = {
+                str(p.handling_class).strip().upper()
+                for p in trip.packages
+                if p.handling_class
+            }
+            if len(handling_classes) > 1:
+                errors.append(
+                    f"INCOMPATIBLE_HANDLING_CLASS: Các kiện hàng trong trip có handling_class không đồng nhất "
+                    f"({', '.join(sorted(handling_classes))}) và trip không có override_reason"
+                )
+
+        # AC7 — Sơ bộ COG estimate: nếu tất cả hàng nặng đều lệch hẳn về một phía (> 85% tải trọng)
+        if trip.stops and len(trip.stops) >= 2:
+            sorted_stops = sorted(trip.stops, key=lambda s: s.sequence)
+            mid = len(sorted_stops) // 2
+            first_half_ids = {str(s.id) for s in sorted_stops[:mid]}
+            second_half_ids = {str(s.id) for s in sorted_stops[mid:]}
+
+            w1 = sum(p.weight for p in trip.packages if p.stop_id is not None and str(p.stop_id) in first_half_ids)
+            w2 = sum(p.weight for p in trip.packages if p.stop_id is not None and str(p.stop_id) in second_half_ids)
+            total_assigned = w1 + w2
+
+            if total_assigned > 0:
+                ratio1 = w1 / total_assigned
+                ratio2 = w2 / total_assigned
+                if ratio1 > 0.85 or ratio2 > 0.85:
+                    warnings.append(
+                        f"COG_RISK: Phân bổ tải trọng hàng hóa bị lệch về một phía "
+                        f"({max(ratio1, ratio2) * 100:.0f}% tổng tải trọng), có nguy cơ mất cân bằng trọng tâm"
+                    )
+
+        # AC8 — Mỗi stop phải có lat/lng (cần cho route opt)
+        if trip.stops:
+            for s in trip.stops:
+                if s.latitude is None or s.longitude is None:
+                    errors.append(
+                        f"MISSING_STOP_COORDINATES: Stop {s.id} (sequence {s.sequence}) thiếu tọa độ lat/lng"
+                    )
+
+        # AC9 — max_stack_weight_kg kiểm tra xếp chồng lên hàng dễ vỡ (fragile)
+        if vt:
+            floor_area = float(vt.inner_l * vt.inner_w)
+            total_footprint = sum(float(p.length * p.width) for p in trip.packages)
+            stacking_unavoidable = floor_area > 0 and (total_footprint > floor_area + 1e-4)
+
+            for p in trip.packages:
+                if p.fragile:
+                    max_stack = p.max_stack_weight_kg if p.max_stack_weight_kg is not None else 0.0
+                    if stacking_unavoidable:
+                        for other in trip.packages:
+                            if other.id != p.id and other.weight > max_stack + 1e-4:
+                                errors.append(
+                                    f"STACK_WEIGHT_EXCEEDED: Kiện hàng {p.id} là hàng dễ vỡ (FRAGILE) "
+                                    f"với max_stack_weight={max_stack:.1f}kg, nhưng kiện {other.id} "
+                                    f"có trọng lượng {other.weight:.1f}kg vượt quá giới hạn và thùng xe "
+                                    f"không đủ diện tích sàn (bắt buộc phải xếp chồng)"
+                                )
+                                break
 
         # Warning — weight > 90% capacity
         if vt.max_payload_kg > 0 and not errors:

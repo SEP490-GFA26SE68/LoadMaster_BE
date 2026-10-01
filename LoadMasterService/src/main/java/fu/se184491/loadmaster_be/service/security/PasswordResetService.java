@@ -19,15 +19,12 @@ import java.util.Locale;
 @RequiredArgsConstructor
 public class PasswordResetService {
 
-//    private static final Duration OTP_TTL = Duration.ofMinutes(3);
-//    private static final Duration COOLDOWN_TTL = Duration.ofSeconds(60);
-//    private static final Duration REQUEST_RATE_TTL = Duration.ofMinutes(15);
-//    private static final Duration RESET_TOKEN_TTL = Duration.ofMinutes(5);
+    private static final Duration OTP_TTL = Duration.ofMinutes(3);
+    private static final Duration COOLDOWN_TTL = Duration.ofSeconds(60);
+    private static final Duration REQUEST_RATE_TTL = Duration.ofMinutes(15);
+    private static final Duration RESET_TOKEN_TTL = Duration.ofMinutes(5);
 
-    private static final Duration OTP_TTL = Duration.ofSeconds(30);
-    private static final Duration COOLDOWN_TTL = Duration.ofSeconds(10);
-    private static final Duration REQUEST_RATE_TTL = Duration.ofMinutes(2);
-    private static final Duration RESET_TOKEN_TTL = Duration.ofSeconds(30);
+
 
     private final BrevoClient brevoClient;
     private final OtpHasher otpHasher;

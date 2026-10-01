@@ -2,6 +2,7 @@ package fu.se184491.loadmaster_be.entity.optimization;
 
 import fu.se184491.loadmaster_be.entity.optimization.LoadPlan;
 import fu.se184491.loadmaster_be.entity.cargo.CargoPackage;
+import fu.se184491.loadmaster_be.entity.trip.DeliveryStop;
 
 
 import jakarta.persistence.*;
@@ -23,6 +24,10 @@ public class PackagePlacement {
     @ManyToOne(fetch = FetchType.LAZY) @JoinColumn(name = "package_id")
     private CargoPackage cargoPackage;
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "stop_zone_id")
+    private DeliveryStop stopZone;
+
     @Column(name = "pos_x") private Integer posX;
     @Column(name = "pos_y") private Integer posY;
     @Column(name = "pos_z") private Integer posZ;
@@ -38,4 +43,8 @@ public class PackagePlacement {
 
     @Builder.Default @Column(name = "pinned")
     private Boolean pinned = false;
+
+    public Long getStopZoneId() {
+        return stopZone != null ? stopZone.getId() : null;
+    }
 }

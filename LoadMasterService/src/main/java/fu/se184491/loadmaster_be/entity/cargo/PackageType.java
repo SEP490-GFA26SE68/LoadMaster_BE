@@ -49,6 +49,9 @@ public class PackageType {
     @Builder.Default @Column(name = "allow_rotate_z")
     private Boolean allowRotateZ = true;
 
+    @Builder.Default @Column(name = "rotation_allowed")
+    private Boolean rotationAllowed = true;
+
     @Builder.Default @Column(name = "is_fragile")
     private Boolean isFragile = false;
 

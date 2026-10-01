@@ -28,15 +28,18 @@ public class UserServiceImpl implements UserService {
     private final KeycloakAdminClient keycloakAdminClient;
 
     public UserProfileResponse getUserProfile(Jwt jwt) {
+
         String keycloakId = jwt.getSubject();
 
         User user = userRepository.findByKeycloakId(keycloakId)
-                .orElseGet(() -> createUserFromJwt(jwt));
+                .orElseThrow(() ->
+                        new AppException(ErrorCode.USER_NOT_FOUND)
+                );
 
         return UserProfileResponse.builder()
                 .id(user.getId())
                 .keycloakId(user.getKeycloakId())
-                .username(jwt.getClaimAsString("name"))
+                .username(jwt.getClaimAsString("preferred_username"))
                 .email(user.getEmail())
                 .phoneNumber(user.getPhoneNumber())
                 .fullName(user.getFullName())
@@ -113,18 +116,5 @@ public class UserServiceImpl implements UserService {
 
             throw ex;
         }
-    }
-
-    private User createUserFromJwt(Jwt jwt) {
-
-        User user = User.builder()
-                .keycloakId(jwt.getSubject())
-                .email(jwt.getClaimAsString("email"))
-                .fullName(jwt.getClaimAsString("name"))
-                .userRoleType(UserRole.MANAGER) // Default fallback or extract from JWT if needed
-                .status(UserStatus.ACTIVE)
-                .build();
-
-        return userRepository.save(user);
     }
 }
