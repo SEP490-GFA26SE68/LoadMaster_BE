@@ -60,8 +60,6 @@ public class VehicleServiceImpl implements VehicleService {
                 .company(Company.builder().id(companyId).build())
                 .vehicleType(vehicleType)
                 .licensePlate(request.getLicensePlate())
-                .frontAxleLimitKg(request.getFrontAxleLimitKg())
-                .rearAxleLimitKg(request.getRearAxleLimitKg())
                 .driver(driver)
                 .build();
 
@@ -107,8 +105,6 @@ public class VehicleServiceImpl implements VehicleService {
 
         vehicle.setVehicleType(vehicleType);
         vehicle.setLicensePlate(request.getLicensePlate());
-        vehicle.setFrontAxleLimitKg(request.getFrontAxleLimitKg());
-        vehicle.setRearAxleLimitKg(request.getRearAxleLimitKg());
         vehicle.setDriver(driver);
 
         vehicle = vehicleRepository.save(vehicle);
@@ -185,8 +181,6 @@ public class VehicleServiceImpl implements VehicleService {
                 .id(vehicle.getId())
                 .vehicleTypeId(vehicle.getVehicleType().getId())
                 .licensePlate(vehicle.getLicensePlate())
-                .frontAxleLimitKg(vehicle.getFrontAxleLimitKg())
-                .rearAxleLimitKg(vehicle.getRearAxleLimitKg())
                 .companyId(vehicle.getCompany().getId())
                 .driverUserId(vehicle.getDriver() != null ? vehicle.getDriver().getId() : null)
                 .build();

@@ -35,4 +35,15 @@ public class VehicleTypeRequest {
     @Positive(message = "Tải trọng tối đa phải lớn hơn 0")
     private BigDecimal maxPayloadKg;
 
+    @NotNull(message = "Tải trọng trục trước không được để trống")
+    @Positive(message = "Tải trọng trục trước phải lớn hơn 0")
+    private BigDecimal frontAxleLimitKg;
+
+    @NotNull(message = "Tải trọng trục sau không được để trống")
+    @Positive(message = "Tải trọng trục sau phải lớn hơn 0")
+    private BigDecimal rearAxleLimitKg;
+
+    @Positive(message = "Max COG Offset Ratio phải lớn hơn 0")
+    private BigDecimal maxCogOffsetRatio;
+
 }
