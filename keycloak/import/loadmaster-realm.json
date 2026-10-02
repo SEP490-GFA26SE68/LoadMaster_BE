@@ -79,8 +79,8 @@
         "attributes": {}
       },
       {
-        "id": "15641bea-1d41-4a75-b7fd-936984f26583",
-        "name": "ADMIN",
+        "id": "9cc29805-be61-4491-8ccc-06683d55e3c1",
+        "name": "MANAGER",
         "description": "",
         "composite": false,
         "clientRole": false,
@@ -97,8 +97,8 @@
         "attributes": {}
       },
       {
-        "id": "60e247b3-3e1e-49f0-ae9e-b78c111ecc07",
-        "name": "MANAGER",
+        "id": "25246a5e-d891-431b-94f7-d6752d87f768",
+        "name": "SYSTEM_ADMIN",
         "description": "",
         "composite": false,
         "clientRole": false,
@@ -115,6 +115,15 @@
         "attributes": {}
       },
       {
+        "id": "f728f9f5-26eb-4abd-9ecc-734fb529b445",
+        "name": "ADMIN",
+        "description": "",
+        "composite": false,
+        "clientRole": false,
+        "containerId": "358f1ba8-5a05-4e89-8e5c-fbe516b83472",
+        "attributes": {}
+      },
+      {
         "id": "376fe5b3-93b3-4c85-9957-08a9b7707178",
         "name": "uma_authorization",
         "description": "${role_uma_authorization}",
@@ -124,8 +133,26 @@
         "attributes": {}
       },
       {
+        "id": "3ace59a5-e64f-4345-b88f-e06190b9c4ba",
+        "name": "SYSTEM_MANAGER",
+        "description": "",
+        "composite": false,
+        "clientRole": false,
+        "containerId": "358f1ba8-5a05-4e89-8e5c-fbe516b83472",
+        "attributes": {}
+      },
+      {
         "id": "528011e6-8673-4f2b-95b3-292c2cf75da5",
         "name": "DISPATCHER",
+        "description": "",
+        "composite": false,
+        "clientRole": false,
+        "containerId": "358f1ba8-5a05-4e89-8e5c-fbe516b83472",
+        "attributes": {}
+      },
+      {
+        "id": "e1216436-4539-40b9-b3fb-a004ec839cd2",
+        "name": "SYSTEM_SUPPORTER",
         "description": "",
         "composite": false,
         "clientRole": false,
@@ -924,8 +951,8 @@
         }
       ],
       "defaultClientScopes": [
-        "service_account",
         "web-origins",
+        "service_account",
         "acr",
         "profile",
         "roles",
