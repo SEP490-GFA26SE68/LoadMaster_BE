@@ -35,4 +35,14 @@ public class VehicleType {
     @Column(name = "max_payload_kg", precision = 10, scale = 2)
     private BigDecimal maxPayloadKg;
 
+    @Column(name = "front_axle_limit_kg", precision = 10, scale = 2)
+    private BigDecimal frontAxleLimitKg;
+
+    @Column(name = "rear_axle_limit_kg", precision = 10, scale = 2)
+    private BigDecimal rearAxleLimitKg;
+
+    @Builder.Default
+    @Column(name = "max_cog_offset_ratio", precision = 5, scale = 4)
+    private BigDecimal maxCogOffsetRatio = new BigDecimal("0.15");
+
 }

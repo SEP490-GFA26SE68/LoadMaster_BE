@@ -30,7 +30,7 @@ public class UserController {
     }
 
     @PostMapping
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasRole('SYSTEM_ADMIN')")
     public ResponseEntity<ApiResponse<CreateUserResponse>> createUser(
             @Valid @RequestBody CreateUserRequest request
     ) {

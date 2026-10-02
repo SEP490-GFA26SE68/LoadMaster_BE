@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 from typing import Optional, Union, Any
 from uuid import UUID
@@ -120,7 +121,13 @@ class EngineExceptionHandler:
         # S8-08: Tự động hoàn credit nếu job thất bại
         if status in (OptimizationJobStatus.FAILED, OptimizationJobStatus.TIMEOUT) and self.credit_client is not None:
             try:
-                self.credit_client.refund_credit(job_uuid_str)
+                res = self.credit_client.refund_credit(job_uuid_str)
+                if asyncio.iscoroutine(res):
+                    try:
+                        loop = asyncio.get_running_loop()
+                        loop.create_task(res)
+                    except RuntimeError:
+                        res.close()
             except Exception as refund_exc:
                 logger.error(f"Credit refund call failed for {job_uuid_str}: {refund_exc}. Requires manual review.")
 

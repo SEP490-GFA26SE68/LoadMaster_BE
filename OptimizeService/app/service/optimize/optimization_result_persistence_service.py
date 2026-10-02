@@ -55,6 +55,9 @@ class OptimizationResultPersistenceService:
         vol_util = 0.0
         wt_util = 0.0
         packed_count = len(result.placements) if result.placements else 0
+        cog_x, cog_y, cog_z = None, None, None
+        front_axle_load, rear_axle_load = None, None
+        rehandling_count = 0
 
         if result.metrics:
             if result.metrics.volume_utilization is not None:
@@ -63,6 +66,18 @@ class OptimizationResultPersistenceService:
                 wt_util = float(result.metrics.weight_utilization)
             if result.metrics.packed_count is not None:
                 packed_count = result.metrics.packed_count
+            if result.metrics.cog_x is not None:
+                cog_x = float(result.metrics.cog_x)
+            if result.metrics.cog_y is not None:
+                cog_y = float(result.metrics.cog_y)
+            if result.metrics.cog_z is not None:
+                cog_z = float(result.metrics.cog_z)
+            if result.metrics.front_axle_load is not None:
+                front_axle_load = float(result.metrics.front_axle_load)
+            if result.metrics.rear_axle_load is not None:
+                rear_axle_load = float(result.metrics.rear_axle_load)
+            if result.metrics.rehandling_count is not None:
+                rehandling_count = int(result.metrics.rehandling_count)
 
         resolved_plan_name = plan_name or f"Plan_{str(job.job_uuid)[:8]}"
 
@@ -75,6 +90,12 @@ class OptimizationResultPersistenceService:
                 volume_utilization=vol_util,
                 weight_utilization=wt_util,
                 approved=False,
+                cog_x=cog_x,
+                cog_y=cog_y,
+                cog_z=cog_z,
+                front_axle_load=front_axle_load,
+                rear_axle_load=rear_axle_load,
+                rehandling_count=rehandling_count,
             )
             self.load_plan_repository.create(plan, db)
 
@@ -89,6 +110,13 @@ class OptimizationResultPersistenceService:
                         elif isinstance(p.package_id, str) and p.package_id.isdigit():
                             pkg_id_val = int(p.package_id)
 
+                    zone_id_val = None
+                    if p.stop_zone_id is not None:
+                        if isinstance(p.stop_zone_id, int):
+                            zone_id_val = p.stop_zone_id
+                        elif isinstance(p.stop_zone_id, str) and p.stop_zone_id.isdigit():
+                            zone_id_val = int(p.stop_zone_id)
+
                     placement_entities.append(
                         PackagePlacement(
                             load_plan_id=plan.id,
@@ -102,6 +130,7 @@ class OptimizationResultPersistenceService:
                             rotation_type=p.rotation_type or 0,
                             step_sequence=p.step_sequence or 1,
                             pinned=False,
+                            stop_zone_id=zone_id_val,
                         )
                     )
                 self.package_placement_repository.create_all(placement_entities, db)

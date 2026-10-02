@@ -26,5 +26,11 @@ public class LoadPlanResponse {
     private BigDecimal volumeUtilization;
     private BigDecimal weightUtilization;
     private Boolean approved;
+    private BigDecimal cogX;
+    private BigDecimal cogY;
+    private BigDecimal cogZ;
+    private BigDecimal frontAxleLoad;
+    private BigDecimal rearAxleLoad;
+    private Integer rehandlingCount;
     private List<PackagePlacementResponse> placements;
 }

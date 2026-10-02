@@ -70,12 +70,12 @@ public class PackageImportController {
                 .body(png);
     }
 
-    @GetMapping("/scan/{qrToken}")
-    @PreAuthorize("hasAnyAuthority('PACKAGE_MANAGE', 'WAREHOUSE_WORKER')")
-    public ResponseEntity<PackageDetailResponse> scanPackage(@PathVariable String qrToken) {
-        CargoPackage pkg = qrCodeService.lookupByToken(qrToken);
-        return ResponseEntity.ok(toDetailResponse(pkg));
-    }
+//    @GetMapping("/scan/{qrToken}")
+//    @PreAuthorize("hasAnyAuthority('PACKAGE_MANAGE', 'WAREHOUSE_WORKER')")
+//    public ResponseEntity<PackageDetailResponse> scanPackage(@PathVariable String qrToken) {
+//        CargoPackage pkg = qrCodeService.lookupByToken(qrToken);
+//        return ResponseEntity.ok(toDetailResponse(pkg));
+//    }
 
     // -------------------------------------------------------------------------
     // Package detail

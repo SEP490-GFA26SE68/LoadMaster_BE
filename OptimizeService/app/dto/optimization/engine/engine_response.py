@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import List, Union
+from typing import Optional, List, Union
 from uuid import UUID
 from pydantic import BaseModel, Field
 
@@ -16,12 +16,14 @@ class PlacementData(BaseModel):
     packed_h: float
     rotation_type: Union[int, str] = 0
     step_sequence: int = 1
+    stop_zone_id: Optional[Union[UUID, str, int]] = None
 
 
 class UnplacedData(BaseModel):
     """Kiện hàng không thể xếp kèm lý do."""
     package_id: Union[UUID, str]
     reason: str
+    violated_constraints: List[str] = Field(default_factory=list)
 
 
 class MetricsData(BaseModel):
@@ -30,6 +32,12 @@ class MetricsData(BaseModel):
     weight_utilization: float = 0.0
     packed_count: int = 0
     computation_ms: int = 0
+    cog_x: Optional[float] = None
+    cog_y: Optional[float] = None
+    cog_z: Optional[float] = None
+    front_axle_load: Optional[float] = None
+    rear_axle_load: Optional[float] = None
+    rehandling_count: int = 0
 
 
 class EngineOptimizationResponse(BaseModel):
