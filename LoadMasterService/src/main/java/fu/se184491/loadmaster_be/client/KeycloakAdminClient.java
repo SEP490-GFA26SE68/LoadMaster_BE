@@ -1,6 +1,7 @@
 package fu.se184491.loadmaster_be.client;
 
 import fu.se184491.loadmaster_be.dto.request.account.KeycloakRoleRepresentation;
+import fu.se184491.loadmaster_be.dto.request.account.KeycloakUserRepresentation;
 import fu.se184491.loadmaster_be.service.security.ServiceTokenProvider;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -141,5 +142,31 @@ public class KeycloakAdminClient {
                 .body(List.of(role))
                 .retrieve()
                 .toBodilessEntity();
+    }
+
+    public String findUserIdByEmail(String email) {
+
+        String token = serviceTokenProvider.getKeycloakAdminToken();
+
+        KeycloakUserRepresentation[] users =
+                keycloakAdminRestClient
+                        .get()
+                        .uri(uriBuilder -> uriBuilder
+                                .path("/admin/realms/{realm}/users")
+                                .queryParam("email", email)
+                                .queryParam("exact", true)
+                                .build(REALM)
+                        )
+                        .headers(headers ->
+                                headers.setBearerAuth(token)
+                        )
+                        .retrieve()
+                        .body(KeycloakUserRepresentation[].class);
+
+        if (users == null || users.length == 0) {
+            return null;
+        }
+
+        return users[0].id();
     }
 }
