@@ -1,9 +1,6 @@
 package fu.se184491.loadmaster_be.entity.cargo;
 
 import fu.se184491.loadmaster_be.entity.order.TransportOrder;
-import fu.se184491.loadmaster_be.entity.cargo.PackageType;
-
-
 import fu.se184491.loadmaster_be.constant.cargo.HandlingClass;
 import fu.se184491.loadmaster_be.constant.cargo.PackageStatus;
 import jakarta.persistence.*;

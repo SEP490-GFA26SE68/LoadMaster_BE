@@ -21,4 +21,8 @@ public interface CargoPackageRepository extends JpaRepository<CargoPackage, Long
     boolean existsByOrderCompanyIdAndPackageCode(Long companyId, String packageCode);
 
     List<CargoPackage> findByOrderDeliveryStopId(Long stopId);
+
+    List<CargoPackage> findAllByIdInAndOrderCompanyId(List<Long> ids, Long companyId);
+
+    List<CargoPackage> findByOrderDeliveryStopTripIdOrderByIdAsc(Long tripId);
 }
