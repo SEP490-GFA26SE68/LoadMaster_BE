@@ -13,6 +13,9 @@ class VehicleData(BaseModel):
     max_payload_kg: float
     door_w: Optional[float] = None
     door_h: Optional[float] = None
+    front_axle_limit_kg: Optional[float] = None
+    rear_axle_limit_kg: Optional[float] = None
+    max_cog_offset_ratio: Optional[float] = 0.15
 
 
 class PackageData(BaseModel):
@@ -26,6 +29,7 @@ class PackageData(BaseModel):
     stop_index: int = 0
     max_stack_weight_kg: Optional[float] = None
     fragile: bool = False
+    rotation_allowed: bool = True
 
 
 class StopData(BaseModel):

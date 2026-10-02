@@ -33,14 +33,22 @@ class OptimizationJobService:
         if not trip:
             raise AppException(ErrorCode.TRIP_NOT_FOUND)
 
+        from app.service.optimize.algorithm_tier_service import AlgorithmTierService
+
         objective_val = config.objective.value if hasattr(config.objective, "value") else str(config.objective)
+        tier = AlgorithmTierService.get_algorithm_tier(config.subscription_tier)
+        resolved_algo = AlgorithmTierService.resolve_algorithm(tier, config.algorithm_name)
+
         job = OptimizationJob(
             trip_id=trip_str,
             job_uuid=str(uuid.uuid4()),
             objective=objective_val,
             time_limit_sec=config.time_limit_sec,
             status=OptimizationJobStatus.PENDING.value,
-            algorithm_name=config.algorithm_name,
+            algorithm_name=resolved_algo,
+            company_id=config.company_id,
+            subscription_tier=tier,
+            algorithm_tier=tier,
         )
         return self.repository.create(job, db)
 

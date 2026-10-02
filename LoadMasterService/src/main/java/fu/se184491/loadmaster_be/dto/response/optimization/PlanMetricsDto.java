@@ -23,4 +23,10 @@ public class PlanMetricsDto {
     private Integer packedCount;
     private Long unplacedCount;
     private Long computeMs;
+    private BigDecimal cogX;
+    private BigDecimal cogY;
+    private BigDecimal cogZ;
+    private BigDecimal frontAxleLoad;
+    private BigDecimal rearAxleLoad;
+    private Integer rehandlingCount;
 }

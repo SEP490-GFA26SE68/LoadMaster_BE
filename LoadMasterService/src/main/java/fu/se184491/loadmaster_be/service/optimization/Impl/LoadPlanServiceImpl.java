@@ -239,6 +239,12 @@ public class LoadPlanServiceImpl implements LoadPlanService {
                 .volumeUtilization(newPlan.getVolumeUtilization())
                 .weightUtilization(newPlan.getWeightUtilization())
                 .approved(newPlan.getApproved())
+                .cogX(newPlan.getCogX())
+                .cogY(newPlan.getCogY())
+                .cogZ(newPlan.getCogZ())
+                .frontAxleLoad(newPlan.getFrontAxleLoad())
+                .rearAxleLoad(newPlan.getRearAxleLoad())
+                .rehandlingCount(newPlan.getRehandlingCount())
                 .placements(savedPlacements.stream().map(this::mapToResponse).collect(Collectors.toList()))
                 .build();
     }
@@ -303,6 +309,12 @@ public class LoadPlanServiceImpl implements LoadPlanService {
                 .packedCount(plan.getPackedItemsCount())
                 .unplacedCount(unplaced)
                 .computeMs(computeMs)
+                .cogX(plan.getCogX())
+                .cogY(plan.getCogY())
+                .cogZ(plan.getCogZ())
+                .frontAxleLoad(plan.getFrontAxleLoad())
+                .rearAxleLoad(plan.getRearAxleLoad())
+                .rehandlingCount(plan.getRehandlingCount())
                 .build();
     }
 
@@ -315,6 +327,8 @@ public class LoadPlanServiceImpl implements LoadPlanService {
                 .loadPlanId(entity.getLoadPlan() != null ? entity.getLoadPlan().getId() : null)
                 .packageId(entity.getCargoPackage() != null ? entity.getCargoPackage().getId() : null)
                 .trackingBarcode(entity.getCargoPackage() != null ? entity.getCargoPackage().getTrackingBarcode() : null)
+                .stopZoneId(entity.getStopZone() != null ? entity.getStopZone().getId() : null)
+                .stopZoneName(entity.getStopZone() != null ? entity.getStopZone().getStopName() : null)
                 .posX(entity.getPosX())
                 .posY(entity.getPosY())
                 .posZ(entity.getPosZ())

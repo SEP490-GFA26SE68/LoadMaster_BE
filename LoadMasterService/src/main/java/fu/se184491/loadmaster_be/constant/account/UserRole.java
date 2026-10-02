@@ -1,8 +1,15 @@
 package fu.se184491.loadmaster_be.constant.account;
 
 public enum UserRole {
+
+    SYSTEM_ADMIN,
+    SYSTEM_MANAGER,
+    SYSTEM_SUPPORTER,
+
+    COMPANY_ADMIN,
+    COMPANY_MANAGER,
+
     DISPATCHER,
-    WAREHOUSE_WORKER,
     DRIVER,
-    MANAGER
+    WAREHOUSE_WORKER
 }
