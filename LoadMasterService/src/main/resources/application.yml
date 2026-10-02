@@ -38,3 +38,9 @@ spring:
         format_sql: true
     show-sql: true
 
+goong:
+  api:
+    key: ${GOONG_API_KEY:}
+    base-url: https://rsapi.goong.io
+    timeout-seconds: 10
+

@@ -7,23 +7,23 @@
 | **Priority** | 🔴 Must |
 | **Label** | `BE` `INTEGRATION` |
 | **PRD Ref** | FLOW-2, FLOW-6 |
-| **Status** | 🔲 Todo |
+| **Status** | ✅ Done |
 
 ## Mô tả
 HTTP client tích hợp Goong Maps API: Distance Matrix, Directions (road path), và ETA với traffic real-time.
 
 ## Acceptance Criteria
-- [ ] Config `goong.api.key` từ `.env` (không hardcode, không commit)
-- [ ] `getDistanceMatrix(List<LatLng> origins, List<LatLng> destinations)` → `DistanceMatrixResponse`
+- [x] Config `goong.api.key` từ `.env` (không hardcode, không commit)
+- [x] `getDistanceMatrix(List<LatLng> origins, List<LatLng> destinations)` → `DistanceMatrixResponse`
   - Gọi `https://rsapi.goong.io/distancematrix`
   - Trả về time (giây) và distance (mét) giữa các cặp điểm
-- [ ] `getDirections(LatLng origin, LatLng destination)` → `DirectionsResponse`
+- [x] `getDirections(LatLng origin, LatLng destination)` → `DirectionsResponse`
   - Gọi `https://rsapi.goong.io/direction`
   - Trả về các route options với duration, distance, polyline
-- [ ] Timeout: 10 giây; Retry: 2 lần nếu timeout
-- [ ] Fallback: nếu Goong unavailable → log warning, trả `ServiceUnavailableException`
-- [ ] `RestClient` hoặc `WebClient` (Spring Boot 3)
-- [ ] API key trong header `Goong-Api-Key`
+- [x] Timeout: 10 giây; Retry: 2 lần nếu timeout
+- [x] Fallback: nếu Goong unavailable → log warning, trả `ServiceUnavailableException`
+- [x] `RestClient` hoặc `WebClient` (Spring Boot 3)
+- [x] API key trong header `Goong-Api-Key`
 
 ## Config
 ```yaml
