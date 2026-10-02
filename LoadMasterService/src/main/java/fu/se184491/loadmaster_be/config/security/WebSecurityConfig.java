@@ -30,7 +30,11 @@ public class WebSecurityConfig {
                                 "/api/auth/password-reset/**",
                                 "/api/load-plans/**",
                                 "/api/warehouse/**",
-                                "/api/driver/**")
+                                "/api/driver/**",
+                                "/webhook/**",
+                                "/api/payment/**",
+                                "/api/subscription/plans",
+                                "/api/internal/**")
                         .permitAll()
                         .anyRequest().authenticated()
                 )

@@ -1,6 +1,8 @@
 package fu.se184491.loadmaster_be.entity.billing;
 
+import fu.se184491.loadmaster_be.constant.billing.AlgorithmTier;
 import fu.se184491.loadmaster_be.constant.billing.BillingCycle;
+import fu.se184491.loadmaster_be.constant.billing.SubscriptionTier;
 import jakarta.persistence.*;
 import lombok.*;
 
@@ -33,6 +35,30 @@ public class SubscriptionPlan {
     private Integer maxMonthlyJobs;
 
     @Builder.Default
+    @Enumerated(EnumType.STRING)
+    @Column(name = "tier", length = 20, nullable = false)
+    private SubscriptionTier tier = SubscriptionTier.BASIC;
+
+    @Column(name = "monthly_credits")
+    private Integer monthlyCredits;
+
+    @Builder.Default
+    @Enumerated(EnumType.STRING)
+    @Column(name = "algorithm_tier", length = 20)
+    private AlgorithmTier algorithmTier = AlgorithmTier.EP_DBLF;
+
+    @Column(name = "features", columnDefinition = "TEXT")
+    private String features;
+
+    @Builder.Default
     @Column(name = "active")
     private Boolean active = true;
+
+    public BigDecimal getPriceVnd() {
+        return price;
+    }
+
+    public void setPriceVnd(BigDecimal priceVnd) {
+        this.price = priceVnd;
+    }
 }

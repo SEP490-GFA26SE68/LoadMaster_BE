@@ -287,3 +287,17 @@ class TestEngineExceptionHandlerNotification:
             OptimizationJobStatus.COMPLETED,
             computation_ms=200,
         )
+
+
+class TestEngineExceptionHandlerCreditRefund:
+    def test_handle_failure_calls_credit_refund(self, db_session, sample_job):
+        """Khi engine gặp lỗi và status FAILED, gọi credit_client.refund_credit"""
+        mock_credit_client = MagicMock()
+        handler = EngineExceptionHandler(credit_client=mock_credit_client)
+        exc = httpx.ConnectError("Connection refused")
+
+        status = handler.handle(exc, sample_job.job_uuid, db_session)
+
+        assert status == OptimizationJobStatus.FAILED
+        mock_credit_client.refund_credit.assert_called_once_with(sample_job.job_uuid)
+
