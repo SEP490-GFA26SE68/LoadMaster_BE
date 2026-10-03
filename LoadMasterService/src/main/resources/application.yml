@@ -28,13 +28,17 @@ spring:
     username: ${POSTGRES_USER}
     password: ${POSTGRES_PASSWORD}
 
+  flyway:
+    baseline-on-migrate: true
+    baseline-version: 0
+
   jpa:
     hibernate:
-      ddl-auto: create-drop
+      ddl-auto: update
     properties:
       hibernate:
         format_sql: true
-    show-sql: true
+    show-sql: false
 
 vnpay:
   tmn-code: ${VNPAY_TMN_CODE:DEMOTMN1}
@@ -43,4 +47,10 @@ vnpay:
   return-url: ${VNPAY_RETURN_URL:http://localhost:3000/payment/vnpay-return}
   mock: ${VNPAY_MOCK:true}
 
+
+goong:
+  api:
+    key: ${GOONG_API_KEY:}
+    base-url: https://rsapi.goong.io
+    timeout-seconds: 10
 

@@ -7,8 +7,12 @@ import fu.se184491.loadmaster_be.entity.vehicle.Vehicle;
 import fu.se184491.loadmaster_be.constant.trip.TripStatus;
 import jakarta.persistence.*;
 import lombok.*;
+import org.hibernate.annotations.ColumnDefault;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 import java.time.LocalDateTime;
+import java.util.Map;
 
 @Entity
 @Table(name = "trips")
@@ -29,8 +33,20 @@ public class Trip {
     @Column(name = "departure_time")
     private LocalDateTime departureTime;
 
-    @Enumerated(EnumType.STRING) @Column(name = "status")
-    private TripStatus status;
+    @Builder.Default
+    @ColumnDefault("'DRAFT'")
+    @Enumerated(EnumType.STRING) @Column(name = "status", length = 20, nullable = false)
+    private TripStatus status = TripStatus.DRAFT;
+
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "route_plan", columnDefinition = "json")
+    private Map<String, Object> routePlan;
+
+    @Column(name = "handling_class_lock", length = 20)
+    private String handlingClassLock;
+
+    @Column(name = "override_reason", columnDefinition = "text")
+    private String overrideReason;
 
     @Column(name = "created_at")
     private LocalDateTime createdAt;

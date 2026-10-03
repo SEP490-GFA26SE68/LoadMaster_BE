@@ -10,6 +10,7 @@ import fu.se184491.loadmaster_be.entity.vehicle.Vehicle;
 import fu.se184491.loadmaster_be.entity.vehicle.VehicleType;
 import fu.se184491.loadmaster_be.exception.AppException;
 import fu.se184491.loadmaster_be.exception.ErrorCode;
+import fu.se184491.loadmaster_be.helpers.CurrentUserService;
 import fu.se184491.loadmaster_be.repository.account.UserRepository;
 import fu.se184491.loadmaster_be.repository.vehicle.VehicleRepository;
 import fu.se184491.loadmaster_be.repository.vehicle.VehicleTypeRepository;
@@ -27,8 +28,14 @@ public class VehicleServiceImpl implements VehicleService {
     private final VehicleTypeRepository vehicleTypeRepository;
     private final UserRepository userRepository;
 
+    private final CurrentUserService currentUserService;
+
     @Override
     public VehicleResponse createVehicle(Long companyId, VehicleRequest request) {
+        User driver = currentUserService.getCurrentUser();
+
+        Long currentCompanyId = currentUserService.getCurrentCompanyId();
+
         
         VehicleType vehicleType = vehicleTypeRepository.findById(request.getVehicleTypeId())
                 .orElseThrow(() -> new AppException(ErrorCode.VEHICLE_TYPE_NOT_FOUND));
@@ -41,11 +48,11 @@ public class VehicleServiceImpl implements VehicleService {
             throw new AppException(ErrorCode.INVALID_INPUT); // Can map to specific error if needed
         }
 
-        User driver = null;
+//        User driver = null;
         if (request.getDriverUserId() != null) {
-            driver = userRepository.findById(request.getDriverUserId())
+            driver = userRepository.findByKeycloakId(driver.getKeycloakId())
                     .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
-            if (!driver.getCompany().getId().equals(companyId)) {
+            if (!driver.getCompany().getId().equals(currentCompanyId)) {
                 throw new AppException(ErrorCode.UNAUTHORIZED);
             }
             if (driver.getUserRoleType() != UserRole.DRIVER) {

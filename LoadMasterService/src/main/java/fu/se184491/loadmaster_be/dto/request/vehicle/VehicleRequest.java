@@ -19,7 +19,5 @@ public class VehicleRequest {
     @NotBlank(message = "Biển số xe không được để trống")
     private String licensePlate;
 
-
-
     private Long driverUserId;
 }

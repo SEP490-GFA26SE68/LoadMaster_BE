@@ -48,6 +48,7 @@ public class UserServiceImpl implements UserService {
                                 ? user.getCompany().getId()
                                 : null
                 )
+                .userRoleType(user.getUserRoleType())
                 .status(user.getStatus())
                 .build();
     }

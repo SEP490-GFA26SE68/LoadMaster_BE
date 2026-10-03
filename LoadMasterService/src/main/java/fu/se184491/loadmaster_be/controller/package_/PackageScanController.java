@@ -15,7 +15,6 @@ import org.springframework.web.bind.annotation.*;
 public class PackageScanController {
 
     private final QrCodeService qrCodeService;
-
     /**
      * Scan a package by QR token.
      * Accessible by DISPATCHER and WAREHOUSE_WORKER.
@@ -24,7 +23,7 @@ public class PackageScanController {
      * @return package detail response
      */
     @GetMapping("/scan/{qrToken}")
-    @PreAuthorize("hasAnyAuthority('DISPATCHER', 'WAREHOUSE_WORKER')")
+    @PreAuthorize("hasAnyAuthority('ROLE_DISPATCHER', 'WAREHOUSE_WORKER')")
     public ResponseEntity<PackageDetailResponse> scanPackage(@PathVariable String qrToken) {
         CargoPackage pkg = qrCodeService.lookupByToken(qrToken);
 
@@ -40,6 +39,4 @@ public class PackageScanController {
 
         return ResponseEntity.ok(response);
     }
-
-
 }

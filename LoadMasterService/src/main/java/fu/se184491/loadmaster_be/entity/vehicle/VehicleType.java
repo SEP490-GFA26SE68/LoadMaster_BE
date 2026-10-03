@@ -45,4 +45,8 @@ public class VehicleType {
     @Column(name = "max_cog_offset_ratio", precision = 5, scale = 4)
     private BigDecimal maxCogOffsetRatio = new BigDecimal("0.15");
 
+    @Builder.Default
+    @Column(name = "hazardous_capable", nullable = false)
+    private Boolean hazardousCapable = false;
+
 }
