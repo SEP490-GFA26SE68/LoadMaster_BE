@@ -26,7 +26,7 @@ public class VehicleController {
     }
 
     @PostMapping
-    @PreAuthorize("hasAuthority('VEHICLE_MANAGE')")
+    @PreAuthorize("hasAnyAuthority('VEHICLE_MANAGE', 'DISPATCHER')")
     public ResponseEntity<VehicleResponse> createVehicle(@Valid @RequestBody VehicleRequest request) {
         return new ResponseEntity<>(vehicleService.createVehicle(getCurrentCompanyId(), request), HttpStatus.CREATED);
     }

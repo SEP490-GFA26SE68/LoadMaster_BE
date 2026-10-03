@@ -34,6 +34,8 @@ public class VehicleServiceImpl implements VehicleService {
     public VehicleResponse createVehicle(Long companyId, VehicleRequest request) {
         User driver = currentUserService.getCurrentUser();
 
+        Long currentCompanyId = currentUserService.getCurrentCompanyId();
+
         
         VehicleType vehicleType = vehicleTypeRepository.findById(request.getVehicleTypeId())
                 .orElseThrow(() -> new AppException(ErrorCode.VEHICLE_TYPE_NOT_FOUND));
@@ -48,9 +50,9 @@ public class VehicleServiceImpl implements VehicleService {
 
 //        User driver = null;
         if (request.getDriverUserId() != null) {
-            driver = userRepository.findById(request.getDriverUserId())
+            driver = userRepository.findByKeycloakId(driver.getKeycloakId())
                     .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
-            if (!driver.getCompany().getId().equals(companyId)) {
+            if (!driver.getCompany().getId().equals(currentCompanyId)) {
                 throw new AppException(ErrorCode.UNAUTHORIZED);
             }
             if (driver.getUserRoleType() != UserRole.DRIVER) {

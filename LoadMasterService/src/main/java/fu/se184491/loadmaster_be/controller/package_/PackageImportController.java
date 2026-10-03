@@ -33,20 +33,23 @@ public class PackageImportController {
     // -------------------------------------------------------------------------
 
     @PostMapping(value = "/import/preview", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    @PreAuthorize("hasAuthority('PACKAGE_MANAGE')")
+//    @PreAuthorize("hasAuthority('PACKAGE_MANAGE')")
+    @PreAuthorize("hasRole('DISPATCHER')")
     public ResponseEntity<ImportPreviewResult> preview(@RequestPart("file") MultipartFile file) {
         return ResponseEntity.ok(packageImportService.preview(file, getCurrentCompanyId()));
     }
 
     @PostMapping(value = "/import/confirm", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    @PreAuthorize("hasAuthority('PACKAGE_MANAGE')")
+//    @PreAuthorize("hasAuthority('PACKAGE_MANAGE')")
+    @PreAuthorize("hasRole('DISPATCHER')")
     public ResponseEntity<ImportConfirmResult> confirm(@RequestPart("file") MultipartFile file) {
         return ResponseEntity.ok(
                 packageImportService.confirm(file, getCurrentCompanyId(), getCurrentUserId()));
     }
 
+    //PACKAGE_MANAGE
     @GetMapping("/import/template")
-    @PreAuthorize("hasAuthority('PACKAGE_MANAGE')")
+    @PreAuthorize("hasRole('DISPATCHER')")
     public ResponseEntity<byte[]> downloadTemplate() {
         byte[] template = buildTemplateBytes();
         return ResponseEntity.ok()
@@ -61,7 +64,7 @@ public class PackageImportController {
     // -------------------------------------------------------------------------
 
     @GetMapping(value = "/{id}/qr", produces = MediaType.IMAGE_PNG_VALUE)
-    @PreAuthorize("hasAnyAuthority('PACKAGE_MANAGE', 'WAREHOUSE_WORKER')")
+    @PreAuthorize("hasAnyAuthority('ROLE_DISPATCHER', 'WAREHOUSE_WORKER')")
     public ResponseEntity<byte[]> getQrImage(@PathVariable Long id) {
         CargoPackage pkg = qrCodeService.findById(id);
         byte[] png = qrCodeService.generateQrPng(pkg.getQrToken());
@@ -82,7 +85,7 @@ public class PackageImportController {
     // -------------------------------------------------------------------------
 
     @GetMapping("/{id}")
-    @PreAuthorize("hasAnyAuthority('PACKAGE_MANAGE', 'WAREHOUSE_WORKER')")
+    @PreAuthorize("hasAnyAuthority('ROLE_DISPATCHER', 'WAREHOUSE_WORKER')")
     public ResponseEntity<PackageDetailResponse> getById(@PathVariable Long id) {
         CargoPackage pkg = qrCodeService.findById(id);
         return ResponseEntity.ok(toDetailResponse(pkg));
