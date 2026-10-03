@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 from typing import Optional, Union, Any
 from uuid import UUID
@@ -33,6 +34,7 @@ class EngineExceptionHandler:
         self,
         job_service: Optional[OptimizationJobService] = None,
         notification_service: Optional[Any] = None,
+        credit_client: Optional[Any] = None,
     ):
         self.job_service = job_service or OptimizationJobService()
         if notification_service is not None:
@@ -43,6 +45,15 @@ class EngineExceptionHandler:
                 self.notification_service = get_job_notification_service()
             except ImportError:
                 self.notification_service = None
+
+        if credit_client is not None:
+            self.credit_client = credit_client
+        else:
+            try:
+                from app.client.loadmaster_credit_client import LoadmasterCreditClient
+                self.credit_client = LoadmasterCreditClient()
+            except Exception:
+                self.credit_client = None
 
     def handle(
         self,
@@ -106,6 +117,19 @@ class EngineExceptionHandler:
 
         # Gửi thông báo WebSocket nếu notification_service có sẵn
         self._notify_status(job_uuid_str, status, computation_ms=computation_ms)
+
+        # S8-08: Tự động hoàn credit nếu job thất bại
+        if status in (OptimizationJobStatus.FAILED, OptimizationJobStatus.TIMEOUT) and self.credit_client is not None:
+            try:
+                res = self.credit_client.refund_credit(job_uuid_str)
+                if asyncio.iscoroutine(res):
+                    try:
+                        loop = asyncio.get_running_loop()
+                        loop.create_task(res)
+                    except RuntimeError:
+                        res.close()
+            except Exception as refund_exc:
+                logger.error(f"Credit refund call failed for {job_uuid_str}: {refund_exc}. Requires manual review.")
 
         return status
 

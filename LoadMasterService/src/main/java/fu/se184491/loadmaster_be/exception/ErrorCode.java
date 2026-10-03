@@ -30,6 +30,8 @@ public enum ErrorCode {
     USER_NOT_FOUND("Không tìm thấy người dùng", HttpStatus.NOT_FOUND),
     USER_ALREADY_EXISTS("Người dùng với email này đã tồn tại", HttpStatus.CONFLICT),
     COMPANY_NOT_FOUND("Không tìm thấy thông tin công ty", HttpStatus.NOT_FOUND),
+    COMPANY_ALREADY_EXISTS("Mã công ty đã tồn tại trong hệ thống", HttpStatus.CONFLICT),
+    TAX_CODE_ALREADY_EXISTS("Mã số thuế đã tồn tại trong hệ thống", HttpStatus.CONFLICT),
     ROLE_NOT_FOUND("Không tìm thấy vai trò người dùng", HttpStatus.NOT_FOUND),
     EMAIL_ALREADY_EXISTS("Email đã được sử dụng", HttpStatus.CONFLICT),
 
@@ -55,6 +57,9 @@ public enum ErrorCode {
     // Subscription & Payment errors
     // -------------------------------------------------------------------------
     SUBSCRIPTION_NOT_FOUND("Không tìm thấy thông tin gói dịch vụ", HttpStatus.NOT_FOUND),
+    SUBSCRIPTION_PLAN_ALREADY_EXISTS("Mã gói dịch vụ đã tồn tại", HttpStatus.CONFLICT),
+    SUBSCRIPTION_TIER_ALREADY_EXISTS("Đã có một gói dịch vụ khác đang kích hoạt cho Tier này", HttpStatus.CONFLICT),
+    PLAN_IN_USE("Không thể xóa gói dịch vụ đang có doanh nghiệp sử dụng", HttpStatus.CONFLICT),
     PAYMENT_FAILED("Giao dịch thanh toán thất bại", HttpStatus.PAYMENT_REQUIRED),
 
     // -------------------------------------------------------------------------
@@ -106,7 +111,16 @@ public enum ErrorCode {
     NO_PENDING_DELIVERY_STOP("Không còn điểm dừng nào cần giao hàng", HttpStatus.NOT_FOUND),
     DUPLICATE_UNLOAD("Kiện hàng này đã được dỡ trước đó", HttpStatus.CONFLICT),
     WRONG_DELIVERY_STOP("Kiện hàng không thuộc điểm dừng hiện tại", HttpStatus.BAD_REQUEST),
-    INCOMPLETE_STOP_UNLOAD("Điểm dừng chưa hoàn tất dỡ hàng", HttpStatus.BAD_REQUEST);
+    INCOMPLETE_STOP_UNLOAD("Điểm dừng chưa hoàn tất dỡ hàng", HttpStatus.BAD_REQUEST),
+
+    // -------------------------------------------------------------------------
+    // Subscription & Payment errors (Sprint 8)
+    // -------------------------------------------------------------------------
+    ACTIVE_SUBSCRIPTION_ALREADY_EXISTS("Doanh nghiệp đã có gói đăng ký đang hoạt động", HttpStatus.CONFLICT),
+    NO_ACTIVE_SUBSCRIPTION("Doanh nghiệp chưa có gói đăng ký nào đang hoạt động", HttpStatus.NOT_FOUND),
+    SUBSCRIPTION_PLAN_NOT_FOUND("Không tìm thấy gói đăng ký", HttpStatus.NOT_FOUND),
+    PAYMENT_TRANSACTION_NOT_FOUND("Không tìm thấy giao dịch thanh toán", HttpStatus.NOT_FOUND),
+    INVALID_PAYMENT_SIGNATURE("Chữ ký thanh toán không hợp lệ", HttpStatus.BAD_REQUEST);
 
     private final String message;
     private final HttpStatus httpStatus;

@@ -50,6 +50,7 @@ public class LoadPlanServiceImpl implements LoadPlanService {
     private final CargoPackageRepository cargoPackageRepository;
     private final UnplacedPackageRepository unplacedPackageRepository;
     private final OptimizationEngineClient optimizationEngineClient;
+    private final fu.se184491.loadmaster_be.service.credit.CreditService creditService;
 
     @Override
     @Transactional
@@ -152,8 +153,28 @@ public class LoadPlanServiceImpl implements LoadPlanService {
                 .pinnedPlacements(pinnedDtos)
                 .build();
 
+        // S8-08 Credit check & deduction before sending to Engine
+        if (newJob.getTrip() != null && newJob.getTrip().getCompany() != null) {
+            creditService.deductCredit(newJob.getTrip().getCompany().getId(), jobUuid);
+        }
+
         // 4. Send to Engine
-        OptimizationResultDto engineResult = optimizationEngineClient.rerunOptimization(engineRequest);
+        OptimizationResultDto engineResult;
+        try {
+            engineResult = optimizationEngineClient.rerunOptimization(engineRequest);
+        } catch (Exception e) {
+            log.error("Optimization engine failed for job {}: {}", jobUuid, e.getMessage());
+            newJob.setStatus(OptimizationJobStatus.FAILED);
+            optimizationJobRepository.save(newJob);
+            if (newJob.getTrip() != null && newJob.getTrip().getCompany() != null) {
+                try {
+                    creditService.refundCredit(newJob.getTrip().getCompany().getId(), jobUuid);
+                } catch (Exception refundEx) {
+                    log.error("Failed to refund credit on engine failure for job {}: {}", jobUuid, refundEx.getMessage());
+                }
+            }
+            throw e;
+        }
 
         // Update Job status
         newJob.setStatus(OptimizationJobStatus.COMPLETED);

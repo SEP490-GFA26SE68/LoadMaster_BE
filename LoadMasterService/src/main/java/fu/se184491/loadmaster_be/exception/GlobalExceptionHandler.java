@@ -33,6 +33,20 @@ public class GlobalExceptionHandler {
                         .build());
     }
 
+    @ExceptionHandler(InsufficientCreditsException.class)
+    public ResponseEntity<ApiResponse<Void>> handleInsufficientCreditsException(
+            InsufficientCreditsException ex, HttpServletRequest request) {
+        log.warn("Insufficient credits at {}: {}", request.getRequestURI(), ex.getMessage());
+
+        return ResponseEntity
+                .status(HttpStatus.PAYMENT_REQUIRED)
+                .body(ApiResponse.<Void>builder()
+                        .success(false)
+                        .message(ex.getMessage())
+                        .data(null)
+                        .build());
+    }
+
     @ExceptionHandler(IncompleteLoadingException.class)
     public ResponseEntity<ApiResponse<Void>> handleIncompleteLoadingException(
             IncompleteLoadingException ex, HttpServletRequest request) {
