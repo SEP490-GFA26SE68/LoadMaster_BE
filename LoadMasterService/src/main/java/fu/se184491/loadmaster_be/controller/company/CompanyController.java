@@ -1,7 +1,9 @@
 package fu.se184491.loadmaster_be.controller.company;
 
 import fu.se184491.loadmaster_be.constant.company.CompanyStatus;
+import fu.se184491.loadmaster_be.dto.ApiResponse;
 import fu.se184491.loadmaster_be.dto.request.company.CompanyRequest;
+import fu.se184491.loadmaster_be.dto.response.company.CompanyOptionResponse;
 import fu.se184491.loadmaster_be.dto.response.company.CompanyResponse;
 import fu.se184491.loadmaster_be.service.company.CompanyService;
 import jakarta.validation.Valid;
@@ -12,6 +14,8 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
 
 @RestController
 @RequestMapping("/api/companies")
@@ -52,5 +56,14 @@ public class CompanyController {
             @PathVariable Long id,
             @RequestParam CompanyStatus status) {
         return ResponseEntity.ok(companyService.changeCompanyStatus(id, status));
+    }
+
+    @PreAuthorize("hasAuthority('USERS_CREATE')")
+    @GetMapping("/options")
+    public ApiResponse<List<CompanyOptionResponse>> getCompanies() {
+        return ApiResponse.success(
+                "Companies retrieved successfully",
+                companyService.getCompanyOptions()
+        );
     }
 }

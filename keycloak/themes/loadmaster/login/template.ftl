@@ -34,6 +34,13 @@
         <meta http-equiv="Content-Type" content="text/html; charset=UTF-8"/>
         <meta name="color-scheme" content="light${darkMode?then(' dark', '')}">
         <meta name="viewport" content="width=device-width, initial-scale=1">
+        <link rel="preconnect" href="https://fonts.googleapis.com">
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+
+        <link
+                href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap"
+                rel="stylesheet"
+        >
 
         <#if properties.meta?has_content>
             <#list properties.meta?split(' ') as meta>
@@ -292,34 +299,86 @@
                     </div>
                 </main>
             </div>
-            <#if pageId == "login">
+            <#if pageId == "login" || pageId == "login-update-password" || pageId == "login-update-profile">>
                 <aside class="lm-login-showcase">
 
-                    <div class="lm-showcase-artwork">
-                        <img
-                                src="${url.resourcesPath}/img/login-artwork.svg"
-                                alt=""
-                        />
-                    </div>
+                    <div class="lm-showcase-inner">
 
-                    <div class="lm-showcase-content">
-                        <h2>
-                            ${msg("showcaseTitle")}
-                        </h2>
+                        <div class="lm-showcase-artwork">
+                            <img
+                                    src="${url.resourcesPath}/img/login-artwork.svg"
+                                    alt=""
+                            />
+                        </div>
 
-                        <ul>
-                            <li>
-                                ${msg("showcasePoint1")}
-                            </li>
+                        <div class="lm-showcase-content">
 
-                            <li>
-                                ${msg("showcasePoint2")}
-                            </li>
+                            <h2 class="lm-showcase-title">
+                                ${msg("showcaseTitle")}
+                            </h2>
 
-                            <li>
-                                ${msg("showcasePoint3")}
-                            </li>
-                        </ul>
+                            <ul class="lm-showcase-list">
+
+                                <li class="lm-showcase-item">
+                                    <svg
+                                            class="lm-showcase-icon"
+                                            viewBox="0 0 24 24"
+                                            fill="none"
+                                            stroke="currentColor"
+                                            stroke-width="1.5"
+                                            stroke-linecap="round"
+                                            stroke-linejoin="round"
+                                            aria-hidden="true"
+                                    >
+                                        <path d="m12 14 4-4"/>
+                                        <path d="M3.34 19a10 10 0 1 1 17.32 0"/>
+                                    </svg>
+
+                                    <span>${msg("showcasePoint1")}</span>
+                                </li>
+
+                                <li class="lm-showcase-item">
+                                    <svg
+                                            class="lm-showcase-icon"
+                                            viewBox="0 0 24 24"
+                                            fill="none"
+                                            stroke="currentColor"
+                                            stroke-width="1.5"
+                                            stroke-linecap="round"
+                                            stroke-linejoin="round"
+                                            aria-hidden="true"
+                                    >
+                                        <path d="m12.83 2.18 8 4a2 2 0 0 1 0 3.58l-8 4a2 2 0 0 1-1.79 0l-8-4a2 2 0 0 1 0-3.58l8-4a2 2 0 0 1 1.79 0Z"/>
+                                        <path d="m22 12.5-9.17 4.59a2 2 0 0 1-1.79 0L2 12.5"/>
+                                        <path d="m22 17.5-9.17 4.59a2 2 0 0 1-1.79 0L2 17.5"/>
+                                    </svg>
+
+                                    <span>${msg("showcasePoint2")}</span>
+                                </li>
+
+                                <li class="lm-showcase-item">
+                                    <svg
+                                            class="lm-showcase-icon"
+                                            viewBox="0 0 24 24"
+                                            fill="none"
+                                            stroke="currentColor"
+                                            stroke-width="1.5"
+                                            stroke-linecap="round"
+                                            stroke-linejoin="round"
+                                            aria-hidden="true"
+                                    >
+                                        <path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/>
+                                        <path d="m3.3 7 8.7 5 8.7-5"/>
+                                        <path d="M12 22V12"/>
+                                    </svg>
+
+                                    <span>${msg("showcasePoint3")}</span>
+                                </li>
+
+                            </ul>
+
+                        </div>
+
                     </div>
 
                 </aside>

@@ -20,21 +20,29 @@ public class CurrentUserService {
 
     public User getCurrentUser() {
         Authentication authentication =
-                SecurityContextHolder.getContext().getAuthentication();
+                SecurityContextHolder
+                        .getContext()
+                        .getAuthentication();
 
+        // Trường hợp này về lý thuyết đã bị Spring Security chặn trước.
+        // Nếu vẫn lọt vào đây thì coi là trạng thái hệ thống bất thường.
         if (!(authentication instanceof JwtAuthenticationToken jwtAuth)) {
-            throw new IllegalStateException("Current user is not authenticated");
+            throw new IllegalStateException(
+                    "Authenticated JWT principal is required"
+            );
         }
 
-        String keycloakId = jwtAuth.getToken().getSubject();
+        String keycloakId =
+                jwtAuth.getToken().getSubject();
 
         return userRepository
                 .findByKeycloakId(keycloakId)
                 .orElseThrow(() ->
-                        new AppException(ErrorCode.USER_PROFILE_NOT_FOUND)
+                        new AppException(
+                                ErrorCode.USER_PROFILE_NOT_FOUND
+                        )
                 );
     }
-
 
     public boolean hasRole(String role) {
         Authentication authentication =
@@ -42,11 +50,18 @@ public class CurrentUserService {
                         .getContext()
                         .getAuthentication();
 
-        assert authentication != null;
-        return authentication.getAuthorities()
+        if (authentication == null) {
+            return false;
+        }
+
+        return authentication
+                .getAuthorities()
                 .stream()
                 .anyMatch(authority ->
-                        Objects.equals(authority.getAuthority(), "ROLE_" + role)
+                        Objects.equals(
+                                authority.getAuthority(),
+                                "ROLE_" + role
+                        )
                 );
     }
 
@@ -54,7 +69,9 @@ public class CurrentUserService {
         User user = getCurrentUser();
 
         if (user.getCompany() == null) {
-            throw new IllegalStateException("User does not belong to a company");
+            throw new AppException(
+                    ErrorCode.USER_COMPANY_NOT_FOUND
+            );
         }
 
         return user.getCompany().getId();

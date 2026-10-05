@@ -6,8 +6,8 @@ public enum UserRole {
     SYSTEM_MANAGER,
     SYSTEM_SUPPORTER,
 
-    COMPANY_ADMIN,
-    COMPANY_MANAGER,
+    ADMIN,
+    MANAGER,
 
     DISPATCHER,
     DRIVER,

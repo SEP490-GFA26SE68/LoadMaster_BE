@@ -31,6 +31,8 @@ public enum ErrorCode {
     USER_ALREADY_EXISTS("Người dùng với email này đã tồn tại", HttpStatus.CONFLICT),
     COMPANY_NOT_FOUND("Không tìm thấy thông tin công ty", HttpStatus.NOT_FOUND),
     COMPANY_ALREADY_EXISTS("Mã công ty đã tồn tại trong hệ thống", HttpStatus.CONFLICT),
+    COMPANY_REQUIRED("Yêu cầu phải có thông tin công ty đối với các vai trò ở phạm vi công ty.", HttpStatus.BAD_REQUEST),
+    USER_COMPANY_NOT_FOUND("Người dùng không thuộc công ty nào", HttpStatus.NOT_FOUND),
     TAX_CODE_ALREADY_EXISTS("Mã số thuế đã tồn tại trong hệ thống", HttpStatus.CONFLICT),
     ROLE_NOT_FOUND("Không tìm thấy vai trò người dùng", HttpStatus.NOT_FOUND),
     EMAIL_ALREADY_EXISTS("Email đã được sử dụng", HttpStatus.CONFLICT),

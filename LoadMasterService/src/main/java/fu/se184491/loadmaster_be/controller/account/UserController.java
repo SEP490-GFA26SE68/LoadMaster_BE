@@ -1,9 +1,14 @@
 package fu.se184491.loadmaster_be.controller.account;
 
+import fu.se184491.loadmaster_be.constant.account.UserRole;
+import fu.se184491.loadmaster_be.constant.account.UserStatus;
 import fu.se184491.loadmaster_be.dto.ApiResponse;
+import fu.se184491.loadmaster_be.dto.PageResponse;
 import fu.se184491.loadmaster_be.dto.request.account.CreateUserRequest;
 import fu.se184491.loadmaster_be.dto.response.account.CreateUserResponse;
+import fu.se184491.loadmaster_be.dto.response.account.UserListItemResponse;
 import fu.se184491.loadmaster_be.dto.response.account.UserProfileResponse;
+import fu.se184491.loadmaster_be.dto.response.account.UserStatsResponse;
 import fu.se184491.loadmaster_be.service.account.UserService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -46,4 +51,33 @@ public class UserController {
                         )
                 );
     }
+    @PreAuthorize("hasAuthority('USERS_READ')")
+    @GetMapping
+    public PageResponse<UserListItemResponse> getUsers(
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size,
+            @RequestParam(required = false) String search,
+            @RequestParam(required = false) UserRole role,
+            @RequestParam(required = false) UserStatus status,
+            @RequestParam(required = false) Long companyId
+    ) {
+        return userService.getUsers(
+                page,
+                size,
+                search,
+                role,
+                status,
+                companyId
+        );
+    }
+
+    @PreAuthorize("hasAuthority('USERS_READ')")
+    @GetMapping("/stats")
+    public ApiResponse<UserStatsResponse> getUserStats() {
+        return ApiResponse.success(
+                "User statistics retrieved successfully",
+                userService.getUserStats()
+        );
+    }
+
 }

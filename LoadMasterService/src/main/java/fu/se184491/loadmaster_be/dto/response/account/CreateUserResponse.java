@@ -4,11 +4,7 @@ import lombok.Builder;
 
 @Builder
 public record CreateUserResponse(
-        Long id,
-        String keycloakId,
-        String email,
-        String phoneNumber,
-        String fullName,
-        String role
+        UserListItemResponse user,
+        String temporaryPassword
 ) {
 }

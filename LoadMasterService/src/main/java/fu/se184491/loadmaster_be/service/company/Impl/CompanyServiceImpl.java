@@ -2,6 +2,7 @@ package fu.se184491.loadmaster_be.service.company.Impl;
 
 import fu.se184491.loadmaster_be.constant.company.CompanyStatus;
 import fu.se184491.loadmaster_be.dto.request.company.CompanyRequest;
+import fu.se184491.loadmaster_be.dto.response.company.CompanyOptionResponse;
 import fu.se184491.loadmaster_be.dto.response.company.CompanyResponse;
 import fu.se184491.loadmaster_be.entity.company.Company;
 import fu.se184491.loadmaster_be.exception.AppException;
@@ -11,10 +12,12 @@ import fu.se184491.loadmaster_be.service.company.CompanyService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
+import java.util.List;
 
 @Service
 @RequiredArgsConstructor
@@ -88,6 +91,20 @@ public class CompanyServiceImpl implements CompanyService {
         company.setStatus(status);
         Company updated = companyRepository.save(company);
         return toResponse(updated);
+    }
+
+    @Transactional(readOnly = true)
+    public List<CompanyOptionResponse> getCompanyOptions() {
+        return companyRepository.findAll(
+                        Sort.by(Sort.Direction.ASC, "companyName")
+                ).stream()
+                .map(company ->
+                        new CompanyOptionResponse(
+                                company.getId(),
+                                company.getCompanyName()
+                        )
+                )
+                .toList();
     }
 
     private CompanyResponse toResponse(Company company) {
