@@ -11,15 +11,11 @@ public record CreateUserRequest(
         @Email
         String email,
 
-        @NotBlank
-        String password,
 
         @NotBlank
         String fullName,
 
         String phoneNumber,
-
-        @NotNull
         Long companyId,
 
         @NotNull
