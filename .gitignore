@@ -1,8 +1,14 @@
 ### IntelliJ IDEA ###
+.idea/
 .idea
 *.iws
 *.iml
 *.ipr
+
+### Visual Studio Code ###
+.vscode/
+.vscode
+*.code-workspace
 
 # Documentation & Issues
 LoadMaster_Updated_Business_Flows_After_Review1.md
