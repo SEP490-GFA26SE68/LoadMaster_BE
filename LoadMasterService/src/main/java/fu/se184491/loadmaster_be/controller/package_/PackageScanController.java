@@ -3,6 +3,8 @@ package fu.se184491.loadmaster_be.controller.package_;
 import fu.se184491.loadmaster_be.constant.cargo.HandlingClass;
 import fu.se184491.loadmaster_be.dto.response.PackageDetailResponse;
 import fu.se184491.loadmaster_be.entity.cargo.CargoPackage;
+import fu.se184491.loadmaster_be.entity.trip.DeliveryStop;
+import fu.se184491.loadmaster_be.entity.trip.Trip;
 import fu.se184491.loadmaster_be.service.qr.QrCodeService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -27,6 +29,9 @@ public class PackageScanController {
     public ResponseEntity<PackageDetailResponse> scanPackage(@PathVariable String qrToken) {
         CargoPackage pkg = qrCodeService.lookupByToken(qrToken);
 
+        DeliveryStop deliveryStop = pkg.getOrder() != null ? pkg.getOrder().getDeliveryStop() : null;
+        Trip trip = deliveryStop != null ? deliveryStop.getTrip() : null;
+
         PackageDetailResponse response = PackageDetailResponse.builder()
                 .id(pkg.getId())
                 .packageCode(pkg.getPackageCode())
@@ -35,6 +40,10 @@ public class PackageScanController {
                 .actualWeightKg(pkg.getActualWeightKg())
                 .status(pkg.getStatus())
                 .orderId(pkg.getOrder() != null ? pkg.getOrder().getId() : null)
+                .trip(trip != null ? new PackageDetailResponse.TripRef(trip.getId(), trip.getTripCode()) : null)
+                .stop(deliveryStop != null
+                        ? new PackageDetailResponse.StopRef(deliveryStop.getStopSequence(), deliveryStop.getStopName())
+                        : null)
                 .build();
 
         return ResponseEntity.ok(response);

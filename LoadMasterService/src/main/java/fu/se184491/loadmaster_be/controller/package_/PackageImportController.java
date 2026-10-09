@@ -84,12 +84,12 @@ public class PackageImportController {
     // Package detail
     // -------------------------------------------------------------------------
 
-    @GetMapping("/{id}")
-    @PreAuthorize("hasAnyAuthority('ROLE_DISPATCHER', 'WAREHOUSE_WORKER')")
-    public ResponseEntity<PackageDetailResponse> getById(@PathVariable Long id) {
-        CargoPackage pkg = qrCodeService.findById(id);
-        return ResponseEntity.ok(toDetailResponse(pkg));
-    }
+//    @GetMapping("/{id}")
+//    @PreAuthorize("hasAnyAuthority('ROLE_DISPATCHER', 'WAREHOUSE_WORKER')")
+//    public ResponseEntity<PackageDetailResponse> getById(@PathVariable Long id) {
+//        CargoPackage pkg = qrCodeService.findById(id);
+//        return ResponseEntity.ok(toDetailResponse(pkg));
+//    }
 
     // -------------------------------------------------------------------------
     // Helpers
@@ -113,7 +113,7 @@ public class PackageImportController {
                      new org.apache.poi.xssf.usermodel.XSSFWorkbook()) {
             org.apache.poi.ss.usermodel.Sheet sheet = wb.createSheet("packages");
             org.apache.poi.ss.usermodel.Row header = sheet.createRow(0);
-            String[] cols = {"packageCode", "lengthMm", "widthMm", "heightMm",
+            String[] cols = {"packageCode", "lengthCm", "widthCm", "heightCm",
                              "weightKg", "handlingClass", "destination"};
             for (int i = 0; i < cols.length; i++) {
                 header.createCell(i).setCellValue(cols[i]);
