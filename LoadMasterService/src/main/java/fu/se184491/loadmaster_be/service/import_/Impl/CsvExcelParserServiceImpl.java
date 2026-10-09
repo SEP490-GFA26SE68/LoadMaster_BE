@@ -217,26 +217,26 @@ public class CsvExcelParserServiceImpl implements CsvExcelParserService {
 
     private PackageImportRow buildRow(int rowIndex, String[] line, Map<String, Integer> colMap) {
         String packageCode    = getField(line, colMap, "packagecode", "package_code", "code", "makien");
-        Integer lengthMm      = parseInteger(getField(line, colMap, "length", "lengthmm", "length_mm", "chieudai"));
-        Integer widthMm       = parseInteger(getField(line, colMap, "width", "widthmm", "width_mm", "chieurong"));
-        Integer heightMm      = parseInteger(getField(line, colMap, "height", "heightmm", "height_mm", "chieucao"));
+        BigDecimal lengthCm   = parseBigDecimal(getField(line, colMap, "length", "lengthcm", "length_cm", "chieudai"));
+        BigDecimal widthCm    = parseBigDecimal(getField(line, colMap, "width", "widthcm", "width_cm", "chieurong"));
+        BigDecimal heightCm   = parseBigDecimal(getField(line, colMap, "height", "heightcm", "height_cm", "chieucao"));
         BigDecimal weightKg   = parseBigDecimal(getField(line, colMap, "weight", "weightkg", "weight_kg", "khoiluong", "trongluong"));
         String handlingClass  = getField(line, colMap, "handlingclass", "handling_class", "loaihang");
         String destination    = getField(line, colMap, "destination", "dest", "dich", "diemden", "address", "stop");
 
-        return new PackageImportRow(rowIndex, packageCode, lengthMm, widthMm, heightMm, weightKg, handlingClass, destination);
+        return new PackageImportRow(rowIndex, packageCode, lengthCm, widthCm, heightCm, weightKg, handlingClass, destination);
     }
 
     private PackageImportRow buildExcelRow(int rowIndex, Row row, Map<String, Integer> colMap) {
         String packageCode    = getExcelField(row, colMap, "packagecode", "package_code", "code", "makien");
-        Integer lengthMm      = parseInteger(getExcelField(row, colMap, "length", "lengthmm", "length_mm", "chieudai"));
-        Integer widthMm       = parseInteger(getExcelField(row, colMap, "width", "widthmm", "width_mm", "chieurong"));
-        Integer heightMm      = parseInteger(getExcelField(row, colMap, "height", "heightmm", "height_mm", "chieucao"));
+        BigDecimal lengthCm   = parseBigDecimal(getExcelField(row, colMap, "length", "lengthcm", "length_cm", "chieudai"));
+        BigDecimal widthCm    = parseBigDecimal(getExcelField(row, colMap, "width", "widthcm", "width_cm", "chieurong"));
+        BigDecimal heightCm   = parseBigDecimal(getExcelField(row, colMap, "height", "heightcm", "height_cm", "chieucao"));
         BigDecimal weightKg   = parseBigDecimal(getExcelField(row, colMap, "weight", "weightkg", "weight_kg", "khoiluong", "trongluong"));
         String handlingClass  = getExcelField(row, colMap, "handlingclass", "handling_class", "loaihang");
         String destination    = getExcelField(row, colMap, "destination", "dest", "dich", "diemden", "address", "stop");
 
-        return new PackageImportRow(rowIndex, packageCode, lengthMm, widthMm, heightMm, weightKg, handlingClass, destination);
+        return new PackageImportRow(rowIndex, packageCode, lengthCm, widthCm, heightCm, weightKg, handlingClass, destination);
     }
 
     // -------------------------------------------------------------------------
@@ -343,6 +343,7 @@ public class CsvExcelParserServiceImpl implements CsvExcelParserService {
         if (str == null) return "";
         return str.trim()
                 .toLowerCase()
+                .replaceAll("\\([^)]*\\)", "")
                 .replaceAll("[_\\-\\s]", "");
     }
 }

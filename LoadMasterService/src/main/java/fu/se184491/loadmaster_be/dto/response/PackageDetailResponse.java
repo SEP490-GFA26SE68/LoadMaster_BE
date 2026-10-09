@@ -18,5 +18,13 @@ public record PackageDetailResponse(
         HandlingClass handlingClass,
         BigDecimal actualWeightKg,
         PackageStatus status,
-        Long orderId
-) {}
+        Long orderId,
+        TripRef trip,
+        StopRef stop
+) {
+    /** Trip currently holding the package. {@code name} is the trip code. */
+    public record TripRef(Long id, String name) {}
+
+    /** Delivery stop of the package. {@code number} is the 1-based stop sequence. */
+    public record StopRef(Integer number, String name) {}
+}

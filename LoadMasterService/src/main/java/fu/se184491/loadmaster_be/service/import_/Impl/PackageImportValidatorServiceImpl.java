@@ -57,18 +57,18 @@ public class PackageImportValidatorServiceImpl implements PackageImportValidator
             boolean hasError = duplicateRowIndices.contains(row.rowIndex());
 
             // Validate dimensions: length, width, height > 0
-            if (row.lengthMm() == null || row.lengthMm() <= 0) {
-                errors.add(new RowError(row.rowIndex(), "lengthMm", ErrorCode.IMPORT_INVALID_LENGTH));
+            if (row.lengthCm() == null || row.lengthCm().compareTo(BigDecimal.ZERO) <= 0) {
+                errors.add(new RowError(row.rowIndex(), "lengthCm", ErrorCode.IMPORT_INVALID_LENGTH));
                 hasError = true;
             }
 
-            if (row.widthMm() == null || row.widthMm() <= 0) {
-                errors.add(new RowError(row.rowIndex(), "widthMm", ErrorCode.IMPORT_INVALID_WIDTH));
+            if (row.widthCm() == null || row.widthCm().compareTo(BigDecimal.ZERO) <= 0) {
+                errors.add(new RowError(row.rowIndex(), "widthCm", ErrorCode.IMPORT_INVALID_WIDTH));
                 hasError = true;
             }
 
-            if (row.heightMm() == null || row.heightMm() <= 0) {
-                errors.add(new RowError(row.rowIndex(), "heightMm", ErrorCode.IMPORT_INVALID_HEIGHT));
+            if (row.heightCm() == null || row.heightCm().compareTo(BigDecimal.ZERO) <= 0) {
+                errors.add(new RowError(row.rowIndex(), "heightCm", ErrorCode.IMPORT_INVALID_HEIGHT));
                 hasError = true;
             }
 
