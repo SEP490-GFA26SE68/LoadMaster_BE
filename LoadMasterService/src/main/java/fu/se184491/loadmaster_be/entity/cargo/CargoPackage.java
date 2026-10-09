@@ -38,8 +38,16 @@ public class CargoPackage {
     private HandlingClass handlingClass = HandlingClass.STANDARD;
 
     @Positive
+    @Column(name = "actual_length")
+    private Integer actualLength;
+
+    @Positive
     @Column(name = "actual_weight_kg", precision = 10, scale = 2)
     private BigDecimal actualWeightKg;
+
+    @Builder.Default
+    @Column(name = "is_pinned", nullable = false)
+    private Boolean isPinned = false;
 
     @Enumerated(EnumType.STRING) @Column(name = "status")
     private PackageStatus status;
@@ -51,6 +59,9 @@ public class CargoPackage {
         }
         if (this.handlingClass == null) {
             this.handlingClass = HandlingClass.STANDARD;
+        }
+        if (this.isPinned == null) {
+            this.isPinned = false;
         }
     }
 }
