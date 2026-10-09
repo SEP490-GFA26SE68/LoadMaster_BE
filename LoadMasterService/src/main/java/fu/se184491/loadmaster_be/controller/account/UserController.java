@@ -51,6 +51,7 @@ public class UserController {
                         )
                 );
     }
+
     @PreAuthorize("hasAuthority('USERS_READ')")
     @GetMapping
     public PageResponse<UserListItemResponse> getUsers(

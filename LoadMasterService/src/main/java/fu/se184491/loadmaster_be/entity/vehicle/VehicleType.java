@@ -8,6 +8,8 @@ import jakarta.validation.constraints.Positive;
 import lombok.*;
 
 import java.math.BigDecimal;
+import java.util.ArrayList;
+import java.util.List;
 
 @Entity
 @Table(name = "vehicle_types")
@@ -48,5 +50,28 @@ public class VehicleType {
     @Builder.Default
     @Column(name = "hazardous_capable", nullable = false)
     private Boolean hazardousCapable = false;
+
+    @OneToMany(
+            mappedBy = "vehicleType",
+            cascade = CascadeType.ALL,
+            orphanRemoval = true
+    )
+    @Builder.Default
+    private List<VehicleTypeObstacle> obstacles =
+            new ArrayList<>();
+
+    public void addObstacle(
+            VehicleTypeObstacle obstacle
+    ) {
+        obstacles.add(obstacle);
+        obstacle.setVehicleType(this);
+    }
+
+    public void removeObstacle(
+            VehicleTypeObstacle obstacle
+    ) {
+        obstacles.remove(obstacle);
+        obstacle.setVehicleType(null);
+    }
 
 }

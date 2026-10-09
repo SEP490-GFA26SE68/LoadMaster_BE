@@ -1,5 +1,8 @@
 package fu.se184491.loadmaster_be.controller.vehicle;
 
+import fu.se184491.loadmaster_be.dto.ApiResponse;
+import fu.se184491.loadmaster_be.dto.PageResponse;
+import fu.se184491.loadmaster_be.dto.request.vehicle.CreateVehicleTypeRequest;
 import fu.se184491.loadmaster_be.dto.request.vehicle.VehicleTypeRequest;
 import fu.se184491.loadmaster_be.dto.response.vehicle.VehicleTypeResponse;
 import fu.se184491.loadmaster_be.service.vehicle.VehicleTypeService;
@@ -25,39 +28,41 @@ public class VehicleTypeController {
     }
 
     @PostMapping
-    @PreAuthorize("hasAuthority('VEHICLE_TYPE_MANAGE')")
-    public ResponseEntity<VehicleTypeResponse> createVehicleType(@RequestBody @Valid VehicleTypeRequest request) {
-        VehicleTypeResponse response = vehicleTypeService.createVehicleType(getCurrentCompanyId(), request);
-        return new ResponseEntity<>(response, HttpStatus.CREATED);
-    }
+    @PreAuthorize("hasAuthority('VEHICLE_TYPES_CREATE')")
+    public ResponseEntity<ApiResponse<VehicleTypeResponse>> createVehicleType(
+            @Valid
+            @RequestBody
+            CreateVehicleTypeRequest request
+    ) {
+        VehicleTypeResponse response =
+                vehicleTypeService.createVehicleType(request);
 
-    @PutMapping("/{id}")
-    @PreAuthorize("hasAuthority('VEHICLE_TYPE_MANAGE')")
-    public ResponseEntity<VehicleTypeResponse> updateVehicleType(
-            @PathVariable Long id, 
-            @RequestBody @Valid VehicleTypeRequest request) {
-        VehicleTypeResponse response = vehicleTypeService.updateVehicleType(getCurrentCompanyId(), id, request);
-        return ResponseEntity.ok(response);
-    }
-
-    @GetMapping("/{id}")
-    @PreAuthorize("hasAuthority('VEHICLE_TYPE_MANAGE')")
-    public ResponseEntity<VehicleTypeResponse> getVehicleTypeById(@PathVariable Long id) {
-        VehicleTypeResponse response = vehicleTypeService.getVehicleTypeById(getCurrentCompanyId(), id);
-        return ResponseEntity.ok(response);
+        return ResponseEntity
+                .status(HttpStatus.CREATED)
+                .body(
+                        ApiResponse.success(
+                                "Vehicle type created successfully",
+                                response
+                        )
+                );
     }
 
     @GetMapping
-    @PreAuthorize("hasAuthority('VEHICLE_TYPE_MANAGE')")
-    public ResponseEntity<Page<VehicleTypeResponse>> getAllVehicleTypes(Pageable pageable) {
-        Page<VehicleTypeResponse> responses = vehicleTypeService.getAllVehicleTypes(getCurrentCompanyId(), pageable);
-        return ResponseEntity.ok(responses);
-    }
+    @PreAuthorize("hasAuthority('VEHICLE_TYPES_READ')")
+    public PageResponse<VehicleTypeResponse> getVehicleTypes(
+            @RequestParam(defaultValue = "0")
+            int page,
 
-    @DeleteMapping("/{id}")
-    @PreAuthorize("hasAuthority('VEHICLE_TYPE_MANAGE')")
-    public ResponseEntity<Void> deleteVehicleType(@PathVariable Long id) {
-        vehicleTypeService.deleteVehicleType(getCurrentCompanyId(), id);
-        return ResponseEntity.noContent().build();
+            @RequestParam(defaultValue = "20")
+            int size,
+
+            @RequestParam(required = false)
+            String search
+    ) {
+        return vehicleTypeService.getVehicleTypes(
+                page,
+                size,
+                search
+        );
     }
 }

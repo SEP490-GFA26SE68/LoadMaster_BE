@@ -1,25 +1,21 @@
 package fu.se184491.loadmaster_be.dto.response.vehicle;
 
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.Data;
-import lombok.NoArgsConstructor;
+import fu.se184491.loadmaster_be.dto.response.vehicle.VehicleTypeObstacleResponse;
 
 import java.math.BigDecimal;
+import java.util.List;
 
-@Data
-@NoArgsConstructor
-@AllArgsConstructor
-@Builder
-public class VehicleTypeResponse {
-    private Long id;
-    private String name;
-    private Integer innerLength;
-    private Integer innerWidth;
-    private Integer innerHeight;
-    private BigDecimal maxPayloadKg;
-    private Long companyId;
-    private BigDecimal frontAxleLimitKg;
-    private BigDecimal rearAxleLimitKg;
-    private BigDecimal maxCogOffsetRatio;
+public record VehicleTypeResponse(
+        Long id,
+        String name,
+        Integer innerLength,
+        Integer innerWidth,
+        Integer innerHeight,
+        BigDecimal maxPayloadKg,
+        BigDecimal frontAxleLimitKg,
+        BigDecimal rearAxleLimitKg,
+        BigDecimal maxCogOffsetRatio,
+        Boolean hazardousCapable,
+        List<VehicleTypeObstacleResponse> obstacles
+) {
 }

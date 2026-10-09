@@ -28,33 +28,5 @@ public class TripPlanningController {
     private final TripPlanningService tripPlanningService;
     private final CurrentUserService currentUserService;
 
-    @PostMapping
-    @ResponseStatus(HttpStatus.CREATED)
-    public TripDetailResponse createTrip(@Valid @RequestBody CreateTripRequest request) {
-        return tripPlanningService.createTrip(currentUserService.getCurrentCompanyId(), request);
-    }
 
-    @PostMapping("/{id}/packages")
-    public TripDetailResponse addPackages(
-            @PathVariable Long id,
-            @Valid @RequestBody AddPackagesToTripRequest request
-    ) {
-        return tripPlanningService.addPackages(currentUserService.getCurrentCompanyId(), id, request);
-    }
-
-    @DeleteMapping("/{id}/packages/{packageId}")
-    @ResponseStatus(HttpStatus.NO_CONTENT)
-    public void removePackage(@PathVariable Long id, @PathVariable Long packageId) {
-        tripPlanningService.removePackage(currentUserService.getCurrentCompanyId(), id, packageId);
-    }
-
-    @PostMapping("/{id}/optimize-route")
-    public RouteOptimizationResult optimizeRoute(@PathVariable Long id) {
-        return tripPlanningService.optimizeRoute(currentUserService.getCurrentCompanyId(), id);
-    }
-
-    @GetMapping("/{id}/eta")
-    public RouteOptimizationResult refreshEta(@PathVariable Long id) {
-        return tripPlanningService.refreshEta(currentUserService.getCurrentCompanyId(), id);
-    }
 }

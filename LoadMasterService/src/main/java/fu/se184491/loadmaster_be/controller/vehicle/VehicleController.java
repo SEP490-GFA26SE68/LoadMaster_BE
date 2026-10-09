@@ -1,7 +1,9 @@
 package fu.se184491.loadmaster_be.controller.vehicle;
 
+import fu.se184491.loadmaster_be.dto.ApiResponse;
+import fu.se184491.loadmaster_be.dto.PageResponse;
 import fu.se184491.loadmaster_be.dto.request.vehicle.AssignDriverRequest;
-import fu.se184491.loadmaster_be.dto.request.vehicle.VehicleRequest;
+import fu.se184491.loadmaster_be.dto.request.vehicle.CreateVehicleRequest;
 import fu.se184491.loadmaster_be.dto.response.vehicle.VehicleResponse;
 import fu.se184491.loadmaster_be.service.vehicle.VehicleService;
 import jakarta.validation.Valid;
@@ -26,46 +28,45 @@ public class VehicleController {
     }
 
     @PostMapping
-    @PreAuthorize("hasAnyAuthority('VEHICLE_MANAGE', 'DISPATCHER')")
-    public ResponseEntity<VehicleResponse> createVehicle(@Valid @RequestBody VehicleRequest request) {
-        return new ResponseEntity<>(vehicleService.createVehicle(getCurrentCompanyId(), request), HttpStatus.CREATED);
-    }
+    @PreAuthorize("hasAuthority('VEHICLES_CREATE')")
+    public ResponseEntity<ApiResponse<VehicleResponse>> createVehicle(
+            @Valid
+            @RequestBody
+            CreateVehicleRequest request
+    ) {
+        VehicleResponse response =
+                vehicleService.createVehicle(request);
 
-    @PutMapping("/{id}")
-    @PreAuthorize("hasAuthority('VEHICLE_MANAGE')")
-    public ResponseEntity<VehicleResponse> updateVehicle(
-            @PathVariable Long id,
-            @Valid @RequestBody VehicleRequest request) {
-        return ResponseEntity.ok(vehicleService.updateVehicle(getCurrentCompanyId(), id, request));
+        return ResponseEntity
+                .status(HttpStatus.CREATED)
+                .body(
+                        ApiResponse.success(
+                                "Vehicle type created successfully",
+                                response
+                        )
+                );
     }
-
-    @GetMapping("/{id}")
-    @PreAuthorize("hasAuthority('VEHICLE_MANAGE')")
-    public ResponseEntity<VehicleResponse> getVehicleById(@PathVariable Long id) {
-        return ResponseEntity.ok(vehicleService.getVehicleById(getCurrentCompanyId(), id));
-    }
-
     @GetMapping
-    @PreAuthorize("hasAuthority('VEHICLE_MANAGE')")
-    public ResponseEntity<Page<VehicleResponse>> getAllVehicles(
-            @RequestParam(required = false) Long vehicleTypeId,
-            @RequestParam(required = false) Long driverUserId,
-            Pageable pageable) {
-        return ResponseEntity.ok(vehicleService.getAllVehicles(getCurrentCompanyId(), vehicleTypeId, driverUserId, pageable));
+    @PreAuthorize("hasAuthority('VEHICLES_READ')")
+    public PageResponse<VehicleResponse> getVehicles(
+            @RequestParam(defaultValue = "0")
+            int page,
+
+            @RequestParam(defaultValue = "20")
+            int size,
+
+            @RequestParam(required = false)
+            String search,
+
+            @RequestParam(required = false)
+            Long vehicleTypeId
+    ) {
+        return vehicleService.getVehicles(
+                page,
+                size,
+                search,
+                vehicleTypeId
+        );
     }
 
-    @DeleteMapping("/{id}")
-    @PreAuthorize("hasAuthority('VEHICLE_MANAGE')")
-    public ResponseEntity<Void> deleteVehicle(@PathVariable Long id) {
-        vehicleService.deleteVehicle(getCurrentCompanyId(), id);
-        return ResponseEntity.noContent().build();
-    }
-
-    @PutMapping("/{id}/driver")
-    @PreAuthorize("hasAuthority('VEHICLE_MANAGE')")
-    public ResponseEntity<VehicleResponse> assignDriver(
-            @PathVariable Long id,
-            @Valid @RequestBody AssignDriverRequest request) {
-        return ResponseEntity.ok(vehicleService.assignDriver(getCurrentCompanyId(), id, request.getDriverUserId()));
-    }
 }

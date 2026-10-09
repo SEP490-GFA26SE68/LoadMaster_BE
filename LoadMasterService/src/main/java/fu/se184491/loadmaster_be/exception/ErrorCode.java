@@ -36,6 +36,7 @@ public enum ErrorCode {
     TAX_CODE_ALREADY_EXISTS("Mã số thuế đã tồn tại trong hệ thống", HttpStatus.CONFLICT),
     ROLE_NOT_FOUND("Không tìm thấy vai trò người dùng", HttpStatus.NOT_FOUND),
     EMAIL_ALREADY_EXISTS("Email đã được sử dụng", HttpStatus.CONFLICT),
+    USER_IS_NOT_DRIVER("Người dùng hiện tại không phải là tài xế", HttpStatus.BAD_REQUEST),
 
     USER_PROFILE_NOT_FOUND("Không tìm thấy thông tin hồ sơ người dùng", HttpStatus.NOT_FOUND),
 
@@ -57,6 +58,7 @@ public enum ErrorCode {
     DELIVERY_REQUIREMENT_NOT_PENDING("Chỉ có thể xóa nhu cầu giao hàng đang chờ xử lý", HttpStatus.BAD_REQUEST),
     INVALID_DELIVERY_REQUIREMENT_TRANSITION("Chuyển trạng thái nhu cầu giao hàng không hợp lệ", HttpStatus.BAD_REQUEST),
     CARGO_SEGREGATION_CONFLICT("Kiện hàng xung đột quy tắc phân tách hàng hóa", HttpStatus.CONFLICT),
+    LICENSE_PLATE_ALREADY_EXISTS("Biển số phương tiện đã tồn tại trong hệ thống", HttpStatus.CONFLICT),
 
 
     // -------------------------------------------------------------------------
@@ -118,6 +120,7 @@ public enum ErrorCode {
     DUPLICATE_UNLOAD("Kiện hàng này đã được dỡ trước đó", HttpStatus.CONFLICT),
     WRONG_DELIVERY_STOP("Kiện hàng không thuộc điểm dừng hiện tại", HttpStatus.BAD_REQUEST),
     INCOMPLETE_STOP_UNLOAD("Điểm dừng chưa hoàn tất dỡ hàng", HttpStatus.BAD_REQUEST),
+    DRIVER_NOT_IN_COMPANY("Người dùng hiện tại không thuộc công ty của chuyến đi", HttpStatus.FORBIDDEN),
 
     // -------------------------------------------------------------------------
     // Subscription & Payment errors (Sprint 8)

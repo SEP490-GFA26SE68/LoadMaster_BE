@@ -56,31 +56,7 @@ public class DriverServiceImpl implements DriverService {
     private final UserRepository userRepository;
     private final AuditLogRepository auditLogRepository;
 
-    @Override
-    @Transactional(readOnly = true)
-    public List<DriverTripResponse> getDriverTrips(Long driverId) {
-        List<Trip> trips = (driverId != null)
-                ? tripRepository.findByVehicleDriverIdAndStatus(driverId, TripStatus.IN_TRANSIT)
-                : tripRepository.findByStatus(TripStatus.IN_TRANSIT);
 
-        List<DriverTripResponse> responses = new ArrayList<>();
-        for (Trip trip : trips) {
-            int stopCount = (int) deliveryStopRepository.countByTripId(trip.getId());
-            String licensePlate = (trip.getVehicle() != null) ? trip.getVehicle().getLicensePlate() : null;
-
-            responses.add(DriverTripResponse.builder()
-                    .tripId(trip.getId())
-                    .tripCode(trip.getTripCode())
-                    .vehicleLicensePlate(licensePlate)
-                    .stopCount(stopCount)
-                    .departureTime(trip.getDepartureTime())
-                    .status(trip.getStatus() != null ? trip.getStatus().name() : null)
-                    .build());
-        }
-
-        log.info("Found {} trips ready for delivery for driverId {}", responses.size(), driverId);
-        return responses;
-    }
 
     @Override
     @Transactional(readOnly = true)

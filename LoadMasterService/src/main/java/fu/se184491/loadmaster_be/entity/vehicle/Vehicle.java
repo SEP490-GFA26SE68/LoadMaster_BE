@@ -17,14 +17,14 @@ public class Vehicle {
     @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    @Column(name = "name", length = 150, nullable = false)
+    private String name;
+
     @ManyToOne(fetch = FetchType.LAZY) @JoinColumn(name = "company_id")
     private Company company;
 
     @ManyToOne(fetch = FetchType.LAZY) @JoinColumn(name = "vehicle_type_id")
     private VehicleType vehicleType;
-
-    @OneToOne(fetch = FetchType.LAZY) @JoinColumn(name = "driver_user_id", unique = true)
-    private User driver;
 
     @Column(name = "license_plate", length = 50, unique = true, nullable = false)
     private String licensePlate;

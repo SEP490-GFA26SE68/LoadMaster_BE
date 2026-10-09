@@ -1,18 +1,29 @@
 package fu.se184491.loadmaster_be.service.vehicle.Impl;
 
+import fu.se184491.loadmaster_be.dto.PageResponse;
+import fu.se184491.loadmaster_be.dto.request.vehicle.CreateVehicleTypeObstacleRequest;
+import fu.se184491.loadmaster_be.dto.request.vehicle.CreateVehicleTypeRequest;
 import fu.se184491.loadmaster_be.dto.request.vehicle.VehicleTypeRequest;
+import fu.se184491.loadmaster_be.dto.response.vehicle.VehicleTypeObstacleResponse;
 import fu.se184491.loadmaster_be.dto.response.vehicle.VehicleTypeResponse;
+import fu.se184491.loadmaster_be.entity.account.User;
 import fu.se184491.loadmaster_be.entity.company.Company;
 import fu.se184491.loadmaster_be.entity.vehicle.VehicleType;
+import fu.se184491.loadmaster_be.entity.vehicle.VehicleTypeObstacle;
 import fu.se184491.loadmaster_be.exception.AppException;
 import fu.se184491.loadmaster_be.exception.ErrorCode;
+import fu.se184491.loadmaster_be.helpers.CurrentUserService;
 import fu.se184491.loadmaster_be.repository.vehicle.VehicleTypeRepository;
 import fu.se184491.loadmaster_be.service.vehicle.VehicleTypeService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+
+import java.math.BigDecimal;
 
 @Service
 @RequiredArgsConstructor
@@ -22,85 +33,92 @@ public class VehicleTypeServiceImpl implements VehicleTypeService {
     // We would need CompanyRepository here to get company reference, simulating with EntityManager or proxy
     // Assuming companyId is valid from the context, we can use a proxy reference to avoid DB hit for company lookup
     private final jakarta.persistence.EntityManager entityManager;
+    private final CurrentUserService currentUserService;
 
-    private VehicleTypeResponse mapToResponse(VehicleType entity) {
-        return VehicleTypeResponse.builder()
-                .id(entity.getId())
-                .name(entity.getName())
-                .innerLength(entity.getInnerLength())
-                .innerWidth(entity.getInnerWidth())
-                .innerHeight(entity.getInnerHeight())
-                .maxPayloadKg(entity.getMaxPayloadKg())
-                .companyId(entity.getCompany() != null ? entity.getCompany().getId() : null)
-                .frontAxleLimitKg(entity.getFrontAxleLimitKg())
-                .rearAxleLimitKg(entity.getRearAxleLimitKg())
-                .maxCogOffsetRatio(entity.getMaxCogOffsetRatio())
-                .build();
-    }
 
-    @Override
     @Transactional
-    public VehicleTypeResponse createVehicleType(Long companyId, VehicleTypeRequest request) {
-        Company companyProxy = entityManager.getReference(Company.class, companyId);
-        
-        VehicleType type = VehicleType.builder()
-                .company(companyProxy)
-                .name(request.getName())
-                .innerLength(request.getInnerLength())
-                .innerWidth(request.getInnerWidth())
-                .innerHeight(request.getInnerHeight())
-                .maxPayloadKg(request.getMaxPayloadKg())
-                .frontAxleLimitKg(request.getFrontAxleLimitKg())
-                .rearAxleLimitKg(request.getRearAxleLimitKg())
-                .maxCogOffsetRatio(request.getMaxCogOffsetRatio() != null ? request.getMaxCogOffsetRatio() : new java.math.BigDecimal("0.15"))
-                .build();
-                
-        type = vehicleTypeRepository.save(type);
-        return mapToResponse(type);
+    public VehicleTypeResponse createVehicleType(
+            CreateVehicleTypeRequest request
+    ) {
+        User currentUser =
+                currentUserService.getCurrentUser();
+
+        if (currentUser.getCompany() == null) {
+            throw new AppException(
+                    ErrorCode.COMPANY_REQUIRED
+            );
+        }
+
+        VehicleType vehicleType =
+                VehicleType.builder()
+                        .company(currentUser.getCompany())
+                        .name(request.name())
+                        .innerLength(request.innerLength())
+                        .innerWidth(request.innerWidth())
+                        .innerHeight(request.innerHeight())
+                        .maxPayloadKg(request.maxPayloadKg())
+                        .frontAxleLimitKg(
+                                request.frontAxleLimitKg()
+                        )
+                        .rearAxleLimitKg(
+                                request.rearAxleLimitKg()
+                        )
+                        .maxCogOffsetRatio(
+                                request.maxCogOffsetRatio() != null
+                                        ? request.maxCogOffsetRatio()
+                                        : new BigDecimal("0.15")
+                        )
+                        .hazardousCapable(
+                                Boolean.TRUE.equals(
+                                        request.hazardousCapable()
+                                )
+                        )
+                        .build();
+
+        if (request.obstacles() != null) {
+            for (
+                    CreateVehicleTypeObstacleRequest obstacleRequest
+                    : request.obstacles()
+            ) {
+                VehicleTypeObstacle obstacle =
+                        VehicleTypeObstacle.builder()
+                                .name(
+                                        obstacleRequest.name()
+                                )
+                                .type(
+                                        obstacleRequest.type()
+                                )
+                                .x(obstacleRequest.x())
+                                .y(obstacleRequest.y())
+                                .z(obstacleRequest.z())
+                                .length(
+                                        obstacleRequest.length()
+                                )
+                                .width(
+                                        obstacleRequest.width()
+                                )
+                                .height(
+                                        obstacleRequest.height()
+                                )
+                                .loadBearing(
+                                        Boolean.TRUE.equals(
+                                                obstacleRequest
+                                                        .loadBearing()
+                                        )
+                                )
+                                .build();
+
+                vehicleType.addObstacle(obstacle);
+            }
+        }
+
+        VehicleType savedVehicleType = vehicleTypeRepository.save(vehicleType);
+
+        return toResponse(savedVehicleType);
     }
 
-    @Override
-    @Transactional
-    public VehicleTypeResponse updateVehicleType(Long companyId, Long id, VehicleTypeRequest request) {
-        VehicleType type = vehicleTypeRepository.findById(id)
-                .orElseThrow(() -> new AppException(ErrorCode.VEHICLE_TYPE_NOT_FOUND));
-                
-        if (!type.getCompany().getId().equals(companyId)) {
-            throw new AppException(ErrorCode.UNAUTHORIZED);
-        }
-        
-        type.setName(request.getName());
-        type.setInnerLength(request.getInnerLength());
-        type.setInnerWidth(request.getInnerWidth());
-        type.setInnerHeight(request.getInnerHeight());
-        type.setMaxPayloadKg(request.getMaxPayloadKg());
-        type.setFrontAxleLimitKg(request.getFrontAxleLimitKg());
-        type.setRearAxleLimitKg(request.getRearAxleLimitKg());
-        if (request.getMaxCogOffsetRatio() != null) {
-            type.setMaxCogOffsetRatio(request.getMaxCogOffsetRatio());
-        }
-        
-        type = vehicleTypeRepository.save(type);
-        return mapToResponse(type);
-    }
 
-    @Override
-    public VehicleTypeResponse getVehicleTypeById(Long companyId, Long id) {
-        VehicleType type = vehicleTypeRepository.findById(id)
-                .orElseThrow(() -> new AppException(ErrorCode.VEHICLE_TYPE_NOT_FOUND));
-                
-        if (!type.getCompany().getId().equals(companyId)) {
-            throw new AppException(ErrorCode.UNAUTHORIZED);
-        }
-        
-        return mapToResponse(type);
-    }
 
-    @Override
-    public Page<VehicleTypeResponse> getAllVehicleTypes(Long companyId, Pageable pageable) {
-        return vehicleTypeRepository.findByCompanyId(companyId, pageable)
-                .map(this::mapToResponse);
-    }
 
     @Override
     @Transactional
@@ -113,5 +131,94 @@ public class VehicleTypeServiceImpl implements VehicleTypeService {
         }
         
         vehicleTypeRepository.delete(type);
+    }
+
+    @Transactional(readOnly = true)
+    public PageResponse<VehicleTypeResponse> getVehicleTypes(
+            int page,
+            int size,
+            String search
+    ) {
+        User currentUser =
+                currentUserService.getCurrentUser();
+
+        if (currentUser.getCompany() == null) {
+            throw new AppException(
+                    ErrorCode.COMPANY_REQUIRED
+            );
+        }
+
+        Long companyId =
+                currentUser.getCompany().getId();
+
+        Pageable pageable = PageRequest.of(
+                page,
+                size,
+                Sort.by(
+                        Sort.Direction.ASC,
+                        "name"
+                )
+        );
+
+        Page<VehicleType> result;
+
+        if (search != null && !search.isBlank()) {
+            result =
+                    vehicleTypeRepository
+                            .findAllByCompanyIdAndNameContainingIgnoreCase(
+                                    companyId,
+                                    search.trim(),
+                                    pageable
+                            );
+        } else {
+            result =
+                    vehicleTypeRepository
+                            .findAllByCompanyId(
+                                    companyId,
+                                    pageable
+                            );
+        }
+
+        Page<VehicleTypeResponse> response =
+                result.map(this::toResponse);
+
+        return PageResponse.of(
+                "Vehicle types retrieved successfully",
+                response
+        );
+    }
+
+    private VehicleTypeResponse toResponse(
+            VehicleType vehicleType
+    ) {
+        return new VehicleTypeResponse(
+                vehicleType.getId(),
+                vehicleType.getName(),
+                vehicleType.getInnerLength(),
+                vehicleType.getInnerWidth(),
+                vehicleType.getInnerHeight(),
+                vehicleType.getMaxPayloadKg(),
+                vehicleType.getFrontAxleLimitKg(),
+                vehicleType.getRearAxleLimitKg(),
+                vehicleType.getMaxCogOffsetRatio(),
+                vehicleType.getHazardousCapable(),
+                vehicleType.getObstacles()
+                        .stream()
+                        .map(obstacle ->
+                                new VehicleTypeObstacleResponse(
+                                        obstacle.getId(),
+                                        obstacle.getName(),
+                                        obstacle.getType(),
+                                        obstacle.getX(),
+                                        obstacle.getY(),
+                                        obstacle.getZ(),
+                                        obstacle.getLength(),
+                                        obstacle.getWidth(),
+                                        obstacle.getHeight(),
+                                        obstacle.getLoadBearing()
+                                )
+                        )
+                        .toList()
+        );
     }
 }

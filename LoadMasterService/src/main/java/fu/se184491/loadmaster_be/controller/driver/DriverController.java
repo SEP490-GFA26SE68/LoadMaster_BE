@@ -27,13 +27,7 @@ public class DriverController {
 
     private final DriverService driverService;
 
-    @GetMapping("/trips")
-    @Operation(summary = "Get driver trips", description = "Retrieve trips ready for delivery filtered by driver")
-    public ResponseEntity<ApiResponse<List<DriverTripResponse>>> getDriverTrips(
-            @RequestParam(value = "driverId", required = false) Long driverId) {
-        List<DriverTripResponse> trips = driverService.getDriverTrips(driverId);
-        return ResponseEntity.ok(ApiResponse.success("Lấy danh sách chuyến đi của tài xế thành công", trips));
-    }
+
 
     @GetMapping("/trips/{id}/current-stop")
     @Operation(summary = "Get current stop", description = "Retrieve current pending stop and recommended packages to unload in LIFO order")

@@ -11,17 +11,13 @@ import java.util.Optional;
 @Repository
 public interface TripRepository extends JpaRepository<Trip, Long> {
 
-    Optional<Trip> findByTripCode(String tripCode);
 
     List<Trip> findByCompanyId(Long companyId);
 
-    List<Trip> findByCompanyIdAndStatus(Long companyId, TripStatus status);
 
-    List<Trip> findByVehicleDriverIdAndStatus(Long driverId, TripStatus status);
 
     List<Trip> findByStatus(TripStatus status);
 
-    boolean existsByIdAndCompanyId(Long id, Long companyId);
 
     Optional<Trip> findByIdAndCompanyId(Long id, Long companyId);
 }
