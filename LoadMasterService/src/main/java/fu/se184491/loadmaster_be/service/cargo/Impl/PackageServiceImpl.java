@@ -11,6 +11,8 @@ import fu.se184491.loadmaster_be.repository.cargo.PackageRepository;
 import fu.se184491.loadmaster_be.repository.cargo.PackageTypeRepository;
 import fu.se184491.loadmaster_be.repository.order.OrderRepository;
 import fu.se184491.loadmaster_be.service.cargo.PackageService;
+import jakarta.persistence.criteria.Join;
+import jakarta.persistence.criteria.JoinType;
 import jakarta.persistence.criteria.Predicate;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
@@ -171,17 +173,29 @@ public class PackageServiceImpl implements PackageService {
         if (cargoPackage.getOrder() != null && !cargoPackage.getOrder().getCompany().getId().equals(companyId)) {
             throw new AppException(ErrorCode.UNAUTHORIZED);
         }
+        if (cargoPackage.getCompany() != null && !cargoPackage.getCompany().getId().equals(companyId)) {
+            throw new AppException(ErrorCode.UNAUTHORIZED);
+        }
 
         return mapToResponse(cargoPackage);
     }
 
     @Override
-    public Page<PackageResponse> getAllPackages(Long companyId, Long orderId, Long packageTypeId, Pageable pageable) {
+    public Page<PackageResponse> getAllPackages(Long companyId, Long orderId, Long packageTypeId, String packageCode, Pageable pageable) {
         Specification<CargoPackage> spec = (root, query, cb) -> {
             List<Predicate> predicates = new ArrayList<>();
-            predicates.add(cb.equal(root.get("order").get("company").get("id"), companyId));
+            // LEFT joins: imported packages have a company but no order.
+            Join<Object, Object> order = root.join("order", JoinType.LEFT);
+            Join<Object, Object> orderCompany = order.join("company", JoinType.LEFT);
+            Join<Object, Object> packageCompany = root.join("company", JoinType.LEFT);
+            predicates.add(cb.or(
+                    cb.equal(packageCompany.get("id"), companyId),
+                    cb.equal(orderCompany.get("id"), companyId)));
+            if (packageCode != null && !packageCode.isBlank()) {
+                predicates.add(cb.equal(cb.lower(root.get("packageCode")), packageCode.trim().toLowerCase()));
+            }
             if (orderId != null) {
-                predicates.add(cb.equal(root.get("order").get("id"), orderId));
+                predicates.add(cb.equal(order.get("id"), orderId));
             }
             if (packageTypeId != null) {
                 predicates.add(cb.equal(root.get("packageType").get("id"), packageTypeId));

@@ -7,10 +7,12 @@ import fu.se184491.loadmaster_be.dto.response.ImportConfirmResult;
 import fu.se184491.loadmaster_be.dto.response.ImportPreviewResult;
 import fu.se184491.loadmaster_be.entity.cargo.CargoPackage;
 import fu.se184491.loadmaster_be.entity.common.AuditLog;
+import fu.se184491.loadmaster_be.entity.company.Company;
 import fu.se184491.loadmaster_be.exception.AppException;
 import fu.se184491.loadmaster_be.exception.ErrorCode;
 import fu.se184491.loadmaster_be.repository.cargo.CargoPackageRepository;
 import fu.se184491.loadmaster_be.repository.common.AuditLogRepository;
+import fu.se184491.loadmaster_be.repository.company.CompanyRepository;
 import fu.se184491.loadmaster_be.service.import_.CsvExcelParserService;
 import fu.se184491.loadmaster_be.service.import_.PackageImportService;
 import fu.se184491.loadmaster_be.service.import_.PackageImportValidatorService;
@@ -21,6 +23,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -36,6 +40,7 @@ public class PackageImportServiceImpl implements PackageImportService {
     private final QrCodeService qrCodeService;
     private final CargoPackageRepository cargoPackageRepository;
     private final AuditLogRepository auditLogRepository;
+    private final CompanyRepository companyRepository;
 
     // -------------------------------------------------------------------------
     // preview — stateless, no DB writes
@@ -62,6 +67,7 @@ public class PackageImportServiceImpl implements PackageImportService {
         }
 
         List<Long> packageIds = new ArrayList<>();
+        Company company = companyRepository.getReferenceById(companyId);
 
         for (PackageImportRow row : preview.validRows()) {
             String qrToken = qrCodeService.generateQrToken();
@@ -79,6 +85,11 @@ public class PackageImportServiceImpl implements PackageImportService {
                     .packageCode(row.packageCode())
                     .qrToken(qrToken)
                     .handlingClass(handlingClass)
+                    .company(company)
+                    .destination(normalizeDestination(row.destination()))
+                    .actualLength(cmToMm(row.lengthCm()))
+                    .actualWidth(cmToMm(row.widthCm()))
+                    .actualHeight(cmToMm(row.heightCm()))
                     .actualWeightKg(row.weightKg())
                     .status(PackageStatus.PENDING)
                     .build();
@@ -105,5 +116,14 @@ public class PackageImportServiceImpl implements PackageImportService {
                 packageIds.size(), companyId, createdByUserId);
 
         return new ImportConfirmResult(packageIds.size(), packageIds);
+    }
+
+    private static String normalizeDestination(String destination) {
+        return destination == null || destination.isBlank() ? null : destination.trim();
+    }
+
+    /** Import files are in centimetres; packages store millimetres. */
+    private static Integer cmToMm(BigDecimal cm) {
+        return cm == null ? null : cm.multiply(BigDecimal.TEN).setScale(0, RoundingMode.HALF_UP).intValueExact();
     }
 }

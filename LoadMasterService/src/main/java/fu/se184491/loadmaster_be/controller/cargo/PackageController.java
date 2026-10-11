@@ -41,30 +41,31 @@ public class PackageController {
     }
 
     @PutMapping("/{id}")
-    @PreAuthorize("hasAnyAuthority('PACKAGE_MANAGE', 'DISPATCHER')")
+    @PreAuthorize("hasRole('DISPATCHER')")
     public PackageResponse updatePackage(@PathVariable Long id, @Valid @RequestBody PackageRequest request) {
         return packageService.updatePackage(getCurrentCompanyId(), id, request);
     }
 
     @GetMapping("/{id}")
-    @PreAuthorize("hasAnyAuthority('PACKAGE_MANAGE', 'DISPATCHER')")
+    @PreAuthorize("hasRole('DISPATCHER')")
     public PackageResponse getPackageById(@PathVariable Long id) {
         return packageService.getPackageById(getCurrentCompanyId(), id);
     }
 
     @DeleteMapping("/{id}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
-    @PreAuthorize("hasAnyAuthority('PACKAGE_MANAGE', 'DISPATCHER')")
+    @PreAuthorize("hasRole('DISPATCHER')")
     public void deletePackage(@PathVariable Long id) {
         packageService.deletePackage(getCurrentCompanyId(), id);
     }
 
     @GetMapping
-    @PreAuthorize("hasAnyAuthority('PACKAGE_MANAGE', 'DISPATCHER')")
+    @PreAuthorize("hasRole('DISPATCHER')")
     public Page<PackageResponse> getAllPackages(
             @RequestParam(required = false) Long orderId,
             @RequestParam(required = false) Long packageTypeId,
+            @RequestParam(required = false) String packageCode,
             Pageable pageable) {
-        return packageService.getAllPackages(getCurrentCompanyId(), orderId, packageTypeId, pageable);
+        return packageService.getAllPackages(getCurrentCompanyId(), orderId, packageTypeId, packageCode, pageable);
     }
 }

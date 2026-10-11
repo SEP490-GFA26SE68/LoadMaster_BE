@@ -21,7 +21,7 @@ public class PackageExportController {
      * Returns a PDF file with QR labels (4 per A4 page, 2×2 grid).
      */
     @PostMapping("/labels")
-    @PreAuthorize("hasAuthority('PACKAGE_MANAGE')")
+    @PreAuthorize("hasRole('DISPATCHER')")
     public ResponseEntity<byte[]> exportLabels(@RequestBody LabelExportRequest request) {
         byte[] pdf = pdfLabelExportService.generateLabelsPdf(request.packageIds());
         return ResponseEntity.ok()

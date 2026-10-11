@@ -141,7 +141,7 @@ public class PackageControllerTest {
     @WithMockUser(authorities = "PACKAGE_MANAGE")
     void getAllPackages_Success() throws Exception {
         Page<PackageResponse> page = new PageImpl<>(Collections.singletonList(response));
-        when(packageService.getAllPackages(eq(1L), any(), any(), any(Pageable.class))).thenReturn(page);
+        when(packageService.getAllPackages(eq(1L), any(), any(), any(), any(Pageable.class))).thenReturn(page);
 
         mockMvc.perform(get("/api/packages")
                         .param("orderId", "10")

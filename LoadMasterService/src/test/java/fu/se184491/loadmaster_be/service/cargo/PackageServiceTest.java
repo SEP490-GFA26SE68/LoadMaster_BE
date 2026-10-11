@@ -256,7 +256,7 @@ public class PackageServiceTest {
         Page<CargoPackage> page = new PageImpl<>(List.of(cargoPackage), pageable, 1);
         when(packageRepository.findAll(any(Specification.class), eq(pageable))).thenReturn(page);
 
-        Page<PackageResponse> result = packageService.getAllPackages(1L, 10L, 20L, pageable);
+        Page<PackageResponse> result = packageService.getAllPackages(1L, 10L, 20L, null, pageable);
 
         assertNotNull(result);
         assertEquals(1, result.getTotalElements());

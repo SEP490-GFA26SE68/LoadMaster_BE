@@ -44,6 +44,7 @@ public class PackageScanController {
                 .stop(deliveryStop != null
                         ? new PackageDetailResponse.StopRef(deliveryStop.getStopSequence(), deliveryStop.getStopName())
                         : null)
+                .destination(pkg.getDestination())
                 .build();
 
         return ResponseEntity.ok(response);
