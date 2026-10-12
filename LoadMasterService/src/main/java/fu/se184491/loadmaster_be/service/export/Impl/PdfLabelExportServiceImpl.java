@@ -13,6 +13,7 @@ import fu.se184491.loadmaster_be.entity.trip.DeliveryStop;
 import fu.se184491.loadmaster_be.exception.AppException;
 import fu.se184491.loadmaster_be.exception.ErrorCode;
 import fu.se184491.loadmaster_be.repository.cargo.CargoPackageRepository;
+import fu.se184491.loadmaster_be.service.cargo.PackageOwnershipService;
 import fu.se184491.loadmaster_be.service.export.PdfLabelExportService;
 import fu.se184491.loadmaster_be.service.qr.QrCodeService;
 import lombok.RequiredArgsConstructor;
@@ -44,17 +45,21 @@ public class PdfLabelExportServiceImpl implements PdfLabelExportService {
 
     private final CargoPackageRepository cargoPackageRepository;
     private final QrCodeService qrCodeService;
+    private final PackageOwnershipService packageOwnershipService;
 
     private volatile BaseFont regularBaseFont;
     private volatile BaseFont boldBaseFont;
 
     @Override
-    public byte[] generateLabelsPdf(List<Long> packageIds) {
+    public byte[] generateLabelsPdf(List<Long> packageIds, Long companyId) {
         if (packageIds.size() > MAX_PACKAGES) {
             throw new AppException(ErrorCode.EXPORT_TOO_MANY_PACKAGES);
         }
 
         List<CargoPackage> packages = cargoPackageRepository.findAllById(packageIds);
+        if (packages.stream().anyMatch(pkg -> !packageOwnershipService.belongsToCompany(pkg, companyId))) {
+            throw new AppException(ErrorCode.PACKAGE_NOT_FOUND);
+        }
 
         try (ByteArrayOutputStream out = new ByteArrayOutputStream()) {
             Document document = new Document(PageSize.A4, 20, 20, 20, 20);
