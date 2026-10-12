@@ -47,18 +47,19 @@ public class RolePermissionMapping {
                         Permission.USERS_CREATE,
                         Permission.USERS_UPDATE,
                         Permission.USERS_LOCK,
-                        Permission.AUDIT_READ
+                        Permission.AUDIT_READ,
+                        Permission.TRIP_MANAGE
                 )
         );
 
         map.put(
                 UserRole.MANAGER,
-                Set.of()
+                Set.of(Permission.TRIP_MANAGE)
         );
 
         map.put(
                 UserRole.DISPATCHER,
-                Set.of()
+                Set.of(Permission.TRIP_MANAGE)
         );
 
         map.put(

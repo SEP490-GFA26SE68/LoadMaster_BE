@@ -24,4 +24,6 @@ public interface TripRepository extends JpaRepository<Trip, Long> {
     boolean existsByIdAndCompanyId(Long id, Long companyId);
 
     Optional<Trip> findByIdAndCompanyId(Long id, Long companyId);
+
+    Optional<Trip> findByTripCodeAndCompanyId(String tripCode, Long companyId);
 }
