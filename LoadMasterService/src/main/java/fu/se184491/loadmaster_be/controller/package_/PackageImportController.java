@@ -84,12 +84,12 @@ public class PackageImportController {
     // Package detail
     // -------------------------------------------------------------------------
 
-    @GetMapping("/{id}")
-    @PreAuthorize("hasAnyAuthority('ROLE_DISPATCHER', 'WAREHOUSE_WORKER')")
-    public ResponseEntity<PackageDetailResponse> getById(@PathVariable Long id) {
-        CargoPackage pkg = qrCodeService.findById(id);
-        return ResponseEntity.ok(toDetailResponse(pkg));
-    }
+//    @GetMapping("/{id}")
+//    @PreAuthorize("hasAnyAuthority('ROLE_DISPATCHER', 'WAREHOUSE_WORKER')")
+//    public ResponseEntity<PackageDetailResponse> getById(@PathVariable Long id) {
+//        CargoPackage pkg = qrCodeService.findById(id);
+//        return ResponseEntity.ok(toDetailResponse(pkg));
+//    }
 
     // -------------------------------------------------------------------------
     // Helpers
