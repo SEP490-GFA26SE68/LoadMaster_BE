@@ -1,6 +1,7 @@
 package fu.se184491.loadmaster_be.controller.package_;
 
 import fu.se184491.loadmaster_be.dto.request.LabelExportRequest;
+import fu.se184491.loadmaster_be.helpers.CurrentUserService;
 import fu.se184491.loadmaster_be.service.export.PdfLabelExportService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.MediaType;
@@ -14,6 +15,7 @@ import org.springframework.web.bind.annotation.*;
 public class PackageExportController {
 
     private final PdfLabelExportService pdfLabelExportService;
+    private final CurrentUserService currentUserService;
 
     /**
      * POST /api/packages/export/labels
@@ -23,7 +25,8 @@ public class PackageExportController {
     @PostMapping("/labels")
     @PreAuthorize("hasRole('DISPATCHER')")
     public ResponseEntity<byte[]> exportLabels(@RequestBody LabelExportRequest request) {
-        byte[] pdf = pdfLabelExportService.generateLabelsPdf(request.packageIds());
+        byte[] pdf = pdfLabelExportService.generateLabelsPdf(
+                request.packageIds(), currentUserService.getCurrentCompanyId());
         return ResponseEntity.ok()
                 .contentType(MediaType.APPLICATION_PDF)
                 .header("Content-Disposition", "attachment; filename=\"package-labels.pdf\"")

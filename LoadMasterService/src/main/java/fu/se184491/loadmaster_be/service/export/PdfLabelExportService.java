@@ -14,9 +14,11 @@ public interface PdfLabelExportService {
      * FRAGILE packages include an additional warning text.
      *
      * @param packageIds IDs of packages to include (max 200)
+     * @param companyId  company of the caller; every package must belong to it
      * @return PDF bytes
      * @throws fu.se184491.loadmaster_be.exception.AppException with
-     *         {@code ErrorCode.EXPORT_TOO_MANY_PACKAGES} if {@code packageIds.size() > 200}
+     *         {@code ErrorCode.EXPORT_TOO_MANY_PACKAGES} if {@code packageIds.size() > 200},
+     *         or {@code ErrorCode.PACKAGE_NOT_FOUND} if any package belongs to another company
      */
-    byte[] generateLabelsPdf(List<Long> packageIds);
+    byte[] generateLabelsPdf(List<Long> packageIds, Long companyId);
 }

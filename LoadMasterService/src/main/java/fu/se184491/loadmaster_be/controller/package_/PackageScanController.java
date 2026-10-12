@@ -1,10 +1,12 @@
 package fu.se184491.loadmaster_be.controller.package_;
 
 import fu.se184491.loadmaster_be.constant.cargo.HandlingClass;
+import fu.se184491.loadmaster_be.dto.ApiResponse;
 import fu.se184491.loadmaster_be.dto.response.PackageDetailResponse;
 import fu.se184491.loadmaster_be.entity.cargo.CargoPackage;
 import fu.se184491.loadmaster_be.entity.trip.DeliveryStop;
 import fu.se184491.loadmaster_be.entity.trip.Trip;
+import fu.se184491.loadmaster_be.helpers.CurrentUserService;
 import fu.se184491.loadmaster_be.service.qr.QrCodeService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -17,6 +19,7 @@ import org.springframework.web.bind.annotation.*;
 public class PackageScanController {
 
     private final QrCodeService qrCodeService;
+    private final CurrentUserService currentUserService;
     /**
      * Scan a package by QR token.
      * Accessible by DISPATCHER and WAREHOUSE_WORKER.
@@ -26,8 +29,8 @@ public class PackageScanController {
      */
     @GetMapping("/scan/{qrToken}")
     @PreAuthorize("hasAnyAuthority('ROLE_DISPATCHER', 'WAREHOUSE_WORKER')")
-    public ResponseEntity<PackageDetailResponse> scanPackage(@PathVariable String qrToken) {
-        CargoPackage pkg = qrCodeService.lookupByToken(qrToken);
+    public ResponseEntity<ApiResponse<PackageDetailResponse>> scanPackage(@PathVariable String qrToken) {
+        CargoPackage pkg = qrCodeService.lookupByToken(qrToken, currentUserService.getCurrentCompanyId());
 
         DeliveryStop deliveryStop = pkg.getOrder() != null ? pkg.getOrder().getDeliveryStop() : null;
         Trip trip = deliveryStop != null ? deliveryStop.getTrip() : null;
@@ -47,6 +50,6 @@ public class PackageScanController {
                 .destination(pkg.getDestination())
                 .build();
 
-        return ResponseEntity.ok(response);
+        return ResponseEntity.ok(ApiResponse.success("Quét mã QR thành công", response));
     }
 }
