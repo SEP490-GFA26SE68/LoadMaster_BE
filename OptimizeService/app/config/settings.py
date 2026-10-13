@@ -16,8 +16,9 @@ class Settings(BaseSettings):
     OPTIMIZATION_ENGINE_URL: Optional[str] = None
     OPTIMIZATION_ENGINE_TIMEOUT_SEC: int = 60
     LOADMASTER_SERVICE_URL: str = "http://localhost:8080"
+    REDIS_URL: str = "redis://localhost:6379"
 
-    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
+    model_config = SettingsConfigDict(env_file=[".env", ".envBe", "../../.envBe"], env_file_encoding="utf-8", extra="ignore")
 
 
 settings = Settings()

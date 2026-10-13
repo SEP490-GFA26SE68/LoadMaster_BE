@@ -1,5 +1,6 @@
 package fu.se184491.loadmaster_be.entity.cargo;
 
+import fu.se184491.loadmaster_be.entity.company.Company;
 import fu.se184491.loadmaster_be.entity.order.TransportOrder;
 import fu.se184491.loadmaster_be.constant.cargo.HandlingClass;
 import fu.se184491.loadmaster_be.constant.cargo.PackageStatus;
@@ -41,9 +42,30 @@ public class CargoPackage {
     @Column(name = "actual_length")
     private Integer actualLength;
 
+    /** Package width in millimetres (imported or measured). */
+    @Positive
+    @Column(name = "actual_width")
+    private Integer actualWidth;
+
+    /** Package height in millimetres (imported or measured). */
+    @Positive
+    @Column(name = "actual_height")
+    private Integer actualHeight;
+
     @Positive
     @Column(name = "actual_weight_kg", precision = 10, scale = 2)
     private BigDecimal actualWeightKg;
+
+    /**
+     * Owning company. Required for packages imported from file (they have no order);
+     * legacy packages fall back to {@code order.company}.
+     */
+    @ManyToOne(fetch = FetchType.LAZY) @JoinColumn(name = "company_id")
+    private Company company;
+
+    /** Free-text destination (address or code) as written in the import file. */
+    @Column(name = "destination", length = 255)
+    private String destination;
 
     @Builder.Default
     @Column(name = "is_pinned", nullable = false)

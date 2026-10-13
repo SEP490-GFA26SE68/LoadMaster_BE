@@ -1,22 +1,30 @@
 package fu.se184491.loadmaster_be.service.export.Impl;
 
 import com.itextpdf.text.*;
+import com.itextpdf.text.pdf.BaseFont;
 import com.itextpdf.text.pdf.PdfPCell;
 import com.itextpdf.text.pdf.PdfPTable;
 import com.itextpdf.text.pdf.PdfWriter;
 import fu.se184491.loadmaster_be.constant.cargo.HandlingClass;
 import fu.se184491.loadmaster_be.entity.cargo.CargoPackage;
+import fu.se184491.loadmaster_be.entity.cargo.PackageType;
+import fu.se184491.loadmaster_be.entity.company.Company;
+import fu.se184491.loadmaster_be.entity.trip.DeliveryStop;
 import fu.se184491.loadmaster_be.exception.AppException;
 import fu.se184491.loadmaster_be.exception.ErrorCode;
 import fu.se184491.loadmaster_be.repository.cargo.CargoPackageRepository;
+import fu.se184491.loadmaster_be.service.cargo.PackageOwnershipService;
 import fu.se184491.loadmaster_be.service.export.PdfLabelExportService;
 import fu.se184491.loadmaster_be.service.qr.QrCodeService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.core.io.ClassPathResource;
 import org.springframework.stereotype.Service;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
+import java.math.BigDecimal;
 import java.util.List;
 
 @Slf4j
@@ -28,19 +36,30 @@ public class PdfLabelExportServiceImpl implements PdfLabelExportService {
     /** A4 = 595 × 842 pt. 2 columns → each cell ~265pt wide. */
     private static final float LABEL_WIDTH_PT  = 265f;
     private static final float LABEL_HEIGHT_PT = 180f;
-    /** QR image size: 2cm ≈ 56.7pt */
-    private static final float QR_SIZE_PT = 56.7f;
+    /** QR image size: 3.5cm ≈ 99.2pt (2cm was too small for warehouse camera scanning). */
+    private static final float QR_SIZE_PT = 99.2f;
+
+    /** Unicode fonts bundled in src/main/resources/fonts (Noto Sans, SIL OFL 1.1). */
+    private static final String FONT_REGULAR_PATH = "fonts/NotoSans-Regular.ttf";
+    private static final String FONT_BOLD_PATH = "fonts/NotoSans-Bold.ttf";
 
     private final CargoPackageRepository cargoPackageRepository;
     private final QrCodeService qrCodeService;
+    private final PackageOwnershipService packageOwnershipService;
+
+    private volatile BaseFont regularBaseFont;
+    private volatile BaseFont boldBaseFont;
 
     @Override
-    public byte[] generateLabelsPdf(List<Long> packageIds) {
+    public byte[] generateLabelsPdf(List<Long> packageIds, Long companyId) {
         if (packageIds.size() > MAX_PACKAGES) {
             throw new AppException(ErrorCode.EXPORT_TOO_MANY_PACKAGES);
         }
 
         List<CargoPackage> packages = cargoPackageRepository.findAllById(packageIds);
+        if (packages.stream().anyMatch(pkg -> !packageOwnershipService.belongsToCompany(pkg, companyId))) {
+            throw new AppException(ErrorCode.PACKAGE_NOT_FOUND);
+        }
 
         try (ByteArrayOutputStream out = new ByteArrayOutputStream()) {
             Document document = new Document(PageSize.A4, 20, 20, 20, 20);
@@ -98,7 +117,7 @@ public class PdfLabelExportServiceImpl implements PdfLabelExportService {
             qrCell.addElement(qrImage);
         } catch (Exception e) {
             log.warn("Could not generate QR for package {}", pkg.getId());
-            qrCell.addElement(new Phrase("QR N/A", FontFactory.getFont(FontFactory.HELVETICA, 8)));
+            qrCell.addElement(new Phrase("QR N/A", new Font(regularBaseFont(), 8)));
         }
         inner.addCell(qrCell);
 
@@ -107,27 +126,37 @@ public class PdfLabelExportServiceImpl implements PdfLabelExportService {
         infoCell.setBorder(Rectangle.NO_BORDER);
         infoCell.setPaddingLeft(4);
 
-        Font bold   = FontFactory.getFont(FontFactory.HELVETICA_BOLD, 9);
-        Font normal = FontFactory.getFont(FontFactory.HELVETICA, 8);
-        Font warn   = FontFactory.getFont(FontFactory.HELVETICA_BOLD, 9, BaseColor.RED);
+        Font bold   = new Font(boldBaseFont(), 9);
+        Font normal = new Font(regularBaseFont(), 8);
+        Font warn   = new Font(boldBaseFont(), 9, Font.NORMAL, BaseColor.RED);
 
         infoCell.addElement(new Phrase(nvl(pkg.getPackageCode(), "-"), bold));
 
+        String companyName = resolveCompanyName(pkg);
+        if (companyName != null) {
+            infoCell.addElement(new Phrase("Công ty: " + companyName, normal));
+        }
+
         String hc = pkg.getHandlingClass() != null
                 ? pkg.getHandlingClass().name() : HandlingClass.STANDARD.name();
-        infoCell.addElement(new Phrase("Type: " + hc, normal));
+        infoCell.addElement(new Phrase("Loại: " + hc, normal));
 
         if (HandlingClass.FRAGILE.name().equals(hc)) {
-            infoCell.addElement(new Phrase("⚠ FRAGILE – Handle with care", warn));
+            infoCell.addElement(new Phrase("DỄ VỠ – Xử lý nhẹ tay", warn));
         }
 
         if (pkg.getActualWeightKg() != null) {
-            infoCell.addElement(new Phrase("Weight: " + pkg.getActualWeightKg() + " kg", normal));
+            infoCell.addElement(new Phrase("Khối lượng: " + pkg.getActualWeightKg() + " kg", normal));
         }
-        if (pkg.getOrder() != null && pkg.getOrder().getDeliveryStop() != null) {
-            infoCell.addElement(new Phrase(
-                    "Dest: " + pkg.getOrder().getDeliveryStop().toString(), normal));
+        String dimensions = formatDimensionsCm(pkg);
+        if (dimensions != null) {
+            infoCell.addElement(new Phrase("Kích thước: " + dimensions + " cm", normal));
         }
+        String destination = resolveDestination(pkg);
+        if (destination != null) {
+            infoCell.addElement(new Phrase("Điểm đến: " + destination, normal));
+        }
+
 
         inner.addCell(infoCell);
 
@@ -137,6 +166,73 @@ public class PdfLabelExportServiceImpl implements PdfLabelExportService {
         outerCell.setFixedHeight(LABEL_HEIGHT_PT);
         outerCell.setPadding(6);
         return outerCell;
+    }
+
+    private BaseFont regularBaseFont() throws DocumentException, IOException {
+        if (regularBaseFont == null) {
+            regularBaseFont = loadBaseFont(FONT_REGULAR_PATH);
+        }
+        return regularBaseFont;
+    }
+
+    private BaseFont boldBaseFont() throws DocumentException, IOException {
+        if (boldBaseFont == null) {
+            boldBaseFont = loadBaseFont(FONT_BOLD_PATH);
+        }
+        return boldBaseFont;
+    }
+
+    private static BaseFont loadBaseFont(String classpathLocation) throws DocumentException, IOException {
+        try (InputStream in = new ClassPathResource(classpathLocation).getInputStream()) {
+            byte[] bytes = in.readAllBytes();
+            return BaseFont.createFont(classpathLocation, BaseFont.IDENTITY_H, BaseFont.EMBEDDED, true, bytes, null);
+        }
+    }
+
+    /** Destination stored on the package (import); otherwise the order's delivery stop address/name; else null. */
+    private static String resolveDestination(CargoPackage pkg) {
+        if (pkg.getDestination() != null && !pkg.getDestination().isBlank()) {
+            return pkg.getDestination();
+        }
+        if (pkg.getOrder() != null && pkg.getOrder().getDeliveryStop() != null) {
+            DeliveryStop stop = pkg.getOrder().getDeliveryStop();
+            return nvl(stop.getAddress(), nvl(stop.getStopName(), null));
+        }
+        return null;
+    }
+
+    /** Company of the package itself; legacy packages (created via an order) fall back to the order's company. */
+    private static String resolveCompanyName(CargoPackage pkg) {
+        Company company = pkg.getCompany();
+        if (company == null && pkg.getOrder() != null) {
+            company = pkg.getOrder().getCompany();
+        }
+        return company != null && company.getCompanyName() != null && !company.getCompanyName().isBlank()
+                ? company.getCompanyName()
+                : null;
+    }
+
+    /**
+     * "L × W × H" in centimetres, or null when the size is not fully known. Package values are
+     * millimetres; each missing side falls back to the package type's catalogue size.
+     */
+    private static String formatDimensionsCm(CargoPackage pkg) {
+        PackageType type = pkg.getPackageType();
+        Integer length = firstNonNull(pkg.getActualLength(), type != null ? type.getLength() : null);
+        Integer width = firstNonNull(pkg.getActualWidth(), type != null ? type.getWidth() : null);
+        Integer height = firstNonNull(pkg.getActualHeight(), type != null ? type.getHeight() : null);
+        if (length == null || width == null || height == null) {
+            return null;
+        }
+        return mmToCm(length) + " × " + mmToCm(width) + " × " + mmToCm(height);
+    }
+
+    private static String mmToCm(int mm) {
+        return BigDecimal.valueOf(mm).divide(BigDecimal.TEN).stripTrailingZeros().toPlainString();
+    }
+
+    private static Integer firstNonNull(Integer first, Integer second) {
+        return first != null ? first : second;
     }
 
     private static String nvl(String s, String fallback) {

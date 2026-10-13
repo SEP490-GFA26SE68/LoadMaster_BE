@@ -27,14 +27,15 @@ public interface QrCodeService {
     byte[] generateQrPng(String qrToken);
 
     /**
-     * Looks up the CargoPackage entity by its qr_token.
+     * Looks up the CargoPackage entity by its qr_token, scoped to one company.
      *
-     * @param qrToken the token to search
+     * @param qrToken   the token to search
+     * @param companyId company of the caller; packages of other companies are treated as missing
      * @return the matching CargoPackage entity
      * @throws fu.se184491.loadmaster_be.exception.AppException with ErrorCode.PACKAGE_NOT_FOUND
-     *         if no package has this token
+     *         if no package of this company has this token
      */
-    CargoPackage lookupByToken(String qrToken);
+    CargoPackage lookupByToken(String qrToken, Long companyId);
 
     /**
      * Looks up a CargoPackage by its database ID.

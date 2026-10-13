@@ -90,7 +90,7 @@ class DeliveryRequirementApiIntegrationTest {
                 .company(company)
                 .email("manager@acme.test")
                 .fullName("Acme Manager")
-                .userRoleType(UserRole.MANAGER)
+                .userRoleType(UserRole.MANAGER) // TODO(role-naming): was COMPANY_MANAGER, not in UserRole enum; team to decide final name
                 .status(UserStatus.ACTIVE)
                 .build();
         entityManager.persist(manager);

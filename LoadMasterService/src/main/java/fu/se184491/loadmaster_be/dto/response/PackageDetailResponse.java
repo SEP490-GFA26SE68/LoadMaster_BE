@@ -20,7 +20,8 @@ public record PackageDetailResponse(
         PackageStatus status,
         Long orderId,
         TripRef trip,
-        StopRef stop
+        StopRef stop,
+        String destination
 ) {
     /** Trip currently holding the package. {@code name} is the trip code. */
     public record TripRef(Long id, String name) {}

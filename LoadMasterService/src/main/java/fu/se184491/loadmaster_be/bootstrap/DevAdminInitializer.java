@@ -46,6 +46,17 @@ public class DevAdminInitializer implements ApplicationRunner {
 
         // 1. Cả hai đều có
         if (dbUser != null && keycloakUserId != null) {
+            if (!keycloakUserId.equals(dbUser.getKeycloakId())) {
+                userRepository.delete(dbUser);
+                User admin = User.builder()
+                        .keycloakId(keycloakUserId)
+                        .email(adminEmail)
+                        .fullName(adminFullName)
+                        .status(UserStatus.ACTIVE)
+                        .userRoleType(UserRole.SYSTEM_ADMIN)
+                        .build();
+                userRepository.save(admin);
+            }
             return;
         }
 
@@ -65,11 +76,10 @@ public class DevAdminInitializer implements ApplicationRunner {
             return;
         }
 
-        // 3. DB có, Keycloak không có
+        // 3. DB có, Keycloak không có (xảy ra khi chuyển sang Keycloak server mới)
         if (dbUser != null) {
-            throw new IllegalStateException(
-                    "Admin exists in database but not in Keycloak"
-            );
+            userRepository.delete(dbUser);
+            dbUser = null;
         }
 
         // 4. Cả hai chưa có -> tạo mới
