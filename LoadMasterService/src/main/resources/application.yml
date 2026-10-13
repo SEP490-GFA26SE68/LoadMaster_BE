@@ -58,3 +58,9 @@ goong:
     base-url: https://rsapi.goong.io
     timeout-seconds: 10
 
+springdoc:
+  swagger-ui:
+    oauth:
+      client-id: loadmaster-web
+
+
