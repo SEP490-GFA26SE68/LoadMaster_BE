@@ -1,32 +1,57 @@
 package fu.se184491.loadmaster_be.entity.vehicle;
 
+import fu.se184491.loadmaster_be.constant.vehicle.VehicleStatus;
 import fu.se184491.loadmaster_be.entity.company.Company;
-import fu.se184491.loadmaster_be.entity.account.User;
-import fu.se184491.loadmaster_be.entity.vehicle.VehicleType;
-
-
 import jakarta.persistence.*;
 import lombok.*;
 
-import java.math.BigDecimal;
-
 @Entity
 @Table(name = "vehicles")
-@Getter @Setter @NoArgsConstructor @AllArgsConstructor @Builder
+@Getter
+@Setter
+@NoArgsConstructor
+@AllArgsConstructor
+@Builder
 public class Vehicle {
-    @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(name = "name", length = 150, nullable = false)
-    private String name;
-
-    @ManyToOne(fetch = FetchType.LAZY) @JoinColumn(name = "company_id")
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(
+            name = "company_id",
+            nullable = false
+    )
     private Company company;
 
-    @ManyToOne(fetch = FetchType.LAZY) @JoinColumn(name = "vehicle_type_id")
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(
+            name = "vehicle_type_id",
+            nullable = false
+    )
     private VehicleType vehicleType;
 
-    @Column(name = "license_plate", length = 50, unique = true, nullable = false)
+    @Column(
+            name = "name",
+            length = 150,
+            nullable = false
+    )
+    private String name;
+
+    @Column(
+            name = "license_plate",
+            length = 50,
+            unique = true,
+            nullable = false
+    )
     private String licensePlate;
 
+    @Enumerated(EnumType.STRING)
+    @Builder.Default
+    @Column(name = "status", length = 20, nullable = false)
+    private VehicleStatus status = VehicleStatus.AVAILABLE;
+
+    @Column(name = "maintenance_note", columnDefinition = "TEXT")
+    private String maintenanceNote;
 }

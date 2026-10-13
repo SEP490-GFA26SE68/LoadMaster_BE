@@ -25,4 +25,5 @@ public interface VehicleTypeRepository extends JpaRepository<VehicleType, Long> 
             Long id,
             Long companyId
     );
+
 }

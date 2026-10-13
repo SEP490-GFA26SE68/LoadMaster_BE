@@ -1,18 +1,18 @@
 package fu.se184491.loadmaster_be.service.vehicle.Impl;
 
-import fu.se184491.loadmaster_be.constant.account.UserRole;
 
+import fu.se184491.loadmaster_be.constant.trip.TripStatus;
+import fu.se184491.loadmaster_be.constant.vehicle.VehicleStatus;
 import fu.se184491.loadmaster_be.dto.PageResponse;
 import fu.se184491.loadmaster_be.dto.request.vehicle.CreateVehicleRequest;
 import fu.se184491.loadmaster_be.dto.response.vehicle.VehicleResponse;
 import fu.se184491.loadmaster_be.entity.account.User;
-import fu.se184491.loadmaster_be.entity.company.Company;
 import fu.se184491.loadmaster_be.entity.vehicle.Vehicle;
 import fu.se184491.loadmaster_be.entity.vehicle.VehicleType;
 import fu.se184491.loadmaster_be.exception.AppException;
 import fu.se184491.loadmaster_be.exception.ErrorCode;
 import fu.se184491.loadmaster_be.helpers.CurrentUserService;
-import fu.se184491.loadmaster_be.repository.account.UserRepository;
+import fu.se184491.loadmaster_be.repository.trip.TripRepository;
 import fu.se184491.loadmaster_be.repository.vehicle.VehicleRepository;
 import fu.se184491.loadmaster_be.repository.vehicle.VehicleTypeRepository;
 import fu.se184491.loadmaster_be.service.vehicle.VehicleService;
@@ -25,14 +25,15 @@ import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.List;
+
 @Service
 @RequiredArgsConstructor
 public class VehicleServiceImpl implements VehicleService {
 
     private final VehicleRepository vehicleRepository;
     private final VehicleTypeRepository vehicleTypeRepository;
-    private final UserRepository userRepository;
-
+    private final TripRepository tripRepository;
     private final CurrentUserService currentUserService;
 
     @Transactional
@@ -183,17 +184,41 @@ public class VehicleServiceImpl implements VehicleService {
         );
     }
 
-    private VehicleResponse toVehicleResponse(
-            Vehicle vehicle
-    ) {
-        return new VehicleResponse(
+    private VehicleResponse toVehicleResponse(Vehicle vehicle) {
+        return VehicleResponse.builder()
+                .id(vehicle.getId())
+                .name(vehicle.getName())
+                .licensePlate(vehicle.getLicensePlate())
+                .vehicleTypeId(vehicle.getVehicleType().getId())
+                .vehicleTypeName(vehicle.getVehicleType().getName())
+                .companyId(vehicle.getCompany().getId())
+                .companyName(vehicle.getCompany().getCompanyName())
+                .status(resolveVehicleStatus(vehicle))
+                .build();
+    }
+
+    private VehicleStatus resolveVehicleStatus(Vehicle vehicle) {
+
+        VehicleStatus storedStatus = vehicle.getStatus();
+
+        if (storedStatus == VehicleStatus.RETIRED) {
+            return VehicleStatus.RETIRED;
+        }
+
+        if (storedStatus == VehicleStatus.MAINTENANCE) {
+            return VehicleStatus.MAINTENANCE;
+        }
+
+        boolean inTrip = tripRepository.existsByVehicleIdAndStatusIn(
                 vehicle.getId(),
-                vehicle.getName(),
-                vehicle.getLicensePlate(),
-                vehicle.getVehicleType().getId(),
-                vehicle.getVehicleType().getName(),
-                vehicle.getCompany().getId(),
-                vehicle.getCompany().getCompanyName()
+                List.of(
+                        TripStatus.LOADING,
+                        TripStatus.IN_TRANSIT
+                )
         );
+
+        return inTrip
+                ? VehicleStatus.IN_TRIP
+                : VehicleStatus.AVAILABLE;
     }
 }

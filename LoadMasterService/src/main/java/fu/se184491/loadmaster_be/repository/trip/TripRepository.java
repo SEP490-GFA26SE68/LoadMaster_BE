@@ -5,6 +5,7 @@ import fu.se184491.loadmaster_be.entity.trip.Trip;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
@@ -20,4 +21,9 @@ public interface TripRepository extends JpaRepository<Trip, Long> {
 
 
     Optional<Trip> findByIdAndCompanyId(Long id, Long companyId);
+
+    boolean existsByVehicleIdAndStatusIn(
+            Long vehicleId,
+            Collection<TripStatus> statuses
+    );
 }

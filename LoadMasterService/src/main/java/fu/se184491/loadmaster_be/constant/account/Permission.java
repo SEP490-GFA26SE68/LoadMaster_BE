@@ -18,5 +18,8 @@ public enum Permission {
     VEHICLES_UPDATE,
     VEHICLES_DELETE,
 
+    PACKAGE_TYPE_MANAGE,
+    PACKAGE_MANAGE,
+
     AUDIT_READ
 }

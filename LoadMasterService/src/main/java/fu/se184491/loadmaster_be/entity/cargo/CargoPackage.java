@@ -1,5 +1,6 @@
 package fu.se184491.loadmaster_be.entity.cargo;
 
+import fu.se184491.loadmaster_be.entity.company.Company;
 import fu.se184491.loadmaster_be.entity.order.TransportOrder;
 import fu.se184491.loadmaster_be.constant.cargo.HandlingClass;
 import fu.se184491.loadmaster_be.constant.cargo.PackageStatus;
@@ -22,6 +23,10 @@ public class CargoPackage {
 
     @ManyToOne(fetch = FetchType.LAZY) @JoinColumn(name = "package_type_id")
     private PackageType packageType;
+
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "company_id", nullable = false)
+    private Company company;
 
     @Column(name = "package_code", length = 100)
     private String packageCode;
@@ -49,8 +54,21 @@ public class CargoPackage {
     @Column(name = "is_pinned", nullable = false)
     private Boolean isPinned = false;
 
-    @Enumerated(EnumType.STRING) @Column(name = "status")
-    private PackageStatus status;
+    @Builder.Default
+    @Enumerated(EnumType.STRING)
+    @Column(name = "status", length = 30, nullable = false)
+    private PackageStatus status = PackageStatus.PENDING;
+
+    @Positive
+    @Column(name = "actual_width")
+    private Integer actualWidth;
+
+    @Positive
+    @Column(name = "actual_height")
+    private Integer actualHeight;
+
+    @Column(name = "destination", length = 500, nullable = false)
+    private String destination;
 
     @PrePersist
     public void prePersist() {
@@ -62,6 +80,9 @@ public class CargoPackage {
         }
         if (this.isPinned == null) {
             this.isPinned = false;
+        }
+        if (this.status == null) {
+            this.status = PackageStatus.PENDING;
         }
     }
 }

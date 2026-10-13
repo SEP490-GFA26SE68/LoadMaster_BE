@@ -4,6 +4,8 @@ import fu.se184491.loadmaster_be.constant.vehicle.ObstacleType;
 import jakarta.persistence.*;
 import lombok.*;
 
+import java.math.BigDecimal;
+
 @Entity
 @Table(name = "vehicle_type_obstacles")
 @Getter
@@ -31,14 +33,14 @@ public class VehicleTypeObstacle {
     @Column(name = "type", length = 50, nullable = false)
     private ObstacleType type;
 
-    @Column(name = "x", nullable = false)
-    private Integer x;
+    @Column(name = "x", precision = 10, scale = 1, nullable = false)
+    private BigDecimal x;
 
-    @Column(name = "y", nullable = false)
-    private Integer y;
+    @Column(name = "y", precision = 10, scale = 1, nullable = false)
+    private BigDecimal y;
 
-    @Column(name = "z", nullable = false)
-    private Integer z;
+    @Column(name = "z", precision = 10, scale = 1, nullable = false)
+    private BigDecimal z;
 
     @Column(name = "length", nullable = false)
     private Integer length;

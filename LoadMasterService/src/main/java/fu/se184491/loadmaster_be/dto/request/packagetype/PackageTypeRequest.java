@@ -1,9 +1,6 @@
 package fu.se184491.loadmaster_be.dto.request.packagetype;
 
-import jakarta.validation.constraints.DecimalMin;
-import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.NotNull;
-import jakarta.validation.constraints.Positive;
+import jakarta.validation.constraints.*;
 import lombok.*;
 
 import java.math.BigDecimal;
@@ -17,6 +14,9 @@ public class PackageTypeRequest {
 
     @NotBlank(message = "Tên loại kiện không được để trống")
     private String name;
+
+    @Size(max = 50, message = "Mã loại kiện tối đa 50 ký tự")
+    private String typeCode;
 
     @NotNull(message = "Chiều dài không được để trống")
     @Positive(message = "Chiều dài phải lớn hơn 0")
@@ -35,9 +35,25 @@ public class PackageTypeRequest {
     private BigDecimal weightKg;
 
     @NotNull(message = "Tải trọng chồng tối đa không được để trống")
-    @DecimalMin(value = "0.0", inclusive = true, message = "Tải trọng chồng tối đa phải lớn hơn hoặc bằng 0")
+    @DecimalMin(
+            value = "0.0",
+            inclusive = true,
+            message = "Tải trọng chồng tối đa phải lớn hơn hoặc bằng 0"
+    )
     private BigDecimal maxStackingWeightKg;
 
     @Builder.Default
     private Boolean isFragile = false;
+
+    @Builder.Default
+    private Boolean rotationAllowed = true;
+
+    @Builder.Default
+    private Boolean allowRotateX = true;
+
+    @Builder.Default
+    private Boolean allowRotateY = true;
+
+    @Builder.Default
+    private Boolean allowRotateZ = true;
 }

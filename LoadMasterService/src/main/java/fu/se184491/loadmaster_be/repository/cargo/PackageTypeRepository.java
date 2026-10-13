@@ -14,4 +14,15 @@ public interface PackageTypeRepository extends JpaRepository<PackageType, Long> 
     List<PackageType> findByCompanyId(Long companyId);
     Page<PackageType> findByCompanyId(Long companyId, Pageable pageable);
     Optional<PackageType> findByIdAndCompanyId(Long id, Long companyId);
+
+    boolean existsByCompanyIdAndTypeCodeIgnoreCase(
+            Long companyId,
+            String typeCode
+    );
+
+    boolean existsByCompanyIdAndTypeCodeIgnoreCaseAndIdNot(
+            Long companyId,
+            String typeCode,
+            Long id
+    );
 }

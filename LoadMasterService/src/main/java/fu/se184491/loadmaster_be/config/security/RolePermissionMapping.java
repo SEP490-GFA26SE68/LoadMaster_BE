@@ -67,7 +67,9 @@ public class RolePermissionMapping {
                         Permission.VEHICLES_CREATE,
                         Permission.VEHICLES_DELETE,
                         Permission.VEHICLES_READ,
-                        Permission.VEHICLES_UPDATE
+                        Permission.VEHICLES_UPDATE,
+                        Permission.PACKAGE_TYPE_MANAGE,
+                        Permission.PACKAGE_MANAGE
                 )
         );
 

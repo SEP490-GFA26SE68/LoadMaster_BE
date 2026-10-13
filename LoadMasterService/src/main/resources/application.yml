@@ -24,7 +24,7 @@ spring:
           keycloak:
             token-uri: http://localhost:8180/realms/loadmaster/protocol/openid-connect/token
   datasource:
-    url: jdbc:postgresql://localhost:5432/loadmaster
+    url: ${DATABASE_URL}
     username: ${POSTGRES_USER}
     password: ${POSTGRES_PASSWORD}
 

@@ -18,23 +18,31 @@ public class VehicleType {
     @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "company_id")
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "company_id", nullable = false)
     private Company company;
 
-    @Column(name = "name", length = 150)
+    @Column(name = "name", length = 150, nullable = false)
     private String name;
 
-    @Positive @Column(name = "inner_length")
+    @Positive
+    @Column(name = "inner_length", nullable = false)
     private Integer innerLength;
 
-    @Positive @Column(name = "inner_width")
+    @Positive
+    @Column(name = "inner_width", nullable = false)
     private Integer innerWidth;
 
-    @Positive @Column(name = "inner_height")
+    @Positive
+    @Column(name = "inner_height", nullable = false)
     private Integer innerHeight;
 
-    @Column(name = "max_payload_kg", precision = 10, scale = 2)
+    @Column(
+            name = "max_payload_kg",
+            precision = 10,
+            scale = 2,
+            nullable = false
+    )
     private BigDecimal maxPayloadKg;
 
     @Column(name = "front_axle_limit_kg", precision = 10, scale = 2)
@@ -44,8 +52,14 @@ public class VehicleType {
     private BigDecimal rearAxleLimitKg;
 
     @Builder.Default
-    @Column(name = "max_cog_offset_ratio", precision = 5, scale = 4)
-    private BigDecimal maxCogOffsetRatio = new BigDecimal("0.15");
+    @Column(
+            name = "max_cog_offset_ratio",
+            precision = 5,
+            scale = 4,
+            nullable = false
+    )
+    private BigDecimal maxCogOffsetRatio =
+            new BigDecimal("0.15");
 
     @Builder.Default
     @Column(name = "hazardous_capable", nullable = false)

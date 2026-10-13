@@ -6,6 +6,8 @@ import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Positive;
 import jakarta.validation.constraints.PositiveOrZero;
 
+import java.math.BigDecimal;
+
 public record CreateVehicleTypeObstacleRequest(
 
         @NotBlank
@@ -16,15 +18,15 @@ public record CreateVehicleTypeObstacleRequest(
 
         @NotNull
         @PositiveOrZero
-        Integer x,
+        BigDecimal x,
 
         @NotNull
         @PositiveOrZero
-        Integer y,
+        BigDecimal y,
 
         @NotNull
         @PositiveOrZero
-        Integer z,
+        BigDecimal z,
 
         @NotNull
         @Positive

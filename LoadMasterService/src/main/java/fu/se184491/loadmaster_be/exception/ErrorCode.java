@@ -48,6 +48,7 @@ public enum ErrorCode {
     PACKAGE_NOT_FOUND("Không tìm thấy kiện hàng", HttpStatus.NOT_FOUND),
     PACKAGE_TYPE_NOT_FOUND("Không tìm thấy loại kiện hàng", HttpStatus.NOT_FOUND),
     TRACKING_BARCODE_ALREADY_EXISTS("Mã barcode kiện hàng đã tồn tại trong hệ thống", HttpStatus.CONFLICT),
+    PACKAGE_TYPE_CODE_ALREADY_EXISTS("Mã loại kiện hàng đã tồn tại trong hệ thống", HttpStatus.CONFLICT),
 
     // -------------------------------------------------------------------------
     // Vehicle & Trip errors

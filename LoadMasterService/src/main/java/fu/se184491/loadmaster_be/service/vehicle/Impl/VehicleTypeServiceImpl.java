@@ -34,6 +34,7 @@ public class VehicleTypeServiceImpl implements VehicleTypeService {
     // Assuming companyId is valid from the context, we can use a proxy reference to avoid DB hit for company lookup
     private final jakarta.persistence.EntityManager entityManager;
     private final CurrentUserService currentUserService;
+    private final fu.se184491.loadmaster_be.repository.vehicle.VehicleRepository vehicleRepository;
 
 
     @Transactional
@@ -191,34 +192,38 @@ public class VehicleTypeServiceImpl implements VehicleTypeService {
     private VehicleTypeResponse toResponse(
             VehicleType vehicleType
     ) {
-        return new VehicleTypeResponse(
-                vehicleType.getId(),
-                vehicleType.getName(),
-                vehicleType.getInnerLength(),
-                vehicleType.getInnerWidth(),
-                vehicleType.getInnerHeight(),
-                vehicleType.getMaxPayloadKg(),
-                vehicleType.getFrontAxleLimitKg(),
-                vehicleType.getRearAxleLimitKg(),
-                vehicleType.getMaxCogOffsetRatio(),
-                vehicleType.getHazardousCapable(),
-                vehicleType.getObstacles()
-                        .stream()
-                        .map(obstacle ->
-                                new VehicleTypeObstacleResponse(
-                                        obstacle.getId(),
-                                        obstacle.getName(),
-                                        obstacle.getType(),
-                                        obstacle.getX(),
-                                        obstacle.getY(),
-                                        obstacle.getZ(),
-                                        obstacle.getLength(),
-                                        obstacle.getWidth(),
-                                        obstacle.getHeight(),
-                                        obstacle.getLoadBearing()
-                                )
-                        )
-                        .toList()
-        );
+        long vehicleCount =
+                vehicleRepository.countByVehicleTypeId(
+                        vehicleType.getId()
+                );
+        return VehicleTypeResponse.builder()
+                .id(vehicleType.getId())
+                .name(vehicleType.getName())
+                .innerLength(vehicleType.getInnerLength())
+                .innerWidth(vehicleType.getInnerWidth())
+                .innerHeight(vehicleType.getInnerHeight())
+                .maxPayloadKg(vehicleType.getMaxPayloadKg())
+                .frontAxleLimitKg(vehicleType.getFrontAxleLimitKg())
+                .rearAxleLimitKg(vehicleType.getRearAxleLimitKg())
+                .maxCogOffsetRatio(vehicleType.getMaxCogOffsetRatio())
+                .hazardousCapable(vehicleType.getHazardousCapable())
+                .obstacles(
+                        vehicleType.getObstacles().stream()
+                                .map(obstacle -> VehicleTypeObstacleResponse.builder()
+                                        .id(obstacle.getId())
+                                        .name(obstacle.getName())
+                                        .type(obstacle.getType())
+                                        .x(obstacle.getX())
+                                        .y(obstacle.getY())
+                                        .z(obstacle.getZ())
+                                        .length(obstacle.getLength())
+                                        .width(obstacle.getWidth())
+                                        .height(obstacle.getHeight())
+                                        .loadBearing(obstacle.getLoadBearing())
+                                        .build()
+                                ).toList()
+                )
+                .vehicleCount(vehicleCount)
+                .build();
     }
 }

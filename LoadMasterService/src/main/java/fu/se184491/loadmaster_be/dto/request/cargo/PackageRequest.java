@@ -1,8 +1,12 @@
 package fu.se184491.loadmaster_be.dto.request.cargo;
 
+import fu.se184491.loadmaster_be.constant.cargo.HandlingClass;
+import jakarta.validation.constraints.DecimalMax;
+import jakarta.validation.constraints.Digits;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Positive;
+import jakarta.validation.constraints.Size;
 import lombok.*;
 
 import java.math.BigDecimal;
@@ -13,22 +17,33 @@ import java.math.BigDecimal;
 @AllArgsConstructor
 public class PackageRequest {
 
-    @NotNull(message = "Order ID is required")
     private Long orderId;
 
-    @NotNull(message = "Package Type ID is required")
     private Long packageTypeId;
 
-    @NotBlank(message = "Tracking barcode is required")
-    private String trackingBarcode;
+    @Size(max = 100)
+    private String packageCode;
 
-    @NotNull(message = "Actual length is required")
-    @Positive(message = "Actual length must be greater than 0")
+    @Positive
     private Integer actualLength;
 
-    @NotNull(message = "Actual weight is required")
-    @Positive(message = "Actual weight must be greater than 0")
+    @Positive
+    private Integer actualWidth;
+
+    @Positive
+    private Integer actualHeight;
+
+    @NotNull(message = "Khối lượng kiện không được để trống")
+    @Positive(message = "Khối lượng kiện phải lớn hơn 0")
+    @Digits(integer = 8, fraction = 2)
     private BigDecimal actualWeightKg;
+
+    @NotNull(message = "Loại hàng không được để trống")
+    private HandlingClass handlingClass;
+
+    @NotBlank(message = "Điểm đến không được để trống")
+    @Size(max = 500)
+    private String destination;
 
     private Boolean isPinned;
 }

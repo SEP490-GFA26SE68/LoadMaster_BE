@@ -25,4 +25,6 @@ public interface VehicleRepository extends JpaRepository<Vehicle, Long>, JpaSpec
             String licensePlate,
             Pageable pageable
     );
+
+    long countByVehicleTypeId(Long vehicleTypeId);
 }

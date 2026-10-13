@@ -1,5 +1,6 @@
 package fu.se184491.loadmaster_be.entity.trip;
 
+import fu.se184491.loadmaster_be.entity.account.User;
 import fu.se184491.loadmaster_be.entity.company.Company;
 import fu.se184491.loadmaster_be.entity.vehicle.Vehicle;
 
@@ -24,8 +25,25 @@ public class Trip {
     @ManyToOne(fetch = FetchType.LAZY) @JoinColumn(name = "company_id")
     private Company company;
 
-    @ManyToOne(fetch = FetchType.LAZY) @JoinColumn(name = "vehicle_id")
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(
+            name = "vehicle_id",
+            nullable = false
+    )
     private Vehicle vehicle;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(
+            name = "driver_user_id"
+    )
+    private User driver;
+
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(
+            name = "created_by_dispatcher_id",
+            nullable = false
+    )
+    private User createdByDispatcher;
 
     @Column(name = "trip_code", length = 50, unique = true)
     private String tripCode;

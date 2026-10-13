@@ -24,6 +24,9 @@ public interface PackageRepository extends JpaRepository<CargoPackage, Long>, Jp
     Optional<CargoPackage> findByTrackingBarcode(String trackingBarcode);
 
     boolean existsByTrackingBarcode(String trackingBarcode);
-
+    Optional<CargoPackage> findByIdAndCompany_Id(
+            Long id,
+            Long companyId
+    );
     boolean existsByTrackingBarcodeAndIdNot(String trackingBarcode, Long id);
 }
