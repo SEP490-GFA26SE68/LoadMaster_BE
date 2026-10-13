@@ -20,9 +20,11 @@ public class RestClientConfig {
     }
 
     @Bean
-    public RestClient keycloakAdminRestClient() {
+    public RestClient keycloakAdminRestClient(
+            @Value("${KEYCLOAK_AUTH_URL:http://localhost:8180}") String keycloakUrl
+    ) {
         return RestClient.builder()
-                .baseUrl("http://localhost:8180")
+                .baseUrl(keycloakUrl)
                 .build();
     }
 

@@ -15,5 +15,5 @@ public interface PackageService {
 
     void deletePackage(Long companyId, Long id);
 
-    Page<PackageResponse> getAllPackages(Long companyId, Long orderId, Long packageTypeId, Pageable pageable);
+    Page<PackageResponse> getAllPackages(Long companyId, Long orderId, Long packageTypeId, String packageCode, Pageable pageable);
 }

@@ -47,6 +47,8 @@ public enum ErrorCode {
     PACKAGE_NOT_FOUND("Không tìm thấy kiện hàng", HttpStatus.NOT_FOUND),
     PACKAGE_TYPE_NOT_FOUND("Không tìm thấy loại kiện hàng", HttpStatus.NOT_FOUND),
     TRACKING_BARCODE_ALREADY_EXISTS("Mã barcode kiện hàng đã tồn tại trong hệ thống", HttpStatus.CONFLICT),
+    STACKING_RULE_NOT_FOUND("Không tìm thấy quy tắc chồng hàng", HttpStatus.NOT_FOUND),
+    STACKING_RULE_ALREADY_EXISTS("Quy tắc chồng hàng giữa 2 loại kiện hàng này đã tồn tại", HttpStatus.CONFLICT),
 
     // -------------------------------------------------------------------------
     // Vehicle & Trip errors
@@ -83,9 +85,9 @@ public enum ErrorCode {
     // Import batch validation - row level
     // -------------------------------------------------------------------------
     IMPORT_DUPLICATE_CODE("Mã kiện bị trùng lặp trong cùng file", HttpStatus.BAD_REQUEST),
-    IMPORT_INVALID_LENGTH("Chiều dài phải là số nguyên dương (> 0 mm)", HttpStatus.BAD_REQUEST),
-    IMPORT_INVALID_WIDTH("Chiều rộng phải là số nguyên dương (> 0 mm)", HttpStatus.BAD_REQUEST),
-    IMPORT_INVALID_HEIGHT("Chiều cao phải là số nguyên dương (> 0 mm)", HttpStatus.BAD_REQUEST),
+    IMPORT_INVALID_LENGTH("Chiều dài phải là số dương (> 0 cm)", HttpStatus.BAD_REQUEST),
+    IMPORT_INVALID_WIDTH("Chiều rộng phải là số dương (> 0 cm)", HttpStatus.BAD_REQUEST),
+    IMPORT_INVALID_HEIGHT("Chiều cao phải là số dương (> 0 cm)", HttpStatus.BAD_REQUEST),
     IMPORT_INVALID_WEIGHT("Khối lượng phải là số dương (> 0 kg)", HttpStatus.BAD_REQUEST),
     IMPORT_INVALID_HANDLING_CLASS("Loại hàng không hợp lệ. Chỉ chấp nhận: STANDARD, FRAGILE, REFRIGERATED, HAZARDOUS, HIGH_VALUE", HttpStatus.BAD_REQUEST),
     IMPORT_BLANK_DESTINATION("Điểm đến / nơi nhận hàng không được để trống", HttpStatus.BAD_REQUEST),

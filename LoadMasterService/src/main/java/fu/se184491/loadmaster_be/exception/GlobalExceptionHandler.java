@@ -1,6 +1,7 @@
 package fu.se184491.loadmaster_be.exception;
 
 import fu.se184491.loadmaster_be.dto.ApiResponse;
+import fu.se184491.loadmaster_be.dto.response.ImportPreviewResult;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
@@ -17,6 +18,23 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 @Slf4j
 @RestControllerAdvice
 public class GlobalExceptionHandler {
+
+    @ExceptionHandler(ImportValidationException.class)
+    public ResponseEntity<ApiResponse<ImportPreviewResult>> handleImportValidationException(
+            ImportValidationException ex, HttpServletRequest request) {
+        log.warn("Import validation exception at {}: {}", request.getRequestURI(), ex.getMessage());
+
+        ErrorCode errorCode = ex.getErrorCode();
+        return ResponseEntity
+                .status(errorCode.getHttpStatus())
+                .body(ApiResponse.<ImportPreviewResult>builder()
+                        .success(false)
+                        .code(errorCode.name())
+                        .message(ex.getMessage())
+                        .data(ex.getPreviewResult())
+                        .errors(ex.getPreviewResult() != null ? ex.getPreviewResult().errors() : null)
+                        .build());
+    }
 
     @ExceptionHandler(AppException.class)
     public ResponseEntity<ApiResponse<Void>> handleAppException(

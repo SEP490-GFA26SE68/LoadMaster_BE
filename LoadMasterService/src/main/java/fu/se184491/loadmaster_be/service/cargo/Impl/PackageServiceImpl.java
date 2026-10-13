@@ -1,16 +1,22 @@
 package fu.se184491.loadmaster_be.service.cargo.Impl;
 
+import fu.se184491.loadmaster_be.constant.cargo.HandlingClass;
+import fu.se184491.loadmaster_be.constant.cargo.PackageStatus;
 import fu.se184491.loadmaster_be.dto.request.cargo.PackageRequest;
 import fu.se184491.loadmaster_be.dto.response.cargo.PackageResponse;
 import fu.se184491.loadmaster_be.entity.cargo.CargoPackage;
 import fu.se184491.loadmaster_be.entity.cargo.PackageType;
+import fu.se184491.loadmaster_be.entity.company.Company;
 import fu.se184491.loadmaster_be.entity.order.TransportOrder;
 import fu.se184491.loadmaster_be.exception.AppException;
 import fu.se184491.loadmaster_be.exception.ErrorCode;
 import fu.se184491.loadmaster_be.repository.cargo.PackageRepository;
 import fu.se184491.loadmaster_be.repository.cargo.PackageTypeRepository;
+import fu.se184491.loadmaster_be.repository.company.CompanyRepository;
 import fu.se184491.loadmaster_be.repository.order.OrderRepository;
 import fu.se184491.loadmaster_be.service.cargo.PackageService;
+import jakarta.persistence.criteria.Join;
+import jakarta.persistence.criteria.JoinType;
 import jakarta.persistence.criteria.Predicate;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
@@ -31,6 +37,7 @@ public class PackageServiceImpl implements PackageService {
     private final PackageRepository packageRepository;
     private final OrderRepository orderRepository;
     private final PackageTypeRepository packageTypeRepository;
+    private final CompanyRepository companyRepository;
 
     private PackageResponse mapToResponse(CargoPackage entity) {
         return PackageResponse.builder()
@@ -64,18 +71,27 @@ public class PackageServiceImpl implements PackageService {
     @Override
     @Transactional
     public PackageResponse createPackage(Long companyId, PackageRequest request) {
-        TransportOrder order = orderRepository.findById(request.getOrderId())
-                .orElseThrow(() -> new AppException(ErrorCode.ORDER_NOT_FOUND));
+        Company company = companyRepository.findById(companyId)
+                .orElseThrow(() -> new AppException(ErrorCode.COMPANY_NOT_FOUND));
 
-        if (!order.getCompany().getId().equals(companyId)) {
-            throw new AppException(ErrorCode.UNAUTHORIZED);
+        TransportOrder order = null;
+        if (request.getOrderId() != null) {
+            order = orderRepository.findById(request.getOrderId())
+                    .orElseThrow(() -> new AppException(ErrorCode.ORDER_NOT_FOUND));
+
+            if (!order.getCompany().getId().equals(companyId)) {
+                throw new AppException(ErrorCode.UNAUTHORIZED);
+            }
         }
 
-        PackageType packageType = packageTypeRepository.findById(request.getPackageTypeId())
-                .orElseThrow(() -> new AppException(ErrorCode.PACKAGE_TYPE_NOT_FOUND));
+        PackageType packageType = null;
+        if (request.getPackageTypeId() != null) {
+            packageType = packageTypeRepository.findById(request.getPackageTypeId())
+                    .orElseThrow(() -> new AppException(ErrorCode.PACKAGE_TYPE_NOT_FOUND));
 
-        if (!packageType.getCompany().getId().equals(companyId)) {
-            throw new AppException(ErrorCode.UNAUTHORIZED);
+            if (!packageType.getCompany().getId().equals(companyId)) {
+                throw new AppException(ErrorCode.UNAUTHORIZED);
+            }
         }
 
         if (packageRepository.existsByTrackingBarcode(request.getTrackingBarcode())) {
@@ -83,16 +99,25 @@ public class PackageServiceImpl implements PackageService {
         }
 
         CargoPackage cargoPackage = CargoPackage.builder()
+                .company(company)
                 .order(order)
                 .packageType(packageType)
                 .trackingBarcode(request.getTrackingBarcode())
+                .packageCode(request.getPackageCode())
                 .actualLength(request.getActualLength())
+                .actualWidth(request.getActualWidth())
+                .actualHeight(request.getActualHeight())
                 .actualWeightKg(request.getActualWeightKg())
+                .handlingClass(request.getHandlingClass() != null ? request.getHandlingClass() : HandlingClass.STANDARD)
+                .destination(request.getDestination())
                 .isPinned(request.getIsPinned() != null ? request.getIsPinned() : false)
+                .status(PackageStatus.PENDING)
                 .build();
 
         cargoPackage = packageRepository.save(cargoPackage);
-        recalculateOrderTotalWeight(order);
+        if (order != null) {
+            recalculateOrderTotalWeight(order);
+        }
 
         return mapToResponse(cargoPackage);
     }
@@ -171,17 +196,29 @@ public class PackageServiceImpl implements PackageService {
         if (cargoPackage.getOrder() != null && !cargoPackage.getOrder().getCompany().getId().equals(companyId)) {
             throw new AppException(ErrorCode.UNAUTHORIZED);
         }
+        if (cargoPackage.getCompany() != null && !cargoPackage.getCompany().getId().equals(companyId)) {
+            throw new AppException(ErrorCode.UNAUTHORIZED);
+        }
 
         return mapToResponse(cargoPackage);
     }
 
     @Override
-    public Page<PackageResponse> getAllPackages(Long companyId, Long orderId, Long packageTypeId, Pageable pageable) {
+    public Page<PackageResponse> getAllPackages(Long companyId, Long orderId, Long packageTypeId, String packageCode, Pageable pageable) {
         Specification<CargoPackage> spec = (root, query, cb) -> {
             List<Predicate> predicates = new ArrayList<>();
-            predicates.add(cb.equal(root.get("order").get("company").get("id"), companyId));
+            // LEFT joins: imported packages have a company but no order.
+            Join<Object, Object> order = root.join("order", JoinType.LEFT);
+            Join<Object, Object> orderCompany = order.join("company", JoinType.LEFT);
+            Join<Object, Object> packageCompany = root.join("company", JoinType.LEFT);
+            predicates.add(cb.or(
+                    cb.equal(packageCompany.get("id"), companyId),
+                    cb.equal(orderCompany.get("id"), companyId)));
+            if (packageCode != null && !packageCode.isBlank()) {
+                predicates.add(cb.equal(cb.lower(root.get("packageCode")), packageCode.trim().toLowerCase()));
+            }
             if (orderId != null) {
-                predicates.add(cb.equal(root.get("order").get("id"), orderId));
+                predicates.add(cb.equal(order.get("id"), orderId));
             }
             if (packageTypeId != null) {
                 predicates.add(cb.equal(root.get("packageType").get("id"), packageTypeId));

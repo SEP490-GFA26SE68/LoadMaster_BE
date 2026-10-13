@@ -1,5 +1,6 @@
 package fu.se184491.loadmaster_be.dto.response;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import fu.se184491.loadmaster_be.exception.ErrorCode;
 
 /**
@@ -22,6 +23,7 @@ public record RowWarning(
     }
 
     /** Returns the full human-readable message, appending detail when present. */
+    @JsonProperty("message")
     public String message() {
         if (detail != null && !detail.isBlank()) {
             return errorCode.getMessage() + " (" + detail + ")";

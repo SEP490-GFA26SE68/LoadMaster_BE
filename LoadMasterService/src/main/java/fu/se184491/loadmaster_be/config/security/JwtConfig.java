@@ -1,5 +1,6 @@
 package fu.se184491.loadmaster_be.config.security;
 
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.oauth2.core.DelegatingOAuth2TokenValidator;
@@ -13,8 +14,8 @@ import org.springframework.security.oauth2.jwt.NimbusJwtDecoder;
 @Configuration
 public class JwtConfig {
 
-    private static final String ISSUER =
-            "http://localhost:8180/realms/loadmaster";
+    @Value("${spring.security.oauth2.resourceserver.jwt.issuer-uri:http://localhost:8180/realms/loadmaster}")
+    private String issuer;
 
     private static final String AUDIENCE =
             "loadmaster-api";
@@ -23,10 +24,10 @@ public class JwtConfig {
     public JwtDecoder jwtDecoder() {
 
         NimbusJwtDecoder decoder =
-                JwtDecoders.fromIssuerLocation(ISSUER);
+                JwtDecoders.fromIssuerLocation(issuer);
 
         OAuth2TokenValidator<Jwt> issuerValidator =
-                JwtValidators.createDefaultWithIssuer(ISSUER);
+                JwtValidators.createDefaultWithIssuer(issuer);
 
         OAuth2TokenValidator<Jwt> audienceValidator =
                 new AudienceValidator(AUDIENCE);
