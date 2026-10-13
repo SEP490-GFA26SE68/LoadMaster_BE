@@ -45,6 +45,15 @@ public class PackageControllerTest {
     @MockitoBean
     private JwtAuthenticationConverter jwtAuthenticationConverter;
 
+    @MockitoBean
+    private fu.se184491.loadmaster_be.config.security.RolePermissionMapping rolePermissionMapping;
+
+    @MockitoBean
+    private fu.se184491.loadmaster_be.config.security.RestAuthenticationEntryPoint authenticationEntryPoint;
+
+    @MockitoBean
+    private fu.se184491.loadmaster_be.config.security.RestAccessDeniedHandler accessDeniedHandler;
+
     private ObjectMapper objectMapper;
     private PackageRequest request;
     private PackageResponse response;
@@ -88,6 +97,34 @@ public class PackageControllerTest {
                 .andExpect(jsonPath("$.trackingBarcode").value("PKG-123456"))
                 .andExpect(jsonPath("$.actualLength").value(300))
                 .andExpect(jsonPath("$.actualWeightKg").value(15.50));
+    }
+
+    @Test
+    @WithMockUser(authorities = "PACKAGE_MANAGE")
+    void createPackage_WithoutOrderId_Success() throws Exception {
+        PackageRequest standaloneRequest = PackageRequest.builder()
+                .trackingBarcode("PKG-NO-ORDER")
+                .actualLength(300)
+                .actualWeightKg(new BigDecimal("15.50"))
+                .build();
+
+        PackageResponse standaloneResponse = PackageResponse.builder()
+                .id(101L)
+                .orderId(null)
+                .trackingBarcode("PKG-NO-ORDER")
+                .actualLength(300)
+                .actualWeightKg(new BigDecimal("15.50"))
+                .build();
+
+        when(packageService.createPackage(eq(1L), any(PackageRequest.class))).thenReturn(standaloneResponse);
+
+        mockMvc.perform(post("/api/packages")
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(standaloneRequest)))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.id").value(101L))
+                .andExpect(jsonPath("$.orderId").doesNotExist());
     }
 
     @Test

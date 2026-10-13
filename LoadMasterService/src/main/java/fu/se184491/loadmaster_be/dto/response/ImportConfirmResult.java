@@ -10,5 +10,10 @@ import java.util.List;
  */
 public record ImportConfirmResult(
         int totalImported,
-        List<Long> packageIds
-) {}
+        List<Long> packageIds,
+        Long orderId
+) {
+    public ImportConfirmResult(int totalImported, List<Long> packageIds) {
+        this(totalImported, packageIds, null);
+    }
+}

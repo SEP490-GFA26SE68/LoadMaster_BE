@@ -10,6 +10,7 @@ import fu.se184491.loadmaster_be.exception.AppException;
 import fu.se184491.loadmaster_be.exception.ErrorCode;
 import fu.se184491.loadmaster_be.repository.cargo.PackageRepository;
 import fu.se184491.loadmaster_be.repository.cargo.PackageTypeRepository;
+import fu.se184491.loadmaster_be.repository.company.CompanyRepository;
 import fu.se184491.loadmaster_be.repository.order.OrderRepository;
 import fu.se184491.loadmaster_be.service.cargo.Impl.PackageServiceImpl;
 import org.junit.jupiter.api.BeforeEach;
@@ -47,6 +48,9 @@ public class PackageServiceTest {
     @Mock
     private PackageTypeRepository packageTypeRepository;
 
+    @Mock
+    private CompanyRepository companyRepository;
+
     @InjectMocks
     private PackageServiceImpl packageService;
 
@@ -59,6 +63,7 @@ public class PackageServiceTest {
     @BeforeEach
     void setUp() {
         company = Company.builder().id(1L).companyCode("CMP01").build();
+        lenient().when(companyRepository.findById(1L)).thenReturn(Optional.of(company));
 
         order = TransportOrder.builder()
                 .id(10L)
@@ -123,6 +128,42 @@ public class PackageServiceTest {
         ArgumentCaptor<TransportOrder> orderCaptor = ArgumentCaptor.forClass(TransportOrder.class);
         verify(orderRepository).save(orderCaptor.capture());
         assertEquals(new BigDecimal("15.50"), orderCaptor.getValue().getTotalWeightKg());
+    }
+
+    @Test
+    void createPackage_WithoutOrderId_Success_AssignsDirectCompany() {
+        PackageRequest standaloneRequest = PackageRequest.builder()
+                .orderId(null)
+                .packageTypeId(20L)
+                .trackingBarcode("PKG-STANDALONE")
+                .actualLength(400)
+                .actualWeightKg(new BigDecimal("10.00"))
+                .isPinned(false)
+                .build();
+
+        when(companyRepository.findById(1L)).thenReturn(Optional.of(company));
+        when(packageTypeRepository.findById(20L)).thenReturn(Optional.of(packageType));
+        when(packageRepository.existsByTrackingBarcode("PKG-STANDALONE")).thenReturn(false);
+        when(packageRepository.save(any(CargoPackage.class))).thenAnswer(inv -> {
+            CargoPackage pkg = inv.getArgument(0);
+            pkg.setId(101L);
+            return pkg;
+        });
+
+        PackageResponse response = packageService.createPackage(1L, standaloneRequest);
+
+        assertNotNull(response);
+        assertEquals(101L, response.getId());
+        assertNull(response.getOrderId());
+        assertEquals(20L, response.getPackageTypeId());
+
+        ArgumentCaptor<CargoPackage> pkgCaptor = ArgumentCaptor.forClass(CargoPackage.class);
+        verify(packageRepository).save(pkgCaptor.capture());
+        CargoPackage savedPkg = pkgCaptor.getValue();
+        assertNull(savedPkg.getOrder());
+        assertEquals(company, savedPkg.getCompany());
+
+        verify(orderRepository, never()).save(any());
     }
 
     @Test

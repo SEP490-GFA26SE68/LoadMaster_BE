@@ -45,6 +45,15 @@ public class PackageTypeControllerTest {
     @MockitoBean
     private JwtAuthenticationConverter jwtAuthenticationConverter;
 
+    @MockitoBean
+    private fu.se184491.loadmaster_be.config.security.RolePermissionMapping rolePermissionMapping;
+
+    @MockitoBean
+    private fu.se184491.loadmaster_be.config.security.RestAuthenticationEntryPoint authenticationEntryPoint;
+
+    @MockitoBean
+    private fu.se184491.loadmaster_be.config.security.RestAccessDeniedHandler accessDeniedHandler;
+
     private ObjectMapper objectMapper;
     private PackageTypeRequest request;
     private PackageTypeResponse response;
