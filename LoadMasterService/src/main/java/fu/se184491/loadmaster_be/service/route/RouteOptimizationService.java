@@ -23,6 +23,7 @@ import fu.se184491.loadmaster_be.repository.trip.TripRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Instant;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -134,7 +135,7 @@ public class RouteOptimizationService {
                 .entityName("Trip")
                 .entityId(tripId.toString())
                 .newValues(routePlan)
-                .createdAt(LocalDateTime.now())
+                .createdAt(Instant.now())
                 .build());
         return result;
     }

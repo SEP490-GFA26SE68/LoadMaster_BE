@@ -18,6 +18,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Instant;
 import java.time.LocalDateTime;
 import java.util.Map;
 
@@ -72,7 +73,7 @@ public class TripStatusService {
                 .user(actor)
                 .oldValues(Map.of("status", currentStatus.name()))
                 .newValues(Map.of("status", newStatus.name()))
-                .createdAt(LocalDateTime.now())
+                .createdAt(Instant.now())
                 .build());
         return savedTrip;
     }

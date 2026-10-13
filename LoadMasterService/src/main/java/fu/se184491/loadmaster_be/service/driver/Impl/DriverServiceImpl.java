@@ -35,6 +35,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Instant;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -188,7 +189,7 @@ public class DriverServiceImpl implements DriverService {
                         "stopId", packageStop.getId(),
                         "trackingBarcode", pkg.getTrackingBarcode() != null ? pkg.getTrackingBarcode() : ""
                 ))
-                .createdAt(LocalDateTime.now())
+                .createdAt(Instant.now())
                 .build();
         auditLogRepository.save(auditLog);
 
@@ -245,7 +246,7 @@ public class DriverServiceImpl implements DriverService {
                         "stopId", stop.getId(),
                         "tripId", trip.getId()
                 ))
-                .createdAt(LocalDateTime.now())
+                .createdAt(Instant.now())
                 .build();
         auditLogRepository.save(stopAuditLog);
 
@@ -275,7 +276,7 @@ public class DriverServiceImpl implements DriverService {
                             "tripId", trip.getId(),
                             "status", TripStatus.DELIVERED.name()
                     ))
-                    .createdAt(LocalDateTime.now())
+                    .createdAt(Instant.now())
                     .build();
             auditLogRepository.save(tripAuditLog);
 

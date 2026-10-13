@@ -21,5 +21,8 @@ public enum Permission {
     PACKAGE_TYPE_MANAGE,
     PACKAGE_MANAGE,
 
-    AUDIT_READ
+    AUDIT_READ,
+
+    /** Lập kế hoạch chuyến, tối ưu tuyến, giám sát GPS / ETA (TripPlanning + Monitoring). */
+    TRIP_MANAGE
 }

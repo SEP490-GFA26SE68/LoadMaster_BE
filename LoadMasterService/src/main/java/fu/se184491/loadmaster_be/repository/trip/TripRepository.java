@@ -26,4 +26,6 @@ public interface TripRepository extends JpaRepository<Trip, Long> {
             Long vehicleId,
             Collection<TripStatus> statuses
     );
+
+    Optional<Trip> findByTripCodeAndCompanyId(String tripCode, Long companyId);
 }

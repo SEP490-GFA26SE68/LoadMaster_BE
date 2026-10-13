@@ -60,12 +60,6 @@ public class CargoPackage {
     @Column(name = "actual_weight_kg", precision = 10, scale = 2)
     private BigDecimal actualWeightKg;
 
-    /**
-     * Owning company. Required for packages imported from file (they have no order);
-     * legacy packages fall back to {@code order.company}.
-     */
-    @ManyToOne(fetch = FetchType.LAZY) @JoinColumn(name = "company_id")
-    private Company company;
 
     /** Free-text destination (address or code) as written in the import file. */
     @Column(name = "destination", length = 255)
@@ -80,16 +74,6 @@ public class CargoPackage {
     @Column(name = "status", length = 30, nullable = false)
     private PackageStatus status = PackageStatus.PENDING;
 
-    @Positive
-    @Column(name = "actual_width")
-    private Integer actualWidth;
-
-    @Positive
-    @Column(name = "actual_height")
-    private Integer actualHeight;
-
-    @Column(name = "destination", length = 500, nullable = false)
-    private String destination;
 
     @PrePersist
     public void prePersist() {

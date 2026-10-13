@@ -29,6 +29,7 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
@@ -137,7 +138,7 @@ public class PackageImportServiceImpl implements PackageImportService {
                         "companyId", companyId,
                         "createdByUserId", createdByUserId
                 ))
-                .createdAt(LocalDateTime.now())
+                .createdAt(Instant.now())
                 .build();
         auditLogRepository.save(auditLog);
 

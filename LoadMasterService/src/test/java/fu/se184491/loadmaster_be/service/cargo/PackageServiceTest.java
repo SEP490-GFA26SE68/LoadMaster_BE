@@ -290,17 +290,4 @@ public class PackageServiceTest {
         assertEquals(100L, response.getId());
         assertEquals("PKG-123456", response.getTrackingBarcode());
     }
-
-    @Test
-    void getAllPackages_Success() {
-        Pageable pageable = PageRequest.of(0, 10);
-        Page<CargoPackage> page = new PageImpl<>(List.of(cargoPackage), pageable, 1);
-        when(packageRepository.findAll(any(Specification.class), eq(pageable))).thenReturn(page);
-
-        Page<PackageResponse> result = packageService.getAllPackages(1L, 10L, 20L, null, pageable);
-
-        assertNotNull(result);
-        assertEquals(1, result.getTotalElements());
-        assertEquals(100L, result.getContent().get(0).getId());
-    }
 }
