@@ -90,7 +90,7 @@ class DeliveryRequirementApiIntegrationTest {
                 .company(company)
                 .email("manager@acme.test")
                 .fullName("Acme Manager")
-                .userRoleType(UserRole.COMPANY_MANAGER)
+                .userRoleType(UserRole.MANAGER)
                 .status(UserStatus.ACTIVE)
                 .build();
         entityManager.persist(manager);
