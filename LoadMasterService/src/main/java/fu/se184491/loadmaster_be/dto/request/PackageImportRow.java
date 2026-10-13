@@ -7,9 +7,9 @@ import java.math.BigDecimal;
  *
  * @param rowIndex      1-based row index in the source file
  * @param packageCode   Company internal package code
- * @param lengthMm      Length in millimeters
- * @param widthMm       Width in millimeters
- * @param heightMm      Height in millimeters
+ * @param lengthCm      Length in centimeters
+ * @param widthCm       Width in centimeters
+ * @param heightCm      Height in centimeters
  * @param weightKg      Weight in kilograms
  * @param handlingClass Handling class name (e.g. STANDARD, FRAGILE, etc.)
  * @param destination   Delivery stop / destination address or code
@@ -17,9 +17,9 @@ import java.math.BigDecimal;
 public record PackageImportRow(
         int rowIndex,
         String packageCode,
-        Integer lengthMm,
-        Integer widthMm,
-        Integer heightMm,
+        BigDecimal lengthCm,
+        BigDecimal widthCm,
+        BigDecimal heightCm,
         BigDecimal weightKg,
         String handlingClass,
         String destination

@@ -49,6 +49,8 @@ public enum ErrorCode {
     PACKAGE_TYPE_NOT_FOUND("Không tìm thấy loại kiện hàng", HttpStatus.NOT_FOUND),
     TRACKING_BARCODE_ALREADY_EXISTS("Mã barcode kiện hàng đã tồn tại trong hệ thống", HttpStatus.CONFLICT),
     PACKAGE_TYPE_CODE_ALREADY_EXISTS("Mã loại kiện hàng đã tồn tại trong hệ thống", HttpStatus.CONFLICT),
+    STACKING_RULE_NOT_FOUND("Không tìm thấy quy tắc chồng hàng", HttpStatus.NOT_FOUND),
+    STACKING_RULE_ALREADY_EXISTS("Quy tắc chồng hàng giữa 2 loại kiện hàng này đã tồn tại", HttpStatus.CONFLICT),
 
     // -------------------------------------------------------------------------
     // Vehicle & Trip errors
@@ -86,9 +88,9 @@ public enum ErrorCode {
     // Import batch validation - row level
     // -------------------------------------------------------------------------
     IMPORT_DUPLICATE_CODE("Mã kiện bị trùng lặp trong cùng file", HttpStatus.BAD_REQUEST),
-    IMPORT_INVALID_LENGTH("Chiều dài phải là số nguyên dương (> 0 mm)", HttpStatus.BAD_REQUEST),
-    IMPORT_INVALID_WIDTH("Chiều rộng phải là số nguyên dương (> 0 mm)", HttpStatus.BAD_REQUEST),
-    IMPORT_INVALID_HEIGHT("Chiều cao phải là số nguyên dương (> 0 mm)", HttpStatus.BAD_REQUEST),
+    IMPORT_INVALID_LENGTH("Chiều dài phải là số dương (> 0 cm)", HttpStatus.BAD_REQUEST),
+    IMPORT_INVALID_WIDTH("Chiều rộng phải là số dương (> 0 cm)", HttpStatus.BAD_REQUEST),
+    IMPORT_INVALID_HEIGHT("Chiều cao phải là số dương (> 0 cm)", HttpStatus.BAD_REQUEST),
     IMPORT_INVALID_WEIGHT("Khối lượng phải là số dương (> 0 kg)", HttpStatus.BAD_REQUEST),
     IMPORT_INVALID_HANDLING_CLASS("Loại hàng không hợp lệ. Chỉ chấp nhận: STANDARD, FRAGILE, REFRIGERATED, HAZARDOUS, HIGH_VALUE", HttpStatus.BAD_REQUEST),
     IMPORT_BLANK_DESTINATION("Điểm đến / nơi nhận hàng không được để trống", HttpStatus.BAD_REQUEST),
@@ -122,7 +124,6 @@ public enum ErrorCode {
     DUPLICATE_UNLOAD("Kiện hàng này đã được dỡ trước đó", HttpStatus.CONFLICT),
     WRONG_DELIVERY_STOP("Kiện hàng không thuộc điểm dừng hiện tại", HttpStatus.BAD_REQUEST),
     INCOMPLETE_STOP_UNLOAD("Điểm dừng chưa hoàn tất dỡ hàng", HttpStatus.BAD_REQUEST),
-    DRIVER_NOT_IN_COMPANY("Người dùng hiện tại không thuộc công ty của chuyến đi", HttpStatus.FORBIDDEN),
 
     // -------------------------------------------------------------------------
     // Subscription & Payment errors (Sprint 8)

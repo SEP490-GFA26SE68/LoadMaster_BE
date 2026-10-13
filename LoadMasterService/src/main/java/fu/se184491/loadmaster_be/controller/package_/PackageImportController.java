@@ -1,5 +1,6 @@
 package fu.se184491.loadmaster_be.controller.package_;
 
+import fu.se184491.loadmaster_be.dto.ApiResponse;
 import fu.se184491.loadmaster_be.dto.response.ImportConfirmResult;
 import fu.se184491.loadmaster_be.dto.response.ImportPreviewResult;
 import fu.se184491.loadmaster_be.dto.response.PackageDetailResponse;
@@ -7,6 +8,7 @@ import fu.se184491.loadmaster_be.constant.cargo.HandlingClass;
 import fu.se184491.loadmaster_be.entity.cargo.CargoPackage;
 import fu.se184491.loadmaster_be.exception.AppException;
 import fu.se184491.loadmaster_be.exception.ErrorCode;
+import fu.se184491.loadmaster_be.helpers.CurrentUserService;
 import fu.se184491.loadmaster_be.service.import_.PackageImportService;
 import fu.se184491.loadmaster_be.service.qr.QrCodeService;
 import lombok.RequiredArgsConstructor;
@@ -23,10 +25,7 @@ public class PackageImportController {
 
     private final PackageImportService packageImportService;
     private final QrCodeService qrCodeService;
-
-    // TODO: Extract from Security Context
-    private Long getCurrentCompanyId() { return 1L; }
-    private Long getCurrentUserId()    { return 1L; }
+    private final CurrentUserService currentUserService;
 
     // -------------------------------------------------------------------------
     // Import
@@ -35,16 +34,19 @@ public class PackageImportController {
     @PostMapping(value = "/import/preview", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
 //    @PreAuthorize("hasAuthority('PACKAGE_MANAGE')")
     @PreAuthorize("hasRole('DISPATCHER')")
-    public ResponseEntity<ImportPreviewResult> preview(@RequestPart("file") MultipartFile file) {
-        return ResponseEntity.ok(packageImportService.preview(file, getCurrentCompanyId()));
+    public ResponseEntity<ApiResponse<ImportPreviewResult>> preview(@RequestPart("file") MultipartFile file) {
+        ImportPreviewResult result = packageImportService.preview(file, currentUserService.getCurrentCompanyId());
+        return ResponseEntity.ok(ApiResponse.success("Xem trước import package thành công", result));
     }
 
     @PostMapping(value = "/import/confirm", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
 //    @PreAuthorize("hasAuthority('PACKAGE_MANAGE')")
     @PreAuthorize("hasRole('DISPATCHER')")
-    public ResponseEntity<ImportConfirmResult> confirm(@RequestPart("file") MultipartFile file) {
-        return ResponseEntity.ok(
-                packageImportService.confirm(file, getCurrentCompanyId(), getCurrentUserId()));
+    public ResponseEntity<ApiResponse<ImportConfirmResult>> confirm(@RequestPart("file") MultipartFile file) {
+        ImportConfirmResult result = packageImportService.confirm(file,
+                currentUserService.getCurrentCompanyId(),
+                currentUserService.getCurrentUser().getId());
+        return ResponseEntity.ok(ApiResponse.success("Import package thành công", result));
     }
 
     //PACKAGE_MANAGE
@@ -113,7 +115,7 @@ public class PackageImportController {
                      new org.apache.poi.xssf.usermodel.XSSFWorkbook()) {
             org.apache.poi.ss.usermodel.Sheet sheet = wb.createSheet("packages");
             org.apache.poi.ss.usermodel.Row header = sheet.createRow(0);
-            String[] cols = {"packageCode", "lengthMm", "widthMm", "heightMm",
+            String[] cols = {"packageCode", "lengthCm", "widthCm", "heightCm",
                              "weightKg", "handlingClass", "destination"};
             for (int i = 0; i < cols.length; i++) {
                 header.createCell(i).setCellValue(cols[i]);

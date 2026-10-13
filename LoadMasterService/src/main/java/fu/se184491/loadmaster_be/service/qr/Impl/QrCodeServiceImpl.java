@@ -11,6 +11,7 @@ import fu.se184491.loadmaster_be.entity.cargo.CargoPackage;
 import fu.se184491.loadmaster_be.exception.AppException;
 import fu.se184491.loadmaster_be.exception.ErrorCode;
 import fu.se184491.loadmaster_be.repository.cargo.CargoPackageRepository;
+import fu.se184491.loadmaster_be.service.cargo.PackageOwnershipService;
 import fu.se184491.loadmaster_be.service.qr.QrCodeService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -31,6 +32,7 @@ public class QrCodeServiceImpl implements QrCodeService {
     private static final String QR_FORMAT = "PNG";
 
     private final CargoPackageRepository cargoPackageRepository;
+    private final PackageOwnershipService packageOwnershipService;
 
     // -------------------------------------------------------------------------
     // generateQrToken
@@ -74,9 +76,10 @@ public class QrCodeServiceImpl implements QrCodeService {
     // -------------------------------------------------------------------------
 
     @Override
-    public CargoPackage lookupByToken(String qrToken) {
+    public CargoPackage lookupByToken(String qrToken, Long companyId) {
         return cargoPackageRepository
                 .findByQrToken(qrToken)
+                .filter(pkg -> packageOwnershipService.belongsToCompany(pkg, companyId))
                 .orElseThrow(() -> new AppException(ErrorCode.PACKAGE_NOT_FOUND));
     }
 
