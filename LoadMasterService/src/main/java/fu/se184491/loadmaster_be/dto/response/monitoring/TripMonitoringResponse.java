@@ -23,6 +23,12 @@ public class TripMonitoringResponse {
     private List<TripExceptionResponse> exceptions;
     @JsonInclude(JsonInclude.Include.NON_NULL)
     private TripRerouteResponse reroute;
+    /** Canonical active RoutePlan id (package route). */
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    private Long activeRoutePlanId;
+    /** Polyline geometry from active RoutePlan legs — prefer over Trip.routePlan JSON. */
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    private List<RouteLegGeometryResponse> routeLegs;
     @JsonInclude(JsonInclude.Include.ALWAYS)
     private Integer refreshMs;
     private Boolean isMockResult;

@@ -40,6 +40,8 @@ import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
@@ -59,6 +61,9 @@ public class RoutePlanServiceTest {
 
     @Mock
     private DeliveryStopRepository deliveryStopRepository;
+
+    @Mock
+    private RoutePlanWriter routePlanWriter;
 
     @InjectMocks
     private RoutePlanServiceImpl routePlanService;
@@ -245,24 +250,51 @@ public class RoutePlanServiceTest {
     }
 
     @Test
-    @DisplayName("acceptSuggestion: Should mark suggestion as accepted")
+    @DisplayName("acceptSuggestion: Should mark suggestion as accepted and persist new RoutePlan version")
     void testAcceptSuggestion_Success() {
-        RoutePlan plan = RoutePlan.builder().id(100L).trip(testTrip).build();
-        RouteLeg leg = RouteLeg.builder().id(201L).routePlan(plan).build();
+        RoutePlan plan = RoutePlan.builder().id(100L).trip(testTrip).planVersion(1).isActive(true).build();
+        RouteLeg leg = RouteLeg.builder()
+                .id(201L)
+                .routePlan(plan)
+                .legSequence(1)
+                .endStop(stop1)
+                .distanceMeters(1000)
+                .durationSeconds(300)
+                .polyline("old_poly")
+                .build();
         RouteSuggestion suggestion = RouteSuggestion.builder()
                 .id(301L)
                 .routeLeg(leg)
                 .suggestionType("BYPASS")
+                .distanceDiffMeters(100)
+                .durationDiffSeconds(-30)
+                .proposedPolyline("new_poly")
                 .isAccepted(false)
+                .build();
+        RoutePlan newPlan = RoutePlan.builder()
+                .id(101L)
+                .trip(testTrip)
+                .planVersion(2)
+                .totalDistanceMeters(1100)
+                .totalDurationSeconds(270)
+                .isActive(true)
                 .build();
 
         when(routeSuggestionRepository.findByIdAndRouteLegRoutePlanTripCompanyId(301L, 1L))
                 .thenReturn(Optional.of(suggestion));
+        when(routeLegRepository.findByRoutePlanIdOrderByLegSequenceAsc(100L)).thenReturn(List.of(leg));
+        when(routePlanWriter.cloneActiveWithLegOverride(
+                eq(testTrip), eq(plan), anyList(), eq(201L), eq(1100), eq(270), eq("new_poly")))
+                .thenReturn(newPlan);
+        when(tripRepository.save(any(Trip.class))).thenAnswer(i -> i.getArgument(0));
         when(routeSuggestionRepository.save(any(RouteSuggestion.class))).thenAnswer(i -> i.getArgument(0));
 
         RouteSuggestionResponse response = routePlanService.acceptSuggestion(1L, 301L);
 
         assertNotNull(response);
         assertTrue(response.getIsAccepted());
+        verify(routePlanWriter).cloneActiveWithLegOverride(
+                eq(testTrip), eq(plan), anyList(), eq(201L), eq(1100), eq(270), eq("new_poly"));
+        verify(tripRepository).save(testTrip);
     }
 }

@@ -12,6 +12,9 @@ import fu.se184491.loadmaster_be.dto.response.monitoring.TripRerouteResponse;
 import fu.se184491.loadmaster_be.entity.account.User;
 import fu.se184491.loadmaster_be.entity.monitoring.GpsTracking;
 import fu.se184491.loadmaster_be.entity.monitoring.TripReroute;
+import fu.se184491.loadmaster_be.entity.route.RouteLeg;
+import fu.se184491.loadmaster_be.entity.route.RoutePlan;
+import fu.se184491.loadmaster_be.entity.route.RouteSuggestion;
 import fu.se184491.loadmaster_be.entity.trip.DeliveryStop;
 import fu.se184491.loadmaster_be.entity.trip.Trip;
 import fu.se184491.loadmaster_be.exception.AppException;
@@ -20,10 +23,15 @@ import fu.se184491.loadmaster_be.exception.ServiceUnavailableException;
 import fu.se184491.loadmaster_be.repository.account.UserRepository;
 import fu.se184491.loadmaster_be.repository.monitoring.GpsTrackingRepository;
 import fu.se184491.loadmaster_be.repository.monitoring.TripRerouteRepository;
+import fu.se184491.loadmaster_be.repository.route.RouteLegRepository;
+import fu.se184491.loadmaster_be.repository.route.RoutePlanRepository;
+import fu.se184491.loadmaster_be.repository.route.RouteSuggestionRepository;
 import fu.se184491.loadmaster_be.repository.trip.DeliveryStopRepository;
+import fu.se184491.loadmaster_be.repository.trip.TripRepository;
 import fu.se184491.loadmaster_be.service.monitoring.MonitoringTime;
 import fu.se184491.loadmaster_be.service.monitoring.RerouteService;
 import fu.se184491.loadmaster_be.service.monitoring.TripLookupHelper;
+import fu.se184491.loadmaster_be.service.route.RoutePlanWriter;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -51,6 +59,11 @@ public class RerouteServiceImpl implements RerouteService {
     private final TripRerouteRepository tripRerouteRepository;
     private final GoongMapsClient goongMapsClient;
     private final UserRepository userRepository;
+    private final RoutePlanRepository routePlanRepository;
+    private final RouteLegRepository routeLegRepository;
+    private final RouteSuggestionRepository routeSuggestionRepository;
+    private final RoutePlanWriter routePlanWriter;
+    private final TripRepository tripRepository;
 
     @Override
     @Transactional
@@ -137,7 +150,75 @@ public class RerouteServiceImpl implements RerouteService {
         latest.setConfirmedJson(toConfirmedMap(response));
         tripRerouteRepository.save(latest);
 
+        applyConfirmedRerouteToRoutePlan(trip, latest, selected);
+
         return response;
+    }
+
+    /**
+     * Bridges monitoring TripReroute into canonical RouteSuggestion + new RoutePlan version.
+     */
+    private void applyConfirmedRerouteToRoutePlan(Trip trip, TripReroute reroute, Map<String, Object> selected) {
+        Optional<RoutePlan> activeOpt = routePlanRepository.findByTripIdAndIsActiveTrue(trip.getId());
+        if (activeOpt.isEmpty()) {
+            log.debug("No active RoutePlan for trip {} — skip route bridge on reroute confirm", trip.getId());
+            return;
+        }
+        RoutePlan active = activeOpt.get();
+        List<RouteLeg> legs = routeLegRepository.findByRoutePlanIdOrderByLegSequenceAsc(active.getId());
+        if (legs.isEmpty()) {
+            return;
+        }
+
+        RouteLeg targetLeg = legs.stream()
+                .filter(leg -> reroute.getStopId() != null
+                        && leg.getEndStop() != null
+                        && reroute.getStopId().equals(leg.getEndStop().getId()))
+                .findFirst()
+                .orElse(legs.getFirst());
+
+        int selectedDistanceMeters = selected.get("distanceKm") instanceof Number n
+                ? (int) Math.round(n.doubleValue() * 1000)
+                : targetLeg.getDistanceMeters();
+        int selectedDurationSeconds = selected.get("durationMinutes") instanceof Number n
+                ? n.intValue() * 60
+                : targetLeg.getDurationSeconds();
+
+        Integer distanceDiff = selectedDistanceMeters - targetLeg.getDistanceMeters();
+        Integer durationDiff = selectedDurationSeconds - targetLeg.getDurationSeconds();
+        String suggestionType = stringVal(selected.get("route"));
+        if (suggestionType == null) {
+            suggestionType = "REROUTE";
+        }
+
+        RouteSuggestion suggestion = routeSuggestionRepository.save(RouteSuggestion.builder()
+                .routeLeg(targetLeg)
+                .suggestionType(suggestionType)
+                .distanceDiffMeters(distanceDiff)
+                .durationDiffSeconds(durationDiff)
+                .proposedPolyline(targetLeg.getPolyline())
+                .isAccepted(true)
+                .build());
+
+        RoutePlan newPlan = routePlanWriter.cloneActiveWithLegOverride(
+                trip,
+                active,
+                legs,
+                targetLeg.getId(),
+                selectedDistanceMeters,
+                selectedDurationSeconds,
+                targetLeg.getPolyline());
+
+        Map<String, Object> cache = trip.getRoutePlan() != null
+                ? new HashMap<>(trip.getRoutePlan())
+                : new HashMap<>();
+        cache.put("activeRoutePlanId", newPlan.getId());
+        cache.put("planVersion", newPlan.getPlanVersion());
+        cache.put("totalDistanceMeters", newPlan.getTotalDistanceMeters());
+        cache.put("totalTravelDurationSeconds", newPlan.getTotalDurationSeconds());
+        cache.put("lastRerouteSuggestionId", suggestion.getId());
+        trip.setRoutePlan(cache);
+        tripRepository.save(trip);
     }
 
     @Override

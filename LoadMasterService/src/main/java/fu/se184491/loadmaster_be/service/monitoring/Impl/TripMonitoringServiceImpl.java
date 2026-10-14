@@ -5,6 +5,7 @@ import fu.se184491.loadmaster_be.constant.trip.TripStatus;
 import fu.se184491.loadmaster_be.dto.response.monitoring.EtaRiskAlertResponse;
 import fu.se184491.loadmaster_be.dto.response.monitoring.LocationPointResponse;
 import fu.se184491.loadmaster_be.dto.response.monitoring.MonitoringBoardResponse;
+import fu.se184491.loadmaster_be.dto.response.monitoring.RouteLegGeometryResponse;
 import fu.se184491.loadmaster_be.dto.response.monitoring.TripExceptionResponse;
 import fu.se184491.loadmaster_be.dto.response.monitoring.TripLiveStopResponse;
 import fu.se184491.loadmaster_be.dto.response.monitoring.TripMonitoringResponse;
@@ -13,6 +14,8 @@ import fu.se184491.loadmaster_be.entity.account.User;
 import fu.se184491.loadmaster_be.entity.monitoring.EtaRiskAlert;
 import fu.se184491.loadmaster_be.entity.monitoring.GpsTracking;
 import fu.se184491.loadmaster_be.entity.monitoring.TripException;
+import fu.se184491.loadmaster_be.entity.route.RouteLeg;
+import fu.se184491.loadmaster_be.entity.route.RoutePlan;
 import fu.se184491.loadmaster_be.entity.trip.DeliveryStop;
 import fu.se184491.loadmaster_be.entity.trip.Trip;
 import fu.se184491.loadmaster_be.entity.vehicle.Vehicle;
@@ -20,6 +23,8 @@ import fu.se184491.loadmaster_be.repository.account.UserRepository;
 import fu.se184491.loadmaster_be.repository.monitoring.EtaRiskAlertRepository;
 import fu.se184491.loadmaster_be.repository.monitoring.GpsTrackingRepository;
 import fu.se184491.loadmaster_be.repository.monitoring.TripExceptionRepository;
+import fu.se184491.loadmaster_be.repository.route.RouteLegRepository;
+import fu.se184491.loadmaster_be.repository.route.RoutePlanRepository;
 import fu.se184491.loadmaster_be.repository.trip.DeliveryStopRepository;
 import fu.se184491.loadmaster_be.repository.trip.TripRepository;
 import fu.se184491.loadmaster_be.service.monitoring.EtaCalculationService;
@@ -55,6 +60,8 @@ public class TripMonitoringServiceImpl implements TripMonitoringService {
     private final TripExceptionService tripExceptionService;
     private final RerouteService rerouteService;
     private final UserRepository userRepository;
+    private final RoutePlanRepository routePlanRepository;
+    private final RouteLegRepository routeLegRepository;
 
     @Override
     @Transactional
@@ -145,6 +152,14 @@ public class TripMonitoringServiceImpl implements TripMonitoringService {
 
         Integer refreshMs = trip.getStatus() == TripStatus.IN_TRANSIT ? IN_TRANSIT_REFRESH_MS : null;
 
+        Long activeRoutePlanId = null;
+        List<RouteLegGeometryResponse> routeLegs = null;
+        OptionalActiveRoute activeRoute = loadActiveRoute(trip.getId());
+        if (activeRoute != null) {
+            activeRoutePlanId = activeRoute.plan().getId();
+            routeLegs = activeRoute.legs().stream().map(this::toRouteLegGeometry).toList();
+        }
+
         return TripMonitoringResponse.builder()
                 .tripId(trip.getTripCode())
                 .location(location)
@@ -152,9 +167,34 @@ public class TripMonitoringServiceImpl implements TripMonitoringService {
                 .alerts(alerts)
                 .exceptions(exceptions)
                 .reroute(reroute)
+                .activeRoutePlanId(activeRoutePlanId)
+                .routeLegs(routeLegs)
                 .refreshMs(refreshMs)
                 .isMockResult(false)
                 .build();
+    }
+
+    private OptionalActiveRoute loadActiveRoute(Long tripId) {
+        return routePlanRepository.findByTripIdAndIsActiveTrue(tripId)
+                .map(plan -> new OptionalActiveRoute(
+                        plan,
+                        routeLegRepository.findByRoutePlanIdOrderByLegSequenceAsc(plan.getId())))
+                .orElse(null);
+    }
+
+    private RouteLegGeometryResponse toRouteLegGeometry(RouteLeg leg) {
+        return RouteLegGeometryResponse.builder()
+                .legId(leg.getId())
+                .legSequence(leg.getLegSequence())
+                .startStopId(leg.getStartStop() != null ? leg.getStartStop().getId() : null)
+                .endStopId(leg.getEndStop() != null ? leg.getEndStop().getId() : null)
+                .distanceMeters(leg.getDistanceMeters())
+                .durationSeconds(leg.getDurationSeconds())
+                .polyline(leg.getPolyline())
+                .build();
+    }
+
+    private record OptionalActiveRoute(RoutePlan plan, List<RouteLeg> legs) {
     }
 
     private LocationPointResponse toLocation(GpsTracking tracking) {
@@ -213,6 +253,7 @@ public class TripMonitoringServiceImpl implements TripMonitoringService {
     }
 
     private MonitoringBoardResponse.DepotResponse resolveDepot(Trip trip, List<DeliveryStop> stops) {
+        // Prefer origin from Trip.routePlan cache (synced when RoutePlan is persisted).
         Map<String, Object> routePlan = trip.getRoutePlan();
         if (routePlan != null) {
             Double lat = number(routePlan.get("originLat"));
@@ -243,6 +284,22 @@ public class TripMonitoringServiceImpl implements TripMonitoringService {
                             .lng(lng)
                             .build();
                 }
+            }
+        }
+
+        // Fallback: start stop of first active RoutePlan leg (when JSON cache missing).
+        OptionalActiveRoute activeRoute = loadActiveRoute(trip.getId());
+        if (activeRoute != null && !activeRoute.legs().isEmpty()) {
+            RouteLeg first = activeRoute.legs().getFirst();
+            if (first.getStartStop() != null
+                    && first.getStartStop().getLatitude() != null
+                    && first.getStartStop().getLongitude() != null) {
+                DeliveryStop start = first.getStartStop();
+                return MonitoringBoardResponse.DepotResponse.builder()
+                        .name(start.getStopName() != null ? start.getStopName() : "Kho")
+                        .lat(start.getLatitude().doubleValue())
+                        .lng(start.getLongitude().doubleValue())
+                        .build();
             }
         }
 

@@ -1,6 +1,7 @@
 package fu.se184491.loadmaster_be.service.route;
 
 import fu.se184491.loadmaster_be.client.GoongMapsClient;
+import fu.se184491.loadmaster_be.client.KeycloakAdminClient;
 import fu.se184491.loadmaster_be.constant.cargo.PackageStatus;
 import fu.se184491.loadmaster_be.constant.order.OrderStatus;
 import fu.se184491.loadmaster_be.constant.trip.DeliveryStopStatus;
@@ -11,11 +12,14 @@ import fu.se184491.loadmaster_be.dto.route.RouteOptimizationResult;
 import fu.se184491.loadmaster_be.entity.cargo.CargoPackage;
 import fu.se184491.loadmaster_be.entity.common.AuditLog;
 import fu.se184491.loadmaster_be.entity.order.TransportOrder;
+import fu.se184491.loadmaster_be.entity.route.RouteLeg;
+import fu.se184491.loadmaster_be.entity.route.RoutePlan;
 import fu.se184491.loadmaster_be.entity.trip.DeliveryStop;
 import fu.se184491.loadmaster_be.entity.trip.Trip;
 import fu.se184491.loadmaster_be.exception.MissingCoordinatesException;
 import fu.se184491.loadmaster_be.exception.RouteOptimizationUnavailableException;
 import fu.se184491.loadmaster_be.exception.ServiceUnavailableException;
+import fu.se184491.loadmaster_be.service.security.ServiceTokenProvider;
 import jakarta.persistence.EntityManager;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -31,6 +35,7 @@ import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
@@ -47,7 +52,13 @@ import static org.mockito.Mockito.when;
         "app.brevo.api-key=test",
         "app.brevo.sender-email=test@example.com",
         "app.brevo.sender-name=Test",
-        "app.brevo.security.otp-hmac-secret=test-secret"
+        "app.brevo.security.otp-hmac-secret=test-secret",
+        "app.bootstrap.admin.email=admin@test.local",
+        "app.bootstrap.admin.password=test-password",
+        "app.bootstrap.admin.full-name=Test Admin",
+        "DEV_ADMIN_EMAIL=admin@test.local",
+        "DEV_ADMIN_PASSWORD=test-password",
+        "DEV_ADMIN_FULL_NAME=Test Admin"
 })
 @Transactional
 class RouteOptimizationServiceIntegrationTest {
@@ -65,6 +76,12 @@ class RouteOptimizationServiceIntegrationTest {
 
     @MockitoBean
     private JwtDecoder jwtDecoder;
+
+    @MockitoBean
+    private KeycloakAdminClient keycloakAdminClient;
+
+    @MockitoBean
+    private ServiceTokenProvider serviceTokenProvider;
 
     private Trip trip;
     private DeliveryStop firstStop;
@@ -121,6 +138,28 @@ class RouteOptimizationServiceIntegrationTest {
         Trip reloadedTrip = entityManager.find(Trip.class, trip.getId());
         assertEquals(List.of(secondStop.getId().intValue(), firstStop.getId().intValue()),
                 reloadedTrip.getRoutePlan().get("orderedStops"));
+        assertNotNull(reloadedTrip.getRoutePlan().get("activeRoutePlanId"));
+
+        RoutePlan activePlan = entityManager.createQuery(
+                        "select p from RoutePlan p where p.trip.id = :tripId and p.isActive = true",
+                        RoutePlan.class)
+                .setParameter("tripId", trip.getId())
+                .getSingleResult();
+        assertEquals(1, activePlan.getPlanVersion());
+        assertEquals(6000, activePlan.getTotalDistanceMeters());
+        assertEquals(480, activePlan.getTotalDurationSeconds());
+
+        List<RouteLeg> legs = entityManager.createQuery(
+                        "select l from RouteLeg l where l.routePlan.id = :planId order by l.legSequence",
+                        RouteLeg.class)
+                .setParameter("planId", activePlan.getId())
+                .getResultList();
+        assertEquals(2, legs.size());
+        assertEquals("origin-second", legs.get(0).getPolyline());
+        assertEquals("second-first", legs.get(1).getPolyline());
+        assertEquals(secondStop.getId(), legs.get(0).getEndStop().getId());
+        assertEquals(firstStop.getId(), legs.get(1).getEndStop().getId());
+
         AuditLog audit = entityManager.createQuery(
                         "select a from AuditLog a where a.entityName = 'Trip' and a.entityId = :tripId",
                         AuditLog.class)
