@@ -137,7 +137,13 @@ public enum ErrorCode {
     GPS_TRIP_NOT_IN_TRANSIT("Chuyến đi không ở trạng thái đang vận chuyển", HttpStatus.BAD_REQUEST),
     TRIP_EXCEPTION_NOT_FOUND("Không tìm thấy sự cố chuyến đi", HttpStatus.NOT_FOUND),
     INVALID_REROUTE_INDEX("Chỉ số tuyến thay thế không hợp lệ", HttpStatus.BAD_REQUEST),
-    NO_GPS_LOCATION("Chuyến đi chưa có vị trí GPS", HttpStatus.BAD_REQUEST);
+    NO_GPS_LOCATION("Chuyến đi chưa có vị trí GPS", HttpStatus.BAD_REQUEST),
+    // -------------------------------------------------------------------------
+    // Route Planning errors (Sprint 7 / Phương án 2)
+    // -------------------------------------------------------------------------
+    ROUTE_PLAN_NOT_FOUND("Không tìm thấy kế hoạch lộ trình", HttpStatus.NOT_FOUND),
+    ROUTE_LEG_NOT_FOUND("Không tìm thấy chặng lộ trình", HttpStatus.NOT_FOUND),
+    ROUTE_SUGGESTION_NOT_FOUND("Không tìm thấy đề xuất đổi tuyến", HttpStatus.NOT_FOUND);
 
     private final String message;
     private final HttpStatus httpStatus;
