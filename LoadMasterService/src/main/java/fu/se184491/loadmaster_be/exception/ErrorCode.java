@@ -94,7 +94,62 @@ public enum ErrorCode {
     IMPORT_INVALID_WEIGHT("Khối lượng phải là số dương (> 0 kg)", HttpStatus.BAD_REQUEST),
     IMPORT_INVALID_HANDLING_CLASS("Loại hàng không hợp lệ. Chỉ chấp nhận: STANDARD, FRAGILE, REFRIGERATED, HAZARDOUS, HIGH_VALUE", HttpStatus.BAD_REQUEST),
     IMPORT_BLANK_DESTINATION("Điểm đến / nơi nhận hàng không được để trống", HttpStatus.BAD_REQUEST),
+
     IMPORT_EXISTING_CODE("Mã kiện đã tồn tại trong hệ thống, hệ thống sẽ tạo bản ghi mới", HttpStatus.OK),
+
+    // Import Excel - extended package fields
+    IMPORT_BLANK_PACKAGE_CODE(
+            "Mã kiện không được để trống",
+            HttpStatus.BAD_REQUEST),
+
+    IMPORT_INVALID_QUANTITY(
+            "Số lượng phải là số nguyên dương",
+            HttpStatus.BAD_REQUEST),
+
+    IMPORT_INVALID_FRAGILITY_LEVEL(
+            "Mức dễ vỡ không hợp lệ",
+            HttpStatus.BAD_REQUEST),
+
+    IMPORT_INVALID_MAX_TOP_LOAD(
+            "Tải trọng đặt phía trên phải lớn hơn hoặc bằng 0 kg",
+            HttpStatus.BAD_REQUEST),
+
+    IMPORT_INVALID_MAX_LAYERS(
+            "Số tầng tối đa phải là số nguyên lớn hơn hoặc bằng 1",
+            HttpStatus.BAD_REQUEST),
+
+    IMPORT_INVALID_MIN_SUPPORT_RATIO(
+            "Tỷ lệ đỡ đáy phải nằm trong khoảng từ 0 đến 1",
+            HttpStatus.BAD_REQUEST),
+
+    IMPORT_INVALID_PRIORITY(
+            "Độ ưu tiên không hợp lệ",
+            HttpStatus.BAD_REQUEST),
+
+    IMPORT_INVALID_ORIENTATION(
+            "Hướng đặt kiện không hợp lệ",
+            HttpStatus.BAD_REQUEST),
+
+    IMPORT_INVALID_BOOLEAN(
+            "Giá trị phải là Có/Không hoặc true/false",
+            HttpStatus.BAD_REQUEST),
+
+    IMPORT_PACKAGE_TYPE_NOT_FOUND(
+            "Mã loại kiện không tồn tại trong công ty",
+            HttpStatus.BAD_REQUEST),
+
+    IMPORT_DUPLICATE_GENERATED_CODE(
+            "Mã kiện được tạo theo số lượng bị trùng",
+            HttpStatus.BAD_REQUEST),
+
+    IMPORT_INVALID_PACKAGE_NAME(
+            "Tên kiện vượt quá độ dài cho phép",
+            HttpStatus.BAD_REQUEST),
+
+    IMPORT_INVALID_PACKING_GROUP(
+            "Nhóm kiện vượt quá độ dài cho phép",
+            HttpStatus.BAD_REQUEST),
+
     IMPORT_HAS_ERRORS("File import chứa lỗi dữ liệu, vui lòng kiểm tra preview trước khi xác nhận", HttpStatus.UNPROCESSABLE_ENTITY),
     EXPORT_TOO_MANY_PACKAGES("Tối đa 200 package mỗi lần xuất PDF", HttpStatus.BAD_REQUEST),
 

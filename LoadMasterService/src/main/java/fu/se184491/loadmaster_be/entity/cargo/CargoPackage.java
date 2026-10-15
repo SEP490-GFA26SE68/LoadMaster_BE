@@ -28,8 +28,11 @@ public class CargoPackage {
     @JoinColumn(name = "company_id", nullable = false)
     private Company company;
 
-    @Column(name = "package_code", length = 100)
+    @Column(name = "package_code", length = 100, unique = true)
     private String packageCode;
+
+    @Column(name = "package_name", length = 150)
+    private String packageName;
 
     @Column(name = "tracking_barcode", length = 100, unique = true)
     private String trackingBarcode;
@@ -64,6 +67,9 @@ public class CargoPackage {
     /** Free-text destination (address or code) as written in the import file. */
     @Column(name = "destination", length = 255)
     private String destination;
+
+    @Column(name = "note", columnDefinition = "TEXT")
+    private String note;
 
     @Builder.Default
     @Column(name = "is_pinned", nullable = false)

@@ -57,7 +57,10 @@ public class PackageImportController {
         return ResponseEntity.ok()
                 .contentType(MediaType.parseMediaType(
                         "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"))
-                .header("Content-Disposition", "attachment; filename=\"packages_template.xlsx\"")
+                .header(
+                        "Content-Disposition",
+                        "attachment; filename=\"mau-nhap-kien-chung.xlsx\""
+                )
                 .body(template);
     }
 
@@ -111,18 +114,12 @@ public class PackageImportController {
     }
 
     private byte[] buildTemplateBytes() {
-        try (org.apache.poi.xssf.usermodel.XSSFWorkbook wb =
-                     new org.apache.poi.xssf.usermodel.XSSFWorkbook()) {
-            org.apache.poi.ss.usermodel.Sheet sheet = wb.createSheet("packages");
-            org.apache.poi.ss.usermodel.Row header = sheet.createRow(0);
-            String[] cols = {"packageCode", "lengthCm", "widthCm", "heightCm",
-                             "weightKg", "handlingClass", "destination"};
-            for (int i = 0; i < cols.length; i++) {
-                header.createCell(i).setCellValue(cols[i]);
-            }
-            java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
-            wb.write(out);
-            return out.toByteArray();
+        try (var inputStream = new org.springframework.core.io
+                .ClassPathResource("templates/mau-nhap-kien-chung.xlsx")
+                .getInputStream()) {
+
+            return inputStream.readAllBytes();
+
         } catch (java.io.IOException e) {
             throw new AppException(ErrorCode.INTERNAL_SERVER_ERROR);
         }

@@ -81,7 +81,7 @@ public class TripMonitoringServiceImpl implements TripMonitoringService {
         for (Trip trip : trips) {
             List<DeliveryStop> stops = deliveryStopRepository.findByTripIdOrderByStopSequenceAsc(trip.getId());
             Vehicle vehicle = trip.getVehicle();
-            User driver = vehicle != null ? vehicle.getDriver() : null;
+            User driver = trip.getDriver();
             if (driver != null) {
                 userIds.add(driver.getId());
             }

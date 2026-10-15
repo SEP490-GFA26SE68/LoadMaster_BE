@@ -17,6 +17,8 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.List;
+
 @RestController
 @RequestMapping("/api/packages")
 @RequiredArgsConstructor
@@ -48,6 +50,26 @@ public class PackageController {
                         result
                 ));
     }
+
+
+    @PostMapping("/batch")
+    @PreAuthorize("hasAnyAuthority('PACKAGE_MANAGE', 'DISPATCHER')")
+    public ResponseEntity<ApiResponse<List<PackageResponse>>> createPackages(
+            @Valid @RequestBody PackageRequest request
+    ) {
+        List<PackageResponse> results = packageService.createPackages(
+                getCurrentCompanyId(),
+                request
+        );
+
+        return ResponseEntity
+                .status(HttpStatus.CREATED)
+                .body(ApiResponse.success(
+                        "Tạo " + results.size() + " kiện hàng thành công",
+                        results
+                ));
+    }
+
 
     // ==================== UPDATE ====================
 

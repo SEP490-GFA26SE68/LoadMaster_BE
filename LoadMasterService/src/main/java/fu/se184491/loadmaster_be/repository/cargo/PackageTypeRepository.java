@@ -20,6 +20,10 @@ public interface PackageTypeRepository extends JpaRepository<PackageType, Long> 
             String typeCode
     );
 
+    Optional<PackageType> findByCompanyIdAndTypeCodeIgnoreCase(
+            Long companyId,
+            String typeCode
+    );
     boolean existsByCompanyIdAndTypeCodeIgnoreCaseAndIdNot(
             Long companyId,
             String typeCode,
