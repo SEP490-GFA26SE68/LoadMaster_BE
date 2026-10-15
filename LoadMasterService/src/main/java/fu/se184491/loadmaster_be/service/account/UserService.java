@@ -4,7 +4,10 @@ import fu.se184491.loadmaster_be.constant.account.UserRole;
 import fu.se184491.loadmaster_be.constant.account.UserStatus;
 import fu.se184491.loadmaster_be.dto.PageResponse;
 import fu.se184491.loadmaster_be.dto.request.account.CreateUserRequest;
+import fu.se184491.loadmaster_be.dto.request.account.UpdateUserRequest;
+import fu.se184491.loadmaster_be.dto.request.account.UpdateUserStatusRequest;
 import fu.se184491.loadmaster_be.dto.response.account.CreateUserResponse;
+import fu.se184491.loadmaster_be.dto.response.account.ResetPasswordResponse;
 import fu.se184491.loadmaster_be.dto.response.account.UserListItemResponse;
 import fu.se184491.loadmaster_be.dto.response.account.UserProfileResponse;
 import fu.se184491.loadmaster_be.dto.response.account.UserStatsResponse;
@@ -25,4 +28,12 @@ public interface UserService {
     CreateUserResponse createUser(CreateUserRequest request);
 
     UserStatsResponse getUserStats();
+
+    UserListItemResponse updateUser(Long id, UpdateUserRequest request);
+
+    UserListItemResponse updateUserStatus(Long id, UpdateUserStatusRequest request);
+
+    void deleteUser(Long id);
+
+    ResetPasswordResponse resetPassword(Long id);
 }

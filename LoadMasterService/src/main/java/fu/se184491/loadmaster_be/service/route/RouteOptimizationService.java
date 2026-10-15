@@ -9,6 +9,7 @@ import fu.se184491.loadmaster_be.dto.route.StopSequenceRequest;
 import fu.se184491.loadmaster_be.dto.route.StopSequenceResult;
 import fu.se184491.loadmaster_be.entity.cargo.CargoPackage;
 import fu.se184491.loadmaster_be.entity.common.AuditLog;
+import fu.se184491.loadmaster_be.entity.route.RoutePlan;
 import fu.se184491.loadmaster_be.entity.trip.DeliveryStop;
 import fu.se184491.loadmaster_be.entity.trip.Trip;
 import fu.se184491.loadmaster_be.exception.AppException;
@@ -42,6 +43,7 @@ public class RouteOptimizationService {
     private final CargoPackageRepository cargoPackageRepository;
     private final AuditLogRepository auditLogRepository;
     private final GoongMapsClient goongMapsClient;
+    private final RoutePlanWriter routePlanWriter;
     private final StopSequenceOptimizer stopSequenceOptimizer = new StopSequenceOptimizer();
 
     public RouteOptimizationService(
@@ -49,13 +51,15 @@ public class RouteOptimizationService {
             DeliveryStopRepository deliveryStopRepository,
             CargoPackageRepository cargoPackageRepository,
             AuditLogRepository auditLogRepository,
-            GoongMapsClient goongMapsClient
+            GoongMapsClient goongMapsClient,
+            RoutePlanWriter routePlanWriter
     ) {
         this.tripRepository = tripRepository;
         this.deliveryStopRepository = deliveryStopRepository;
         this.cargoPackageRepository = cargoPackageRepository;
         this.auditLogRepository = auditLogRepository;
         this.goongMapsClient = goongMapsClient;
+        this.routePlanWriter = routePlanWriter;
     }
 
     @Transactional
@@ -126,14 +130,36 @@ public class RouteOptimizationService {
                 sequence.getDeadlineMissedStops(),
                 segments,
                 schedules);
-        Map<String, Object> routePlan = routePlan(result);
-        trip.setRoutePlan(routePlan);
+
+        List<RoutePlanWriter.LegDraft> legDrafts = new ArrayList<>();
+        for (int index = 0; index < segments.size(); index++) {
+            RouteOptimizationResult.RouteSegment segment = segments.get(index);
+            DeliveryStop startStop = segment.fromStopId() != null ? stopsById.get(segment.fromStopId()) : null;
+            DeliveryStop endStop = stopsById.get(segment.toStopId());
+            legDrafts.add(new RoutePlanWriter.LegDraft(
+                    index + 1,
+                    startStop,
+                    endStop,
+                    Math.toIntExact(segment.distanceMeters()),
+                    Math.toIntExact(segment.durationSeconds()),
+                    segment.polyline()));
+        }
+        RoutePlan persisted = routePlanWriter.persistNewActivePlan(
+                trip,
+                Math.toIntExact(distanceMeters),
+                travelSeconds,
+                legDrafts);
+
+        Map<String, Object> routePlanCache = routePlan(result);
+        routePlanCache.put("activeRoutePlanId", persisted.getId());
+        routePlanCache.put("planVersion", persisted.getPlanVersion());
+        trip.setRoutePlan(routePlanCache);
         tripRepository.save(trip);
         auditLogRepository.save(AuditLog.builder()
                 .actionType("ROUTE_OPTIMIZED")
                 .entityName("Trip")
                 .entityId(tripId.toString())
-                .newValues(routePlan)
+                .newValues(routePlanCache)
                 .createdAt(LocalDateTime.now())
                 .build());
         return result;

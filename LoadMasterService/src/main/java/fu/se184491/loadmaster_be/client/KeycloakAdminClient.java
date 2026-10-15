@@ -76,7 +76,7 @@ public class KeycloakAdminClient {
         Map<String, Object> body = Map.of(
                 "type", "password",
                 "value", password,
-                "temporary", false
+                "temporary", true
         );
 
         keycloakAdminRestClient

@@ -1,5 +1,6 @@
 package fu.se184491.loadmaster_be.service.subscription.Impl;
 
+import fu.se184491.loadmaster_be.constant.billing.BillingCycle;
 import fu.se184491.loadmaster_be.constant.billing.PaymentGateway;
 import fu.se184491.loadmaster_be.constant.billing.SubscriptionStatus;
 import fu.se184491.loadmaster_be.dto.request.subscription.SubscribeRequest;
@@ -128,7 +129,7 @@ public class SubscriptionServiceImpl implements SubscriptionService {
         sub.setPlan(plan);
         sub.setStatus(SubscriptionStatus.ACTIVE);
         sub.setStartedAt(now);
-        sub.setExpiresAt(now.plusMonths(1));
+        sub.setExpiresAt(calculateExpiresAt(now, plan));
         sub.setAutoRenew(true);
 
         companySubscriptionRepository.save(sub);
@@ -166,7 +167,7 @@ public class SubscriptionServiceImpl implements SubscriptionService {
                 SubscriptionPlan plan = sub.getPlan();
                 if (plan != null && (plan.getPriceVnd() == null || plan.getPriceVnd().compareTo(BigDecimal.ZERO) == 0)) {
                     sub.setStartedAt(now);
-                    sub.setExpiresAt(now.plusMonths(1));
+                    sub.setExpiresAt(calculateExpiresAt(now, plan));
                     companySubscriptionRepository.save(sub);
                     if (plan.getMonthlyCredits() != null && plan.getMonthlyCredits() > 0) {
                         creditService.grantMonthlyCredits(sub.getCompany().getId(), plan.getMonthlyCredits());
@@ -184,5 +185,11 @@ public class SubscriptionServiceImpl implements SubscriptionService {
                 log.info("Subscription marked EXPIRED for company={}", sub.getCompany().getId());
             }
         }
+    }
+
+    private LocalDateTime calculateExpiresAt(LocalDateTime start, SubscriptionPlan plan) {
+        return plan.getBillingCycle() == BillingCycle.YEARLY
+                ? start.plusYears(1)
+                : start.plusMonths(1);
     }
 }

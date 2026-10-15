@@ -41,7 +41,7 @@ public class CreditController {
     public static final BigDecimal PRICE_PER_CREDIT_VND = new BigDecimal("5000");
 
     @GetMapping("/balance")
-    @PreAuthorize("hasAnyAuthority('COMPANY_ADMIN', 'DISPATCHER', 'SYSTEM_MANAGER')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'DISPATCHER', 'SYSTEM_MANAGER') or hasAnyAuthority('COMPANY_ADMIN', 'DISPATCHER', 'SYSTEM_MANAGER')")
     public ResponseEntity<ApiResponse<CreditBalanceResponse>> getBalance() {
         Long companyId = currentUserService.getCurrentCompanyId();
         CreditBalanceResponse response = creditService.getBalance(companyId);
@@ -52,7 +52,7 @@ public class CreditController {
     }
 
     @GetMapping("/transactions")
-    @PreAuthorize("hasAnyAuthority('COMPANY_ADMIN', 'DISPATCHER', 'SYSTEM_MANAGER')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'DISPATCHER', 'SYSTEM_MANAGER') or hasAnyAuthority('COMPANY_ADMIN', 'DISPATCHER', 'SYSTEM_MANAGER')")
     public ResponseEntity<ApiResponse<Page<CreditTransactionResponse>>> getTransactions(
             @PageableDefault(size = 20, sort = "createdAt", direction = Sort.Direction.DESC) Pageable pageable) {
         Long companyId = currentUserService.getCurrentCompanyId();
@@ -64,7 +64,7 @@ public class CreditController {
     }
 
     @PostMapping("/topup")
-    @PreAuthorize("hasAuthority('COMPANY_ADMIN')")
+    @PreAuthorize("hasRole('ADMIN') or hasAuthority('COMPANY_ADMIN')")
     public ResponseEntity<ApiResponse<PaymentUrlResponse>> topup(
             @Valid @RequestBody CreditTopupRequest request,
             HttpServletRequest servletRequest) {

@@ -20,6 +20,7 @@ import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationConverter;
+import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
@@ -37,7 +38,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @WebMvcTest(SubscriptionController.class)
 @Import(WebSecurityConfig.class)
 @AutoConfigureMockMvc(addFilters = false)
-@org.springframework.security.test.context.support.WithMockUser(authorities = "COMPANY_ADMIN")
+@WithMockUser(authorities = "COMPANY_ADMIN")
 public class SubscriptionControllerTest {
 
     @Autowired
@@ -123,5 +124,120 @@ public class SubscriptionControllerTest {
                 .andExpect(jsonPath("$.success").value(true));
 
         verify(subscriptionService).cancelSubscription(1L);
+    }
+
+    @Test
+    @DisplayName("GET /api/subscription/current - Allows ROLE_ADMIN")
+    @WithMockUser(roles = "ADMIN")
+    void testGetCurrentSubscription_WithRoleAdmin_ReturnsOk() throws Exception {
+        when(subscriptionService.getCurrentSubscription(1L))
+                .thenReturn(SubscriptionCurrentResponse.builder().subscriptionId(10L).planName("Pro Plan").build());
+
+        mockMvc.perform(get("/api/subscription/current"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true));
+    }
+
+    @Test
+    @DisplayName("GET /api/subscription/current - Allows ROLE_MANAGER")
+    @WithMockUser(roles = "MANAGER")
+    void testGetCurrentSubscription_WithRoleManager_ReturnsOk() throws Exception {
+        when(subscriptionService.getCurrentSubscription(1L))
+                .thenReturn(SubscriptionCurrentResponse.builder().subscriptionId(10L).planName("Pro Plan").build());
+
+        mockMvc.perform(get("/api/subscription/current"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true));
+    }
+
+    @Test
+    @DisplayName("GET /api/subscription/current - Allows ROLE_DISPATCHER")
+    @WithMockUser(roles = "DISPATCHER")
+    void testGetCurrentSubscription_WithRoleDispatcher_ReturnsOk() throws Exception {
+        when(subscriptionService.getCurrentSubscription(1L))
+                .thenReturn(SubscriptionCurrentResponse.builder().subscriptionId(10L).planName("Pro Plan").build());
+
+        mockMvc.perform(get("/api/subscription/current"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true));
+    }
+
+    @Test
+    @DisplayName("GET /api/subscription/current - Allows ROLE_SYSTEM_MANAGER")
+    @WithMockUser(roles = "SYSTEM_MANAGER")
+    void testGetCurrentSubscription_WithRoleSystemManager_ReturnsOk() throws Exception {
+        when(subscriptionService.getCurrentSubscription(1L))
+                .thenReturn(SubscriptionCurrentResponse.builder().subscriptionId(10L).planName("Pro Plan").build());
+
+        mockMvc.perform(get("/api/subscription/current"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true));
+    }
+
+    @Test
+    @DisplayName("GET /api/subscription/current - Denies ROLE_DRIVER with 403 Forbidden")
+    @WithMockUser(roles = "DRIVER")
+    void testGetCurrentSubscription_WithRoleDriver_ReturnsForbidden() throws Exception {
+        mockMvc.perform(get("/api/subscription/current"))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    @DisplayName("POST /api/subscription/subscribe - Allows ROLE_ADMIN")
+    @WithMockUser(roles = "ADMIN")
+    void testSubscribe_WithRoleAdmin_ReturnsOk() throws Exception {
+        SubscribeRequest request = SubscribeRequest.builder()
+                .planId(2L)
+                .gateway(PaymentGateway.VNPAY)
+                .build();
+
+        PaymentUrlResponse paymentResponse = PaymentUrlResponse.builder()
+                .paymentUrl("https://sandbox.vnpayment.vn/vpcpay?...")
+                .transactionId("VNP_123")
+                .status("PENDING")
+                .build();
+
+        when(subscriptionService.subscribe(eq(1L), any(SubscribeRequest.class), any()))
+                .thenReturn(paymentResponse);
+
+        mockMvc.perform(post("/api/subscription/subscribe")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true));
+    }
+
+    @Test
+    @DisplayName("POST /api/subscription/subscribe - Denies ROLE_DISPATCHER with 403 Forbidden")
+    @WithMockUser(roles = "DISPATCHER")
+    void testSubscribe_WithRoleDispatcher_ReturnsForbidden() throws Exception {
+        SubscribeRequest request = SubscribeRequest.builder()
+                .planId(2L)
+                .gateway(PaymentGateway.VNPAY)
+                .build();
+
+        mockMvc.perform(post("/api/subscription/subscribe")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    @DisplayName("POST /api/subscription/cancel - Allows ROLE_ADMIN")
+    @WithMockUser(roles = "ADMIN")
+    void testCancel_WithRoleAdmin_ReturnsOk() throws Exception {
+        mockMvc.perform(post("/api/subscription/cancel"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true));
+
+        verify(subscriptionService).cancelSubscription(1L);
+    }
+
+    @Test
+    @DisplayName("POST /api/subscription/cancel - Denies ROLE_MANAGER with 403 Forbidden")
+    @WithMockUser(roles = "MANAGER")
+    void testCancel_WithRoleManager_ReturnsForbidden() throws Exception {
+        mockMvc.perform(post("/api/subscription/cancel"))
+                .andExpect(status().isForbidden());
     }
 }

@@ -20,6 +20,7 @@ import fu.se184491.loadmaster_be.repository.route.RouteSuggestionRepository;
 import fu.se184491.loadmaster_be.repository.trip.DeliveryStopRepository;
 import fu.se184491.loadmaster_be.repository.trip.TripRepository;
 import fu.se184491.loadmaster_be.service.route.RoutePlanService;
+import fu.se184491.loadmaster_be.service.route.RoutePlanWriter;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
@@ -29,7 +30,9 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 @Service
 @RequiredArgsConstructor
@@ -41,6 +44,7 @@ public class RoutePlanServiceImpl implements RoutePlanService {
     private final RouteSuggestionRepository routeSuggestionRepository;
     private final TripRepository tripRepository;
     private final DeliveryStopRepository deliveryStopRepository;
+    private final RoutePlanWriter routePlanWriter;
 
     @Override
     @Transactional
@@ -155,8 +159,57 @@ public class RoutePlanServiceImpl implements RoutePlanService {
         RouteSuggestion suggestion = routeSuggestionRepository.findByIdAndRouteLegRoutePlanTripCompanyId(suggestionId, companyId)
                 .orElseThrow(() -> new AppException(ErrorCode.ROUTE_SUGGESTION_NOT_FOUND));
 
+        if (Boolean.TRUE.equals(suggestion.getIsAccepted())) {
+            return mapToSuggestionResponse(suggestion);
+        }
+
+        RouteLeg targetLeg = suggestion.getRouteLeg();
+        RoutePlan sourcePlan = targetLeg.getRoutePlan();
+        Trip trip = sourcePlan.getTrip();
+
+        List<RouteLeg> currentLegs = routeLegRepository.findByRoutePlanIdOrderByLegSequenceAsc(sourcePlan.getId());
+        Integer newDistance = suggestion.getDistanceDiffMeters() != null
+                ? targetLeg.getDistanceMeters() + suggestion.getDistanceDiffMeters()
+                : targetLeg.getDistanceMeters();
+        Integer newDuration = suggestion.getDurationDiffSeconds() != null
+                ? targetLeg.getDurationSeconds() + suggestion.getDurationDiffSeconds()
+                : targetLeg.getDurationSeconds();
+        if (newDistance != null && newDistance < 0) {
+            newDistance = 0;
+        }
+        if (newDuration != null && newDuration < 0) {
+            newDuration = 0;
+        }
+
+        RoutePlan newPlan = routePlanWriter.cloneActiveWithLegOverride(
+                trip,
+                sourcePlan,
+                currentLegs,
+                targetLeg.getId(),
+                newDistance,
+                newDuration,
+                suggestion.getProposedPolyline());
+
+        syncTripRoutePlanCache(trip, newPlan);
+
         suggestion.setIsAccepted(true);
         return mapToSuggestionResponse(routeSuggestionRepository.save(suggestion));
+    }
+
+    private void syncTripRoutePlanCache(Trip trip, RoutePlan plan) {
+        Map<String, Object> cache = trip.getRoutePlan() != null
+                ? new HashMap<>(trip.getRoutePlan())
+                : new HashMap<>();
+        cache.put("activeRoutePlanId", plan.getId());
+        cache.put("planVersion", plan.getPlanVersion());
+        if (plan.getTotalDistanceMeters() != null) {
+            cache.put("totalDistanceMeters", plan.getTotalDistanceMeters());
+        }
+        if (plan.getTotalDurationSeconds() != null) {
+            cache.put("totalTravelDurationSeconds", plan.getTotalDurationSeconds());
+        }
+        trip.setRoutePlan(cache);
+        tripRepository.save(trip);
     }
 
     // ── Mapping Helpers ────────────────────────────────────────────────────────

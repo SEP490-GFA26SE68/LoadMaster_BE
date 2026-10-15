@@ -8,5 +8,8 @@ public enum Permission {
     USERS_LOCK,
     USERS_DELETE,
 
-    AUDIT_READ
+    AUDIT_READ,
+
+    /** Lập kế hoạch chuyến, tối ưu tuyến, giám sát GPS / ETA (TripPlanning + Monitoring). */
+    TRIP_MANAGE
 }

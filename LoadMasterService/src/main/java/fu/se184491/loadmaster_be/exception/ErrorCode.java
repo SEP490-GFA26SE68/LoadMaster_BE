@@ -132,11 +132,25 @@ public enum ErrorCode {
     INVALID_PAYMENT_SIGNATURE("Chữ ký thanh toán không hợp lệ", HttpStatus.BAD_REQUEST),
 
     // -------------------------------------------------------------------------
+    // Monitoring & GPS tracking errors (Sprint 6)
+    // -------------------------------------------------------------------------
+    GPS_TRIP_NOT_IN_TRANSIT("Chuyến đi không ở trạng thái đang vận chuyển", HttpStatus.BAD_REQUEST),
+    TRIP_EXCEPTION_NOT_FOUND("Không tìm thấy sự cố chuyến đi", HttpStatus.NOT_FOUND),
+    INVALID_REROUTE_INDEX("Chỉ số tuyến thay thế không hợp lệ", HttpStatus.BAD_REQUEST),
+    NO_GPS_LOCATION("Chuyến đi chưa có vị trí GPS", HttpStatus.BAD_REQUEST),
+    // -------------------------------------------------------------------------
     // Route Planning errors (Sprint 7 / Phương án 2)
     // -------------------------------------------------------------------------
     ROUTE_PLAN_NOT_FOUND("Không tìm thấy kế hoạch lộ trình", HttpStatus.NOT_FOUND),
     ROUTE_LEG_NOT_FOUND("Không tìm thấy chặng lộ trình", HttpStatus.NOT_FOUND),
-    ROUTE_SUGGESTION_NOT_FOUND("Không tìm thấy đề xuất đổi tuyến", HttpStatus.NOT_FOUND);
+    ROUTE_SUGGESTION_NOT_FOUND("Không tìm thấy đề xuất đổi tuyến", HttpStatus.NOT_FOUND),
+
+    // -------------------------------------------------------------------------
+    // Partner Contract & Support Guest errors (Sprint 4)
+    // -------------------------------------------------------------------------
+    CONTACT_REQUEST_NOT_FOUND("Không tìm thấy yêu cầu liên hệ", HttpStatus.NOT_FOUND),
+    CONTRACT_NOT_FOUND("Không tìm thấy hợp đồng", HttpStatus.NOT_FOUND),
+    INVOICE_NOT_FOUND("Không tìm thấy hóa đơn", HttpStatus.NOT_FOUND);
 
     private final String message;
     private final HttpStatus httpStatus;
