@@ -50,6 +50,7 @@ public class RolePermissionMapping {
                         Permission.USERS_CREATE,
                         Permission.USERS_UPDATE,
                         Permission.USERS_LOCK,
+                        Permission.USERS_DELETE,
                         Permission.AUDIT_READ,
                         Permission.TRIP_MANAGE
                 )

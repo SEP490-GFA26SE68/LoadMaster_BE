@@ -7,6 +7,7 @@ import fu.se184491.loadmaster_be.constant.account.UserStatus;
 import fu.se184491.loadmaster_be.dto.request.account.CreateUserRequest;
 import fu.se184491.loadmaster_be.dto.response.account.CreateUserResponse;
 import fu.se184491.loadmaster_be.dto.response.account.UserListItemResponse;
+import fu.se184491.loadmaster_be.exception.GlobalExceptionHandler;
 import fu.se184491.loadmaster_be.service.account.UserService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -21,6 +22,8 @@ import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
+import static org.hamcrest.Matchers.containsString;
+import static org.hamcrest.Matchers.not;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -33,7 +36,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @WebMvcTest(UserController.class)
-@Import(WebSecurityConfig.class)
+@Import({WebSecurityConfig.class, GlobalExceptionHandler.class})
 @AutoConfigureMockMvc(addFilters = false)
 class UserControllerTest {
 
@@ -156,4 +159,96 @@ class UserControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true));
     }
+
+    @Test
+    @DisplayName("PATCH /api/users/{id}/status - Invalid enum value returns clean Vietnamese message without raw Jackson class names")
+    @WithMockUser(authorities = "USERS_LOCK")
+    void updateUserStatus_withInvalidEnum_returnsCleanBadRequestMessage() throws Exception {
+        String body = """
+                {
+                  "status": "hihi"
+                }
+                """;
+
+        mockMvc.perform(patch("/api/users/100/status")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.message", containsString("status")))
+                .andExpect(jsonPath("$.message", containsString("hihi")))
+                .andExpect(jsonPath("$.message", not(containsString("fu.se184491"))))
+                .andExpect(jsonPath("$.message", not(containsString("StreamReadFeature"))));
+    }
+
+    @Test
+    @DisplayName("PUT /api/users/{id} - Phone number exceeding 20 chars returns 400 Bad Request instead of 500")
+    @WithMockUser(authorities = "USERS_UPDATE")
+    void updateUser_withTooLongPhoneNumber_returnsBadRequest() throws Exception {
+        String body = """
+                {
+                  "fullName": "Updated Name",
+                  "phoneNumber": "09012345678901234567890123456789",
+                  "role": "DISPATCHER"
+                }
+                """;
+
+        mockMvc.perform(put("/api/users/100")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.success").value(false));
+
+        verify(userService, never()).updateUser(any(), any());
+    }
+
+    @Test
+    @DisplayName("POST /api/users - Company ADMIN passing invalid role enum only sees internal company roles in error message")
+    @WithMockUser( authorities = {"ROLE_ADMIN", "USERS_CREATE"})
+    void createUser_whenCompanyAdminPassesInvalidRoleEnum_returnsOnlyInternalRoles() throws Exception {
+        String body = """
+                {
+                  "email": "staff@acme.vn",
+                  "fullName": "Staff Name",
+                  "phoneNumber": "0901234567",
+                  "companyId": 1,
+                  "role": "hihi"
+                }
+                """;
+
+        mockMvc.perform(post("/api/users")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.message", containsString("[MANAGER, DISPATCHER, WAREHOUSE_WORKER, DRIVER]")))
+                .andExpect(jsonPath("$.message", not(containsString("SYSTEM_ADMIN"))))
+                .andExpect(jsonPath("$.message", not(containsString("SYSTEM_MANAGER"))))
+                .andExpect(jsonPath("$.message", not(containsString("SYSTEM_SUPPORTER"))));
+    }
+
+    @Test
+    @DisplayName("POST /api/users - SYSTEM_MANAGER passing invalid role enum only sees company-scoped roles in error message")
+    @WithMockUser(authorities = {"ROLE_SYSTEM_MANAGER", "USERS_CREATE"})
+    void createUser_whenSystemManagerPassesInvalidRoleEnum_returnsCompanyScopedRoles() throws Exception {
+        String body = """
+                {
+                  "email": "admin@acme.vn",
+                  "fullName": "Admin Name",
+                  "phoneNumber": "0901234567",
+                  "companyId": 1,
+                  "role": "hihi"
+                }
+                """;
+
+        mockMvc.perform(post("/api/users")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.message", containsString("[ADMIN, MANAGER, DISPATCHER, WAREHOUSE_WORKER, DRIVER]")))
+                .andExpect(jsonPath("$.message", not(containsString("SYSTEM_ADMIN"))));
+    }
 }
+
+

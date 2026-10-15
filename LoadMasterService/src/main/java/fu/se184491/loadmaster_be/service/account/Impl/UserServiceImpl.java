@@ -31,6 +31,7 @@ import org.springframework.data.jpa.domain.Specification;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.client.HttpClientErrorException;
 
 @Service
 @RequiredArgsConstructor
@@ -289,17 +290,26 @@ public class UserServiceImpl implements UserService {
             }
             Long callerCompanyId = currentUser.getCompany().getId();
             if (isPlatformRole(request.role()) || request.role() == UserRole.ADMIN) {
-                throw new AppException(ErrorCode.UNAUTHORIZED);
+                throw new AppException(
+                        ErrorCode.UNAUTHORIZED,
+                        "Tài khoản ADMIN công ty chỉ được phép tạo các vai trò nội bộ: [MANAGER, DISPATCHER, WAREHOUSE_WORKER, DRIVER]"
+                );
             }
             if (request.companyId() != null && !request.companyId().equals(callerCompanyId)) {
-                throw new AppException(ErrorCode.UNAUTHORIZED);
+                throw new AppException(
+                        ErrorCode.UNAUTHORIZED,
+                        "Tài khoản ADMIN công ty chỉ được phép tạo nhân viên thuộc công ty của mình"
+                );
             }
             return callerCompanyId;
         }
 
         if (callerRole == UserRole.SYSTEM_MANAGER) {
             if (isPlatformRole(request.role())) {
-                throw new AppException(ErrorCode.UNAUTHORIZED);
+                throw new AppException(
+                        ErrorCode.UNAUTHORIZED,
+                        "Tài khoản SYSTEM_MANAGER chỉ được phép tạo các vai trò cấp công ty: [ADMIN, MANAGER, DISPATCHER, WAREHOUSE_WORKER, DRIVER]"
+                );
             }
             return request.companyId();
         }
@@ -390,10 +400,16 @@ public class UserServiceImpl implements UserService {
             UserRole callerRole = currentUser.getUserRoleType();
             if (callerRole == UserRole.ADMIN
                     && (isPlatformRole(request.role()) || request.role() == UserRole.ADMIN)) {
-                throw new AppException(ErrorCode.UNAUTHORIZED);
+                throw new AppException(
+                        ErrorCode.UNAUTHORIZED,
+                        "Tài khoản ADMIN công ty chỉ được phép gán các vai trò nội bộ: [MANAGER, DISPATCHER, WAREHOUSE_WORKER, DRIVER]"
+                );
             }
             if (callerRole == UserRole.SYSTEM_MANAGER && isPlatformRole(request.role())) {
-                throw new AppException(ErrorCode.UNAUTHORIZED);
+                throw new AppException(
+                        ErrorCode.UNAUTHORIZED,
+                        "Tài khoản SYSTEM_MANAGER chỉ được phép gán các vai trò cấp công ty: [ADMIN, MANAGER, DISPATCHER, WAREHOUSE_WORKER, DRIVER]"
+                );
             }
             targetUser.setUserRoleType(request.role());
         }
@@ -427,7 +443,11 @@ public class UserServiceImpl implements UserService {
 
         User targetUser = getScopedTargetUser(currentUser, id);
         if (targetUser.getKeycloakId() != null && !targetUser.getKeycloakId().isBlank()) {
-            keycloakAdminClient.deleteUser(targetUser.getKeycloakId());
+            try {
+                keycloakAdminClient.deleteUser(targetUser.getKeycloakId());
+            } catch (HttpClientErrorException.NotFound ex) {
+                log.warn("Keycloak user {} already absent when deleting user id={}", targetUser.getKeycloakId(), id);
+            }
         }
         userRepository.delete(targetUser);
     }

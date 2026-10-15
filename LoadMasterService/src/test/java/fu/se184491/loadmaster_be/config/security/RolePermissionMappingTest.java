@@ -54,4 +54,19 @@ class RolePermissionMappingTest {
                 "USERS_CREATE"
         );
     }
+
+    @Test
+    @DisplayName("ADMIN should include USERS_DELETE permission to manage company users")
+    void admin_hasUsersDeletePermission() {
+        Set<Permission> permissions = rolePermissionMapping.getPermissions(UserRole.ADMIN);
+
+        assertThat(permissions).contains(
+                Permission.USERS_READ,
+                Permission.USERS_CREATE,
+                Permission.USERS_UPDATE,
+                Permission.USERS_LOCK,
+                Permission.USERS_DELETE
+        );
+    }
 }
+

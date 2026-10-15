@@ -8,6 +8,7 @@ import fu.se184491.loadmaster_be.config.security.WebSecurityConfig;
 import fu.se184491.loadmaster_be.constant.company.CompanyStatus;
 import fu.se184491.loadmaster_be.dto.request.company.CompanyRequest;
 import fu.se184491.loadmaster_be.dto.response.company.CompanyResponse;
+import fu.se184491.loadmaster_be.exception.GlobalExceptionHandler;
 import fu.se184491.loadmaster_be.service.company.CompanyService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -28,6 +29,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import java.time.Instant;
 import java.util.Collections;
 
+import static org.hamcrest.Matchers.containsString;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
@@ -36,7 +38,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 @WebMvcTest(CompanyController.class)
-@Import({WebSecurityConfig.class, RolePermissionMapping.class})
+@Import({WebSecurityConfig.class, RolePermissionMapping.class, GlobalExceptionHandler.class})
 @AutoConfigureMockMvc(addFilters = false)
 public class CompanyControllerTest {
 
@@ -211,5 +213,18 @@ public class CompanyControllerTest {
                         .param("status", "SUSPENDED"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value("SUSPENDED"));
+    }
+
+    @Test
+    @DisplayName("PATCH /api/companies/{id}/status should return 400 Bad Request with valid enum values when status is invalid")
+    @WithMockUser(roles = "SYSTEM_MANAGER")
+    void changeCompanyStatus_invalidStatusEnum_returnsBadRequest() throws Exception {
+        mockMvc.perform(patch("/api/companies/1/status")
+                        .with(csrf())
+                        .param("status", "INACTIVE"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.message", containsString("INACTIVE")))
+                .andExpect(jsonPath("$.message", containsString("ACTIVE, SUSPENDED, EXPIRED")));
     }
 }
