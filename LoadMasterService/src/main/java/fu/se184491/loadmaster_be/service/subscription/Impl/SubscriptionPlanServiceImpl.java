@@ -111,6 +111,10 @@ public class SubscriptionPlanServiceImpl implements SubscriptionPlanService {
     }
 
     private SubscriptionPlanResponse toResponse(SubscriptionPlan plan) {
+        long activeCompanyCount = plan.getId() != null
+                ? companySubscriptionRepository.countByPlanIdAndStatus(plan.getId(), SubscriptionStatus.ACTIVE)
+                : 0L;
+
         return SubscriptionPlanResponse.builder()
                 .id(plan.getId())
                 .planCode(plan.getPlanCode())
@@ -124,6 +128,7 @@ public class SubscriptionPlanServiceImpl implements SubscriptionPlanService {
                 .maxVehicles(plan.getMaxVehicles())
                 .maxMonthlyJobs(plan.getMaxMonthlyJobs())
                 .active(plan.getActive())
+                .activeCompanyCount(activeCompanyCount)
                 .build();
     }
 }

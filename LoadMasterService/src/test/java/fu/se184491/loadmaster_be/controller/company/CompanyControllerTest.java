@@ -1,6 +1,9 @@
 package fu.se184491.loadmaster_be.controller.company;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import fu.se184491.loadmaster_be.config.security.RestAccessDeniedHandler;
+import fu.se184491.loadmaster_be.config.security.RestAuthenticationEntryPoint;
+import fu.se184491.loadmaster_be.config.security.RolePermissionMapping;
 import fu.se184491.loadmaster_be.config.security.WebSecurityConfig;
 import fu.se184491.loadmaster_be.constant.company.CompanyStatus;
 import fu.se184491.loadmaster_be.dto.request.company.CompanyRequest;
@@ -33,7 +36,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 @WebMvcTest(CompanyController.class)
-@Import(WebSecurityConfig.class)
+@Import({WebSecurityConfig.class, RolePermissionMapping.class})
 @AutoConfigureMockMvc(addFilters = false)
 public class CompanyControllerTest {
 
@@ -45,6 +48,12 @@ public class CompanyControllerTest {
 
     @MockitoBean
     private JwtAuthenticationConverter jwtAuthenticationConverter;
+
+    @MockitoBean
+    private RestAuthenticationEntryPoint authenticationEntryPoint;
+
+    @MockitoBean
+    private RestAccessDeniedHandler accessDeniedHandler;
 
     private ObjectMapper objectMapper;
     private CompanyRequest request;
@@ -90,6 +99,47 @@ public class CompanyControllerTest {
     }
 
     @Test
+    @DisplayName("POST /api/companies should allow Keycloak role ROLE_SYSTEM_MANAGER")
+    @WithMockUser(roles = "SYSTEM_MANAGER")
+    void createCompany_withRoleSystemManager_success() throws Exception {
+        when(companyService.createCompany(any(CompanyRequest.class))).thenReturn(response);
+
+        mockMvc.perform(post("/api/companies")
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.id").value(1L));
+    }
+
+    @Test
+    @DisplayName("POST /api/companies should allow Keycloak role ROLE_SYSTEM_ADMIN")
+    @WithMockUser(roles = "SYSTEM_ADMIN")
+    void createCompany_withRoleSystemAdmin_success() throws Exception {
+        when(companyService.createCompany(any(CompanyRequest.class))).thenReturn(response);
+
+        mockMvc.perform(post("/api/companies")
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.id").value(1L));
+    }
+
+    @Test
+    @DisplayName("POST /api/companies should return 403 Forbidden for unauthorized role DRIVER")
+    @WithMockUser(roles = "DRIVER")
+    void createCompany_withRoleDriver_forbidden() throws Exception {
+        mockMvc.perform(post("/api/companies")
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isForbidden());
+
+        verify(companyService, never()).createCompany(any());
+    }
+
+    @Test
     @DisplayName("POST /api/companies should return 400 Bad Request when validation fails")
     @WithMockUser(authorities = "SYSTEM_MANAGER")
     void createCompany_validationError() throws Exception {
@@ -110,8 +160,8 @@ public class CompanyControllerTest {
     }
 
     @Test
-    @DisplayName("PUT /api/companies/{id} should return 200 OK")
-    @WithMockUser(authorities = "SYSTEM_MANAGER")
+    @DisplayName("PUT /api/companies/{id} should return 200 OK with ROLE_SYSTEM_MANAGER")
+    @WithMockUser(roles = "SYSTEM_MANAGER")
     void updateCompany_success() throws Exception {
         when(companyService.updateCompany(eq(1L), any(CompanyRequest.class))).thenReturn(response);
 
@@ -125,8 +175,8 @@ public class CompanyControllerTest {
     }
 
     @Test
-    @DisplayName("GET /api/companies/{id} should return 200 OK")
-    @WithMockUser(authorities = "SYSTEM_MANAGER")
+    @DisplayName("GET /api/companies/{id} should return 200 OK with ROLE_SYSTEM_MANAGER")
+    @WithMockUser(roles = "SYSTEM_MANAGER")
     void getCompanyById_success() throws Exception {
         when(companyService.getCompanyById(1L)).thenReturn(response);
 
@@ -137,8 +187,8 @@ public class CompanyControllerTest {
     }
 
     @Test
-    @DisplayName("GET /api/companies should return 200 OK with Page")
-    @WithMockUser(authorities = "SYSTEM_MANAGER")
+    @DisplayName("GET /api/companies should return 200 OK with ROLE_SYSTEM_ADMIN")
+    @WithMockUser(roles = "SYSTEM_ADMIN")
     void getAllCompanies_success() throws Exception {
         Page<CompanyResponse> page = new PageImpl<>(Collections.singletonList(response));
         when(companyService.getAllCompanies(any(Pageable.class))).thenReturn(page);
@@ -150,8 +200,8 @@ public class CompanyControllerTest {
     }
 
     @Test
-    @DisplayName("PATCH /api/companies/{id}/status should return 200 OK")
-    @WithMockUser(authorities = "SYSTEM_MANAGER")
+    @DisplayName("PATCH /api/companies/{id}/status should return 200 OK with ROLE_SYSTEM_MANAGER")
+    @WithMockUser(roles = "SYSTEM_MANAGER")
     void changeCompanyStatus_success() throws Exception {
         response.setStatus(CompanyStatus.SUSPENDED);
         when(companyService.changeCompanyStatus(1L, CompanyStatus.SUSPENDED)).thenReturn(response);

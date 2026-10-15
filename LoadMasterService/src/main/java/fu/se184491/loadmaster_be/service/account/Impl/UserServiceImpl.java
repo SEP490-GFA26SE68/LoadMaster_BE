@@ -5,7 +5,10 @@ import fu.se184491.loadmaster_be.constant.account.UserRole;
 import fu.se184491.loadmaster_be.constant.account.UserStatus;
 import fu.se184491.loadmaster_be.dto.PageResponse;
 import fu.se184491.loadmaster_be.dto.request.account.CreateUserRequest;
+import fu.se184491.loadmaster_be.dto.request.account.UpdateUserRequest;
+import fu.se184491.loadmaster_be.dto.request.account.UpdateUserStatusRequest;
 import fu.se184491.loadmaster_be.dto.response.account.CreateUserResponse;
+import fu.se184491.loadmaster_be.dto.response.account.ResetPasswordResponse;
 import fu.se184491.loadmaster_be.dto.response.account.UserListItemResponse;
 import fu.se184491.loadmaster_be.dto.response.account.UserProfileResponse;
 import fu.se184491.loadmaster_be.dto.response.account.UserStatsResponse;
@@ -92,9 +95,10 @@ public class UserServiceImpl implements UserService {
                 Specification.unrestricted();
 
         // 3. Scope theo role
-        if (currentUser.getUserRoleType() == UserRole.SYSTEM_ADMIN) {
+        if (currentUser.getUserRoleType() == UserRole.SYSTEM_ADMIN
+                || currentUser.getUserRoleType() == UserRole.SYSTEM_MANAGER) {
 
-            // SYSTEM_ADMIN được filter theo company bất kỳ
+            // SYSTEM_ADMIN / SYSTEM_MANAGER được filter theo company bất kỳ
             if (companyId != null) {
                 spec = spec.and(
                         (root, query, cb) ->
@@ -194,6 +198,8 @@ public class UserServiceImpl implements UserService {
 
     @Transactional
     public CreateUserResponse createUser(CreateUserRequest request) {
+        User currentUser = currentUserService.getCurrentUser();
+        Long targetCompanyId = resolveAndValidateTargetCompanyId(currentUser, request);
 
         if (userRepository.existsByEmail(request.email())) {
             throw new AppException(
@@ -205,14 +211,14 @@ public class UserServiceImpl implements UserService {
 
         if (!isPlatformRole(request.role())) {
 
-            if (request.companyId() == null) {
+            if (targetCompanyId == null) {
                 throw new AppException(
                         ErrorCode.COMPANY_REQUIRED
                 );
             }
 
             company = companyRepository
-                    .findById(request.companyId())
+                    .findById(targetCompanyId)
                     .orElseThrow(() ->
                             new AppException(
                                     ErrorCode.COMPANY_NOT_FOUND
@@ -274,6 +280,37 @@ public class UserServiceImpl implements UserService {
         }
     }
 
+    private Long resolveAndValidateTargetCompanyId(User currentUser, CreateUserRequest request) {
+        UserRole callerRole = currentUser.getUserRoleType();
+
+        if (callerRole == UserRole.ADMIN) {
+            if (currentUser.getCompany() == null) {
+                throw new AppException(ErrorCode.USER_COMPANY_NOT_FOUND);
+            }
+            Long callerCompanyId = currentUser.getCompany().getId();
+            if (isPlatformRole(request.role()) || request.role() == UserRole.ADMIN) {
+                throw new AppException(ErrorCode.UNAUTHORIZED);
+            }
+            if (request.companyId() != null && !request.companyId().equals(callerCompanyId)) {
+                throw new AppException(ErrorCode.UNAUTHORIZED);
+            }
+            return callerCompanyId;
+        }
+
+        if (callerRole == UserRole.SYSTEM_MANAGER) {
+            if (isPlatformRole(request.role())) {
+                throw new AppException(ErrorCode.UNAUTHORIZED);
+            }
+            return request.companyId();
+        }
+
+        if (callerRole == UserRole.SYSTEM_ADMIN) {
+            return request.companyId();
+        }
+
+        throw new AppException(ErrorCode.UNAUTHORIZED);
+    }
+
     @Transactional(readOnly = true)
     public UserStatsResponse getUserStats() {
 
@@ -283,7 +320,8 @@ public class UserServiceImpl implements UserService {
         Specification<User> scope =
                 Specification.unrestricted();
 
-        if (currentUser.getUserRoleType() == UserRole.SYSTEM_ADMIN) {
+        if (currentUser.getUserRoleType() == UserRole.SYSTEM_ADMIN
+                || currentUser.getUserRoleType() == UserRole.SYSTEM_MANAGER) {
 
             // toàn hệ thống
 
@@ -337,6 +375,98 @@ public class UserServiceImpl implements UserService {
                 activeUsers,
                 lockedUsers
         );
+    }
+
+    @Override
+    @Transactional
+    public UserListItemResponse updateUser(Long id, UpdateUserRequest request) {
+        User currentUser = currentUserService.getCurrentUser();
+        User targetUser = getScopedTargetUser(currentUser, id);
+
+        targetUser.setFullName(request.fullName());
+        targetUser.setPhoneNumber(request.phoneNumber());
+
+        if (request.role() != null) {
+            UserRole callerRole = currentUser.getUserRoleType();
+            if (callerRole == UserRole.ADMIN
+                    && (isPlatformRole(request.role()) || request.role() == UserRole.ADMIN)) {
+                throw new AppException(ErrorCode.UNAUTHORIZED);
+            }
+            if (callerRole == UserRole.SYSTEM_MANAGER && isPlatformRole(request.role())) {
+                throw new AppException(ErrorCode.UNAUTHORIZED);
+            }
+            targetUser.setUserRoleType(request.role());
+        }
+
+        User saved = userRepository.save(targetUser);
+        return toUserListItemResponse(saved);
+    }
+
+    @Override
+    @Transactional
+    public UserListItemResponse updateUserStatus(Long id, UpdateUserStatusRequest request) {
+        User currentUser = currentUserService.getCurrentUser();
+        if (currentUser.getId() != null && currentUser.getId().equals(id)) {
+            throw new AppException(ErrorCode.INVALID_INPUT);
+        }
+
+        User targetUser = getScopedTargetUser(currentUser, id);
+        targetUser.setStatus(request.status());
+
+        User saved = userRepository.save(targetUser);
+        return toUserListItemResponse(saved);
+    }
+
+    @Override
+    @Transactional
+    public void deleteUser(Long id) {
+        User currentUser = currentUserService.getCurrentUser();
+        if (currentUser.getId() != null && currentUser.getId().equals(id)) {
+            throw new AppException(ErrorCode.INVALID_INPUT);
+        }
+
+        User targetUser = getScopedTargetUser(currentUser, id);
+        if (targetUser.getKeycloakId() != null && !targetUser.getKeycloakId().isBlank()) {
+            keycloakAdminClient.deleteUser(targetUser.getKeycloakId());
+        }
+        userRepository.delete(targetUser);
+    }
+
+    @Override
+    @Transactional
+    public ResetPasswordResponse resetPassword(Long id) {
+        User currentUser = currentUserService.getCurrentUser();
+        User targetUser = getScopedTargetUser(currentUser, id);
+
+        String temporaryPassword = temporaryPasswordGenerator.generate();
+        keycloakAdminClient.setPassword(targetUser.getKeycloakId(), temporaryPassword);
+
+        return new ResetPasswordResponse(
+                targetUser.getId(),
+                toUserListItemResponse(targetUser),
+                temporaryPassword
+        );
+    }
+
+    private User getScopedTargetUser(User currentUser, Long targetUserId) {
+        User targetUser = userRepository.findById(targetUserId)
+                .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
+
+        UserRole callerRole = currentUser.getUserRoleType();
+        if (callerRole == UserRole.SYSTEM_ADMIN || callerRole == UserRole.SYSTEM_MANAGER) {
+            return targetUser;
+        }
+
+        if (callerRole == UserRole.ADMIN) {
+            if (currentUser.getCompany() == null
+                    || targetUser.getCompany() == null
+                    || !targetUser.getCompany().getId().equals(currentUser.getCompany().getId())) {
+                throw new AppException(ErrorCode.UNAUTHORIZED);
+            }
+            return targetUser;
+        }
+
+        throw new AppException(ErrorCode.UNAUTHORIZED);
     }
 
     private boolean isPlatformRole(UserRole role) {

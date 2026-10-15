@@ -25,4 +25,5 @@ public class SubscriptionPlanResponse {
     private Integer maxVehicles;
     private Integer maxMonthlyJobs;
     private Boolean active;
+    private long activeCompanyCount;
 }

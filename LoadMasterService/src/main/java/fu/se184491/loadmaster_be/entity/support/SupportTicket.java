@@ -1,15 +1,14 @@
 package fu.se184491.loadmaster_be.entity.support;
 
-import fu.se184491.loadmaster_be.entity.account.User;
-import fu.se184491.loadmaster_be.entity.optimization.OptimizationJob;
-
-
 import fu.se184491.loadmaster_be.constant.support.TicketCategory;
 import fu.se184491.loadmaster_be.constant.support.TicketPriority;
 import fu.se184491.loadmaster_be.constant.support.TicketStatus;
+import fu.se184491.loadmaster_be.entity.account.User;
+import fu.se184491.loadmaster_be.entity.optimization.OptimizationJob;
 import jakarta.persistence.*;
 import lombok.*;
 
+import java.time.Instant;
 import java.time.LocalDateTime;
 
 @Entity
@@ -40,9 +39,18 @@ public class SupportTicket {
     @Column(name = "subject", length = 255)
     private String subject;
 
+    @Column(name = "description", columnDefinition = "TEXT")
+    private String description;
+
+    @Column(name = "resolution_note", columnDefinition = "TEXT")
+    private String resolutionNote;
+
     @Enumerated(EnumType.STRING) @Column(name = "status")
     private TicketStatus status;
 
     @Column(name = "created_at")
     private LocalDateTime createdAt;
+
+    @Column(name = "resolved_at")
+    private Instant resolvedAt;
 }

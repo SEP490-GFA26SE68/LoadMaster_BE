@@ -14,5 +14,6 @@ public interface CompanySubscriptionRepository extends JpaRepository<CompanySubs
     Optional<CompanySubscription> findByCompanyId(Long companyId);
     Optional<CompanySubscription> findByCompanyIdAndStatus(Long companyId, SubscriptionStatus status);
     boolean existsByPlanIdAndStatus(Long planId, SubscriptionStatus status);
+    long countByPlanIdAndStatus(Long planId, SubscriptionStatus status);
     List<CompanySubscription> findByStatusAndExpiresAtBefore(SubscriptionStatus status, LocalDateTime dateTime);
 }

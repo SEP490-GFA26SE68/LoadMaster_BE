@@ -32,7 +32,10 @@ public class RolePermissionMapping {
 
         map.put(
                 UserRole.SYSTEM_MANAGER,
-                Set.of()
+                Set.of(
+                        Permission.USERS_READ,
+                        Permission.USERS_CREATE
+                )
         );
 
         map.put(
