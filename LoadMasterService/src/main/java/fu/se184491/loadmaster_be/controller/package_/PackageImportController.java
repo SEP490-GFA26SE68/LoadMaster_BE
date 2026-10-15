@@ -78,40 +78,7 @@ public class PackageImportController {
                 .body(png);
     }
 
-//    @GetMapping("/scan/{qrToken}")
-//    @PreAuthorize("hasAnyAuthority('PACKAGE_MANAGE', 'WAREHOUSE_WORKER')")
-//    public ResponseEntity<PackageDetailResponse> scanPackage(@PathVariable String qrToken) {
-//        CargoPackage pkg = qrCodeService.lookupByToken(qrToken);
-//        return ResponseEntity.ok(toDetailResponse(pkg));
-//    }
 
-    // -------------------------------------------------------------------------
-    // Package detail
-    // -------------------------------------------------------------------------
-
-//    @GetMapping("/{id}")
-//    @PreAuthorize("hasAnyAuthority('ROLE_DISPATCHER', 'WAREHOUSE_WORKER')")
-//    public ResponseEntity<PackageDetailResponse> getById(@PathVariable Long id) {
-//        CargoPackage pkg = qrCodeService.findById(id);
-//        return ResponseEntity.ok(toDetailResponse(pkg));
-//    }
-
-    // -------------------------------------------------------------------------
-    // Helpers
-    // -------------------------------------------------------------------------
-
-    private PackageDetailResponse toDetailResponse(CargoPackage pkg) {
-        return PackageDetailResponse.builder()
-                .id(pkg.getId())
-                .packageCode(pkg.getPackageCode())
-                .qrToken(pkg.getQrToken())
-                .handlingClass(pkg.getHandlingClass() != null
-                        ? pkg.getHandlingClass() : HandlingClass.STANDARD)
-                .actualWeightKg(pkg.getActualWeightKg())
-                .status(pkg.getStatus())
-                .orderId(pkg.getOrder() != null ? pkg.getOrder().getId() : null)
-                .build();
-    }
 
     private byte[] buildTemplateBytes() {
         try (var inputStream = new org.springframework.core.io
