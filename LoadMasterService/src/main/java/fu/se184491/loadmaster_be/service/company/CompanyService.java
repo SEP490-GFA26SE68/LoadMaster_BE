@@ -2,6 +2,7 @@ package fu.se184491.loadmaster_be.service.company;
 
 import fu.se184491.loadmaster_be.constant.company.CompanyStatus;
 import fu.se184491.loadmaster_be.dto.request.company.CompanyRequest;
+import fu.se184491.loadmaster_be.dto.request.company.UpdateCompanyProfileRequest;
 import fu.se184491.loadmaster_be.dto.response.company.CompanyOptionResponse;
 import fu.se184491.loadmaster_be.dto.response.company.CompanyResponse;
 import org.springframework.data.domain.Page;
@@ -17,4 +18,7 @@ public interface CompanyService {
     CompanyResponse changeCompanyStatus(Long id, CompanyStatus status);
 
     List<CompanyOptionResponse> getCompanyOptions();
+
+    CompanyResponse getCompanyProfile(Long companyId);
+    CompanyResponse updateCompanyProfile(Long companyId, UpdateCompanyProfileRequest request);
 }

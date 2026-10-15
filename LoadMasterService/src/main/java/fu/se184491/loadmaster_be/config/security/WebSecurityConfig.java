@@ -58,6 +58,9 @@ public class WebSecurityConfig {
                         )
                         .permitAll()
 
+                        .requestMatchers(org.springframework.http.HttpMethod.POST, "/api/contact-guests")
+                        .permitAll()
+
                         .anyRequest()
                         .authenticated()
                 )

@@ -175,4 +175,67 @@ public class CompanyServiceTest {
         assertEquals(CompanyStatus.SUSPENDED, company.getStatus());
         verify(companyRepository).save(company);
     }
+
+    @Test
+    @DisplayName("Get Company Profile should succeed when company exists")
+    void getCompanyProfile_success() {
+        when(companyRepository.findById(1L)).thenReturn(Optional.of(company));
+
+        CompanyResponse response = companyService.getCompanyProfile(1L);
+
+        assertNotNull(response);
+        assertEquals(1L, response.getId());
+        assertEquals("LM-LOGISTICS", response.getCompanyCode());
+    }
+
+    @Test
+    @DisplayName("Get Company Profile should throw COMPANY_NOT_FOUND when company does not exist or id is null")
+    void getCompanyProfile_notFound() {
+        when(companyRepository.findById(999L)).thenReturn(Optional.empty());
+
+        AppException ex = assertThrows(AppException.class, () -> companyService.getCompanyProfile(999L));
+        assertEquals(ErrorCode.COMPANY_NOT_FOUND, ex.getErrorCode());
+
+        AppException exNull = assertThrows(AppException.class, () -> companyService.getCompanyProfile(null));
+        assertEquals(ErrorCode.COMPANY_NOT_FOUND, exNull.getErrorCode());
+    }
+
+    @Test
+    @DisplayName("Update Company Profile should update companyName and billingEmail")
+    void updateCompanyProfile_success() {
+        when(companyRepository.findById(1L)).thenReturn(Optional.of(company));
+        when(companyRepository.save(any(Company.class))).thenReturn(company);
+
+        fu.se184491.loadmaster_be.dto.request.company.UpdateCompanyProfileRequest updateReq =
+                fu.se184491.loadmaster_be.dto.request.company.UpdateCompanyProfileRequest.builder()
+                        .companyName("New Company Name")
+                        .contactEmail("newcontact@company.com")
+                        .address("123 Street")
+                        .contactPhone("0901234567")
+                        .build();
+
+        CompanyResponse response = companyService.updateCompanyProfile(1L, updateReq);
+
+        assertNotNull(response);
+        assertEquals("New Company Name", company.getCompanyName());
+        assertEquals("newcontact@company.com", company.getBillingEmail());
+        verify(companyRepository).save(company);
+    }
+
+    @Test
+    @DisplayName("Update Company Profile should throw COMPANY_NOT_FOUND when company does not exist or id is null")
+    void updateCompanyProfile_notFound() {
+        fu.se184491.loadmaster_be.dto.request.company.UpdateCompanyProfileRequest updateReq =
+                fu.se184491.loadmaster_be.dto.request.company.UpdateCompanyProfileRequest.builder()
+                        .companyName("New Name")
+                        .build();
+
+        when(companyRepository.findById(999L)).thenReturn(Optional.empty());
+
+        AppException ex = assertThrows(AppException.class, () -> companyService.updateCompanyProfile(999L, updateReq));
+        assertEquals(ErrorCode.COMPANY_NOT_FOUND, ex.getErrorCode());
+
+        AppException exNull = assertThrows(AppException.class, () -> companyService.updateCompanyProfile(null, updateReq));
+        assertEquals(ErrorCode.COMPANY_NOT_FOUND, exNull.getErrorCode());
+    }
 }
