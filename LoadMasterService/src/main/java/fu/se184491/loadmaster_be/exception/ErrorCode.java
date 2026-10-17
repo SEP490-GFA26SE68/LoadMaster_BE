@@ -37,7 +37,10 @@ public enum ErrorCode {
     ROLE_NOT_FOUND("Không tìm thấy vai trò người dùng", HttpStatus.NOT_FOUND),
     EMAIL_ALREADY_EXISTS("Email đã được sử dụng", HttpStatus.CONFLICT),
     USER_IS_NOT_DRIVER("Người dùng hiện tại không phải là tài xế", HttpStatus.BAD_REQUEST),
-
+    DRIVER_NOT_AVAILABLE(
+            "Tài xế không ở trạng thái hoạt động",
+            HttpStatus.CONFLICT
+    ),
     USER_PROFILE_NOT_FOUND("Không tìm thấy thông tin hồ sơ người dùng", HttpStatus.NOT_FOUND),
 
     // -------------------------------------------------------------------------
@@ -55,6 +58,15 @@ public enum ErrorCode {
     // -------------------------------------------------------------------------
     // Vehicle & Trip errors
     // -------------------------------------------------------------------------
+    VEHICLE_NOT_AVAILABLE(
+            "Xe không ở trạng thái sẵn sàng sử dụng",
+            HttpStatus.CONFLICT
+    ),
+
+    DRIVER_COMPANY_MISMATCH(
+            "Tài xế không thuộc công ty hiện tại",
+            HttpStatus.BAD_REQUEST
+    ),
     VEHICLE_NOT_FOUND("Không tìm thấy phương tiện vận tải", HttpStatus.NOT_FOUND),
     VEHICLE_TYPE_NOT_FOUND("Không tìm thấy loại phương tiện", HttpStatus.NOT_FOUND),
     TRIP_NOT_FOUND("Không tìm thấy chuyến đi", HttpStatus.NOT_FOUND),

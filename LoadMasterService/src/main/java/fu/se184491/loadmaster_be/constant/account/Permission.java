@@ -2,6 +2,8 @@ package fu.se184491.loadmaster_be.constant.account;
 
 public enum Permission {
 
+    CUSTOMER_MANAGE,
+
     USERS_READ,
     USERS_CREATE,
     USERS_UPDATE,
@@ -20,6 +22,9 @@ public enum Permission {
 
     PACKAGE_TYPE_MANAGE,
     PACKAGE_MANAGE,
+
+
+    DELIVERY_DEMAND_MANAGE,
 
     AUDIT_READ,
 

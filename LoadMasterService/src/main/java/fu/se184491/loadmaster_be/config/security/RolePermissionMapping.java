@@ -71,7 +71,9 @@ public class RolePermissionMapping {
                         Permission.VEHICLES_UPDATE,
                         Permission.PACKAGE_TYPE_MANAGE,
                         Permission.PACKAGE_MANAGE,
-                        Permission.TRIP_MANAGE
+                        Permission.TRIP_MANAGE,
+                        Permission.DELIVERY_DEMAND_MANAGE,
+                        Permission.CUSTOMER_MANAGE
                 )
 
         );

@@ -1,9 +1,9 @@
 package fu.se184491.loadmaster_be.entity.trip;
 
-import fu.se184491.loadmaster_be.entity.trip.Trip;
 
 
 import fu.se184491.loadmaster_be.constant.trip.DeliveryStopStatus;
+import fu.se184491.loadmaster_be.entity.planning.DeliveryRequirement;
 import jakarta.persistence.*;
 import jakarta.validation.constraints.Positive;
 import lombok.*;
@@ -22,7 +22,14 @@ public class DeliveryStop {
 
     @ManyToOne(fetch = FetchType.LAZY) @JoinColumn(name = "trip_id")
     private Trip trip;
-
+    /**
+     * Yêu cầu giao sinh ra điểm dừng này.
+     * null nếu đây là điểm giao được thêm thủ công
+     * hoặc điểm nhận hàng dọc đường.
+     */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "delivery_requirement_id")
+    private DeliveryRequirement deliveryRequirement;
     @Positive @Column(name = "stop_sequence")
     private Integer stopSequence;
 

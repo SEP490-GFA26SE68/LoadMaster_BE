@@ -2,9 +2,11 @@ package fu.se184491.loadmaster_be.entity.planning;
 
 import fu.se184491.loadmaster_be.constant.planning.DeliveryRequirementPriority;
 import fu.se184491.loadmaster_be.constant.planning.DeliveryRequirementStatus;
+import fu.se184491.loadmaster_be.entity.Customer;
 import fu.se184491.loadmaster_be.entity.account.User;
 import fu.se184491.loadmaster_be.entity.cargo.CargoPackage;
 import fu.se184491.loadmaster_be.entity.company.Company;
+import fu.se184491.loadmaster_be.entity.trip.Trip;
 import jakarta.persistence.*;
 import lombok.*;
 
@@ -47,6 +49,11 @@ public class DeliveryRequirement {
     @Column(nullable = false, length = 20)
     private DeliveryRequirementPriority priority = DeliveryRequirementPriority.NORMAL;
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "customer_id")
+    private Customer customer;
+
+
     @Builder.Default
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
@@ -55,6 +62,12 @@ public class DeliveryRequirement {
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "created_by")
     private User createdBy;
+
+    @Column(name = "expected_package_count")
+    private Integer expectedPackageCount;
+
+    @Column(name = "note", length = 500)
+    private String note;
 
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
@@ -71,6 +84,10 @@ public class DeliveryRequirement {
             )
     )
     private Set<CargoPackage> packages = new LinkedHashSet<>();
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "trip_id")
+    private Trip trip;
 
     @PrePersist
     void prePersist() {

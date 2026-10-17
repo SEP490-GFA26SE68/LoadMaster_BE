@@ -39,15 +39,28 @@ public class PackageImportController {
         return ResponseEntity.ok(ApiResponse.success("Xem trước import package thành công", result));
     }
 
-    @PostMapping(value = "/import/confirm", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-//    @PreAuthorize("hasAuthority('PACKAGE_MANAGE')")
-    @PreAuthorize("hasRole('DISPATCHER')")
-    public ResponseEntity<ApiResponse<ImportConfirmResult>> confirm(@RequestPart("file") MultipartFile file) {
-        ImportConfirmResult result = packageImportService.confirm(file,
+
+    @PostMapping(
+            value = "/import/confirm",
+            consumes = MediaType.MULTIPART_FORM_DATA_VALUE
+    )
+    @PreAuthorize("hasRole('WAREHOUSE_WORKER')")
+    public ResponseEntity<ApiResponse<ImportConfirmResult>> confirm(
+            @RequestPart("file") MultipartFile file,
+            @RequestParam("deliveryRequirementId") Long deliveryRequirementId
+    ) {
+        ImportConfirmResult result = packageImportService.confirm(
+                file,
                 currentUserService.getCurrentCompanyId(),
-                currentUserService.getCurrentUser().getId());
-        return ResponseEntity.ok(ApiResponse.success("Import package thành công", result));
+                currentUserService.getCurrentUser().getId(),
+                deliveryRequirementId
+        );
+
+        return ResponseEntity.ok(
+                ApiResponse.success("Import package thành công", result)
+        );
     }
+
 
     //PACKAGE_MANAGE
     @GetMapping("/import/template")

@@ -1,5 +1,7 @@
 package fu.se184491.loadmaster_be.repository.account;
 
+import fu.se184491.loadmaster_be.constant.account.UserRole;
+import fu.se184491.loadmaster_be.constant.account.UserStatus;
 import fu.se184491.loadmaster_be.entity.account.User;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
@@ -20,4 +22,6 @@ public interface UserRepository extends
     Optional<User> findByKeycloakId(String keycloakId);
 
     boolean existsByEmail(String email);
+
+    List<User> findByCompanyIdAndUserRoleTypeAndStatus(Long companyId, UserRole userRole, UserStatus userStatus);
 }

@@ -12,18 +12,12 @@ import java.util.Optional;
 @Repository
 public interface VehicleRepository extends JpaRepository<Vehicle, Long>, JpaSpecificationExecutor<Vehicle> {
     boolean existsByLicensePlateIgnoreCase(String licensePlate);
-    Page<Vehicle> findByCompanyId(Long companyId, Pageable pageable);
-    Page<Vehicle> findAllByCompanyId(
-            Long companyId,
-            Pageable pageable
-    );
 
-    Page<Vehicle> findAllByCompanyIdAndNameContainingIgnoreCaseOrCompanyIdAndLicensePlateContainingIgnoreCase(
-            Long companyId1,
-            String name,
-            Long companyId2,
-            String licensePlate,
-            Pageable pageable
+    Page<Vehicle> findByCompanyId(Long companyId, Pageable pageable);
+
+    Optional<Vehicle> findByIdAndCompanyId(
+            Long id,
+            Long companyId
     );
 
     long countByVehicleTypeId(Long vehicleTypeId);

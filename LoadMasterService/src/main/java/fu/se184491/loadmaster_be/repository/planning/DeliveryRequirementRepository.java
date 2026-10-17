@@ -1,5 +1,6 @@
 package fu.se184491.loadmaster_be.repository.planning;
 
+import fu.se184491.loadmaster_be.constant.planning.DeliveryRequirementStatus;
 import fu.se184491.loadmaster_be.entity.planning.DeliveryRequirement;
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -26,4 +27,13 @@ public interface DeliveryRequirementRepository extends JpaRepository<DeliveryReq
     List<DeliveryRequirement> findByCompanyAndPackageIds(
             @Param("companyId") Long companyId,
             @Param("packageIds") List<Long> packageIds);
+
+    /**
+     * Lấy các yêu cầu giao chưa được đưa vào chuyến.
+     * Chỉ trả về yêu cầu thuộc công ty hiện tại.
+     */
+    List<DeliveryRequirement> findByCompanyIdAndStatusAndTripIsNullOrderByDeadlineAsc(
+            Long companyId,
+            DeliveryRequirementStatus status
+    );
 }

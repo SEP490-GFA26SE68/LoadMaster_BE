@@ -3,6 +3,7 @@ package fu.se184491.loadmaster_be.service.import_.Impl;
 import fu.se184491.loadmaster_be.constant.cargo.HandlingClass;
 import fu.se184491.loadmaster_be.constant.cargo.PackageStatus;
 import fu.se184491.loadmaster_be.constant.order.OrderStatus;
+import fu.se184491.loadmaster_be.constant.planning.DeliveryRequirementStatus;
 import fu.se184491.loadmaster_be.dto.request.PackageImportRow;
 import fu.se184491.loadmaster_be.dto.response.ImportConfirmResult;
 import fu.se184491.loadmaster_be.dto.response.ImportPreviewResult;
@@ -12,6 +13,7 @@ import fu.se184491.loadmaster_be.entity.cargo.PackageType;
 import fu.se184491.loadmaster_be.entity.common.AuditLog;
 import fu.se184491.loadmaster_be.entity.company.Company;
 import fu.se184491.loadmaster_be.entity.order.TransportOrder;
+import fu.se184491.loadmaster_be.entity.planning.DeliveryRequirement;
 import fu.se184491.loadmaster_be.exception.AppException;
 import fu.se184491.loadmaster_be.exception.ErrorCode;
 import fu.se184491.loadmaster_be.exception.ImportValidationException;
@@ -20,6 +22,7 @@ import fu.se184491.loadmaster_be.repository.cargo.PackageTypeRepository;
 import fu.se184491.loadmaster_be.repository.common.AuditLogRepository;
 import fu.se184491.loadmaster_be.repository.company.CompanyRepository;
 import fu.se184491.loadmaster_be.repository.order.OrderRepository;
+import fu.se184491.loadmaster_be.repository.planning.DeliveryRequirementRepository;
 import fu.se184491.loadmaster_be.service.import_.CsvExcelParserService;
 import fu.se184491.loadmaster_be.service.import_.PackageImportService;
 import fu.se184491.loadmaster_be.service.import_.PackageImportValidatorService;
@@ -55,6 +58,7 @@ public class PackageImportServiceImpl implements PackageImportService {
     private final OrderRepository orderRepository;
     private final PackageTypeRepository packageTypeRepository;
     private final EntityManager entityManager;
+    private final DeliveryRequirementRepository deliveryRequirementRepository;
 
     // -------------------------------------------------------------------------
     // preview — stateless, no DB writes
@@ -76,8 +80,22 @@ public class PackageImportServiceImpl implements PackageImportService {
     public ImportConfirmResult confirm(
             MultipartFile file,
             Long companyId,
-            Long createdByUserId
+            Long createdByUserId,
+            Long deliveryRequirementId
     ) {
+
+        if (deliveryRequirementId == null || deliveryRequirementId <= 0) {
+            throw new AppException(ErrorCode.INVALID_INPUT);
+        }
+
+        DeliveryRequirement requirement = deliveryRequirementRepository
+                .findByIdAndCompanyId(deliveryRequirementId, companyId)
+                .orElseThrow(() -> new AppException(ErrorCode.INVALID_INPUT));
+
+        if (requirement.getStatus() != DeliveryRequirementStatus.PENDING
+                || requirement.getTrip() != null) {
+            throw new AppException(ErrorCode.INVALID_INPUT);
+        }
         List<PackageImportRow> rows = csvExcelParserService.parse(file);
 
         ImportPreviewResult preview =
@@ -151,6 +169,8 @@ public class PackageImportServiceImpl implements PackageImportService {
             }
         }
 
+
+
         // Giữ nguyên nghiệp vụ hiện tại:
         // một lần import tạo một TransportOrder.
         String orderCode = generateOrderCode(company);
@@ -165,6 +185,7 @@ public class PackageImportServiceImpl implements PackageImportService {
         TransportOrder savedOrder = orderRepository.save(order);
 
         List<Long> packageIds = new ArrayList<>();
+        List<CargoPackage> importedPackages = new ArrayList<>();
 
         for (PackageImportRow row : preview.validRows()) {
 
@@ -251,14 +272,20 @@ public class PackageImportServiceImpl implements PackageImportService {
                 entityManager.persist(profile);
 
                 packageIds.add(saved.getId());
+                importedPackages.add(saved);
             }
         }
+
+        requirement.getPackages().addAll(importedPackages);
+
+        deliveryRequirementRepository.save(requirement);
 
         Map<String, Object> auditValues = new HashMap<>();
         auditValues.put("totalImported", packageIds.size());
         auditValues.put("orderId", savedOrder.getId());
         auditValues.put("companyId", companyId);
         auditValues.put("createdByUserId", createdByUserId);
+        auditValues.put("deliveryRequirementId", deliveryRequirementId);
 
         AuditLog auditLog = AuditLog.builder()
                 .actionType("PACKAGE_IMPORT_CONFIRMED")
@@ -267,6 +294,17 @@ public class PackageImportServiceImpl implements PackageImportService {
                 .newValues(auditValues)
                 .createdAt(Instant.now())
                 .build();
+
+        int receivedAfterImport = requirement.getPackages().size();
+        Integer expectedCount = requirement.getExpectedPackageCount();
+
+        auditValues.put("deliveryRequirementId", requirement.getId());
+        auditValues.put("expectedPackageCount", expectedCount);
+        auditValues.put("receivedPackageCount", receivedAfterImport);
+        auditValues.put(
+                "exceededExpectedCount",
+                expectedCount != null && receivedAfterImport > expectedCount
+        );
 
         auditLogRepository.save(auditLog);
 

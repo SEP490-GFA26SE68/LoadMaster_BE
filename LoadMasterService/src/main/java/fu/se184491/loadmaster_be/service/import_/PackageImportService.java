@@ -27,5 +27,10 @@ public interface PackageImportService {
      * @param createdByUserId ID of the user confirming the import
      * @return result containing total imported count and new package IDs
      */
-    ImportConfirmResult confirm(MultipartFile file, Long companyId, Long createdByUserId);
+    ImportConfirmResult confirm(
+            MultipartFile file,
+            Long companyId,
+            Long createdByUserId,
+            Long deliveryRequirementId
+    );
 }
