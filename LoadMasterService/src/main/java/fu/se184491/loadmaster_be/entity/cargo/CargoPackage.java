@@ -24,8 +24,15 @@ public class CargoPackage {
     @ManyToOne(fetch = FetchType.LAZY) @JoinColumn(name = "package_type_id")
     private PackageType packageType;
 
-    @Column(name = "package_code", length = 100)
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "company_id", nullable = false)
+    private Company company;
+
+    @Column(name = "package_code", length = 100, unique = true)
     private String packageCode;
+
+    @Column(name = "package_name", length = 150)
+    private String packageName;
 
     @Column(name = "tracking_barcode", length = 100, unique = true)
     private String trackingBarcode;
@@ -56,23 +63,23 @@ public class CargoPackage {
     @Column(name = "actual_weight_kg", precision = 10, scale = 2)
     private BigDecimal actualWeightKg;
 
-    /**
-     * Owning company. Required for packages imported from file (they have no order);
-     * legacy packages fall back to {@code order.company}.
-     */
-    @ManyToOne(fetch = FetchType.LAZY) @JoinColumn(name = "company_id")
-    private Company company;
 
     /** Free-text destination (address or code) as written in the import file. */
     @Column(name = "destination", length = 255)
     private String destination;
 
+    @Column(name = "note", columnDefinition = "TEXT")
+    private String note;
+
     @Builder.Default
     @Column(name = "is_pinned", nullable = false)
     private Boolean isPinned = false;
 
-    @Enumerated(EnumType.STRING) @Column(name = "status")
-    private PackageStatus status;
+    @Builder.Default
+    @Enumerated(EnumType.STRING)
+    @Column(name = "status", length = 30, nullable = false)
+    private PackageStatus status = PackageStatus.PENDING;
+
 
     @PrePersist
     public void prePersist() {
@@ -84,6 +91,9 @@ public class CargoPackage {
         }
         if (this.isPinned == null) {
             this.isPinned = false;
+        }
+        if (this.status == null) {
+            this.status = PackageStatus.PENDING;
         }
     }
 }

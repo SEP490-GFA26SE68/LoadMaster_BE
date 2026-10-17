@@ -34,6 +34,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.time.LocalDateTime;
 import java.util.*;
 import java.util.stream.Collectors;
@@ -242,7 +243,7 @@ public class LoadPlanServiceImpl implements LoadPlanService {
                 .entityId(String.valueOf(newPlan.getId()))
                 .oldValues(oldValues)
                 .newValues(newValues)
-                .createdAt(LocalDateTime.now())
+                .createdAt(Instant.now())
                 .build();
         auditLogRepository.save(auditLog);
 
@@ -289,7 +290,7 @@ public class LoadPlanServiceImpl implements LoadPlanService {
                 .entityId(String.valueOf(placementId))
                 .oldValues(oldValues)
                 .newValues(newValues)
-                .createdAt(LocalDateTime.now())
+                .createdAt(Instant.now())
                 .build();
 
         auditLogRepository.save(auditLog);

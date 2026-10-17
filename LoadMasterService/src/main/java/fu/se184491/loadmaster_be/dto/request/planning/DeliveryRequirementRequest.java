@@ -1,3 +1,4 @@
+
 package fu.se184491.loadmaster_be.dto.request.planning;
 
 import fu.se184491.loadmaster_be.constant.planning.DeliveryRequirementPriority;
@@ -6,6 +7,7 @@ import lombok.*;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
 
 @Getter
@@ -14,6 +16,10 @@ import java.util.List;
 @AllArgsConstructor
 @Builder
 public class DeliveryRequirementRequest {
+
+    @NotNull
+    @Positive
+    private Long customerId;
 
     @NotBlank
     @Size(max = 255)
@@ -34,6 +40,17 @@ public class DeliveryRequirementRequest {
     @NotNull
     private DeliveryRequirementPriority priority;
 
-    @NotEmpty
-    private List<@NotNull Long> packageIds;
+    @NotNull
+    @Min(1)
+    private Integer expectedPackageCount;
+
+    @Size(max = 500)
+    private String note;
+
+    /**
+     * Tạo yêu cầu không cần có kiện.
+     * Warehouse sẽ bổ sung kiện sau khi tiếp nhận hàng.
+     */
+    @Builder.Default
+    private List<@NotNull @Positive Long> packageIds = new ArrayList<>();
 }

@@ -35,6 +35,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Instant;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -56,31 +57,7 @@ public class DriverServiceImpl implements DriverService {
     private final UserRepository userRepository;
     private final AuditLogRepository auditLogRepository;
 
-    @Override
-    @Transactional(readOnly = true)
-    public List<DriverTripResponse> getDriverTrips(Long driverId) {
-        List<Trip> trips = (driverId != null)
-                ? tripRepository.findByVehicleDriverIdAndStatus(driverId, TripStatus.IN_TRANSIT)
-                : tripRepository.findByStatus(TripStatus.IN_TRANSIT);
 
-        List<DriverTripResponse> responses = new ArrayList<>();
-        for (Trip trip : trips) {
-            int stopCount = (int) deliveryStopRepository.countByTripId(trip.getId());
-            String licensePlate = (trip.getVehicle() != null) ? trip.getVehicle().getLicensePlate() : null;
-
-            responses.add(DriverTripResponse.builder()
-                    .tripId(trip.getId())
-                    .tripCode(trip.getTripCode())
-                    .vehicleLicensePlate(licensePlate)
-                    .stopCount(stopCount)
-                    .departureTime(trip.getDepartureTime())
-                    .status(trip.getStatus() != null ? trip.getStatus().name() : null)
-                    .build());
-        }
-
-        log.info("Found {} trips ready for delivery for driverId {}", responses.size(), driverId);
-        return responses;
-    }
 
     @Override
     @Transactional(readOnly = true)
@@ -212,7 +189,7 @@ public class DriverServiceImpl implements DriverService {
                         "stopId", packageStop.getId(),
                         "trackingBarcode", pkg.getTrackingBarcode() != null ? pkg.getTrackingBarcode() : ""
                 ))
-                .createdAt(LocalDateTime.now())
+                .createdAt(Instant.now())
                 .build();
         auditLogRepository.save(auditLog);
 
@@ -269,7 +246,7 @@ public class DriverServiceImpl implements DriverService {
                         "stopId", stop.getId(),
                         "tripId", trip.getId()
                 ))
-                .createdAt(LocalDateTime.now())
+                .createdAt(Instant.now())
                 .build();
         auditLogRepository.save(stopAuditLog);
 
@@ -299,7 +276,7 @@ public class DriverServiceImpl implements DriverService {
                             "tripId", trip.getId(),
                             "status", TripStatus.DELIVERED.name()
                     ))
-                    .createdAt(LocalDateTime.now())
+                    .createdAt(Instant.now())
                     .build();
             auditLogRepository.save(tripAuditLog);
 

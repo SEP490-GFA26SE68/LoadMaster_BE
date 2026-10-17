@@ -11,9 +11,14 @@ import java.util.Optional;
 
 @Repository
 public interface VehicleRepository extends JpaRepository<Vehicle, Long>, JpaSpecificationExecutor<Vehicle> {
-    Optional<Vehicle> findByLicensePlate(String licensePlate);
+    boolean existsByLicensePlateIgnoreCase(String licensePlate);
+
     Page<Vehicle> findByCompanyId(Long companyId, Pageable pageable);
-    boolean existsByLicensePlate(String licensePlate);
-    boolean existsByDriver_Id(Long driverUserId);
-    boolean existsByDriver_IdAndIdNot(Long driverUserId, Long vehicleId);
+
+    Optional<Vehicle> findByIdAndCompanyId(
+            Long id,
+            Long companyId
+    );
+
+    long countByVehicleTypeId(Long vehicleTypeId);
 }
