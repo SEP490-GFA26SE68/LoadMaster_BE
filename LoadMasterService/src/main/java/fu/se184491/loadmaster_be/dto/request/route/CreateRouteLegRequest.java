@@ -1,5 +1,6 @@
 package fu.se184491.loadmaster_be.dto.request.route;
 
+import fu.se184491.loadmaster_be.dto.response.route.RouteGuidanceStepResponse;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Positive;
 import jakarta.validation.constraints.PositiveOrZero;
@@ -7,6 +8,8 @@ import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+
+import java.util.List;
 
 @Data
 @Builder
@@ -32,4 +35,6 @@ public class CreateRouteLegRequest {
     private Integer durationSeconds;
 
     private String polyline;
+
+    private List<RouteGuidanceStepResponse> steps;
 }

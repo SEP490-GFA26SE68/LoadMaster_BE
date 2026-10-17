@@ -107,6 +107,18 @@ public class MonitoringController {
         return ResponseEntity.ok(ApiResponse.success("Xử lý sự cố thành công", response));
     }
 
+    @PostMapping("/api/trips/{id}/exceptions/{exceptionId}/escalate")
+    @Operation(summary = "Escalate a trip exception to the company manager")
+    public ResponseEntity<ApiResponse<TripExceptionResponse>> escalateException(
+            @PathVariable("id") String id,
+            @PathVariable("exceptionId") String exceptionId
+    ) {
+        Long userId = currentUserService.getCurrentUser().getId();
+        TripExceptionResponse response = tripExceptionService.escalate(
+                id, exceptionId, currentUserService.getCurrentCompanyId(), userId, "NO_ROUTE");
+        return ResponseEntity.ok(ApiResponse.success("Chuyển sự cố cho quản lý thành công", response));
+    }
+
     @PostMapping("/api/trips/{id}/reroute")
     @Operation(summary = "Propose alternative routes to the next stop")
     public ResponseEntity<ApiResponse<RerouteProposalResponse>> proposeReroute(@PathVariable("id") String id) {

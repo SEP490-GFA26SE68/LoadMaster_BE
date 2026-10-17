@@ -61,6 +61,28 @@ public class DriverServiceImpl implements DriverService {
 
     @Override
     @Transactional(readOnly = true)
+    public List<DriverTripResponse> listTrips(Long driverId) {
+        if (driverId == null) {
+            throw new AppException(ErrorCode.USER_NOT_FOUND);
+        }
+        userRepository.findById(driverId).orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
+
+        List<DriverTripResponse> trips = new ArrayList<>();
+        for (Trip trip : tripRepository.findByDriver_IdOrderByDepartureTimeDesc(driverId)) {
+            trips.add(DriverTripResponse.builder()
+                    .tripId(trip.getId())
+                    .tripCode(trip.getTripCode())
+                    .vehicleLicensePlate(trip.getVehicle() != null ? trip.getVehicle().getLicensePlate() : null)
+                    .stopCount((int) deliveryStopRepository.countByTripId(trip.getId()))
+                    .departureTime(trip.getDepartureTime())
+                    .status(trip.getStatus() != null ? trip.getStatus().name() : null)
+                    .build());
+        }
+        return trips;
+    }
+
+    @Override
+    @Transactional(readOnly = true)
     public CurrentStopResponse getCurrentStop(Long tripId) {
         Trip trip = tripRepository.findById(tripId)
                 .orElseThrow(() -> new AppException(ErrorCode.TRIP_NOT_FOUND));

@@ -19,6 +19,7 @@ import fu.se184491.loadmaster_be.repository.route.RoutePlanRepository;
 import fu.se184491.loadmaster_be.repository.route.RouteSuggestionRepository;
 import fu.se184491.loadmaster_be.repository.trip.DeliveryStopRepository;
 import fu.se184491.loadmaster_be.repository.trip.TripRepository;
+import fu.se184491.loadmaster_be.service.route.RouteGuidanceMapper;
 import fu.se184491.loadmaster_be.service.route.RoutePlanService;
 import fu.se184491.loadmaster_be.service.route.RoutePlanWriter;
 import lombok.RequiredArgsConstructor;
@@ -88,6 +89,7 @@ public class RoutePlanServiceImpl implements RoutePlanService {
                         .distanceMeters(legReq.getDistanceMeters())
                         .durationSeconds(legReq.getDurationSeconds())
                         .polyline(legReq.getPolyline())
+                        .steps(RouteGuidanceMapper.toMaps(legReq.getSteps()))
                         .build();
 
                 legsToSave.add(leg);
@@ -253,6 +255,7 @@ public class RoutePlanServiceImpl implements RoutePlanService {
                 .distanceMeters(leg.getDistanceMeters())
                 .durationSeconds(leg.getDurationSeconds())
                 .polyline(leg.getPolyline())
+                .steps(RouteGuidanceMapper.toResponses(leg.getSteps()))
                 .build();
     }
 

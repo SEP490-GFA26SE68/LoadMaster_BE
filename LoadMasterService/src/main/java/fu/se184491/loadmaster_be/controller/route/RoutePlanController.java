@@ -9,6 +9,7 @@ import fu.se184491.loadmaster_be.dto.response.route.RoutePlanDetailResponse;
 import fu.se184491.loadmaster_be.dto.response.route.RoutePlanSummaryResponse;
 import fu.se184491.loadmaster_be.dto.response.route.RouteSuggestionResponse;
 import fu.se184491.loadmaster_be.helpers.CurrentUserService;
+import fu.se184491.loadmaster_be.service.monitoring.TripLookupHelper;
 import fu.se184491.loadmaster_be.service.route.RoutePlanService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -25,15 +26,17 @@ public class RoutePlanController {
 
     private final RoutePlanService routePlanService;
     private final CurrentUserService currentUserService;
+    private final TripLookupHelper tripLookupHelper;
 
     @PostMapping("/trips/{tripId}/route-plans")
     @PreAuthorize("hasAnyAuthority('TRIP_MANAGE', 'DISPATCHER', 'COMPANY_ADMIN')")
     public ResponseEntity<ApiResponse<RoutePlanDetailResponse>> createRoutePlan(
-            @PathVariable Long tripId,
+            @PathVariable String tripId,
             @Valid @RequestBody CreateRoutePlanRequest request
     ) {
         Long companyId = currentUserService.getCurrentCompanyId();
-        RoutePlanDetailResponse response = routePlanService.createRoutePlan(companyId, tripId, request);
+        Long id = tripLookupHelper.requireTrip(tripId, companyId).getId();
+        RoutePlanDetailResponse response = routePlanService.createRoutePlan(companyId, id, request);
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(ApiResponse.success("Tạo kế hoạch lộ trình thành công", response));
     }
@@ -41,21 +44,23 @@ public class RoutePlanController {
     @GetMapping("/trips/{tripId}/route-plans/active")
     @PreAuthorize("hasAnyAuthority('TRIP_MANAGE', 'DISPATCHER', 'COMPANY_ADMIN', 'DRIVER')")
     public ResponseEntity<ApiResponse<RoutePlanDetailResponse>> getActiveRoutePlan(
-            @PathVariable Long tripId
+            @PathVariable String tripId
     ) {
         Long companyId = currentUserService.getCurrentCompanyId();
-        RoutePlanDetailResponse response = routePlanService.getActiveRoutePlan(companyId, tripId);
+        Long id = tripLookupHelper.requireTrip(tripId, companyId).getId();
+        RoutePlanDetailResponse response = routePlanService.getActiveRoutePlan(companyId, id);
         return ResponseEntity.ok(ApiResponse.success(response));
     }
 
     @GetMapping("/trips/{tripId}/route-plans")
     @PreAuthorize("hasAnyAuthority('TRIP_MANAGE', 'DISPATCHER', 'COMPANY_ADMIN')")
     public PageResponse<RoutePlanSummaryResponse> getRoutePlans(
-            @PathVariable Long tripId,
+            @PathVariable String tripId,
             Pageable pageable
     ) {
         Long companyId = currentUserService.getCurrentCompanyId();
-        return PageResponse.of(routePlanService.getRoutePlans(companyId, tripId, pageable));
+        Long id = tripLookupHelper.requireTrip(tripId, companyId).getId();
+        return PageResponse.of(routePlanService.getRoutePlans(companyId, id, pageable));
     }
 
     @GetMapping("/route-plans/{planId}/legs")

@@ -115,7 +115,8 @@ public class RouteOptimizationService {
             stop.setPlannedArrival(plannedArrival);
             segments.add(new RouteOptimizationResult.RouteSegment(
                     previousStopId, stopId, segmentSeconds,
-                    bestRoute.getDistanceMeters(), bestRoute.getPolyline()));
+                    bestRoute.getDistanceMeters(), bestRoute.getPolyline(),
+                    bestRoute.toGuidanceSteps()));
             schedules.add(new RouteOptimizationResult.StopSchedule(stopId, index + 1, plannedArrival));
             previousStopId = stopId;
             segmentOrigin = coordinates(stop);
@@ -143,7 +144,8 @@ public class RouteOptimizationService {
                     endStop,
                     Math.toIntExact(segment.distanceMeters()),
                     Math.toIntExact(segment.durationSeconds()),
-                    segment.polyline()));
+                    segment.polyline(),
+                    segment.steps()));
         }
         RoutePlan persisted = routePlanWriter.persistNewActivePlan(
                 trip,
@@ -199,6 +201,7 @@ public class RouteOptimizationService {
             value.put("durationSeconds", segment.durationSeconds());
             value.put("distanceMeters", segment.distanceMeters());
             value.put("polyline", segment.polyline());
+            value.put("steps", segment.steps());
             return value;
         }).toList());
         plan.put("stopSchedules", result.getStopSchedules().stream().map(schedule -> Map.of(

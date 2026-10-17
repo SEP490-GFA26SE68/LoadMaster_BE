@@ -393,28 +393,6 @@ public class GlobalExceptionHandler {
                         .build());
     }
 
-    @ExceptionHandler(DataIntegrityViolationException.class)
-    public ResponseEntity<ApiResponse<Void>> handleDataIntegrityViolationException(
-            DataIntegrityViolationException ex, HttpServletRequest request) {
-        String causeMsg = ex.getMostSpecificCause() != null ? ex.getMostSpecificCause().getMessage() : ex.getMessage();
-        log.warn("Data integrity violation at {}: {}", request.getRequestURI(), causeMsg);
-
-        String message = "Dữ liệu vi phạm ràng buộc toàn vẹn hoặc đang được tham chiếu bởi bản ghi khác";
-        HttpStatus status = HttpStatus.CONFLICT;
-        if (causeMsg != null && causeMsg.toLowerCase().contains("value too long")) {
-            message = "Dữ liệu đầu vào vượt quá độ dài tối đa cho phép";
-            status = HttpStatus.BAD_REQUEST;
-        }
-
-        return ResponseEntity
-                .status(status)
-                .body(ApiResponse.<Void>builder()
-                        .success(false)
-                        .message(message)
-                        .data(null)
-                        .build());
-    }
-
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ApiResponse<Void>> handleGlobalException(
             Exception ex, HttpServletRequest request) {

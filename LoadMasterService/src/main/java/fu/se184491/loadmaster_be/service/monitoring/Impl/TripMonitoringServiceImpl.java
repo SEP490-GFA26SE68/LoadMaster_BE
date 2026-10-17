@@ -33,6 +33,7 @@ import fu.se184491.loadmaster_be.service.monitoring.RerouteService;
 import fu.se184491.loadmaster_be.service.monitoring.TripExceptionService;
 import fu.se184491.loadmaster_be.service.monitoring.TripLookupHelper;
 import fu.se184491.loadmaster_be.service.monitoring.TripMonitoringService;
+import fu.se184491.loadmaster_be.service.route.RouteGuidanceMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -191,6 +192,7 @@ public class TripMonitoringServiceImpl implements TripMonitoringService {
                 .distanceMeters(leg.getDistanceMeters())
                 .durationSeconds(leg.getDurationSeconds())
                 .polyline(leg.getPolyline())
+                .steps(RouteGuidanceMapper.toResponses(leg.getSteps()))
                 .build();
     }
 

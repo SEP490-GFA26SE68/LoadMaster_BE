@@ -27,6 +27,8 @@ public interface TripRepository extends
 
     List<Trip> findByCompanyIdAndStatus(Long companyId, TripStatus status);
 
+    List<Trip> findByDriver_IdOrderByDepartureTimeDesc(Long driverId);
+
 
 
     Optional<Trip> findByIdAndCompanyId(Long id, Long companyId);

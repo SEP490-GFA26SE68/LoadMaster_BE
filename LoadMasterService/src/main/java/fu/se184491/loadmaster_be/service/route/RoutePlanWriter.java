@@ -12,6 +12,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Canonical writer for structured route geometry ({@link RoutePlan} + {@link RouteLeg}).
@@ -30,8 +31,19 @@ public class RoutePlanWriter {
             DeliveryStop endStop,
             int distanceMeters,
             int durationSeconds,
-            String polyline
+            String polyline,
+            List<Map<String, Object>> steps
     ) {
+        public LegDraft(
+                int legSequence,
+                DeliveryStop startStop,
+                DeliveryStop endStop,
+                int distanceMeters,
+                int durationSeconds,
+                String polyline
+        ) {
+            this(legSequence, startStop, endStop, distanceMeters, durationSeconds, polyline, null);
+        }
     }
 
     @Transactional
@@ -64,6 +76,7 @@ public class RoutePlanWriter {
                         .distanceMeters(draft.distanceMeters())
                         .durationSeconds(draft.durationSeconds())
                         .polyline(draft.polyline())
+                        .steps(draft.steps())
                         .build());
             }
         }
@@ -83,6 +96,21 @@ public class RoutePlanWriter {
             Integer durationSeconds,
             String polyline
     ) {
+        return cloneActiveWithLegOverride(
+                trip, active, currentLegs, targetLegId, distanceMeters, durationSeconds, polyline, null);
+    }
+
+    @Transactional
+    public RoutePlan cloneActiveWithLegOverride(
+            Trip trip,
+            RoutePlan active,
+            List<RouteLeg> currentLegs,
+            Long targetLegId,
+            Integer distanceMeters,
+            Integer durationSeconds,
+            String polyline,
+            List<Map<String, Object>> steps
+    ) {
         List<LegDraft> drafts = new ArrayList<>();
         int totalDistance = 0;
         int totalDuration = 0;
@@ -91,13 +119,15 @@ public class RoutePlanWriter {
             int distance = match && distanceMeters != null ? distanceMeters : leg.getDistanceMeters();
             int duration = match && durationSeconds != null ? durationSeconds : leg.getDurationSeconds();
             String line = match && polyline != null ? polyline : leg.getPolyline();
+            List<Map<String, Object>> stepList = match && steps != null ? steps : leg.getSteps();
             drafts.add(new LegDraft(
                     leg.getLegSequence(),
                     leg.getStartStop(),
                     leg.getEndStop(),
                     distance,
                     duration,
-                    line));
+                    line,
+                    stepList));
             totalDistance += distance;
             totalDuration += duration;
         }
