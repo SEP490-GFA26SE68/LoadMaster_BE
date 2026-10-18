@@ -1,6 +1,7 @@
 package fu.se184491.loadmaster_be.service.cargo.Impl;
 
 import fu.se184491.loadmaster_be.constant.cargo.PackageStatus;
+import fu.se184491.loadmaster_be.constant.planning.DeliveryRequirementStatus;
 import fu.se184491.loadmaster_be.dto.request.cargo.PackageRequest;
 import fu.se184491.loadmaster_be.dto.response.cargo.PackageResponse;
 import fu.se184491.loadmaster_be.entity.cargo.CargoPackage;
@@ -8,6 +9,7 @@ import fu.se184491.loadmaster_be.entity.cargo.CargoPackagePackingProfile;
 import fu.se184491.loadmaster_be.entity.cargo.PackageType;
 import fu.se184491.loadmaster_be.entity.company.Company;
 import fu.se184491.loadmaster_be.entity.order.TransportOrder;
+import fu.se184491.loadmaster_be.entity.planning.DeliveryRequirement;
 import fu.se184491.loadmaster_be.exception.AppException;
 import fu.se184491.loadmaster_be.exception.ErrorCode;
 import fu.se184491.loadmaster_be.repository.cargo.CargoPackagePackingProfileRepository;
@@ -15,6 +17,7 @@ import fu.se184491.loadmaster_be.repository.cargo.PackageRepository;
 import fu.se184491.loadmaster_be.repository.cargo.PackageTypeRepository;
 import fu.se184491.loadmaster_be.repository.company.CompanyRepository;
 import fu.se184491.loadmaster_be.repository.order.OrderRepository;
+import fu.se184491.loadmaster_be.repository.planning.DeliveryRequirementRepository;
 import fu.se184491.loadmaster_be.service.cargo.PackageService;
 
 import jakarta.persistence.EntityManager;
@@ -29,6 +32,8 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.util.*;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 // Import theo package thực tế của dự án:
 // import ...Company;
@@ -44,6 +49,7 @@ public class PackageServiceImpl implements PackageService {
     private final CompanyRepository companyRepository;
     private final EntityManager entityManager;
     private final CargoPackagePackingProfileRepository packingProfileRepository;
+    private final DeliveryRequirementRepository deliveryRequirementRepository;
 
     // =====================================================
     // MAPPING
@@ -350,6 +356,33 @@ public class PackageServiceImpl implements PackageService {
             throw new AppException(ErrorCode.IMPORT_INVALID_QUANTITY);
         }
 
+
+        Long requirementId = request.getDeliveryRequirementId();
+
+        if (requirementId == null) {
+            throw new AppException(ErrorCode.INVALID_INPUT);
+        }
+
+// Khóa yêu cầu để tránh nhập kiện đồng thời với việc phân chuyến.
+        DeliveryRequirement requirement = deliveryRequirementRepository
+                .findByIdAndCompanyIdForUpdate(
+                        requirementId,
+                        companyId
+                )
+                .orElseThrow(() ->
+                        new AppException(
+                                ErrorCode.DELIVERY_REQUIREMENT_NOT_FOUND
+                        )
+                );
+
+        if (requirement.getStatus() != DeliveryRequirementStatus.PENDING
+                || requirement.getTrip() != null) {
+            throw new AppException(
+                    ErrorCode.INVALID_DELIVERY_REQUIREMENT_TRANSITION
+            );
+        }
+
+
         String baseCode = normalizeOptionalCode(request.getPackageCode());
 
         // Cần mã gốc để sinh các mã kiện vật lý.
@@ -408,6 +441,7 @@ public class PackageServiceImpl implements PackageService {
             }
         }
 
+        List<CargoPackage> createdPackages = new ArrayList<>();
         List<PackageResponse> results = new ArrayList<>();
 
         for (int i = 1; i <= quantity; i++) {
@@ -437,6 +471,7 @@ public class PackageServiceImpl implements PackageService {
 
             // QR riêng được tạo bởi @PrePersist của CargoPackage.
             CargoPackage saved = packageRepository.save(cargoPackage);
+            createdPackages.add(saved);
 
             CargoPackagePackingProfile profile =
                     CargoPackagePackingProfile.builder()
@@ -457,6 +492,13 @@ public class PackageServiceImpl implements PackageService {
 
             results.add(mapToResponse(saved));
         }
+
+
+// Liên kết toàn bộ kiện vật lý vừa tạo với yêu cầu giao.
+        requirement.getPackages().addAll(createdPackages);
+
+// Đồng bộ liên kết trong transaction hiện tại.
+        deliveryRequirementRepository.save(requirement);
 
         // Nếu có TransportOrder, cập nhật tổng khối lượng
         // sau khi tạo đủ các kiện.
@@ -745,8 +787,50 @@ public class PackageServiceImpl implements PackageService {
                     );
                 };
 
-        return packageRepository
-                .findAll(spec, pageable)
-                .map(this::mapToResponse);
+
+        Page<CargoPackage> packagePage =
+                packageRepository.findAll(spec, pageable);
+
+        if (packagePage.isEmpty()) {
+            return packagePage.map(this::mapToResponse);
+        }
+
+        List<Long> packageIds = packagePage.getContent()
+                .stream()
+                .map(CargoPackage::getId)
+                .toList();
+
+        Map<Long, DeliveryRequirementRepository.PackageRequirementInfo> infoByPackageId =
+                deliveryRequirementRepository.findPackageRequirementInfo(
+                                companyId,
+                                packageIds
+                        )
+                        .stream()
+                        .collect(Collectors.toMap(
+                                DeliveryRequirementRepository.PackageRequirementInfo::getPackageId,
+                                Function.identity()
+                        ));
+
+        return packagePage.map(pkg -> {
+            PackageResponse response = mapToResponse(pkg);
+
+            var info = infoByPackageId.get(pkg.getId());
+
+            if (info != null) {
+                response.setDeliveryRequirementId(
+                        info.getDeliveryRequirementId()
+                );
+                response.setCustomerName(info.getCustomerName());
+                response.setReceivedPackageCount(
+                        Math.toIntExact(info.getReceivedPackageCount())
+                );
+                response.setExpectedPackageCount(
+                        info.getExpectedPackageCount()
+                );
+            }
+
+            return response;
+        });
+
     }
 }

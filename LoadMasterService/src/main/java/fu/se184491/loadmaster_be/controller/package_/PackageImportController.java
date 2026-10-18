@@ -32,8 +32,7 @@ public class PackageImportController {
     // -------------------------------------------------------------------------
 
     @PostMapping(value = "/import/preview", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-//    @PreAuthorize("hasAuthority('PACKAGE_MANAGE')")
-    @PreAuthorize("hasRole('DISPATCHER')")
+    @PreAuthorize("hasRole('WAREHOUSE_WORKER')")
     public ResponseEntity<ApiResponse<ImportPreviewResult>> preview(@RequestPart("file") MultipartFile file) {
         ImportPreviewResult result = packageImportService.preview(file, currentUserService.getCurrentCompanyId());
         return ResponseEntity.ok(ApiResponse.success("Xem trước import package thành công", result));
@@ -64,7 +63,7 @@ public class PackageImportController {
 
     //PACKAGE_MANAGE
     @GetMapping("/import/template")
-    @PreAuthorize("hasRole('DISPATCHER')")
+    @PreAuthorize("hasRole('WAREHOUSE_WORKER')")
     public ResponseEntity<byte[]> downloadTemplate() {
         byte[] template = buildTemplateBytes();
         return ResponseEntity.ok()
@@ -82,7 +81,7 @@ public class PackageImportController {
     // -------------------------------------------------------------------------
 
     @GetMapping(value = "/{id}/qr", produces = MediaType.IMAGE_PNG_VALUE)
-    @PreAuthorize("hasAnyAuthority('ROLE_DISPATCHER', 'WAREHOUSE_WORKER')")
+    @PreAuthorize("hasAnyRole('DISPATCHER', 'WAREHOUSE_WORKER')")
     public ResponseEntity<byte[]> getQrImage(@PathVariable Long id) {
         CargoPackage pkg = qrCodeService.findById(id);
         byte[] png = qrCodeService.generateQrPng(pkg.getQrToken());

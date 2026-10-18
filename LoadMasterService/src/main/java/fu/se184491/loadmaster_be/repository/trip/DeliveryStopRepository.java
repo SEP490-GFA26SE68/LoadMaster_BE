@@ -33,6 +33,11 @@ public interface DeliveryStopRepository extends JpaRepository<DeliveryStop, Long
             @Param("tripId") Long tripId
     );
 
+    List<DeliveryStop> findByTripIdAndDeliveryRequirementId(
+            Long tripId,
+            Long deliveryRequirementId
+    );
+
     // Kiểm tra yêu cầu giao đã sinh điểm giao hay chưa.
     boolean existsByDeliveryRequirementId(Long deliveryRequirementId);
 }

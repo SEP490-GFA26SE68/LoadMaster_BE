@@ -25,6 +25,7 @@ public enum Permission {
 
 
     DELIVERY_DEMAND_MANAGE,
+    DELIVERY_READ,
 
     AUDIT_READ,
 

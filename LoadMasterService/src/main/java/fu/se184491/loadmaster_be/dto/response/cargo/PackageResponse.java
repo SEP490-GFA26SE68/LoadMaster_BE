@@ -46,4 +46,14 @@ public class PackageResponse {
     private Integer priority;
     private Boolean mustLoad;
     private String packingGroup;
+
+    // Thông tin yêu cầu giao chứa kiện này
+    private Long deliveryRequirementId;
+
+    // Khách hàng sở hữu hàng
+    private String customerName;
+
+    // Tiến độ tiếp nhận hàng của yêu cầu
+    private Integer receivedPackageCount;
+    private Integer expectedPackageCount;
 }

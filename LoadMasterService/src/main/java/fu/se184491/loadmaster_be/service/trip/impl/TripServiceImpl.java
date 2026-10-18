@@ -2,6 +2,8 @@
 package fu.se184491.loadmaster_be.service.trip.impl;
 import fu.se184491.loadmaster_be.constant.account.UserRole;
 import fu.se184491.loadmaster_be.constant.account.UserStatus;
+import fu.se184491.loadmaster_be.constant.planning.DeliveryRequirementStatus;
+import fu.se184491.loadmaster_be.constant.trip.DeliveryStopStatus;
 import fu.se184491.loadmaster_be.constant.trip.TripStatus;
 import fu.se184491.loadmaster_be.constant.vehicle.VehicleStatus;
 import fu.se184491.loadmaster_be.dto.request.trip.DriverResponse;
@@ -10,12 +12,17 @@ import fu.se184491.loadmaster_be.dto.response.trip.TripDetailResponse;
 import fu.se184491.loadmaster_be.dto.response.trip.TripResponse;
 import fu.se184491.loadmaster_be.dto.response.trip.TripStopResponse;
 import fu.se184491.loadmaster_be.entity.account.User;
+import fu.se184491.loadmaster_be.entity.company.CompanyWarehouse;
+import fu.se184491.loadmaster_be.entity.planning.DeliveryRequirement;
+import fu.se184491.loadmaster_be.entity.trip.DeliveryStop;
 import fu.se184491.loadmaster_be.entity.trip.Trip;
 import fu.se184491.loadmaster_be.entity.vehicle.Vehicle;
 import fu.se184491.loadmaster_be.exception.AppException;
 import fu.se184491.loadmaster_be.exception.ErrorCode;
 import fu.se184491.loadmaster_be.helpers.CurrentUserService;
 import fu.se184491.loadmaster_be.repository.account.UserRepository;
+import fu.se184491.loadmaster_be.repository.company.CompanyWarehouseRepository;
+import fu.se184491.loadmaster_be.repository.planning.DeliveryRequirementRepository;
 import fu.se184491.loadmaster_be.repository.trip.DeliveryStopRepository;
 import fu.se184491.loadmaster_be.repository.trip.TripRepository;
 import fu.se184491.loadmaster_be.repository.vehicle.VehicleRepository;
@@ -37,11 +44,13 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class TripServiceImpl implements TripService {
 
+    private final CompanyWarehouseRepository companyWarehouseRepository;
     private final TripRepository tripRepository;
     private final VehicleRepository vehicleRepository;
     private final UserRepository userRepository;
     private final CurrentUserService currentUserService;
     private final DeliveryStopRepository deliveryStopRepository;
+    private final DeliveryRequirementRepository deliveryRequirementRepository;
     @Transactional
     public TripResponse createTrip(TripCreateRequest request) {
 
@@ -55,6 +64,28 @@ public class TripServiceImpl implements TripService {
         }
 
         Long companyId = creator.getCompany().getId();
+
+        // Kiểm tra kho xuất phát thuộc công ty đăng nhập.
+        CompanyWarehouse warehouse = companyWarehouseRepository
+                .findByIdAndCompanyId(
+                        request.originWarehouseId(),
+                        companyId
+                )
+                .orElseThrow(() ->
+                        new AppException(ErrorCode.INVALID_INPUT)
+                );
+
+        // Không cho sử dụng kho đã ngừng hoạt động.
+        if (!warehouse.isActive()) {
+            throw new AppException(ErrorCode.INVALID_INPUT);
+        }
+
+        // Kho phải có tọa độ để lập kế hoạch tuyến đường.
+        if (warehouse.getLatitude() == null
+                || warehouse.getLongitude() == null) {
+            throw new AppException(ErrorCode.INVALID_INPUT);
+        }
+
 
         // 2. Kiểm tra xe.
         Vehicle vehicle = vehicleRepository
@@ -125,10 +156,13 @@ public class TripServiceImpl implements TripService {
                 .tripCode(tripCode)
                 .tripName(request.tripName().trim())
                 .departureTime(request.departureTime())
-                .originName(request.originName().trim())
-                .originAddress(request.originAddress())
-                .originLatitude(request.originLatitude())
-                .originLongitude(request.originLongitude())
+
+                .originWarehouse(warehouse)
+                .originName(warehouse.getWarehouseName())
+                .originAddress(warehouse.getAddress())
+                .originLatitude(warehouse.getLatitude())
+                .originLongitude(warehouse.getLongitude())
+
                 .status(TripStatus.DRAFT)
                 .createdAt(Instant.now())
                 .build();
@@ -279,6 +313,90 @@ public class TripServiceImpl implements TripService {
                 .stops(stops)
                 .build();
     }
+
+
+    @Override
+    @Transactional
+    public TripStopResponse assignRequirementToTrip(
+            Long tripId,
+            Long requirementId
+    ) {
+        Long companyId = currentUserService.getCurrentCompanyId();
+
+        // 1. Kiểm tra Trip thuộc công ty đang đăng nhập.
+        Trip trip = tripRepository
+                .findByIdAndCompanyId(tripId, companyId)
+                .orElseThrow(() ->
+                        new AppException(ErrorCode.TRIP_NOT_FOUND)
+                );
+
+        // 2. Chỉ phân chuyến khi Trip còn DRAFT.
+        if (trip.getStatus() != TripStatus.DRAFT) {
+            throw new AppException(ErrorCode.INVALID_INPUT);
+        }
+
+        // 3. Khóa yêu cầu để tránh hai Dispatcher gán trùng.
+        DeliveryRequirement requirement =
+                deliveryRequirementRepository
+                        .findByIdAndCompanyIdForUpdate(
+                                requirementId,
+                                companyId
+                        )
+                        .orElseThrow(() ->
+                                new AppException(
+                                        ErrorCode.DELIVERY_REQUIREMENT_NOT_FOUND
+                                )
+                        );
+
+        // 4. Kiểm tra yêu cầu chưa được phân chuyến.
+        if (requirement.getStatus() != DeliveryRequirementStatus.PENDING
+                || requirement.getTrip() != null) {
+            throw new AppException(
+                    ErrorCode.INVALID_DELIVERY_REQUIREMENT_TRANSITION
+            );
+        }
+
+        // 5. Kiểm tra yêu cầu đã tiếp nhận đủ kiện.
+        int received = requirement.getPackages().size();
+        Integer expected = requirement.getExpectedPackageCount();
+
+        if (received == 0 ||
+                (expected != null && received < expected)) {
+            throw new AppException(ErrorCode.INVALID_INPUT);
+        }
+
+        // 6. Đề phòng yêu cầu đã có điểm giao.
+        if (deliveryStopRepository
+                .existsByDeliveryRequirementId(requirementId)) {
+            throw new AppException(ErrorCode.INVALID_INPUT);
+        }
+
+        // 7. Tạo điểm giao tiếp theo.
+        int nextSequence =
+                deliveryStopRepository.findMaxStopSequenceByTripId(
+                        tripId
+                ) + 1;
+
+        DeliveryStop stop = DeliveryStop.builder()
+                .trip(trip)
+                .deliveryRequirement(requirement)
+                .stopSequence(nextSequence)
+                .stopName(requirement.getDestination())
+                .address(requirement.getDestination())
+                .latitude(requirement.getDestinationLat())
+                .longitude(requirement.getDestinationLng())
+                .status(DeliveryStopStatus.PENDING)
+                .build();
+
+        // 8. Lưu điểm giao, liên kết yêu cầu với chuyến.
+        DeliveryStop savedStop = deliveryStopRepository.save(stop);
+
+        requirement.setTrip(trip);
+        requirement.setStatus(DeliveryRequirementStatus.ASSIGNED);
+
+        return TripStopResponse.fromEntity(savedStop);
+    }
+
 
 
     private TripResponse toResponse(Trip trip) {

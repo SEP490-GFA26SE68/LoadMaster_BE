@@ -55,7 +55,11 @@ public class RolePermissionMapping {
 
         map.put(
                 UserRole.MANAGER,
-                Set.of(Permission.TRIP_MANAGE)
+                Set.of(
+                        Permission.TRIP_MANAGE,
+                        Permission.DELIVERY_READ
+
+                )
         );
 
         map.put(
@@ -69,10 +73,8 @@ public class RolePermissionMapping {
                         Permission.VEHICLES_DELETE,
                         Permission.VEHICLES_READ,
                         Permission.VEHICLES_UPDATE,
-                        Permission.PACKAGE_TYPE_MANAGE,
-                        Permission.PACKAGE_MANAGE,
                         Permission.TRIP_MANAGE,
-                        Permission.DELIVERY_DEMAND_MANAGE,
+                        Permission.DELIVERY_READ,
                         Permission.CUSTOMER_MANAGE
                 )
 
@@ -80,7 +82,11 @@ public class RolePermissionMapping {
 
         map.put(
                 UserRole.WAREHOUSE_WORKER,
-                Set.of()
+                Set.of(
+                        Permission.PACKAGE_TYPE_MANAGE,
+                        Permission.PACKAGE_MANAGE,
+                        Permission.DELIVERY_READ
+                )
         );
 
         map.put(

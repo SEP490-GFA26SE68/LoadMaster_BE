@@ -116,7 +116,7 @@ public class PackageController {
     // ==================== GET BY ID ====================
 
     @GetMapping("/{id}")
-    @PreAuthorize("hasAnyAuthority('PACKAGE_MANAGE', 'DISPATCHER')")
+    @PreAuthorize("hasAnyAuthority('PACKAGE_MANAGE', 'ROLE_DISPATCHER')")
     public ResponseEntity<ApiResponse<PackageResponse>> getPackageById(
             @PathVariable Long id
     ) {
@@ -136,7 +136,7 @@ public class PackageController {
     // ==================== GET ALL ====================
 
     @GetMapping
-    @PreAuthorize("hasAnyAuthority('PACKAGE_MANAGE', 'DISPATCHER')")
+    @PreAuthorize("hasAnyAuthority('PACKAGE_MANAGE', 'ROLE_DISPATCHER', 'ROLE_MANAGER')")
     public ResponseEntity<PageResponse<PackageResponse>> getAllPackages(
             @RequestParam(required = false) Long orderId,
             @RequestParam(required = false) Long packageTypeId,

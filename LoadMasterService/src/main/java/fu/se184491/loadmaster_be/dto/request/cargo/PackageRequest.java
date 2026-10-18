@@ -26,6 +26,10 @@ public class PackageRequest {
 
     private Long packageTypeId;
 
+    @Positive
+    private Long deliveryRequirementId;
+
+
     // Mã và tên kiện
     @Size(max = 100)
     private String packageCode;
