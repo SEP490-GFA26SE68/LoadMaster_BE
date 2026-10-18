@@ -1,13 +1,12 @@
 package fu.se184491.loadmaster_be.entity.billing;
 
-import fu.se184491.loadmaster_be.entity.billing.Subscription;
-
-
 import fu.se184491.loadmaster_be.constant.billing.InvoiceStatus;
+import fu.se184491.loadmaster_be.entity.company.Company;
 import jakarta.persistence.*;
 import lombok.*;
 
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.time.LocalDateTime;
 
 @Entity
@@ -18,11 +17,18 @@ public class Invoice {
     private Long id;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "subscription_id")
-    private Subscription subscription;
+    @JoinColumn(name = "company_id", nullable = false)
+    private Company company;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "company_subscription_id")
+    private CompanySubscription companySubscription;
 
     @Column(name = "invoice_number", unique = true)
     private String invoiceNumber;
+
+    @Column(name = "billing_period", length = 50)
+    private String billingPeriod;
 
     @Column(name = "subtotal_amount", precision = 15, scale = 2)
     private BigDecimal subtotalAmount;
@@ -40,4 +46,7 @@ public class Invoice {
     @Enumerated(EnumType.STRING)
     @Column(name = "status")
     private InvoiceStatus status;
+
+    @Column(name = "created_at", nullable = false, updatable = false)
+    private Instant createdAt;
 }

@@ -152,4 +152,17 @@ public class SubscriptionPlanServiceTest {
         assertEquals(ErrorCode.PLAN_IN_USE, ex.getErrorCode());
         verify(planRepository, never()).delete(any());
     }
+
+    @Test
+    @DisplayName("getActivePlans and getPlanById should populate activeCompanyCount from repository")
+    void getActivePlans_populatesActiveCompanyCount() {
+        when(planRepository.findByActiveTrue()).thenReturn(List.of(plan));
+        when(companySubscriptionRepository.countByPlanIdAndStatus(1L, SubscriptionStatus.ACTIVE)).thenReturn(4L);
+
+        List<SubscriptionPlanResponse> responses = planService.getActivePlans();
+
+        assertEquals(1, responses.size());
+        assertEquals(4L, responses.get(0).getActiveCompanyCount());
+        verify(companySubscriptionRepository).countByPlanIdAndStatus(1L, SubscriptionStatus.ACTIVE);
+    }
 }

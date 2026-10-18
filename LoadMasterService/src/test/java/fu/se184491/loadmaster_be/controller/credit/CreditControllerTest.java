@@ -25,6 +25,7 @@ import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.MediaType;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationConverter;
+import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
@@ -45,7 +46,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @WebMvcTest(CreditController.class)
 @Import(WebSecurityConfig.class)
 @AutoConfigureMockMvc(addFilters = false)
-@org.springframework.security.test.context.support.WithMockUser(authorities = "COMPANY_ADMIN")
+@WithMockUser(authorities = "COMPANY_ADMIN")
 public class CreditControllerTest {
 
     @Autowired
@@ -141,5 +142,153 @@ public class CreditControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.data.transactionId").value("VNP_TOPUP_50"));
+    }
+
+    @Test
+    @DisplayName("GET /api/credits/balance - Allows ROLE_ADMIN")
+    @WithMockUser(roles = "ADMIN")
+    void testGetBalance_WithRoleAdmin_ReturnsOk() throws Exception {
+        when(creditService.getBalance(1L)).thenReturn(CreditBalanceResponse.builder().companyId(1L).balance(75).build());
+
+        mockMvc.perform(get("/api/credits/balance"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true));
+    }
+
+    @Test
+    @DisplayName("GET /api/credits/balance - Allows ROLE_MANAGER")
+    @WithMockUser(roles = "MANAGER")
+    void testGetBalance_WithRoleManager_ReturnsOk() throws Exception {
+        when(creditService.getBalance(1L)).thenReturn(CreditBalanceResponse.builder().companyId(1L).balance(75).build());
+
+        mockMvc.perform(get("/api/credits/balance"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true));
+    }
+
+    @Test
+    @DisplayName("GET /api/credits/balance - Allows ROLE_DISPATCHER")
+    @WithMockUser(roles = "DISPATCHER")
+    void testGetBalance_WithRoleDispatcher_ReturnsOk() throws Exception {
+        when(creditService.getBalance(1L)).thenReturn(CreditBalanceResponse.builder().companyId(1L).balance(75).build());
+
+        mockMvc.perform(get("/api/credits/balance"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true));
+    }
+
+    @Test
+    @DisplayName("GET /api/credits/balance - Allows ROLE_SYSTEM_MANAGER")
+    @WithMockUser(roles = "SYSTEM_MANAGER")
+    void testGetBalance_WithRoleSystemManager_ReturnsOk() throws Exception {
+        when(creditService.getBalance(1L)).thenReturn(CreditBalanceResponse.builder().companyId(1L).balance(75).build());
+
+        mockMvc.perform(get("/api/credits/balance"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true));
+    }
+
+    @Test
+    @DisplayName("GET /api/credits/balance - Denies ROLE_DRIVER with 403 Forbidden")
+    @WithMockUser(roles = "DRIVER")
+    void testGetBalance_WithRoleDriver_ReturnsForbidden() throws Exception {
+        mockMvc.perform(get("/api/credits/balance"))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    @DisplayName("GET /api/credits/transactions - Allows ROLE_ADMIN")
+    @WithMockUser(roles = "ADMIN")
+    void testGetTransactions_WithRoleAdmin_ReturnsOk() throws Exception {
+        when(creditService.getTransactions(eq(1L), any(Pageable.class))).thenReturn(new PageImpl<>(List.of()));
+
+        mockMvc.perform(get("/api/credits/transactions"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true));
+    }
+
+    @Test
+    @DisplayName("GET /api/credits/transactions - Allows ROLE_MANAGER")
+    @WithMockUser(roles = "MANAGER")
+    void testGetTransactions_WithRoleManager_ReturnsOk() throws Exception {
+        when(creditService.getTransactions(eq(1L), any(Pageable.class))).thenReturn(new PageImpl<>(List.of()));
+
+        mockMvc.perform(get("/api/credits/transactions"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true));
+    }
+
+    @Test
+    @DisplayName("GET /api/credits/transactions - Allows ROLE_DISPATCHER")
+    @WithMockUser(roles = "DISPATCHER")
+    void testGetTransactions_WithRoleDispatcher_ReturnsOk() throws Exception {
+        when(creditService.getTransactions(eq(1L), any(Pageable.class))).thenReturn(new PageImpl<>(List.of()));
+
+        mockMvc.perform(get("/api/credits/transactions"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true));
+    }
+
+    @Test
+    @DisplayName("GET /api/credits/transactions - Allows ROLE_SYSTEM_MANAGER")
+    @WithMockUser(roles = "SYSTEM_MANAGER")
+    void testGetTransactions_WithRoleSystemManager_ReturnsOk() throws Exception {
+        when(creditService.getTransactions(eq(1L), any(Pageable.class))).thenReturn(new PageImpl<>(List.of()));
+
+        mockMvc.perform(get("/api/credits/transactions"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true));
+    }
+
+    @Test
+    @DisplayName("GET /api/credits/transactions - Denies ROLE_DRIVER with 403 Forbidden")
+    @WithMockUser(roles = "DRIVER")
+    void testGetTransactions_WithRoleDriver_ReturnsForbidden() throws Exception {
+        mockMvc.perform(get("/api/credits/transactions"))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    @DisplayName("POST /api/credits/topup - Allows ROLE_ADMIN")
+    @WithMockUser(roles = "ADMIN")
+    void testTopupCredits_WithRoleAdmin_ReturnsOk() throws Exception {
+        Company company = Company.builder().id(1L).companyName("Acme").build();
+        when(companyRepository.findById(1L)).thenReturn(Optional.of(company));
+
+        CreditTopupRequest request = CreditTopupRequest.builder()
+                .credits(50)
+                .gateway(PaymentGateway.VNPAY)
+                .build();
+
+        PaymentUrlResponse paymentResponse = PaymentUrlResponse.builder()
+                .paymentUrl("https://sandbox.vnpayment.vn/vpcpay?...")
+                .transactionId("VNP_TOPUP_50")
+                .status("PENDING")
+                .build();
+
+        when(paymentGatewayService.createPayment(eq(company), eq(PaymentGateway.VNPAY), eq("CREDIT_TOPUP"),
+                eq(50L), eq(new BigDecimal("250000")), any(), any()))
+                .thenReturn(paymentResponse);
+
+        mockMvc.perform(post("/api/credits/topup")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true));
+    }
+
+    @Test
+    @DisplayName("POST /api/credits/topup - Denies ROLE_DISPATCHER with 403 Forbidden")
+    @WithMockUser(roles = "DISPATCHER")
+    void testTopupCredits_WithRoleDispatcher_ReturnsForbidden() throws Exception {
+        CreditTopupRequest request = CreditTopupRequest.builder()
+                .credits(50)
+                .gateway(PaymentGateway.VNPAY)
+                .build();
+
+        mockMvc.perform(post("/api/credits/topup")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isForbidden());
     }
 }

@@ -24,7 +24,7 @@ public class SubscriptionController {
     private final CurrentUserService currentUserService;
 
     @GetMapping("/current")
-    @PreAuthorize("hasAnyAuthority('COMPANY_ADMIN', 'DISPATCHER', 'SYSTEM_MANAGER')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'DISPATCHER', 'SYSTEM_MANAGER') or hasAnyAuthority('COMPANY_ADMIN', 'DISPATCHER', 'SYSTEM_MANAGER')")
     public ResponseEntity<ApiResponse<SubscriptionCurrentResponse>> getCurrentSubscription() {
         Long companyId = currentUserService.getCurrentCompanyId();
         SubscriptionCurrentResponse response = subscriptionService.getCurrentSubscription(companyId);
@@ -35,7 +35,7 @@ public class SubscriptionController {
     }
 
     @PostMapping("/subscribe")
-    @PreAuthorize("hasAuthority('COMPANY_ADMIN')")
+    @PreAuthorize("hasRole('ADMIN') or hasAuthority('COMPANY_ADMIN')")
     public ResponseEntity<ApiResponse<PaymentUrlResponse>> subscribe(
             @Valid @RequestBody SubscribeRequest request,
             HttpServletRequest servletRequest) {
@@ -49,7 +49,7 @@ public class SubscriptionController {
     }
 
     @PostMapping("/cancel")
-    @PreAuthorize("hasAuthority('COMPANY_ADMIN')")
+    @PreAuthorize("hasRole('ADMIN') or hasAuthority('COMPANY_ADMIN')")
     public ResponseEntity<ApiResponse<Void>> cancelSubscription() {
         Long companyId = currentUserService.getCurrentCompanyId();
         subscriptionService.cancelSubscription(companyId);

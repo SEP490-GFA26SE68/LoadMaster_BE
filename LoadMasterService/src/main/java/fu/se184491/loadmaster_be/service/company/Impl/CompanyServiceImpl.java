@@ -2,6 +2,7 @@ package fu.se184491.loadmaster_be.service.company.Impl;
 
 import fu.se184491.loadmaster_be.constant.company.CompanyStatus;
 import fu.se184491.loadmaster_be.dto.request.company.CompanyRequest;
+import fu.se184491.loadmaster_be.dto.request.company.UpdateCompanyProfileRequest;
 import fu.se184491.loadmaster_be.dto.response.company.CompanyOptionResponse;
 import fu.se184491.loadmaster_be.dto.response.company.CompanyResponse;
 import fu.se184491.loadmaster_be.entity.company.Company;
@@ -105,6 +106,37 @@ public class CompanyServiceImpl implements CompanyService {
                         )
                 )
                 .toList();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public CompanyResponse getCompanyProfile(Long companyId) {
+        if (companyId == null) {
+            throw new AppException(ErrorCode.COMPANY_NOT_FOUND);
+        }
+        Company company = companyRepository.findById(companyId)
+                .orElseThrow(() -> new AppException(ErrorCode.COMPANY_NOT_FOUND));
+        return toResponse(company);
+    }
+
+    @Override
+    @Transactional
+    public CompanyResponse updateCompanyProfile(Long companyId, UpdateCompanyProfileRequest request) {
+        if (companyId == null) {
+            throw new AppException(ErrorCode.COMPANY_NOT_FOUND);
+        }
+        Company company = companyRepository.findById(companyId)
+                .orElseThrow(() -> new AppException(ErrorCode.COMPANY_NOT_FOUND));
+
+        if (request.getCompanyName() != null && !request.getCompanyName().isBlank()) {
+            company.setCompanyName(request.getCompanyName());
+        }
+        if (request.getContactEmail() != null && !request.getContactEmail().isBlank()) {
+            company.setBillingEmail(request.getContactEmail());
+        }
+
+        Company updated = companyRepository.save(company);
+        return toResponse(updated);
     }
 
     private CompanyResponse toResponse(Company company) {

@@ -30,13 +30,13 @@ public class SubscriptionPlanController {
     }
 
     @PostMapping
-    @PreAuthorize("hasAuthority('SYSTEM_MANAGER')")
+    @PreAuthorize("hasAnyRole('SYSTEM_MANAGER', 'SYSTEM_ADMIN') or hasAuthority('SYSTEM_MANAGER')")
     public ResponseEntity<SubscriptionPlanResponse> createPlan(@Valid @RequestBody SubscriptionPlanRequest request) {
         return new ResponseEntity<>(planService.createPlan(request), HttpStatus.CREATED);
     }
 
     @PutMapping("/{id}")
-    @PreAuthorize("hasAuthority('SYSTEM_MANAGER')")
+    @PreAuthorize("hasAnyRole('SYSTEM_MANAGER', 'SYSTEM_ADMIN') or hasAuthority('SYSTEM_MANAGER')")
     public ResponseEntity<SubscriptionPlanResponse> updatePlan(
             @PathVariable Long id,
             @Valid @RequestBody SubscriptionPlanRequest request) {
@@ -44,7 +44,7 @@ public class SubscriptionPlanController {
     }
 
     @DeleteMapping("/{id}")
-    @PreAuthorize("hasAuthority('SYSTEM_MANAGER')")
+    @PreAuthorize("hasAnyRole('SYSTEM_MANAGER', 'SYSTEM_ADMIN') or hasAuthority('SYSTEM_MANAGER')")
     public ResponseEntity<Void> deletePlan(@PathVariable Long id) {
         planService.deletePlan(id);
         return ResponseEntity.noContent().build();

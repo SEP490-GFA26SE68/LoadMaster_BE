@@ -1,6 +1,7 @@
 package fu.se184491.loadmaster_be.service.subscription;
 
 import fu.se184491.loadmaster_be.constant.billing.AlgorithmTier;
+import fu.se184491.loadmaster_be.constant.billing.BillingCycle;
 import fu.se184491.loadmaster_be.constant.billing.PaymentGateway;
 import fu.se184491.loadmaster_be.constant.billing.SubscriptionStatus;
 import fu.se184491.loadmaster_be.constant.billing.SubscriptionTier;
@@ -9,6 +10,7 @@ import fu.se184491.loadmaster_be.dto.response.credit.CreditBalanceResponse;
 import fu.se184491.loadmaster_be.dto.response.payment.PaymentUrlResponse;
 import fu.se184491.loadmaster_be.dto.response.subscription.SubscriptionCurrentResponse;
 import fu.se184491.loadmaster_be.entity.billing.CompanySubscription;
+import fu.se184491.loadmaster_be.entity.billing.Invoice;
 import fu.se184491.loadmaster_be.entity.billing.SubscriptionPlan;
 import fu.se184491.loadmaster_be.entity.company.Company;
 import fu.se184491.loadmaster_be.exception.AppException;
@@ -22,6 +24,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -207,5 +210,77 @@ public class SubscriptionServiceTest {
         assertEquals(SubscriptionTier.PRO, res.getTier());
         assertEquals(180, res.getCreditsBalance());
         assertEquals(200, res.getCreditsMonthlyGrant());
+    }
+
+    @Test
+    @DisplayName("activateSubscription - Sets expiresAt to plusYears(1) when plan BillingCycle is YEARLY")
+    void testActivateSubscription_WithYearlyBillingCycle_SetsExpiresAtPlusOneYear() {
+        SubscriptionPlan yearlyPlan = SubscriptionPlan.builder()
+                .id(3L)
+                .name("Enterprise Yearly")
+                .tier(SubscriptionTier.PRO)
+                .billingCycle(BillingCycle.YEARLY)
+                .price(new BigDecimal("10000000"))
+                .monthlyCredits(500)
+                .algorithmTier(AlgorithmTier.EP_DBLF_GA)
+                .active(true)
+                .build();
+
+        when(companyRepository.findById(1L)).thenReturn(Optional.of(company));
+        when(subscriptionPlanRepository.findById(3L)).thenReturn(Optional.of(yearlyPlan));
+        when(companySubscriptionRepository.findByCompanyId(1L)).thenReturn(Optional.empty());
+
+        ArgumentCaptor<CompanySubscription> captor =
+                ArgumentCaptor.forClass(CompanySubscription.class);
+
+        subscriptionService.activateSubscription(1L, 3L);
+
+        verify(companySubscriptionRepository).save(captor.capture());
+        CompanySubscription saved = captor.getValue();
+        assertNotNull(saved.getStartedAt());
+        assertEquals(saved.getStartedAt().plusYears(1), saved.getExpiresAt());
+    }
+
+    @Test
+    @DisplayName("activateSubscription - Sets expiresAt to plusMonths(1) when plan BillingCycle is MONTHLY")
+    void testActivateSubscription_WithMonthlyBillingCycle_SetsExpiresAtPlusOneMonth() {
+        proPlan.setBillingCycle(BillingCycle.MONTHLY);
+        when(companyRepository.findById(1L)).thenReturn(Optional.of(company));
+        when(subscriptionPlanRepository.findById(2L)).thenReturn(Optional.of(proPlan));
+        when(companySubscriptionRepository.findByCompanyId(1L)).thenReturn(Optional.empty());
+
+        ArgumentCaptor<CompanySubscription> captor =
+                ArgumentCaptor.forClass(CompanySubscription.class);
+
+        subscriptionService.activateSubscription(1L, 2L);
+
+        verify(companySubscriptionRepository).save(captor.capture());
+        CompanySubscription saved = captor.getValue();
+        assertNotNull(saved.getStartedAt());
+        assertEquals(saved.getStartedAt().plusMonths(1), saved.getExpiresAt());
+    }
+
+    @Test
+    @DisplayName("Invoice entity - Has company, companySubscription, billingPeriod, createdAt and no legacy subscription field")
+    void testInvoiceEntityFieldsUpdated() {
+        Class<?> invoiceClass = Invoice.class;
+        assertDoesNotThrow(() -> invoiceClass.getDeclaredField("company"),
+                "Invoice must have a 'company' field");
+        assertDoesNotThrow(() -> invoiceClass.getDeclaredField("companySubscription"),
+                "Invoice must have a 'companySubscription' field");
+        assertDoesNotThrow(() -> invoiceClass.getDeclaredField("billingPeriod"),
+                "Invoice must have a 'billingPeriod' field");
+        assertDoesNotThrow(() -> invoiceClass.getDeclaredField("createdAt"),
+                "Invoice must have a 'createdAt' field");
+        assertThrows(NoSuchFieldException.class, () -> invoiceClass.getDeclaredField("subscription"),
+                "Invoice must not reference legacy 'subscription' field");
+    }
+
+    @Test
+    @DisplayName("Orphan Subscription entity - Removed from billing entity package")
+    void testOrphanSubscriptionEntityRemoved() {
+        assertThrows(ClassNotFoundException.class,
+                () -> Class.forName("fu.se184491.loadmaster_be.entity.billing.Subscription"),
+                "Orphan entity fu.se184491.loadmaster_be.entity.billing.Subscription should be deleted");
     }
 }
