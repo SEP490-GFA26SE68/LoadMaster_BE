@@ -241,4 +241,44 @@ public class BrevoClient {
                 .retrieve()
                 .toBodilessEntity();
     }
+
+    public void sendEmail(String recipientEmail, String subject, String content) {
+        String htmlContent = """
+                <div style="font-family: Arial, sans-serif; padding: 24px; color: #1f2937; max-width: 600px; margin: 0 auto; border: 1px solid #e5e7eb; border-radius: 8px;">
+                    <div style="margin-bottom: 20px;">
+                        <h2 style="color: #0284c7; margin: 0;">LoadMaster</h2>
+                        <p style="color: #6b7280; font-size: 13px; margin: 4px 0 0 0;">Hệ thống tối ưu xếp hàng và lộ trình vận tải</p>
+                    </div>
+                    <div style="white-space: pre-wrap; font-size: 15px; line-height: 1.6; margin-bottom: 24px;">
+                        %s
+                    </div>
+                    <hr style="margin-top: 30px; border: none; border-top: 1px solid #e5e7eb;" />
+                    <p style="font-size: 12px; color: #9ca3af; margin: 8px 0 0 0;">© 2026 LoadMaster. All rights reserved.</p>
+                </div>
+                """.formatted(content != null ? content : "");
+
+        Map<String, Object> body = Map.of(
+                "sender", Map.of(
+                        "name", senderName != null ? senderName : "LoadMaster",
+                        "email", senderEmail != null ? senderEmail : "no-reply@loadmaster.vn"
+                ),
+                "to", List.of(
+                        Map.of("email", recipientEmail)
+                ),
+                "subject", subject != null ? subject : "Thông báo từ LoadMaster",
+                "htmlContent", htmlContent
+        );
+
+        try {
+            brevoRestClient
+                    .post()
+                    .uri("/v3/smtp/email")
+                    .header("api-key", apiKey)
+                    .body(body)
+                    .retrieve()
+                    .toBodilessEntity();
+        } catch (Exception e) {
+            // Log exception or handle in dev when Brevo credentials aren't configured
+        }
+    }
 }

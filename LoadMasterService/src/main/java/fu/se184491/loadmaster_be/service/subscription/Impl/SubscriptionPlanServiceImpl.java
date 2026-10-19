@@ -1,6 +1,8 @@
 package fu.se184491.loadmaster_be.service.subscription.Impl;
 
 import fu.se184491.loadmaster_be.constant.billing.SubscriptionStatus;
+import fu.se184491.loadmaster_be.constant.billing.SubscriptionTier;
+import fu.se184491.loadmaster_be.dto.PageResponse;
 import fu.se184491.loadmaster_be.dto.request.subscription.SubscriptionPlanRequest;
 import fu.se184491.loadmaster_be.dto.response.subscription.SubscriptionPlanResponse;
 import fu.se184491.loadmaster_be.entity.billing.SubscriptionPlan;
@@ -9,10 +11,15 @@ import fu.se184491.loadmaster_be.exception.ErrorCode;
 import fu.se184491.loadmaster_be.repository.billing.CompanySubscriptionRepository;
 import fu.se184491.loadmaster_be.repository.billing.SubscriptionPlanRepository;
 import fu.se184491.loadmaster_be.service.subscription.SubscriptionPlanService;
+import jakarta.persistence.criteria.Predicate;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -30,6 +37,32 @@ public class SubscriptionPlanServiceImpl implements SubscriptionPlanService {
                 .stream()
                 .map(this::toResponse)
                 .collect(Collectors.toList());
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public PageResponse<SubscriptionPlanResponse> getAllPlans(String search, Boolean active, SubscriptionTier tier, Pageable pageable) {
+        Specification<SubscriptionPlan> spec = (root, query, cb) -> {
+            List<Predicate> predicates = new ArrayList<>();
+            if (search != null && !search.trim().isEmpty()) {
+                String searchPattern = "%" + search.trim().toLowerCase() + "%";
+                predicates.add(cb.or(
+                        cb.like(cb.lower(root.get("name")), searchPattern),
+                        cb.like(cb.lower(root.get("planCode")), searchPattern)
+                ));
+            }
+            if (active != null) {
+                predicates.add(cb.equal(root.get("active"), active));
+            }
+            if (tier != null) {
+                predicates.add(cb.equal(root.get("tier"), tier));
+            }
+            return cb.and(predicates.toArray(new Predicate[0]));
+        };
+
+        Page<SubscriptionPlan> page = planRepository.findAll(spec, pageable);
+        Page<SubscriptionPlanResponse> responsePage = page.map(this::toResponse);
+        return PageResponse.of(responsePage);
     }
 
     @Override
@@ -86,6 +119,12 @@ public class SubscriptionPlanServiceImpl implements SubscriptionPlanService {
         plan.setFeatures(request.getFeatures());
         if (request.getBillingCycle() != null) {
             plan.setBillingCycle(request.getBillingCycle());
+        }
+        if (request.getMaxVehicles() != null) {
+            plan.setMaxVehicles(request.getMaxVehicles());
+        }
+        if (request.getMaxMonthlyJobs() != null) {
+            plan.setMaxMonthlyJobs(request.getMaxMonthlyJobs());
         }
         if (request.getActive() != null) {
             plan.setActive(request.getActive());
