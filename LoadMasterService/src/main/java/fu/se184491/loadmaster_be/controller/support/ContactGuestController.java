@@ -91,9 +91,20 @@ public class ContactGuestController {
     @PreAuthorize("hasAnyRole('SYSTEM_SUPPORTER', 'SYSTEM_MANAGER', 'SYSTEM_ADMIN') or hasAnyAuthority('SYSTEM_SUPPORTER', 'SYSTEM_MANAGER', 'SYSTEM_ADMIN')")
     public ResponseEntity<ContactOfGuestResponse> updateContact(
             @PathVariable Long id,
-            @RequestBody UpdateContactOfGuestRequest request
+            @RequestBody UpdateContactOfGuestRequest request,
+            @AuthenticationPrincipal Jwt jwt
     ) {
-        ContactOfGuestResponse response = contactOfGuestService.updateContact(id, request);
+        User currentUser = null;
+        if (jwt != null) {
+            String email = jwt.getClaimAsString("email");
+            if (email != null) {
+                currentUser = userRepository.findByEmail(email).orElse(null);
+            }
+            if (currentUser == null && jwt.getSubject() != null) {
+                currentUser = userRepository.findByKeycloakId(jwt.getSubject()).orElse(null);
+            }
+        }
+        ContactOfGuestResponse response = contactOfGuestService.updateContact(id, request, currentUser);
         return ResponseEntity.ok(response);
     }
 }

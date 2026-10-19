@@ -131,6 +131,11 @@ public class ContactOfGuestServiceImpl implements ContactOfGuestService {
 
     @Override
     public ContactOfGuestResponse updateContact(Long id, UpdateContactOfGuestRequest request) {
+        return updateContact(id, request, null);
+    }
+
+    @Override
+    public ContactOfGuestResponse updateContact(Long id, UpdateContactOfGuestRequest request, User currentUser) {
         ContactOfGuest contact = contactOfGuestRepository.findById(id)
                 .orElseThrow(() -> new AppException(ErrorCode.CONTACT_REQUEST_NOT_FOUND));
 
@@ -154,8 +159,15 @@ public class ContactOfGuestServiceImpl implements ContactOfGuestService {
 
         if (request.getAssignedToId() != null) {
             User supporter = userRepository.findById(request.getAssignedToId())
-                    .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
-            contact.setAssignedTo(supporter);
+                    .orElse(null);
+            if (supporter == null && currentUser != null) {
+                supporter = currentUser;
+            }
+            if (supporter != null) {
+                contact.setAssignedTo(supporter);
+            }
+        } else if (request.getStatus() == ContactStatus.IN_PROGRESS && contact.getAssignedTo() == null && currentUser != null) {
+            contact.setAssignedTo(currentUser);
         }
 
         if (request.getNote() != null) {

@@ -24,6 +24,7 @@ public interface ContactOfGuestService {
     ContactOfGuestResponse getContactById(Long id);
 
     ContactOfGuestResponse updateContact(Long id, UpdateContactOfGuestRequest request);
+    ContactOfGuestResponse updateContact(Long id, UpdateContactOfGuestRequest request, User currentUser);
 
     ContactOfGuestResponse replyToContact(Long id, ReplyContactOfGuestRequest request, User sender);
 }
