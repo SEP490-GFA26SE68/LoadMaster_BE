@@ -198,33 +198,4 @@ public class SubscriptionPlanServiceTest {
         assertEquals(2L, response.getData().get(0).getActiveCompanyCount());
         verify(planRepository).findAll(any(Specification.class), any(PageRequest.class));
     }
-
-    @Test
-    @DisplayName("Update plan should update maxVehicles and maxMonthlyJobs")
-    void updatePlan_updatesMaxVehiclesAndMaxMonthlyJobs() {
-        SubscriptionPlanRequest updateReq = SubscriptionPlanRequest.builder()
-                .planCode("PLAN-PRO")
-                .name("Pro Tier Updated")
-                .priceVnd(BigDecimal.valueOf(600000))
-                .tier(SubscriptionTier.PRO)
-                .monthlyCredits(600)
-                .algorithmTier(AlgorithmTier.EP_DBLF_GA_AI)
-                .billingCycle(BillingCycle.MONTHLY)
-                .maxVehicles(25)
-                .maxMonthlyJobs(150)
-                .active(true)
-                .build();
-
-        when(planRepository.findById(1L)).thenReturn(Optional.of(plan));
-        when(planRepository.existsByTierAndActiveTrueAndIdNot(SubscriptionTier.PRO, 1L)).thenReturn(false);
-        when(planRepository.save(any(SubscriptionPlan.class))).thenAnswer(invocation -> invocation.getArgument(0));
-
-        SubscriptionPlanResponse response = planService.updatePlan(1L, updateReq);
-
-        assertNotNull(response);
-        assertEquals(25, response.getMaxVehicles());
-        assertEquals(150, response.getMaxMonthlyJobs());
-        assertEquals(25, plan.getMaxVehicles());
-        assertEquals(150, plan.getMaxMonthlyJobs());
-    }
 }

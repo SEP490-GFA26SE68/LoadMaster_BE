@@ -120,12 +120,6 @@ public class SubscriptionPlanServiceImpl implements SubscriptionPlanService {
         if (request.getBillingCycle() != null) {
             plan.setBillingCycle(request.getBillingCycle());
         }
-        if (request.getMaxVehicles() != null) {
-            plan.setMaxVehicles(request.getMaxVehicles());
-        }
-        if (request.getMaxMonthlyJobs() != null) {
-            plan.setMaxMonthlyJobs(request.getMaxMonthlyJobs());
-        }
         if (request.getActive() != null) {
             plan.setActive(request.getActive());
         }
