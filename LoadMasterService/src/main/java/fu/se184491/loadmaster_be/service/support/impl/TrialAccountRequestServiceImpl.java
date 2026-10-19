@@ -70,6 +70,8 @@ public class TrialAccountRequestServiceImpl implements TrialAccountRequestServic
                 .email(request.getEmail())
                 .phoneNumber(request.getPhoneNumber())
                 .companyName(request.getCompanyName() != null ? request.getCompanyName() : (contact != null ? contact.getCompanyName() : null))
+                .companyCode(request.getCompanyCode() != null ? request.getCompanyCode() : (contact != null ? contact.getCompanyCode() : null))
+                .taxCode(request.getTaxCode() != null ? request.getTaxCode() : (contact != null ? contact.getTaxCode() : null))
                 .interestedPlan(plan)
                 .status(TrialRequestStatus.PENDING)
                 .note(request.getNote())
@@ -129,11 +131,15 @@ public class TrialAccountRequestServiceImpl implements TrialAccountRequestServic
 
         String compCode = (request.getCompanyCode() != null && !request.getCompanyCode().trim().isEmpty())
                 ? request.getCompanyCode().trim()
-                : "COMP-TRIAL-" + System.currentTimeMillis() % 100000;
+                : (trial.getCompanyCode() != null && !trial.getCompanyCode().trim().isEmpty()
+                        ? trial.getCompanyCode().trim()
+                        : "COMP-TRIAL-" + System.currentTimeMillis() % 100000);
 
         String taxCode = (request.getTaxCode() != null && !request.getTaxCode().trim().isEmpty())
                 ? request.getTaxCode().trim()
-                : "TAX-TRIAL-" + System.currentTimeMillis() % 100000;
+                : (trial.getTaxCode() != null && !trial.getTaxCode().trim().isEmpty()
+                        ? trial.getTaxCode().trim()
+                        : "TAX-TRIAL-" + System.currentTimeMillis() % 100000);
 
         Company company = Company.builder()
                 .companyCode(compCode)
@@ -232,6 +238,8 @@ public class TrialAccountRequestServiceImpl implements TrialAccountRequestServic
                 .email(entity.getEmail())
                 .phoneNumber(entity.getPhoneNumber())
                 .companyName(entity.getCompanyName())
+                .companyCode(entity.getCompanyCode())
+                .taxCode(entity.getTaxCode())
                 .interestedPlanId(entity.getInterestedPlan() != null ? entity.getInterestedPlan().getId() : null)
                 .interestedPlanName(entity.getInterestedPlan() != null ? entity.getInterestedPlan().getName() : null)
                 .status(entity.getStatus())
