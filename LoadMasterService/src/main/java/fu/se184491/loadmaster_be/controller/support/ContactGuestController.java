@@ -13,6 +13,16 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
+import fu.se184491.loadmaster_be.dto.PageResponse;
+import fu.se184491.loadmaster_be.dto.request.support.ReplyContactOfGuestRequest;
+import fu.se184491.loadmaster_be.entity.account.User;
+import fu.se184491.loadmaster_be.repository.account.UserRepository;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.oauth2.jwt.Jwt;
+
 import java.util.List;
 
 @RestController
@@ -21,6 +31,7 @@ import java.util.List;
 public class ContactGuestController {
 
     private final ContactOfGuestService contactOfGuestService;
+    private final UserRepository userRepository;
 
     @PostMapping
     public ResponseEntity<ContactOfGuestResponse> createContact(
@@ -32,12 +43,39 @@ public class ContactGuestController {
 
     @GetMapping
     @PreAuthorize("hasAnyRole('SYSTEM_SUPPORTER', 'SYSTEM_MANAGER', 'SYSTEM_ADMIN') or hasAnyAuthority('SYSTEM_SUPPORTER', 'SYSTEM_MANAGER', 'SYSTEM_ADMIN')")
-    public ResponseEntity<List<ContactOfGuestResponse>> getContacts(
+    public ResponseEntity<?> getContacts(
             @RequestParam(required = false) ContactStatus status,
-            @RequestParam(required = false) ContactRequestType requestType
+            @RequestParam(required = false) ContactRequestType requestType,
+            @RequestParam(required = false) String search,
+            @RequestParam(required = false) Integer page,
+            @RequestParam(required = false) Integer size,
+            @RequestParam(required = false, defaultValue = "false") boolean paged
     ) {
-        List<ContactOfGuestResponse> responses = contactOfGuestService.getContacts(status, requestType);
-        return ResponseEntity.ok(responses);
+        if (paged || page != null || size != null) {
+            int pageNum = page != null ? page : 0;
+            int pageSize = size != null ? size : 10;
+            Pageable pageable = PageRequest.of(pageNum, pageSize, Sort.by(Sort.Direction.DESC, "createdAt"));
+            return ResponseEntity.ok(contactOfGuestService.getContactsPaged(status, requestType, search, pageable));
+        }
+        return ResponseEntity.ok(contactOfGuestService.getContacts(status, requestType));
+    }
+
+    @PostMapping("/{id}/reply")
+    @PreAuthorize("hasAnyRole('SYSTEM_SUPPORTER', 'SYSTEM_MANAGER', 'SYSTEM_ADMIN') or hasAnyAuthority('SYSTEM_SUPPORTER', 'SYSTEM_MANAGER', 'SYSTEM_ADMIN')")
+    public ResponseEntity<ContactOfGuestResponse> replyContact(
+            @PathVariable Long id,
+            @Valid @RequestBody ReplyContactOfGuestRequest request,
+            @AuthenticationPrincipal Jwt jwt
+    ) {
+        User sender = null;
+        if (jwt != null) {
+            String email = jwt.getClaimAsString("email");
+            if (email != null) {
+                sender = userRepository.findByEmail(email).orElse(null);
+            }
+        }
+        ContactOfGuestResponse response = contactOfGuestService.replyToContact(id, request, sender);
+        return ResponseEntity.ok(response);
     }
 
     @GetMapping("/{id}")

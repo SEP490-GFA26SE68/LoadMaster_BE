@@ -4,6 +4,7 @@ import fu.se184491.loadmaster_be.constant.billing.AlgorithmTier;
 import fu.se184491.loadmaster_be.constant.billing.BillingCycle;
 import fu.se184491.loadmaster_be.constant.billing.SubscriptionStatus;
 import fu.se184491.loadmaster_be.constant.billing.SubscriptionTier;
+import fu.se184491.loadmaster_be.dto.PageResponse;
 import fu.se184491.loadmaster_be.dto.request.subscription.SubscriptionPlanRequest;
 import fu.se184491.loadmaster_be.dto.response.subscription.SubscriptionPlanResponse;
 import fu.se184491.loadmaster_be.entity.billing.SubscriptionPlan;
@@ -19,6 +20,10 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.jpa.domain.Specification;
 
 import java.math.BigDecimal;
 import java.util.List;
@@ -150,7 +155,7 @@ public class SubscriptionPlanServiceTest {
 
         AppException ex = assertThrows(AppException.class, () -> planService.deletePlan(1L));
         assertEquals(ErrorCode.PLAN_IN_USE, ex.getErrorCode());
-        verify(planRepository, never()).delete(any());
+        verify(planRepository, never()).delete(any(SubscriptionPlan.class));
     }
 
     @Test
@@ -164,5 +169,50 @@ public class SubscriptionPlanServiceTest {
         assertEquals(1, responses.size());
         assertEquals(4L, responses.get(0).getActiveCompanyCount());
         verify(companySubscriptionRepository).countByPlanIdAndStatus(1L, SubscriptionStatus.ACTIVE);
+    }
+
+    @Test
+    @DisplayName("getAllPlans with pagination and filter should return PageResponse with activeCompanyCount")
+    void getAllPlans_paged_success() {
+        Page<SubscriptionPlan> pageResult = new PageImpl<>(List.of(plan), PageRequest.of(0, 10), 1);
+        when(planRepository.findAll(any(Specification.class), any(PageRequest.class))).thenReturn(pageResult);
+        when(companySubscriptionRepository.countByPlanIdAndStatus(1L, SubscriptionStatus.ACTIVE)).thenReturn(2L);
+
+        PageResponse<SubscriptionPlanResponse> response = planService.getAllPlans("PRO", true, SubscriptionTier.PRO, PageRequest.of(0, 10));
+
+        assertNotNull(response);
+        assertEquals(1, response.getData().size());
+        assertEquals(1, response.getTotalElements());
+        assertEquals(2L, response.getData().get(0).getActiveCompanyCount());
+        verify(planRepository).findAll(any(Specification.class), any(PageRequest.class));
+    }
+
+    @Test
+    @DisplayName("Update plan should update maxVehicles and maxMonthlyJobs")
+    void updatePlan_updatesMaxVehiclesAndMaxMonthlyJobs() {
+        SubscriptionPlanRequest updateReq = SubscriptionPlanRequest.builder()
+                .planCode("PLAN-PRO")
+                .name("Pro Tier Updated")
+                .priceVnd(BigDecimal.valueOf(600000))
+                .tier(SubscriptionTier.PRO)
+                .monthlyCredits(600)
+                .algorithmTier(AlgorithmTier.EP_DBLF_GA_AI)
+                .billingCycle(BillingCycle.MONTHLY)
+                .maxVehicles(25)
+                .maxMonthlyJobs(150)
+                .active(true)
+                .build();
+
+        when(planRepository.findById(1L)).thenReturn(Optional.of(plan));
+        when(planRepository.existsByTierAndActiveTrueAndIdNot(SubscriptionTier.PRO, 1L)).thenReturn(false);
+        when(planRepository.save(any(SubscriptionPlan.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        SubscriptionPlanResponse response = planService.updatePlan(1L, updateReq);
+
+        assertNotNull(response);
+        assertEquals(25, response.getMaxVehicles());
+        assertEquals(150, response.getMaxMonthlyJobs());
+        assertEquals(25, plan.getMaxVehicles());
+        assertEquals(150, plan.getMaxMonthlyJobs());
     }
 }
