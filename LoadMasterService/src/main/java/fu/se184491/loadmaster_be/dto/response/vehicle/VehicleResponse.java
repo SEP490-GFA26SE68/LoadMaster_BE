@@ -1,18 +1,17 @@
 package fu.se184491.loadmaster_be.dto.response.vehicle;
 
-import lombok.*;
+import fu.se184491.loadmaster_be.constant.vehicle.VehicleStatus;
+import lombok.Builder;
 
-import java.math.BigDecimal;
-
-@Data
 @Builder
-@NoArgsConstructor
-@AllArgsConstructor
-public class VehicleResponse {
-    private Long id;
-    private Long vehicleTypeId;
-    private String licensePlate;
-
-    private Long companyId;
-    private Long driverUserId;
+public record VehicleResponse(
+        Long id,
+        String name,
+        String licensePlate,
+        Long vehicleTypeId,
+        String vehicleTypeName,
+        Long companyId,
+        String companyName,
+        VehicleStatus status
+) {
 }

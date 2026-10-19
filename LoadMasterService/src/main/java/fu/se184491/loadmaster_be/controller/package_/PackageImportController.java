@@ -32,32 +32,47 @@ public class PackageImportController {
     // -------------------------------------------------------------------------
 
     @PostMapping(value = "/import/preview", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-//    @PreAuthorize("hasAuthority('PACKAGE_MANAGE')")
-    @PreAuthorize("hasRole('DISPATCHER')")
+    @PreAuthorize("hasRole('WAREHOUSE_WORKER')")
     public ResponseEntity<ApiResponse<ImportPreviewResult>> preview(@RequestPart("file") MultipartFile file) {
         ImportPreviewResult result = packageImportService.preview(file, currentUserService.getCurrentCompanyId());
         return ResponseEntity.ok(ApiResponse.success("Xem trước import package thành công", result));
     }
 
-    @PostMapping(value = "/import/confirm", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-//    @PreAuthorize("hasAuthority('PACKAGE_MANAGE')")
-    @PreAuthorize("hasRole('DISPATCHER')")
-    public ResponseEntity<ApiResponse<ImportConfirmResult>> confirm(@RequestPart("file") MultipartFile file) {
-        ImportConfirmResult result = packageImportService.confirm(file,
+
+    @PostMapping(
+            value = "/import/confirm",
+            consumes = MediaType.MULTIPART_FORM_DATA_VALUE
+    )
+    @PreAuthorize("hasRole('WAREHOUSE_WORKER')")
+    public ResponseEntity<ApiResponse<ImportConfirmResult>> confirm(
+            @RequestPart("file") MultipartFile file,
+            @RequestParam("deliveryRequirementId") Long deliveryRequirementId
+    ) {
+        ImportConfirmResult result = packageImportService.confirm(
+                file,
                 currentUserService.getCurrentCompanyId(),
-                currentUserService.getCurrentUser().getId());
-        return ResponseEntity.ok(ApiResponse.success("Import package thành công", result));
+                currentUserService.getCurrentUser().getId(),
+                deliveryRequirementId
+        );
+
+        return ResponseEntity.ok(
+                ApiResponse.success("Import package thành công", result)
+        );
     }
+
 
     //PACKAGE_MANAGE
     @GetMapping("/import/template")
-    @PreAuthorize("hasRole('DISPATCHER')")
+    @PreAuthorize("hasRole('WAREHOUSE_WORKER')")
     public ResponseEntity<byte[]> downloadTemplate() {
         byte[] template = buildTemplateBytes();
         return ResponseEntity.ok()
                 .contentType(MediaType.parseMediaType(
                         "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"))
-                .header("Content-Disposition", "attachment; filename=\"packages_template.xlsx\"")
+                .header(
+                        "Content-Disposition",
+                        "attachment; filename=\"mau-nhap-kien-chung.xlsx\""
+                )
                 .body(template);
     }
 
@@ -66,7 +81,7 @@ public class PackageImportController {
     // -------------------------------------------------------------------------
 
     @GetMapping(value = "/{id}/qr", produces = MediaType.IMAGE_PNG_VALUE)
-    @PreAuthorize("hasAnyAuthority('ROLE_DISPATCHER', 'WAREHOUSE_WORKER')")
+    @PreAuthorize("hasAnyRole('DISPATCHER', 'WAREHOUSE_WORKER')")
     public ResponseEntity<byte[]> getQrImage(@PathVariable Long id) {
         CargoPackage pkg = qrCodeService.findById(id);
         byte[] png = qrCodeService.generateQrPng(pkg.getQrToken());
@@ -75,54 +90,15 @@ public class PackageImportController {
                 .body(png);
     }
 
-//    @GetMapping("/scan/{qrToken}")
-//    @PreAuthorize("hasAnyAuthority('PACKAGE_MANAGE', 'WAREHOUSE_WORKER')")
-//    public ResponseEntity<PackageDetailResponse> scanPackage(@PathVariable String qrToken) {
-//        CargoPackage pkg = qrCodeService.lookupByToken(qrToken);
-//        return ResponseEntity.ok(toDetailResponse(pkg));
-//    }
 
-    // -------------------------------------------------------------------------
-    // Package detail
-    // -------------------------------------------------------------------------
-
-//    @GetMapping("/{id}")
-//    @PreAuthorize("hasAnyAuthority('ROLE_DISPATCHER', 'WAREHOUSE_WORKER')")
-//    public ResponseEntity<PackageDetailResponse> getById(@PathVariable Long id) {
-//        CargoPackage pkg = qrCodeService.findById(id);
-//        return ResponseEntity.ok(toDetailResponse(pkg));
-//    }
-
-    // -------------------------------------------------------------------------
-    // Helpers
-    // -------------------------------------------------------------------------
-
-    private PackageDetailResponse toDetailResponse(CargoPackage pkg) {
-        return PackageDetailResponse.builder()
-                .id(pkg.getId())
-                .packageCode(pkg.getPackageCode())
-                .qrToken(pkg.getQrToken())
-                .handlingClass(pkg.getHandlingClass() != null
-                        ? pkg.getHandlingClass() : HandlingClass.STANDARD)
-                .actualWeightKg(pkg.getActualWeightKg())
-                .status(pkg.getStatus())
-                .orderId(pkg.getOrder() != null ? pkg.getOrder().getId() : null)
-                .build();
-    }
 
     private byte[] buildTemplateBytes() {
-        try (org.apache.poi.xssf.usermodel.XSSFWorkbook wb =
-                     new org.apache.poi.xssf.usermodel.XSSFWorkbook()) {
-            org.apache.poi.ss.usermodel.Sheet sheet = wb.createSheet("packages");
-            org.apache.poi.ss.usermodel.Row header = sheet.createRow(0);
-            String[] cols = {"packageCode", "lengthCm", "widthCm", "heightCm",
-                             "weightKg", "handlingClass", "destination"};
-            for (int i = 0; i < cols.length; i++) {
-                header.createCell(i).setCellValue(cols[i]);
-            }
-            java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
-            wb.write(out);
-            return out.toByteArray();
+        try (var inputStream = new org.springframework.core.io
+                .ClassPathResource("templates/mau-nhap-kien-chung.xlsx")
+                .getInputStream()) {
+
+            return inputStream.readAllBytes();
+
         } catch (java.io.IOException e) {
             throw new AppException(ErrorCode.INTERNAL_SERVER_ERROR);
         }

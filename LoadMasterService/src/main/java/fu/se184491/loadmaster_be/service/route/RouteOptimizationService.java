@@ -1,6 +1,7 @@
 package fu.se184491.loadmaster_be.service.route;
 
 import fu.se184491.loadmaster_be.client.GoongMapsClient;
+import fu.se184491.loadmaster_be.constant.trip.TripStatus;
 import fu.se184491.loadmaster_be.dto.goong.DirectionsResponse;
 import fu.se184491.loadmaster_be.dto.goong.DistanceMatrixResponse;
 import fu.se184491.loadmaster_be.dto.goong.LatLng;
@@ -24,6 +25,7 @@ import fu.se184491.loadmaster_be.repository.trip.TripRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Instant;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -63,9 +65,21 @@ public class RouteOptimizationService {
     }
 
     @Transactional
-    public RouteOptimizationResult optimizeRoute(Long tripId) {
-        Trip trip = tripRepository.findById(tripId)
-                .orElseThrow(() -> new AppException(ErrorCode.TRIP_NOT_FOUND));
+    public RouteOptimizationResult optimizeRoute(
+            Long companyId,
+            Long tripId
+    ) {
+        Trip trip = tripRepository
+                .findByIdAndCompanyId(tripId, companyId)
+                .orElseThrow(() ->
+                        new AppException(ErrorCode.TRIP_NOT_FOUND));
+
+        if (trip.getStatus() != TripStatus.DRAFT
+                && trip.getStatus() != TripStatus.PLANNED) {
+            throw new AppException(
+                    ErrorCode.INVALID_INPUT
+            );
+        }
         List<DeliveryStop> stops = deliveryStopRepository.findByTripIdOrderByStopSequenceAsc(tripId);
         stops.stream()
                 .filter(stop -> stop.getLatitude() == null || stop.getLongitude() == null)
@@ -90,7 +104,9 @@ public class RouteOptimizationService {
                 .map(stop -> optimizerStop(stop, packagesByStop.getOrDefault(stop.getId(), List.of())))
                 .toList();
         StopSequenceResult sequence = stopSequenceOptimizer.optimize(
-                new StopSequenceRequest(origin, optimizerStops, durationMatrix));
+                new StopSequenceRequest(origin, optimizerStops, durationMatrix),
+                trip.getDepartureTime()
+        );
 
         List<RouteOptimizationResult.RouteSegment> segments = new ArrayList<>();
         List<RouteOptimizationResult.StopSchedule> schedules = new ArrayList<>();
@@ -109,9 +125,20 @@ public class RouteOptimizationService {
             int segmentSeconds = Math.toIntExact(bestRoute.getDurationSeconds());
             travelSeconds += segmentSeconds;
             distanceMeters += bestRoute.getDistanceMeters();
-            elapsedSeconds += segmentSeconds + SERVICE_TIME_SECONDS;
-            LocalDateTime plannedArrival = trip.getDepartureTime().plusSeconds(elapsedSeconds);
+
+// 1. Di chuyển đến điểm giao.
+            elapsedSeconds += segmentSeconds;
+
+// 2. Thời điểm xe đến, chưa tính thời gian xử lý hàng.
+            LocalDateTime plannedArrival =
+                    trip.getDepartureTime().plusSeconds(elapsedSeconds);
+
             stop.setPlannedArrival(plannedArrival);
+
+// 3. Sau khi đến mới cộng thời gian xử lý,
+// để tính thời gian đến điểm giao tiếp theo.
+            elapsedSeconds += SERVICE_TIME_SECONDS;
+
             segments.add(new RouteOptimizationResult.RouteSegment(
                     previousStopId, stopId, segmentSeconds,
                     bestRoute.getDistanceMeters(), bestRoute.getPolyline()));
@@ -160,7 +187,7 @@ public class RouteOptimizationService {
                 .entityName("Trip")
                 .entityId(tripId.toString())
                 .newValues(routePlanCache)
-                .createdAt(LocalDateTime.now())
+                .createdAt(Instant.now())
                 .build());
         return result;
     }
@@ -207,20 +234,26 @@ public class RouteOptimizationService {
         return plan;
     }
 
-    private StopSequenceRequest.Stop optimizerStop(DeliveryStop stop, List<CargoPackage> packages) {
-        LocalDateTime deadline = packages.stream()
-                .map(CargoPackage::getOrder)
-                .map(order -> order.getTimeWindowEnd())
-                .filter(java.util.Objects::nonNull)
-                .min(LocalDateTime::compareTo)
-                .orElse(null);
+
+    private StopSequenceRequest.Stop optimizerStop(
+            DeliveryStop stop,
+            List<CargoPackage> packages
+    ) {
+        LocalDateTime deadline = null;
+
+        if (stop.getDeliveryRequirement() != null) {
+            deadline = stop.getDeliveryRequirement().getDeadline();
+        }
+
         return new StopSequenceRequest.Stop(
                 stop.getId(),
                 stop.getLatitude().doubleValue(),
                 stop.getLongitude().doubleValue(),
                 deadline,
-                packages.size());
+                packages.size()
+        );
     }
+
 
     private int[][] durationMatrix(DistanceMatrixResponse response) {
         List<DistanceMatrixResponse.Row> rows = response.getRows();
@@ -253,28 +286,47 @@ public class RouteOptimizationService {
         deliveryStopRepository.flush();
     }
 
+
     private LatLng resolveOrigin(Trip trip, List<DeliveryStop> stops) {
+
+        // Ưu tiên tọa độ kho xuất phát đã lưu trong Trip.
+        // Đây là snapshot tại thời điểm tạo chuyến.
+        if (trip.getOriginLatitude() != null
+                && trip.getOriginLongitude() != null) {
+
+            return new LatLng(
+                    trip.getOriginLatitude().doubleValue(),
+                    trip.getOriginLongitude().doubleValue()
+            );
+        }
+
+        // Tương thích với dữ liệu Trip cũ.
         Map<String, Object> routePlan = trip.getRoutePlan();
+
         if (routePlan != null) {
             Double latitude = number(routePlan.get("originLat"));
             Double longitude = number(routePlan.get("originLng"));
+
             if (latitude != null && longitude != null) {
                 return new LatLng(latitude, longitude);
             }
+
             Object storedOrigin = routePlan.get("origin");
+
             if (storedOrigin instanceof Map<?, ?> originMap) {
                 latitude = number(originMap.get("latitude"));
                 longitude = number(originMap.get("longitude"));
+
                 if (latitude != null && longitude != null) {
                     return new LatLng(latitude, longitude);
                 }
             }
         }
-        if (stops.isEmpty()) {
-            throw new IllegalArgumentException("Cannot optimize a trip without an origin or delivery stops");
-        }
-        return coordinates(stops.getFirst());
+
+        // Không tự lấy điểm giao làm điểm xuất phát.
+        throw new AppException(ErrorCode.INVALID_INPUT);
     }
+
 
     private Double number(Object value) {
         return value instanceof Number number ? number.doubleValue() : null;

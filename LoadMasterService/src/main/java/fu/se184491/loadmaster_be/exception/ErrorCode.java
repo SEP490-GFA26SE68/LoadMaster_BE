@@ -36,7 +36,11 @@ public enum ErrorCode {
     TAX_CODE_ALREADY_EXISTS("Mã số thuế đã tồn tại trong hệ thống", HttpStatus.CONFLICT),
     ROLE_NOT_FOUND("Không tìm thấy vai trò người dùng", HttpStatus.NOT_FOUND),
     EMAIL_ALREADY_EXISTS("Email đã được sử dụng", HttpStatus.CONFLICT),
-
+    USER_IS_NOT_DRIVER("Người dùng hiện tại không phải là tài xế", HttpStatus.BAD_REQUEST),
+    DRIVER_NOT_AVAILABLE(
+            "Tài xế không ở trạng thái hoạt động",
+            HttpStatus.CONFLICT
+    ),
     USER_PROFILE_NOT_FOUND("Không tìm thấy thông tin hồ sơ người dùng", HttpStatus.NOT_FOUND),
 
     // -------------------------------------------------------------------------
@@ -47,12 +51,22 @@ public enum ErrorCode {
     PACKAGE_NOT_FOUND("Không tìm thấy kiện hàng", HttpStatus.NOT_FOUND),
     PACKAGE_TYPE_NOT_FOUND("Không tìm thấy loại kiện hàng", HttpStatus.NOT_FOUND),
     TRACKING_BARCODE_ALREADY_EXISTS("Mã barcode kiện hàng đã tồn tại trong hệ thống", HttpStatus.CONFLICT),
+    PACKAGE_TYPE_CODE_ALREADY_EXISTS("Mã loại kiện hàng đã tồn tại trong hệ thống", HttpStatus.CONFLICT),
     STACKING_RULE_NOT_FOUND("Không tìm thấy quy tắc chồng hàng", HttpStatus.NOT_FOUND),
     STACKING_RULE_ALREADY_EXISTS("Quy tắc chồng hàng giữa 2 loại kiện hàng này đã tồn tại", HttpStatus.CONFLICT),
 
     // -------------------------------------------------------------------------
     // Vehicle & Trip errors
     // -------------------------------------------------------------------------
+    VEHICLE_NOT_AVAILABLE(
+            "Xe không ở trạng thái sẵn sàng sử dụng",
+            HttpStatus.CONFLICT
+    ),
+
+    DRIVER_COMPANY_MISMATCH(
+            "Tài xế không thuộc công ty hiện tại",
+            HttpStatus.BAD_REQUEST
+    ),
     VEHICLE_NOT_FOUND("Không tìm thấy phương tiện vận tải", HttpStatus.NOT_FOUND),
     VEHICLE_TYPE_NOT_FOUND("Không tìm thấy loại phương tiện", HttpStatus.NOT_FOUND),
     TRIP_NOT_FOUND("Không tìm thấy chuyến đi", HttpStatus.NOT_FOUND),
@@ -60,6 +74,7 @@ public enum ErrorCode {
     DELIVERY_REQUIREMENT_NOT_PENDING("Chỉ có thể xóa nhu cầu giao hàng đang chờ xử lý", HttpStatus.BAD_REQUEST),
     INVALID_DELIVERY_REQUIREMENT_TRANSITION("Chuyển trạng thái nhu cầu giao hàng không hợp lệ", HttpStatus.BAD_REQUEST),
     CARGO_SEGREGATION_CONFLICT("Kiện hàng xung đột quy tắc phân tách hàng hóa", HttpStatus.CONFLICT),
+    LICENSE_PLATE_ALREADY_EXISTS("Biển số phương tiện đã tồn tại trong hệ thống", HttpStatus.CONFLICT),
 
 
     // -------------------------------------------------------------------------
@@ -91,7 +106,62 @@ public enum ErrorCode {
     IMPORT_INVALID_WEIGHT("Khối lượng phải là số dương (> 0 kg)", HttpStatus.BAD_REQUEST),
     IMPORT_INVALID_HANDLING_CLASS("Loại hàng không hợp lệ. Chỉ chấp nhận: STANDARD, FRAGILE, REFRIGERATED, HAZARDOUS, HIGH_VALUE", HttpStatus.BAD_REQUEST),
     IMPORT_BLANK_DESTINATION("Điểm đến / nơi nhận hàng không được để trống", HttpStatus.BAD_REQUEST),
+
     IMPORT_EXISTING_CODE("Mã kiện đã tồn tại trong hệ thống, hệ thống sẽ tạo bản ghi mới", HttpStatus.OK),
+
+    // Import Excel - extended package fields
+    IMPORT_BLANK_PACKAGE_CODE(
+            "Mã kiện không được để trống",
+            HttpStatus.BAD_REQUEST),
+
+    IMPORT_INVALID_QUANTITY(
+            "Số lượng phải là số nguyên dương",
+            HttpStatus.BAD_REQUEST),
+
+    IMPORT_INVALID_FRAGILITY_LEVEL(
+            "Mức dễ vỡ không hợp lệ",
+            HttpStatus.BAD_REQUEST),
+
+    IMPORT_INVALID_MAX_TOP_LOAD(
+            "Tải trọng đặt phía trên phải lớn hơn hoặc bằng 0 kg",
+            HttpStatus.BAD_REQUEST),
+
+    IMPORT_INVALID_MAX_LAYERS(
+            "Số tầng tối đa phải là số nguyên lớn hơn hoặc bằng 1",
+            HttpStatus.BAD_REQUEST),
+
+    IMPORT_INVALID_MIN_SUPPORT_RATIO(
+            "Tỷ lệ đỡ đáy phải nằm trong khoảng từ 0 đến 1",
+            HttpStatus.BAD_REQUEST),
+
+    IMPORT_INVALID_PRIORITY(
+            "Độ ưu tiên không hợp lệ",
+            HttpStatus.BAD_REQUEST),
+
+    IMPORT_INVALID_ORIENTATION(
+            "Hướng đặt kiện không hợp lệ",
+            HttpStatus.BAD_REQUEST),
+
+    IMPORT_INVALID_BOOLEAN(
+            "Giá trị phải là Có/Không hoặc true/false",
+            HttpStatus.BAD_REQUEST),
+
+    IMPORT_PACKAGE_TYPE_NOT_FOUND(
+            "Mã loại kiện không tồn tại trong công ty",
+            HttpStatus.BAD_REQUEST),
+
+    IMPORT_DUPLICATE_GENERATED_CODE(
+            "Mã kiện được tạo theo số lượng bị trùng",
+            HttpStatus.BAD_REQUEST),
+
+    IMPORT_INVALID_PACKAGE_NAME(
+            "Tên kiện vượt quá độ dài cho phép",
+            HttpStatus.BAD_REQUEST),
+
+    IMPORT_INVALID_PACKING_GROUP(
+            "Nhóm kiện vượt quá độ dài cho phép",
+            HttpStatus.BAD_REQUEST),
+
     IMPORT_HAS_ERRORS("File import chứa lỗi dữ liệu, vui lòng kiểm tra preview trước khi xác nhận", HttpStatus.UNPROCESSABLE_ENTITY),
     EXPORT_TOO_MANY_PACKAGES("Tối đa 200 package mỗi lần xuất PDF", HttpStatus.BAD_REQUEST),
 
@@ -138,6 +208,7 @@ public enum ErrorCode {
     TRIP_EXCEPTION_NOT_FOUND("Không tìm thấy sự cố chuyến đi", HttpStatus.NOT_FOUND),
     INVALID_REROUTE_INDEX("Chỉ số tuyến thay thế không hợp lệ", HttpStatus.BAD_REQUEST),
     NO_GPS_LOCATION("Chuyến đi chưa có vị trí GPS", HttpStatus.BAD_REQUEST),
+
     // -------------------------------------------------------------------------
     // Route Planning errors (Sprint 7 / Phương án 2)
     // -------------------------------------------------------------------------

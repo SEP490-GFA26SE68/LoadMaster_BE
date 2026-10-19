@@ -11,15 +11,49 @@ import java.math.BigDecimal;
 @NoArgsConstructor
 @AllArgsConstructor
 public class PackageResponse {
+
+    // Thông tin định danh và liên kết
     private Long id;
     private Long orderId;
     private Long packageTypeId;
-    private String trackingBarcode;
-    private Integer actualLength;
-    private BigDecimal actualWeightKg;
-    private Boolean isPinned;
+
     private String packageCode;
+    private String packageName;
+    private String trackingBarcode;
     private String qrToken;
+
+    // Kích thước và khối lượng
+    private Integer actualLength;
+    private Integer actualWidth;
+    private Integer actualHeight;
+    private BigDecimal actualWeightKg;
+
+    // Thông tin giao hàng
     private HandlingClass handlingClass;
+    private String destination;
+    private String note;
     private PackageStatus status;
+    private Boolean isPinned;
+
+    // Thông số xếp hàng
+    private String orientation;
+    private Boolean uprightOnly;
+    private Integer fragilityLevel;
+    private Boolean stackable;
+    private BigDecimal maxTopLoadKg;
+    private Integer maxLayers;
+    private BigDecimal minSupportRatio;
+    private Integer priority;
+    private Boolean mustLoad;
+    private String packingGroup;
+
+    // Thông tin yêu cầu giao chứa kiện này
+    private Long deliveryRequirementId;
+
+    // Khách hàng sở hữu hàng
+    private String customerName;
+
+    // Tiến độ tiếp nhận hàng của yêu cầu
+    private Integer receivedPackageCount;
+    private Integer expectedPackageCount;
 }

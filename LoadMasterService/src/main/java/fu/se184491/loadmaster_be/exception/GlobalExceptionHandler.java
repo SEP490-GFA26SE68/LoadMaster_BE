@@ -165,6 +165,45 @@ public class GlobalExceptionHandler {
                         .build());
     }
 
+    @ExceptionHandler(DataIntegrityViolationException.class)
+    public ResponseEntity<ApiResponse<Void>> handleDataIntegrityViolation(
+            DataIntegrityViolationException ex,
+            HttpServletRequest request) {
+
+        log.warn("Database constraint violation at {}: {}",
+                request.getRequestURI(), ex.getMessage());
+
+        Throwable cause = ex;
+
+        while (cause != null) {
+            if (cause instanceof org.hibernate.exception.ConstraintViolationException constraintEx) {
+
+                String constraintName = constraintEx.getConstraintName();
+
+                if ("uk_package_types_company_code".equalsIgnoreCase(constraintName)) {
+                    return ResponseEntity
+                            .status(HttpStatus.CONFLICT)
+                            .body(ApiResponse.<Void>builder()
+                                    .success(false)
+                                    .code("PACKAGE_TYPE_CODE_ALREADY_EXISTS")
+                                    .message("Mã loại kiện đã tồn tại trong công ty")
+                                    .data(null)
+                                    .build());
+                }
+            }
+
+            cause = cause.getCause();
+        }
+
+        return ResponseEntity
+                .status(HttpStatus.CONFLICT)
+                .body(ApiResponse.<Void>builder()
+                        .success(false)
+                        .message("Dữ liệu đang vi phạm ràng buộc hoặc được sử dụng bởi dữ liệu khác")
+                        .data(null)
+                        .build());
+    }
+
     @ExceptionHandler(AccessDeniedException.class)
     public ResponseEntity<ApiResponse<Void>> handleAccessDeniedException(
             AccessDeniedException ex, HttpServletRequest request) {

@@ -1,24 +1,31 @@
 package fu.se184491.loadmaster_be.service.vehicle.Impl;
 
-import fu.se184491.loadmaster_be.constant.account.UserRole;
 
-import fu.se184491.loadmaster_be.dto.request.vehicle.VehicleRequest;
+import fu.se184491.loadmaster_be.constant.trip.TripStatus;
+import fu.se184491.loadmaster_be.constant.vehicle.VehicleStatus;
+import fu.se184491.loadmaster_be.dto.PageResponse;
+import fu.se184491.loadmaster_be.dto.request.vehicle.CreateVehicleRequest;
 import fu.se184491.loadmaster_be.dto.response.vehicle.VehicleResponse;
 import fu.se184491.loadmaster_be.entity.account.User;
-import fu.se184491.loadmaster_be.entity.company.Company;
 import fu.se184491.loadmaster_be.entity.vehicle.Vehicle;
 import fu.se184491.loadmaster_be.entity.vehicle.VehicleType;
 import fu.se184491.loadmaster_be.exception.AppException;
 import fu.se184491.loadmaster_be.exception.ErrorCode;
 import fu.se184491.loadmaster_be.helpers.CurrentUserService;
-import fu.se184491.loadmaster_be.repository.account.UserRepository;
+import fu.se184491.loadmaster_be.repository.trip.TripRepository;
 import fu.se184491.loadmaster_be.repository.vehicle.VehicleRepository;
 import fu.se184491.loadmaster_be.repository.vehicle.VehicleTypeRepository;
 import fu.se184491.loadmaster_be.service.vehicle.VehicleService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.util.List;
 
 @Service
 @RequiredArgsConstructor
@@ -26,170 +33,192 @@ public class VehicleServiceImpl implements VehicleService {
 
     private final VehicleRepository vehicleRepository;
     private final VehicleTypeRepository vehicleTypeRepository;
-    private final UserRepository userRepository;
-
+    private final TripRepository tripRepository;
     private final CurrentUserService currentUserService;
 
-    @Override
-    public VehicleResponse createVehicle(Long companyId, VehicleRequest request) {
-        User driver = currentUserService.getCurrentUser();
+    @Transactional
+    public VehicleResponse createVehicle(
+            CreateVehicleRequest request
+    ) {
+        User currentUser =
+                currentUserService.getCurrentUser();
 
-        Long currentCompanyId = currentUserService.getCurrentCompanyId();
-
-        
-        VehicleType vehicleType = vehicleTypeRepository.findById(request.getVehicleTypeId())
-                .orElseThrow(() -> new AppException(ErrorCode.VEHICLE_TYPE_NOT_FOUND));
-                
-        if (!vehicleType.getCompany().getId().equals(companyId)) {
-            throw new AppException(ErrorCode.UNAUTHORIZED);
-        }
-        
-        if (vehicleRepository.existsByLicensePlate(request.getLicensePlate())) {
-            throw new AppException(ErrorCode.INVALID_INPUT); // Can map to specific error if needed
+        if (currentUser.getCompany() == null) {
+            throw new AppException(
+                    ErrorCode.COMPANY_REQUIRED
+            );
         }
 
-//        User driver = null;
-        if (request.getDriverUserId() != null) {
-            driver = userRepository.findByKeycloakId(driver.getKeycloakId())
-                    .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
-            if (!driver.getCompany().getId().equals(currentCompanyId)) {
-                throw new AppException(ErrorCode.UNAUTHORIZED);
-            }
-            if (driver.getUserRoleType() != UserRole.DRIVER) {
-                throw new AppException(ErrorCode.INVALID_INPUT);
-            }
-            if (vehicleRepository.existsByDriver_Id(request.getDriverUserId())) {
-                throw new AppException(ErrorCode.INVALID_INPUT);
-            }
+        Long companyId =
+                currentUser.getCompany().getId();
+
+        String licensePlate =
+                request.licensePlate()
+                        .trim()
+                        .toUpperCase();
+
+        if (
+                vehicleRepository
+                        .existsByLicensePlateIgnoreCase(licensePlate)
+        ) {
+            throw new AppException(
+                    ErrorCode.LICENSE_PLATE_ALREADY_EXISTS
+            );
         }
 
-        Vehicle vehicle = Vehicle.builder()
-                .company(Company.builder().id(companyId).build())
-                .vehicleType(vehicleType)
-                .licensePlate(request.getLicensePlate())
-                .driver(driver)
-                .build();
+        VehicleType vehicleType =
+                vehicleTypeRepository
+                        .findByIdAndCompanyId(
+                                request.vehicleTypeId(),
+                                companyId
+                        )
+                        .orElseThrow(() ->
+                                new AppException(
+                                        ErrorCode.VEHICLE_TYPE_NOT_FOUND
+                                )
+                        );
 
-        vehicle = vehicleRepository.save(vehicle);
-        return mapToResponse(vehicle);
+
+
+        Vehicle vehicle =
+                Vehicle.builder()
+                        .company(
+                                currentUser.getCompany()
+                        )
+                        .vehicleType(vehicleType)
+                        .name(
+                                request.name().trim()
+                        )
+                        .licensePlate(
+                                request
+                                        .licensePlate()
+                                        .trim()
+                                        .toUpperCase()
+                        )
+                        .build();
+
+        Vehicle saved =
+                vehicleRepository.save(vehicle);
+
+        return toVehicleResponse(saved);
     }
 
     @Override
-    public VehicleResponse updateVehicle(Long companyId, Long id, VehicleRequest request) {
-        Vehicle vehicle = vehicleRepository.findById(id)
-                .orElseThrow(() -> new AppException(ErrorCode.VEHICLE_NOT_FOUND));
+    @Transactional(readOnly = true)
+    public PageResponse<VehicleResponse> getVehicles(
+            int page,
+            int size,
+            String search,
+            Long vehicleTypeId
+    ) {
+        User currentUser =
+                currentUserService.getCurrentUser();
 
-        if (!vehicle.getCompany().getId().equals(companyId)) {
-            throw new AppException(ErrorCode.UNAUTHORIZED);
+        if (currentUser.getCompany() == null) {
+            throw new AppException(
+                    ErrorCode.COMPANY_REQUIRED
+            );
         }
 
-        VehicleType vehicleType = vehicleTypeRepository.findById(request.getVehicleTypeId())
-                .orElseThrow(() -> new AppException(ErrorCode.VEHICLE_TYPE_NOT_FOUND));
+        Long companyId =
+                currentUser.getCompany().getId();
 
-        if (!vehicleType.getCompany().getId().equals(companyId)) {
-            throw new AppException(ErrorCode.UNAUTHORIZED);
+        Pageable pageable =
+                PageRequest.of(
+                        page,
+                        size,
+                        Sort.by(
+                                Sort.Direction.ASC,
+                                "name"
+                        )
+                );
+
+        Specification<Vehicle> spec =
+                Specification.unrestricted();
+
+        spec = spec.and(
+                (root, query, cb) ->
+                        cb.equal(
+                                root.get("company").get("id"),
+                                companyId
+                        )
+        );
+
+        if (search != null && !search.isBlank()) {
+            String keyword =
+                    "%" + search.trim().toLowerCase() + "%";
+
+            spec = spec.and(
+                    (root, query, cb) ->
+                            cb.or(
+                                    cb.like(
+                                            cb.lower(root.get("name")),
+                                            keyword
+                                    ),
+                                    cb.like(
+                                            cb.lower(root.get("licensePlate")),
+                                            keyword
+                                    )
+                            )
+            );
         }
 
-        if (!vehicle.getLicensePlate().equals(request.getLicensePlate()) &&
-                vehicleRepository.existsByLicensePlate(request.getLicensePlate())) {
-            throw new AppException(ErrorCode.INVALID_INPUT);
+        if (vehicleTypeId != null) {
+            spec = spec.and(
+                    (root, query, cb) ->
+                            cb.equal(
+                                    root.get("vehicleType").get("id"),
+                                    vehicleTypeId
+                            )
+            );
         }
 
-        User driver = null;
-        if (request.getDriverUserId() != null) {
-            driver = userRepository.findById(request.getDriverUserId())
-                    .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
-            if (!driver.getCompany().getId().equals(companyId)) {
-                throw new AppException(ErrorCode.UNAUTHORIZED);
-            }
-            if (driver.getUserRoleType() != UserRole.DRIVER) {
-                throw new AppException(ErrorCode.INVALID_INPUT);
-            }
-            if (vehicleRepository.existsByDriver_IdAndIdNot(request.getDriverUserId(), id)) {
-                throw new AppException(ErrorCode.INVALID_INPUT);
-            }
-        }
+        Page<VehicleResponse> result =
+                vehicleRepository
+                        .findAll(spec, pageable)
+                        .map(this::toVehicleResponse);
 
-        vehicle.setVehicleType(vehicleType);
-        vehicle.setLicensePlate(request.getLicensePlate());
-        vehicle.setDriver(driver);
-
-        vehicle = vehicleRepository.save(vehicle);
-        return mapToResponse(vehicle);
+        return PageResponse.of(
+                "Vehicles retrieved successfully",
+                result
+        );
     }
 
-    @Override
-    public VehicleResponse getVehicleById(Long companyId, Long id) {
-        Vehicle vehicle = vehicleRepository.findById(id)
-                .orElseThrow(() -> new AppException(ErrorCode.VEHICLE_NOT_FOUND));
-
-        if (!vehicle.getCompany().getId().equals(companyId)) {
-            throw new AppException(ErrorCode.UNAUTHORIZED);
-        }
-
-        return mapToResponse(vehicle);
-    }
-
-    @Override
-    public Page<VehicleResponse> getAllVehicles(Long companyId, Long vehicleTypeId, Long driverUserId, Pageable pageable) {
-        // Will implement specification based query for filtering
-        return vehicleRepository.findByCompanyId(companyId, pageable)
-                .map(this::mapToResponse);
-    }
-
-    @Override
-    public void deleteVehicle(Long companyId, Long id) {
-        Vehicle vehicle = vehicleRepository.findById(id)
-                .orElseThrow(() -> new AppException(ErrorCode.VEHICLE_NOT_FOUND));
-
-        if (!vehicle.getCompany().getId().equals(companyId)) {
-            throw new AppException(ErrorCode.UNAUTHORIZED);
-        }
-
-        vehicleRepository.delete(vehicle);
-    }
-    
-    @Override
-    public VehicleResponse assignDriver(Long companyId, Long vehicleId, Long driverUserId) {
-        Vehicle vehicle = vehicleRepository.findById(vehicleId)
-                .orElseThrow(() -> new AppException(ErrorCode.VEHICLE_NOT_FOUND));
-
-        if (!vehicle.getCompany().getId().equals(companyId)) {
-            throw new AppException(ErrorCode.UNAUTHORIZED);
-        }
-
-        if (driverUserId == null) {
-            vehicle.setDriver(null);
-        } else {
-            User driver = userRepository.findById(driverUserId)
-                    .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
-
-            if (!driver.getCompany().getId().equals(companyId)) {
-                throw new AppException(ErrorCode.UNAUTHORIZED);
-            }
-            
-            if (driver.getUserRoleType() != UserRole.DRIVER) {
-                throw new AppException(ErrorCode.INVALID_INPUT);
-            }
-
-            if (vehicleRepository.existsByDriver_IdAndIdNot(driverUserId, vehicleId)) {
-                throw new AppException(ErrorCode.INVALID_INPUT);
-            }
-
-            vehicle.setDriver(driver);
-        }
-
-        vehicle = vehicleRepository.save(vehicle);
-        return mapToResponse(vehicle);
-    }
-    
-    private VehicleResponse mapToResponse(Vehicle vehicle) {
+    private VehicleResponse toVehicleResponse(Vehicle vehicle) {
         return VehicleResponse.builder()
                 .id(vehicle.getId())
-                .vehicleTypeId(vehicle.getVehicleType().getId())
+                .name(vehicle.getName())
                 .licensePlate(vehicle.getLicensePlate())
+                .vehicleTypeId(vehicle.getVehicleType().getId())
+                .vehicleTypeName(vehicle.getVehicleType().getName())
                 .companyId(vehicle.getCompany().getId())
-                .driverUserId(vehicle.getDriver() != null ? vehicle.getDriver().getId() : null)
+                .companyName(vehicle.getCompany().getCompanyName())
+                .status(resolveVehicleStatus(vehicle))
                 .build();
+    }
+
+    private VehicleStatus resolveVehicleStatus(Vehicle vehicle) {
+
+        VehicleStatus storedStatus = vehicle.getStatus();
+
+        if (storedStatus == VehicleStatus.RETIRED) {
+            return VehicleStatus.RETIRED;
+        }
+
+        if (storedStatus == VehicleStatus.MAINTENANCE) {
+            return VehicleStatus.MAINTENANCE;
+        }
+
+        boolean inTrip = tripRepository.existsByVehicleIdAndStatusIn(
+                vehicle.getId(),
+                List.of(
+                        TripStatus.LOADING,
+                        TripStatus.IN_TRANSIT
+                )
+        );
+
+        return inTrip
+                ? VehicleStatus.IN_TRIP
+                : VehicleStatus.AVAILABLE;
     }
 }

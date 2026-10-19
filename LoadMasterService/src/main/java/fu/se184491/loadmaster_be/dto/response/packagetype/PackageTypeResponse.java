@@ -10,13 +10,24 @@ import java.math.BigDecimal;
 @AllArgsConstructor
 @Builder
 public class PackageTypeResponse {
+
     private Long id;
     private Long companyId;
+
+    private String typeCode;
     private String name;
+
     private Integer length;
     private Integer width;
     private Integer height;
+
     private BigDecimal weightKg;
     private BigDecimal maxStackingWeightKg;
+
     private Boolean isFragile;
+
+    private Boolean rotationAllowed;
+    private Boolean allowRotateX;
+    private Boolean allowRotateY;
+    private Boolean allowRotateZ;
 }

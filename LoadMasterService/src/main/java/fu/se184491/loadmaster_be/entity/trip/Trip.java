@@ -1,6 +1,8 @@
 package fu.se184491.loadmaster_be.entity.trip;
 
+import fu.se184491.loadmaster_be.entity.account.User;
 import fu.se184491.loadmaster_be.entity.company.Company;
+import fu.se184491.loadmaster_be.entity.company.CompanyWarehouse;
 import fu.se184491.loadmaster_be.entity.vehicle.Vehicle;
 
 
@@ -11,6 +13,8 @@ import org.hibernate.annotations.ColumnDefault;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
 
+import java.math.BigDecimal;
+import java.time.Instant;
 import java.time.LocalDateTime;
 import java.util.Map;
 
@@ -24,8 +28,45 @@ public class Trip {
     @ManyToOne(fetch = FetchType.LAZY) @JoinColumn(name = "company_id")
     private Company company;
 
-    @ManyToOne(fetch = FetchType.LAZY) @JoinColumn(name = "vehicle_id")
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "origin_warehouse_id")
+    private CompanyWarehouse originWarehouse;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(
+            name = "vehicle_id",
+            nullable = false
+    )
     private Vehicle vehicle;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(
+            name = "driver_user_id"
+    )
+    private User driver;
+
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(
+            name = "created_by_dispatcher_id",
+            nullable = false
+    )
+    private User createdByDispatcher;
+
+
+    @Column(name = "trip_name", length = 150)
+    private String tripName;
+
+    @Column(name = "origin_name", length = 150)
+    private String originName;
+
+    @Column(name = "origin_address", length = 255)
+    private String originAddress;
+
+    @Column(name = "origin_latitude", precision = 10, scale = 7)
+    private BigDecimal originLatitude;
+
+    @Column(name = "origin_longitude", precision = 10, scale = 7)
+    private BigDecimal originLongitude;
 
     @Column(name = "trip_code", length = 50, unique = true)
     private String tripCode;
@@ -49,5 +90,5 @@ public class Trip {
     private String overrideReason;
 
     @Column(name = "created_at")
-    private LocalDateTime createdAt;
+    private Instant createdAt;
 }

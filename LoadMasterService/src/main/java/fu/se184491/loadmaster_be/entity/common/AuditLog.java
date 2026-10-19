@@ -9,7 +9,7 @@ import org.hibernate.annotations.Immutable;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
 import java.util.Map;
 
 @Entity
@@ -36,5 +36,5 @@ public class AuditLog {
     private Map<String, Object> newValues;
 
     @Column(name = "ip_address", length = 50) private String ipAddress;
-    @Column(name = "created_at") private LocalDateTime createdAt;
+    @Column(name = "created_at") private Instant createdAt;
 }

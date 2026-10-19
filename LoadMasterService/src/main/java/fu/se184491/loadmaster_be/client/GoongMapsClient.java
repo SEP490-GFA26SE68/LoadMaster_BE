@@ -1,8 +1,6 @@
 package fu.se184491.loadmaster_be.client;
 
-import fu.se184491.loadmaster_be.dto.goong.DistanceMatrixResponse;
-import fu.se184491.loadmaster_be.dto.goong.DirectionsResponse;
-import fu.se184491.loadmaster_be.dto.goong.LatLng;
+import fu.se184491.loadmaster_be.dto.goong.*;
 import fu.se184491.loadmaster_be.exception.ServiceUnavailableException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -45,6 +43,7 @@ public class GoongMapsClient {
                         .queryParam("origins", coordinates(origins))
                         .queryParam("destinations", coordinates(destinations))
                         .queryParam("vehicle", "car")
+                        .queryParam("api_key", apiKey)
                         .build())
                 .header(API_KEY_HEADER, apiKey)
                 .retrieve()
@@ -58,11 +57,36 @@ public class GoongMapsClient {
                         .queryParam("origin", coordinate(origin))
                         .queryParam("destination", coordinate(destination))
                         .queryParam("vehicle", "car")
+                        .queryParam("api_key", apiKey)
                         .build())
                 .header(API_KEY_HEADER, apiKey)
                 .retrieve()
                 .body(DirectionsResponse.class));
     }
+
+
+    public PlaceAutocompleteResponse getPlaceAutocomplete(String input) {
+        return executeWithTimeoutRetry(() -> restClient.get()
+                .uri(uriBuilder -> uriBuilder
+                        .path("/Place/AutoComplete")
+                        .queryParam("input", input)
+                        .queryParam("api_key", apiKey)
+                        .build())
+                .retrieve()
+                .body(PlaceAutocompleteResponse.class));
+    }
+
+    public PlaceDetailResponse getPlaceDetail(String placeId) {
+        return executeWithTimeoutRetry(() -> restClient.get()
+                .uri(uriBuilder -> uriBuilder
+                        .path("/Place/Detail")
+                        .queryParam("place_id", placeId)
+                        .queryParam("api_key", apiKey)
+                        .build())
+                .retrieve()
+                .body(PlaceDetailResponse.class));
+    }
+
 
     private String coordinates(List<LatLng> points) {
         return points.stream()

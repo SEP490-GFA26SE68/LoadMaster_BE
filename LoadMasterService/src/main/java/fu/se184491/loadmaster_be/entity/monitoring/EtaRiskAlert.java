@@ -5,6 +5,7 @@ import fu.se184491.loadmaster_be.entity.trip.Trip;
 import jakarta.persistence.*;
 import lombok.*;
 
+import java.time.Instant;
 import java.time.LocalDateTime;
 
 @Entity

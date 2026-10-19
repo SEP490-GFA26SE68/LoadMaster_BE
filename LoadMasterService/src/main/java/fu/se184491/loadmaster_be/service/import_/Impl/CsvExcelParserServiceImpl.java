@@ -227,17 +227,158 @@ public class CsvExcelParserServiceImpl implements CsvExcelParserService {
         return new PackageImportRow(rowIndex, packageCode, lengthCm, widthCm, heightCm, weightKg, handlingClass, destination);
     }
 
-    private PackageImportRow buildExcelRow(int rowIndex, Row row, Map<String, Integer> colMap) {
-        String packageCode    = getExcelField(row, colMap, "packagecode", "package_code", "code", "makien");
-        BigDecimal lengthCm   = parseBigDecimal(getExcelField(row, colMap, "length", "lengthcm", "length_cm", "chieudai"));
-        BigDecimal widthCm    = parseBigDecimal(getExcelField(row, colMap, "width", "widthcm", "width_cm", "chieurong"));
-        BigDecimal heightCm   = parseBigDecimal(getExcelField(row, colMap, "height", "heightcm", "height_cm", "chieucao"));
-        BigDecimal weightKg   = parseBigDecimal(getExcelField(row, colMap, "weight", "weightkg", "weight_kg", "khoiluong", "trongluong"));
-        String handlingClass  = getExcelField(row, colMap, "handlingclass", "handling_class", "loaihang");
-        String destination    = getExcelField(row, colMap, "destination", "dest", "dich", "diemden", "address", "stop");
 
-        return new PackageImportRow(rowIndex, packageCode, lengthCm, widthCm, heightCm, weightKg, handlingClass, destination);
+    private PackageImportRow buildExcelRow(
+            int rowIndex,
+            Row row,
+            Map<String, Integer> colMap
+    ) {
+        String packageCode = getExcelField(
+                row, colMap, "packagecode", "makien", "makienhang"
+        );
+
+        String packageName = getExcelField(
+                row, colMap, "packagename", "tenkien"
+        );
+
+
+        BigDecimal lengthCm = parseExcelDecimal(
+                getExcelField(row, colMap,
+                        "length", "lengthcm", "chieudai", "dai"),
+                rowIndex, "lengthCm"
+        );
+
+        BigDecimal widthCm = parseExcelDecimal(
+                getExcelField(row, colMap,
+                        "width", "widthcm", "chieurong", "rong"),
+                rowIndex, "widthCm"
+        );
+
+        BigDecimal heightCm = parseExcelDecimal(
+                getExcelField(row, colMap,
+                        "height", "heightcm", "chieucao", "cao"),
+                rowIndex, "heightCm"
+        );
+
+        BigDecimal weightKg = parseExcelDecimal(
+                getExcelField(row, colMap,
+                        "weight", "weightkg", "khoiluong", "cannang"),
+                rowIndex, "weightKg"
+        );
+
+        Integer quantity = parseExcelInteger(
+                getExcelField(row, colMap, "quantity", "soluong"),
+                rowIndex,
+                "quantity"
+        );
+
+        String destination = getExcelField(
+                row, colMap, "destination", "diemden", "diemgiao"
+        );
+
+        String orientation = getExcelField(
+                row, colMap, "orientation", "huongdat"
+        );
+
+        Boolean uprightOnly = parseExcelBoolean(
+                getExcelField(
+                        row, colMap, "uprightonly", "giuthangdung"
+                ),
+                rowIndex,
+                "uprightOnly"
+        );
+
+        Integer fragilityLevel = parseExcelInteger(
+                getExcelField(row, colMap,
+                        "fragilitylevel", "mucdevo"),
+                rowIndex, "fragilityLevel"
+        );
+
+        Boolean stackable = parseExcelBoolean(
+                getExcelField(
+                        row, colMap, "stackable", "choxepchong"
+                ),
+                rowIndex,
+                "stackable"
+        );
+
+        BigDecimal maxTopLoadKg = parseExcelDecimal(
+                getExcelField(row, colMap,
+                        "maxtopload", "maxtoploadkg", "taitrentoida"),
+                rowIndex, "maxTopLoadKg"
+        );
+
+        Integer maxLayers = parseExcelInteger(
+                getExcelField(row, colMap,
+                        "maxlayers", "sotangtoida"),
+                rowIndex, "maxLayers"
+        );
+
+        BigDecimal minSupportRatio = parseExcelDecimal(
+                getExcelField(
+                        row, colMap, "minsupportratio", "tyledoday"
+                ),
+                rowIndex,
+                "minSupportRatio"
+        );
+
+        Integer priority = parseExcelInteger(
+                getExcelField(row, colMap,
+                        "priority", "douutien"),
+                rowIndex, "priority"
+        );
+
+        Boolean mustLoad = parseExcelBoolean(
+                getExcelField(
+                        row, colMap, "mustload", "batbuocxep"
+                ),
+                rowIndex,
+                "mustLoad"
+        );
+
+        String packingGroup = getExcelField(
+                row, colMap, "group", "nhom"
+        );
+
+        String note = getExcelField(
+                row, colMap, "note", "ghichu"
+        );
+
+        String handlingClass = getExcelField(
+                row, colMap, "handlingclass", "loaihang"
+        );
+
+        String packageTypeCode = getExcelField(
+                row, colMap, "packagetype", "packagetypecode",
+                "maloaikien", "loaikien"
+        );
+
+        return new PackageImportRow(
+                rowIndex,
+                packageCode,
+                packageName,
+                lengthCm,
+                widthCm,
+                heightCm,
+                weightKg,
+                quantity,
+                destination,
+                orientation,
+                uprightOnly,
+                fragilityLevel,
+                stackable,
+                maxTopLoadKg,
+                maxLayers,
+                minSupportRatio,
+                priority,
+                mustLoad,
+                packingGroup,
+                note,
+                handlingClass,
+                packageTypeCode
+        );
     }
+
 
     // -------------------------------------------------------------------------
     // Field extraction utilities
@@ -340,10 +481,113 @@ public class CsvExcelParserServiceImpl implements CsvExcelParserService {
     }
 
     private String normalize(String str) {
-        if (str == null) return "";
-        return str.trim()
-                .toLowerCase()
+        if (str == null) {
+            return "";
+        }
+
+        String normalized = java.text.Normalizer.normalize(
+                str,
+                java.text.Normalizer.Form.NFD
+        );
+
+        return normalized
+                .replaceAll("\\p{M}", "")
+                .replace('đ', 'd')
+                .replace('Đ', 'D')
+                .toLowerCase(java.util.Locale.ROOT)
                 .replaceAll("\\([^)]*\\)", "")
                 .replaceAll("[_\\-\\s]", "");
     }
+
+    private Integer parseIntegerStrict(String val) {
+        if (val == null || val.isBlank()) {
+            return null;
+        }
+
+        try {
+            return new BigDecimal(val.trim()).intValueExact();
+        } catch (NumberFormatException | ArithmeticException e) {
+            return null;
+        }
+    }
+
+    private Boolean parseBooleanCell(String val) {
+        if (val == null || val.isBlank()) {
+            return null;
+        }
+
+        String normalized = normalize(val);
+
+        return switch (normalized) {
+            case "true", "yes", "co", "1" -> true;
+            case "false", "no", "khong", "0" -> false;
+            default -> null;
+        };
+    }
+
+
+    private Integer parseExcelInteger(
+            String value,
+            int rowIndex,
+            String field
+    ) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+
+        try {
+            return new BigDecimal(value.trim()).intValueExact();
+        } catch (NumberFormatException | ArithmeticException e) {
+            log.warn(
+                    "Invalid Excel integer at row {}, field {}: {}",
+                    rowIndex, field, value
+            );
+            throw new AppException(ErrorCode.FILE_INVALID);
+        }
+    }
+
+    private BigDecimal parseExcelDecimal(
+            String value,
+            int rowIndex,
+            String field
+    ) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+
+        try {
+            return new BigDecimal(value.trim());
+        } catch (NumberFormatException e) {
+            log.warn(
+                    "Invalid Excel decimal at row {}, field {}: {}",
+                    rowIndex, field, value
+            );
+            throw new AppException(ErrorCode.FILE_INVALID);
+        }
+    }
+
+    private Boolean parseExcelBoolean(
+            String value,
+            int rowIndex,
+            String field
+    ) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+
+        String normalized = normalize(value);
+
+        return switch (normalized) {
+            case "true", "yes", "co", "1" -> true;
+            case "false", "no", "khong", "0" -> false;
+            default -> {
+                log.warn(
+                        "Invalid Excel boolean at row {}, field {}: {}",
+                        rowIndex, field, value
+                );
+                throw new AppException(ErrorCode.FILE_INVALID);
+            }
+        };
+    }
+
 }

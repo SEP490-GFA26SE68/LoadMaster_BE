@@ -36,6 +36,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Instant;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -198,7 +199,7 @@ public class WarehouseServiceImpl implements WarehouseService {
                 .entityId(String.valueOf(confirmation.getId()))
                 .user(worker)
                 .newValues(newValues)
-                .createdAt(LocalDateTime.now())
+                .createdAt(Instant.now())
                 .build();
         auditLogRepository.save(auditLog);
 
@@ -266,7 +267,7 @@ public class WarehouseServiceImpl implements WarehouseService {
                 .entityId(String.valueOf(deviation.getId()))
                 .user(reporter)
                 .newValues(newValues)
-                .createdAt(LocalDateTime.now())
+                .createdAt(Instant.now())
                 .build();
         auditLogRepository.save(auditLog);
 
@@ -337,7 +338,7 @@ public class WarehouseServiceImpl implements WarehouseService {
                 .entityName("LoadingExecution")
                 .entityId(String.valueOf(execution.getId()))
                 .newValues(newValues)
-                .createdAt(LocalDateTime.now())
+                .createdAt(Instant.now())
                 .build();
         auditLogRepository.save(auditLog);
 

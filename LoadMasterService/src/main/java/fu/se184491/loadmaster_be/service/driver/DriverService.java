@@ -9,7 +9,6 @@ import java.util.List;
 
 public interface DriverService {
 
-    List<DriverTripResponse> getDriverTrips(Long driverId);
 
     CurrentStopResponse getCurrentStop(Long tripId);
 

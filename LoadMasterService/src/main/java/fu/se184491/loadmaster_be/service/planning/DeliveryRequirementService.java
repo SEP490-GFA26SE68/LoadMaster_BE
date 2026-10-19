@@ -2,6 +2,7 @@ package fu.se184491.loadmaster_be.service.planning;
 
 import fu.se184491.loadmaster_be.dto.request.planning.DeliveryRequirementRequest;
 import fu.se184491.loadmaster_be.dto.request.planning.UpdateDeliveryRequirementRequest;
+import fu.se184491.loadmaster_be.dto.request.planning.UpdateRequirementCoordinatesRequest;
 import fu.se184491.loadmaster_be.dto.response.planning.DeliveryRequirementResponse;
 import fu.se184491.loadmaster_be.constant.planning.DeliveryRequirementStatus;
 import org.springframework.data.domain.Page;
@@ -29,6 +30,12 @@ public interface DeliveryRequirementService {
     );
 
     void delete(Long companyId, Long id);
+
+    DeliveryRequirementResponse updateCoordinates(
+            Long companyId,
+            Long id,
+            UpdateRequirementCoordinatesRequest request
+    );
 
     DeliveryRequirementResponse markAssigned(Long companyId, Long id);
 

@@ -1,7 +1,9 @@
 package fu.se184491.loadmaster_be.controller.planning;
 
+import fu.se184491.loadmaster_be.dto.ApiResponse;
 import fu.se184491.loadmaster_be.dto.request.planning.DeliveryRequirementRequest;
 import fu.se184491.loadmaster_be.dto.request.planning.UpdateDeliveryRequirementRequest;
+import fu.se184491.loadmaster_be.dto.request.planning.UpdateRequirementCoordinatesRequest;
 import fu.se184491.loadmaster_be.dto.response.planning.DeliveryRequirementResponse;
 import fu.se184491.loadmaster_be.dto.PageResponse;
 import fu.se184491.loadmaster_be.constant.planning.DeliveryRequirementStatus;
@@ -24,14 +26,14 @@ import java.time.LocalDateTime;
 @RestController
 @RequestMapping("/api/delivery-requirements")
 @RequiredArgsConstructor
-@PreAuthorize("hasAuthority('DELIVERY_DEMAND_MANAGE')")
 public class DeliveryRequirementController {
 
     private final DeliveryRequirementService deliveryRequirementService;
     private final CurrentUserService currentUserService;
 
     @PostMapping
-    public ResponseEntity<DeliveryRequirementResponse> create(
+    @PreAuthorize("hasAuthority('DELIVERY_DEMAND_MANAGE')")
+    public ResponseEntity<ApiResponse<DeliveryRequirementResponse>> create(
             @Valid @RequestBody DeliveryRequirementRequest request
     ) {
         User user = currentUserService.getCurrentUser();
@@ -41,15 +43,20 @@ public class DeliveryRequirementController {
                 .path("/{id}")
                 .buildAndExpand(response.getId())
                 .toUri();
-        return ResponseEntity.created(location).body(response);
+        return ResponseEntity.created(location)
+                .body(ApiResponse.success("Tạo yêu cầu giao hàng thành công", response));
     }
 
     @GetMapping("/{id}")
-    public DeliveryRequirementResponse getById(@PathVariable Long id) {
-        return deliveryRequirementService.getById(currentUserService.getCurrentCompanyId(), id);
+    @PreAuthorize("hasAuthority('DELIVERY_READ')")
+    public ApiResponse<DeliveryRequirementResponse> getById(@PathVariable Long id) {
+        DeliveryRequirementResponse response = deliveryRequirementService.getById(
+                currentUserService.getCurrentCompanyId(), id);
+        return ApiResponse.success("Lấy thông tin yêu cầu giao hàng thành công", response);
     }
 
     @GetMapping
+    @PreAuthorize("hasAuthority('DELIVERY_READ')")
     public PageResponse<DeliveryRequirementResponse> list(
             @RequestParam(required = false) DeliveryRequirementStatus status,
             @RequestParam(required = false)
@@ -67,17 +74,37 @@ public class DeliveryRequirementController {
     }
 
     @PatchMapping("/{id}")
-    public DeliveryRequirementResponse update(
+    @PreAuthorize("hasAuthority('DELIVERY_DEMAND_MANAGE')")
+    public ApiResponse<DeliveryRequirementResponse> update(
             @PathVariable Long id,
             @Valid @RequestBody UpdateDeliveryRequirementRequest request
     ) {
-        return deliveryRequirementService.update(
+        DeliveryRequirementResponse response = deliveryRequirementService.update(
                 currentUserService.getCurrentCompanyId(), id, request);
-    }
+        return ApiResponse.success("Cập nhật yêu cầu giao hàng thành công", response);
+        }
 
     @DeleteMapping("/{id}")
-    public ResponseEntity<Void> delete(@PathVariable Long id) {
+    @PreAuthorize("hasAuthority('DELIVERY_DEMAND_MANAGE')")
+    public ResponseEntity<ApiResponse<Void>> delete(@PathVariable Long id) {
         deliveryRequirementService.delete(currentUserService.getCurrentCompanyId(), id);
         return ResponseEntity.noContent().build();
+    }
+
+    @PatchMapping("/{id}/coordinates")
+    @PreAuthorize("hasRole('DISPATCHER')")
+    public ApiResponse<DeliveryRequirementResponse> updateCoordinates(
+            @PathVariable Long id,
+            @Valid @RequestBody UpdateRequirementCoordinatesRequest request
+    ) {
+        Long companyId = currentUserService.getCurrentCompanyId();
+
+        return ApiResponse.success(
+                deliveryRequirementService.updateCoordinates(
+                        companyId,
+                        id,
+                        request
+                )
+        );
     }
 }

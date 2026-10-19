@@ -1,5 +1,6 @@
 package fu.se184491.loadmaster_be.service.monitoring;
 
+import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 
@@ -12,10 +13,10 @@ public final class MonitoringTime {
         if (value == null) {
             return null;
         }
-        return value.toInstant(ZoneOffset.UTC).toString();
+        return value.atOffset(ZoneOffset.UTC).toString();
     }
 
     public static LocalDateTime now() {
-        return LocalDateTime.now(ZoneOffset.UTC);
+        return LocalDateTime.now();
     }
 }

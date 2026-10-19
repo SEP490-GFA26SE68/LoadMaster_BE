@@ -14,6 +14,7 @@ import java.util.Set;
 public class StopSequenceOptimizer {
 
     private static final long DEADLINE_RISK_SECONDS = 30 * 60;
+    private static final int SERVICE_TIME_SECONDS = 15 * 60;
 
     private final Clock clock;
 
@@ -25,71 +26,122 @@ public class StopSequenceOptimizer {
         this.clock = clock;
     }
 
-    public StopSequenceResult optimize(StopSequenceRequest request) {
+    public StopSequenceResult optimize(
+            StopSequenceRequest request
+    ) {
+        return optimize(request, LocalDateTime.now(clock));
+    }
+
+
+    public StopSequenceResult optimize(
+            StopSequenceRequest request,
+            LocalDateTime departureTime
+    ) {
         List<StopSequenceRequest.Stop> stops = request.getStops();
         int[][] travelSeconds = request.getDistanceMatrix();
+
         List<Long> orderedStops = new ArrayList<>();
         List<Long> deadlineMissedStops = new ArrayList<>();
         Set<Integer> visited = new HashSet<>();
+
         int currentIndex = 0;
         int totalDuration = 0;
 
         while (visited.size() < stops.size()) {
             int nextStopIndex = selectNextStop(
                     currentIndex,
+                    departureTime,
                     totalDuration,
                     stops,
                     visited,
-                    travelSeconds);
-            totalDuration += travelSeconds[currentIndex][nextStopIndex + 1];
-            StopSequenceRequest.Stop nextStop = stops.get(nextStopIndex);
+                    travelSeconds
+            );
+
+            totalDuration +=
+                    travelSeconds[currentIndex][nextStopIndex + 1];
+
+            StopSequenceRequest.Stop nextStop =
+                    stops.get(nextStopIndex);
+
+            LocalDateTime plannedArrival =
+                    departureTime.plusSeconds(totalDuration);
+
             orderedStops.add(nextStop.id());
+
             if (nextStop.deadline() != null
-                    && LocalDateTime.now(clock).plusSeconds(totalDuration).isAfter(nextStop.deadline())) {
+                    && plannedArrival.isAfter(nextStop.deadline())) {
                 deadlineMissedStops.add(nextStop.id());
             }
+
             visited.add(nextStopIndex);
             currentIndex = nextStopIndex + 1;
+
+            // Sau khi đến mới cộng thời gian xử lý hàng.
+            totalDuration += SERVICE_TIME_SECONDS;
         }
 
         return new StopSequenceResult(
                 List.copyOf(orderedStops),
                 totalDuration,
-                List.copyOf(deadlineMissedStops));
+                List.copyOf(deadlineMissedStops)
+        );
     }
+
 
     private int selectNextStop(
             int currentIndex,
+            LocalDateTime departureTime,
             int elapsedSeconds,
             List<StopSequenceRequest.Stop> stops,
             Set<Integer> visited,
             int[][] travelSeconds
     ) {
-        LocalDateTime departure = LocalDateTime.now(clock).plusSeconds(elapsedSeconds);
+        LocalDateTime departure =
+                departureTime.plusSeconds(elapsedSeconds);
+
         int earliestRiskyStop = -1;
         LocalDateTime earliestDeadline = null;
+
         for (int stopIndex = 0; stopIndex < stops.size(); stopIndex++) {
             if (visited.contains(stopIndex)) {
                 continue;
             }
+
             StopSequenceRequest.Stop stop = stops.get(stopIndex);
+
             if (stop.deadline() == null) {
                 continue;
             }
+
             LocalDateTime directArrival = departure.plusSeconds(
-                    travelSeconds[currentIndex][stopIndex + 1]);
-            long slackSeconds = Duration.between(directArrival, stop.deadline()).getSeconds();
+                    travelSeconds[currentIndex][stopIndex + 1]
+            );
+
+            long slackSeconds = Duration.between(
+                    directArrival,
+                    stop.deadline()
+            ).getSeconds();
+
             if (slackSeconds <= DEADLINE_RISK_SECONDS
-                    && (earliestDeadline == null || stop.deadline().isBefore(earliestDeadline))) {
+                    && (earliestDeadline == null
+                    || stop.deadline().isBefore(earliestDeadline))) {
                 earliestRiskyStop = stopIndex;
                 earliestDeadline = stop.deadline();
             }
         }
+
         if (earliestRiskyStop >= 0) {
             return earliestRiskyStop;
         }
-        return nearestStop(currentIndex, stops.size(), visited, travelSeconds);
+
+        return nearestStop(
+                currentIndex,
+                stops.size(),
+                visited,
+                travelSeconds
+        );
     }
+
 
     private int nearestStop(
             int currentIndex,

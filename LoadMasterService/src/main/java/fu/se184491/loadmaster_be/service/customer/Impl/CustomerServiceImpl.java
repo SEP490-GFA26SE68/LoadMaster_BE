@@ -22,6 +22,7 @@ public class CustomerServiceImpl implements CustomerService {
     private final CustomerRepository customerRepository;
     private final EntityManager entityManager;
 
+
     private CustomerResponse mapToResponse(Customer entity) {
         return CustomerResponse.builder()
                 .id(entity.getId())

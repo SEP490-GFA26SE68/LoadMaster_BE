@@ -2,6 +2,7 @@ package fu.se184491.loadmaster_be.config.security;
 
 import fu.se184491.loadmaster_be.constant.account.Permission;
 import fu.se184491.loadmaster_be.constant.account.UserRole;
+import org.springframework.security.core.parameters.P;
 import org.springframework.stereotype.Component;
 
 import java.util.Collections;
@@ -58,17 +59,38 @@ public class RolePermissionMapping {
 
         map.put(
                 UserRole.MANAGER,
-                Set.of(Permission.TRIP_MANAGE)
+                Set.of(
+                        Permission.TRIP_MANAGE,
+                        Permission.DELIVERY_READ
+
+                )
         );
 
         map.put(
                 UserRole.DISPATCHER,
-                Set.of(Permission.TRIP_MANAGE)
+                Set.of(
+                        Permission.VEHICLE_TYPES_CREATE,
+                        Permission.VEHICLE_TYPES_DELETE,
+                        Permission.VEHICLE_TYPES_READ,
+                        Permission.VEHICLE_TYPES_UPDATE,
+                        Permission.VEHICLES_CREATE,
+                        Permission.VEHICLES_DELETE,
+                        Permission.VEHICLES_READ,
+                        Permission.VEHICLES_UPDATE,
+                        Permission.TRIP_MANAGE,
+                        Permission.DELIVERY_READ,
+                        Permission.CUSTOMER_MANAGE
+                )
+
         );
 
         map.put(
                 UserRole.WAREHOUSE_WORKER,
-                Set.of()
+                Set.of(
+                        Permission.PACKAGE_TYPE_MANAGE,
+                        Permission.PACKAGE_MANAGE,
+                        Permission.DELIVERY_READ
+                )
         );
 
         map.put(

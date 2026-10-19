@@ -1,17 +1,24 @@
 package fu.se184491.loadmaster_be.service.planning.Impl;
 
+import fu.se184491.loadmaster_be.constant.trip.TripStatus;
 import fu.se184491.loadmaster_be.dto.request.planning.DeliveryRequirementRequest;
 import fu.se184491.loadmaster_be.dto.request.planning.UpdateDeliveryRequirementRequest;
+import fu.se184491.loadmaster_be.dto.request.planning.UpdateRequirementCoordinatesRequest;
 import fu.se184491.loadmaster_be.dto.response.planning.DeliveryRequirementResponse;
 import fu.se184491.loadmaster_be.constant.planning.DeliveryRequirementStatus;
+import fu.se184491.loadmaster_be.entity.Customer;
 import fu.se184491.loadmaster_be.entity.account.User;
 import fu.se184491.loadmaster_be.entity.cargo.CargoPackage;
 import fu.se184491.loadmaster_be.entity.company.Company;
 import fu.se184491.loadmaster_be.entity.planning.DeliveryRequirement;
+import fu.se184491.loadmaster_be.entity.trip.DeliveryStop;
+import fu.se184491.loadmaster_be.entity.trip.Trip;
 import fu.se184491.loadmaster_be.exception.AppException;
 import fu.se184491.loadmaster_be.exception.ErrorCode;
 import fu.se184491.loadmaster_be.repository.cargo.CargoPackageRepository;
+import fu.se184491.loadmaster_be.repository.customer.CustomerRepository;
 import fu.se184491.loadmaster_be.repository.planning.DeliveryRequirementRepository;
+import fu.se184491.loadmaster_be.repository.trip.DeliveryStopRepository;
 import fu.se184491.loadmaster_be.service.planning.DeliveryRequirementService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -31,7 +38,8 @@ import java.util.ArrayList;
 public class DeliveryRequirementServiceImpl implements DeliveryRequirementService {
 
     private final DeliveryRequirementRepository deliveryRequirementRepository;
-    private final CargoPackageRepository cargoPackageRepository;
+    private final CustomerRepository customerRepository;
+    private final DeliveryStopRepository deliveryStopRepository;
 
     @Override
     @Transactional
@@ -40,28 +48,35 @@ public class DeliveryRequirementServiceImpl implements DeliveryRequirementServic
             Long userId,
             DeliveryRequirementRequest request
     ) {
-        List<Long> distinctPackageIds = request.getPackageIds().stream().distinct().toList();
-        List<CargoPackage> packages = cargoPackageRepository
-                .findAllByIdInAndOrderCompanyId(distinctPackageIds, companyId);
-        if (packages.size() != distinctPackageIds.size()) {
-            throw new AppException(ErrorCode.PACKAGE_NOT_FOUND);
-        }
-        if (packages.stream().map(CargoPackage::getHandlingClass).distinct().count() > 1) {
+        Customer customer = customerRepository
+                .findById(request.getCustomerId())
+                .orElseThrow(() -> new AppException(ErrorCode.INVALID_INPUT));
+
+        // Không cho phép lấy khách hàng thuộc công ty logistics khác.
+        if (customer.getCompany() == null
+                || !companyId.equals(customer.getCompany().getId())) {
             throw new AppException(ErrorCode.INVALID_INPUT);
         }
 
         DeliveryRequirement requirement = DeliveryRequirement.builder()
                 .company(Company.builder().id(companyId).build())
+                .customer(customer)
                 .destination(request.getDestination().trim())
                 .destinationLat(request.getDestinationLat())
                 .destinationLng(request.getDestinationLng())
                 .deadline(request.getDeadline())
                 .priority(request.getPriority())
+                .expectedPackageCount(request.getExpectedPackageCount())
+                .note(request.getNote() == null ? null : request.getNote().trim())
+                .status(DeliveryRequirementStatus.PENDING)
                 .createdBy(User.builder().id(userId).build())
-                .packages(new LinkedHashSet<>(packages))
+                .packages(new LinkedHashSet<>())
                 .build();
 
-        return toResponse(deliveryRequirementRepository.save(requirement));
+        DeliveryRequirement saved =
+                deliveryRequirementRepository.save(requirement);
+
+        return toResponse(saved);
     }
 
     @Override
@@ -97,6 +112,7 @@ public class DeliveryRequirementServiceImpl implements DeliveryRequirementServic
         return deliveryRequirementRepository.findAll(filters, pageable).map(this::toResponse);
     }
 
+
     @Override
     @Transactional
     public DeliveryRequirementResponse update(
@@ -106,27 +122,195 @@ public class DeliveryRequirementServiceImpl implements DeliveryRequirementServic
     ) {
         DeliveryRequirement requirement = deliveryRequirementRepository
                 .findByIdAndCompanyId(id, companyId)
-                .orElseThrow(() -> new AppException(ErrorCode.DELIVERY_REQUIREMENT_NOT_FOUND));
+                .orElseThrow(() -> new AppException(
+                        ErrorCode.DELIVERY_REQUIREMENT_NOT_FOUND
+                ));
+
+        // Chỉ cho chỉnh sửa khi yêu cầu chưa được đưa vào chuyến.
+        if (requirement.getStatus() != DeliveryRequirementStatus.PENDING
+                || requirement.getTrip() != null) {
+            throw new AppException(
+                    ErrorCode.INVALID_DELIVERY_REQUIREMENT_TRANSITION
+            );
+        }
+
+        boolean hasPackages = !requirement.getPackages().isEmpty();
+
+        // Khi đã nhận kiện, không cho đổi chủ hàng hoặc điểm giao.
+        if (hasPackages) {
+            if (request.getCustomerId() != null
+                    && !request.getCustomerId().equals(
+                    requirement.getCustomer() == null
+                            ? null
+                            : requirement.getCustomer().getId()
+            )) {
+                throw new AppException(ErrorCode.INVALID_INPUT);
+            }
+
+            if (request.getDestination() != null
+                    && !request.getDestination().trim()
+                    .equals(requirement.getDestination())) {
+                throw new AppException(ErrorCode.INVALID_INPUT);
+            }
+
+            if (request.getDestinationLat() != null
+                    && (requirement.getDestinationLat() == null
+                    || request.getDestinationLat().compareTo(
+                    requirement.getDestinationLat()) != 0)) {
+                throw new AppException(ErrorCode.INVALID_INPUT);
+            }
+
+            if (request.getDestinationLng() != null
+                    && (requirement.getDestinationLng() == null
+                    || request.getDestinationLng().compareTo(
+                    requirement.getDestinationLng()) != 0)) {
+                throw new AppException(ErrorCode.INVALID_INPUT);
+            }
+        } else {
+            // Chưa có kiện: cho phép đổi khách hàng.
+            if (request.getCustomerId() != null) {
+                Customer customer = customerRepository
+                        .findById(request.getCustomerId())
+                        .orElseThrow(() -> new AppException(
+                                ErrorCode.INVALID_INPUT
+                        ));
+
+                if (customer.getCompany() == null
+                        || !companyId.equals(customer.getCompany().getId())) {
+                    throw new AppException(ErrorCode.INVALID_INPUT);
+                }
+
+                requirement.setCustomer(customer);
+            }
+
+            // Chưa có kiện: cho phép đổi điểm giao.
+            if (request.getDestination() != null) {
+                String destination = request.getDestination().trim();
+
+                if (destination.isEmpty()) {
+                    throw new AppException(ErrorCode.INVALID_INPUT);
+                }
+
+                requirement.setDestination(destination);
+            }
+
+            if (request.getDestinationLat() != null) {
+                requirement.setDestinationLat(request.getDestinationLat());
+            }
+
+            if (request.getDestinationLng() != null) {
+                requirement.setDestinationLng(request.getDestinationLng());
+            }
+        }
+
+        // Các trường được cập nhật khi yêu cầu còn PENDING.
         if (request.getDeadline() != null) {
             requirement.setDeadline(request.getDeadline());
         }
+
         if (request.getPriority() != null) {
             requirement.setPriority(request.getPriority());
         }
+
+        if (request.getExpectedPackageCount() != null) {
+            requirement.setExpectedPackageCount(
+                    request.getExpectedPackageCount()
+            );
+        }
+
+        if (request.getNote() != null) {
+            requirement.setNote(request.getNote().trim());
+        }
+
         return toResponse(requirement);
     }
+
 
     @Override
     @Transactional
     public void delete(Long companyId, Long id) {
         DeliveryRequirement requirement = deliveryRequirementRepository
                 .findByIdAndCompanyId(id, companyId)
-                .orElseThrow(() -> new AppException(ErrorCode.DELIVERY_REQUIREMENT_NOT_FOUND));
-        if (requirement.getStatus() != DeliveryRequirementStatus.PENDING) {
-            throw new AppException(ErrorCode.DELIVERY_REQUIREMENT_NOT_PENDING);
+                .orElseThrow(() -> new AppException(
+                        ErrorCode.DELIVERY_REQUIREMENT_NOT_FOUND
+                ));
+
+        if (requirement.getStatus() != DeliveryRequirementStatus.PENDING
+                || requirement.getTrip() != null
+                || !requirement.getPackages().isEmpty()) {
+            throw new AppException(
+                    ErrorCode.DELIVERY_REQUIREMENT_NOT_PENDING
+            );
         }
+
         deliveryRequirementRepository.delete(requirement);
     }
+
+
+    @Override
+    @Transactional
+    public DeliveryRequirementResponse updateCoordinates(
+            Long companyId,
+            Long id,
+            UpdateRequirementCoordinatesRequest request
+    ) {
+        DeliveryRequirement requirement =
+                deliveryRequirementRepository
+                        .findByIdAndCompanyId(id, companyId)
+                        .orElseThrow(() -> new AppException(
+                                ErrorCode.DELIVERY_REQUIREMENT_NOT_FOUND
+                        ));
+
+        // Chỉ được bổ sung tọa độ còn thiếu,
+        // không thay đổi vị trí đã xác nhận.
+        if (requirement.getDestinationLat() != null
+                || requirement.getDestinationLng() != null) {
+            throw new AppException(ErrorCode.INVALID_INPUT);
+        }
+
+        Trip trip = requirement.getTrip();
+
+        if (trip != null) {
+            // Không thay đổi điểm giao khi chuyến đã bắt đầu xếp hàng.
+            if (trip.getStatus() != TripStatus.DRAFT
+                    && trip.getStatus() != TripStatus.PLANNED) {
+                throw new AppException(
+                        ErrorCode.INVALID_DELIVERY_REQUIREMENT_TRANSITION
+                );
+            }
+
+            List<DeliveryStop> stops =
+                    deliveryStopRepository
+                            .findByTripIdAndDeliveryRequirementId(
+                                    trip.getId(),
+                                    requirement.getId()
+                            );
+
+            // Nếu yêu cầu đã vào chuyến nhưng không tìm được
+            // điểm giao, dữ liệu đang không nhất quán.
+            if (stops.isEmpty()) {
+                throw new AppException(ErrorCode.INVALID_INPUT);
+            }
+
+            // Chỉ bổ sung tọa độ cho điểm giao chưa có tọa độ.
+            // Không ghi đè các tọa độ đã được xác nhận.
+            for (DeliveryStop stop : stops) {
+                if (stop.getLatitude() != null
+                        || stop.getLongitude() != null) {
+                    throw new AppException(ErrorCode.INVALID_INPUT);
+                }
+
+                stop.setLatitude(request.destinationLat());
+                stop.setLongitude(request.destinationLng());
+            }
+        }
+
+        requirement.setDestinationLat(request.destinationLat());
+        requirement.setDestinationLng(request.destinationLng());
+
+        return toResponse(requirement);
+    }
+
 
     @Override
     @Transactional
@@ -160,22 +344,52 @@ public class DeliveryRequirementServiceImpl implements DeliveryRequirementServic
         }
     }
 
-    private DeliveryRequirementResponse toResponse(DeliveryRequirement requirement) {
+
+    private DeliveryRequirementResponse toResponse(
+            DeliveryRequirement requirement
+    ) {
+        Customer customer = requirement.getCustomer();
+
+        List<Long> packageIds = requirement.getPackages()
+                .stream()
+                .map(CargoPackage::getId)
+                .sorted()
+                .toList();
+
         return DeliveryRequirementResponse.builder()
                 .id(requirement.getId())
                 .companyId(requirement.getCompany().getId())
+
+                // Khách hàng gửi hàng
+                .customerId(customer == null ? null : customer.getId())
+                .customerName(customer == null ? null : customer.getName())
+
+                // Thông tin giao hàng
                 .destination(requirement.getDestination())
                 .destinationLat(requirement.getDestinationLat())
                 .destinationLng(requirement.getDestinationLng())
                 .deadline(requirement.getDeadline())
                 .priority(requirement.getPriority())
+
+                // Thông tin kiện hàng
+                .expectedPackageCount(requirement.getExpectedPackageCount())
+                .receivedPackageCount(packageIds.size())
+                .packageIds(packageIds)
+
+                // Thông tin yêu cầu và chuyến
+                .note(requirement.getNote())
                 .status(requirement.getStatus())
-                .createdBy(requirement.getCreatedBy() == null ? null : requirement.getCreatedBy().getId())
+                .tripId(requirement.getTrip() == null
+                        ? null
+                        : requirement.getTrip().getId())
+
+                // Thông tin tạo
+                .createdBy(requirement.getCreatedBy() == null
+                        ? null
+                        : requirement.getCreatedBy().getId())
                 .createdAt(requirement.getCreatedAt())
-                .packageIds(requirement.getPackages().stream()
-                        .map(CargoPackage::getId)
-                        .sorted()
-                        .toList())
+
                 .build();
     }
+
 }

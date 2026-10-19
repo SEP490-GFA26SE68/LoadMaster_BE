@@ -33,15 +33,36 @@ import java.util.List;
 public class PdfLabelExportServiceImpl implements PdfLabelExportService {
 
     private static final int MAX_PACKAGES = 200;
-    /** A4 = 595 × 842 pt. 2 columns → each cell ~265pt wide. */
-    private static final float LABEL_WIDTH_PT  = 265f;
+    /**
+     * A4 = 595 × 842 pt. 2 columns → each cell ~265pt wide.
+     */
+    private static final float LABEL_WIDTH_PT = 265f;
     private static final float LABEL_HEIGHT_PT = 180f;
-    /** QR image size: 3.5cm ≈ 99.2pt (2cm was too small for warehouse camera scanning). */
+    /**
+     * QR image size: 3.5cm ≈ 99.2pt (2cm was too small for warehouse camera scanning).
+     */
     private static final float QR_SIZE_PT = 99.2f;
 
-    /** Unicode fonts bundled in src/main/resources/fonts (Noto Sans, SIL OFL 1.1). */
+    /**
+     * Unicode fonts bundled in src/main/resources/fonts (Noto Sans, SIL OFL 1.1).
+     */
     private static final String FONT_REGULAR_PATH = "fonts/NotoSans-Regular.ttf";
     private static final String FONT_BOLD_PATH = "fonts/NotoSans-Bold.ttf";
+
+    private static final String LOGO_PATH =
+            "images/loadmaster-logo.png";
+
+    private static final BaseColor BRAND_BLUE =
+            new BaseColor(0, 102, 255);
+
+    private static final BaseColor DARK_TEXT =
+            new BaseColor(23, 37, 55);
+
+    private static final BaseColor MUTED_TEXT =
+            new BaseColor(100, 116, 139);
+
+    private static final BaseColor BORDER_COLOR =
+            new BaseColor(210, 220, 230);
 
     private final CargoPackageRepository cargoPackageRepository;
     private final QrCodeService qrCodeService;
@@ -100,73 +121,208 @@ public class PdfLabelExportServiceImpl implements PdfLabelExportService {
     // -------------------------------------------------------------------------
     // Helpers
     // -------------------------------------------------------------------------
+    private static Image loadLogo()
+            throws IOException, BadElementException {
 
-    private PdfPCell buildLabelCell(CargoPackage pkg) throws DocumentException, IOException {
-        PdfPTable inner = new PdfPTable(2);
-        inner.setTotalWidth(LABEL_WIDTH_PT);
-        inner.setLockedWidth(true);
-        inner.setWidths(new float[]{QR_SIZE_PT + 10, LABEL_WIDTH_PT - QR_SIZE_PT - 10});
+        ClassPathResource resource =
+                new ClassPathResource(LOGO_PATH);
 
-        // --- QR code column ---
+        try (InputStream in = resource.getInputStream()) {
+            byte[] bytes = in.readAllBytes();
+
+            Image logo = Image.getInstance(bytes);
+            logo.scaleToFit(28f, 28f);
+
+            return logo;
+        }
+    }
+
+    private PdfPCell buildLabelCell(CargoPackage pkg)
+            throws DocumentException, IOException {
+
+        Font brandFont = new Font(
+                boldBaseFont(), 13, Font.NORMAL, BRAND_BLUE
+        );
+
+        Font headingFont = new Font(
+                boldBaseFont(), 9, Font.NORMAL, DARK_TEXT
+        );
+
+        Font normalFont = new Font(
+                regularBaseFont(), 7, Font.NORMAL, DARK_TEXT
+        );
+
+        Font mutedFont = new Font(
+                regularBaseFont(), 7, Font.NORMAL, MUTED_TEXT
+        );
+
+        Font warningFont = new Font(
+                boldBaseFont(), 7, Font.NORMAL, BaseColor.RED
+        );
+
+        // Toàn bộ nội dung của một nhãn.
+        PdfPTable content = new PdfPTable(1);
+        content.setWidthPercentage(100);
+
+        // ===== HEADER: LOGO + TÊN HỆ THỐNG =====
+
+        PdfPTable header = new PdfPTable(2);
+        header.setWidthPercentage(100);
+        header.setWidths(new float[]{34f, 190f});
+
+        PdfPCell logoCell = new PdfPCell();
+        logoCell.setBorder(Rectangle.NO_BORDER);
+        logoCell.setPadding(0);
+
+        try {
+            Image logo = loadLogo();
+            logoCell.addElement(logo);
+        } catch (Exception e) {
+            log.warn("Cannot load LoadMaster logo", e);
+        }
+
+        header.addCell(logoCell);
+
+        PdfPCell titleCell = new PdfPCell();
+        titleCell.setBorder(Rectangle.NO_BORDER);
+        titleCell.setPaddingLeft(4);
+        titleCell.setVerticalAlignment(Element.ALIGN_MIDDLE);
+
+        Paragraph brand = new Paragraph(
+                "LoadMaster", brandFont
+        );
+        brand.setSpacingAfter(1f);
+
+        titleCell.addElement(brand);
+        titleCell.addElement(new Phrase(
+                "NHÃN KIỆN HÀNG / PACKAGE LABEL",
+                mutedFont
+        ));
+
+        header.addCell(titleCell);
+
+        PdfPCell headerCell = new PdfPCell();
+        headerCell.setBorder(Rectangle.NO_BORDER);
+        headerCell.setPaddingBottom(5);
+        headerCell.addElement(header);
+
+        content.addCell(headerCell);
+
+        // ===== BODY: QR + THÔNG TIN KIỆN =====
+
+        PdfPTable body = new PdfPTable(2);
+        body.setWidthPercentage(100);
+        body.setWidths(new float[]{108f, 145f});
+
         PdfPCell qrCell = new PdfPCell();
         qrCell.setBorder(Rectangle.NO_BORDER);
-        try {
-            byte[] qrPng = qrCodeService.generateQrPng(pkg.getQrToken());
-            Image qrImage = Image.getInstance(qrPng);
-            qrImage.scaleAbsolute(QR_SIZE_PT, QR_SIZE_PT);
-            qrCell.addElement(qrImage);
-        } catch (Exception e) {
-            log.warn("Could not generate QR for package {}", pkg.getId());
-            qrCell.addElement(new Phrase("QR N/A", new Font(regularBaseFont(), 8)));
-        }
-        inner.addCell(qrCell);
+        qrCell.setPadding(0);
+        qrCell.setHorizontalAlignment(Element.ALIGN_CENTER);
 
-        // --- Info column ---
+        // QR vẫn được Backend tạo từ qrToken trong database.
+        byte[] qrPng =
+                qrCodeService.generateQrPng(pkg.getQrToken());
+
+        Image qr = Image.getInstance(qrPng);
+        qr.scaleToFit(94f, 94f);
+        qrCell.addElement(qr);
+
+        body.addCell(qrCell);
+
         PdfPCell infoCell = new PdfPCell();
         infoCell.setBorder(Rectangle.NO_BORDER);
         infoCell.setPaddingLeft(4);
+        infoCell.setPaddingTop(2);
 
-        Font bold   = new Font(boldBaseFont(), 9);
-        Font normal = new Font(regularBaseFont(), 8);
-        Font warn   = new Font(boldBaseFont(), 9, Font.NORMAL, BaseColor.RED);
+        Paragraph code = new Paragraph(
+                nvl(pkg.getPackageCode(), "-"),
+                headingFont
+        );
+        code.setSpacingAfter(4f);
+        infoCell.addElement(code);
 
-        infoCell.addElement(new Phrase(nvl(pkg.getPackageCode(), "-"), bold));
-
+        // Tên công ty sở hữu kiện hàng.
         String companyName = resolveCompanyName(pkg);
+
         if (companyName != null) {
-            infoCell.addElement(new Phrase("Công ty: " + companyName, normal));
+            Paragraph company = new Paragraph(
+                    "Công ty: " + companyName,
+                    normalFont
+            );
+            company.setSpacingAfter(3f);
+            infoCell.addElement(company);
         }
 
-        String hc = pkg.getHandlingClass() != null
-                ? pkg.getHandlingClass().name() : HandlingClass.STANDARD.name();
-        infoCell.addElement(new Phrase("Loại: " + hc, normal));
-
-        if (HandlingClass.FRAGILE.name().equals(hc)) {
-            infoCell.addElement(new Phrase("DỄ VỠ – Xử lý nhẹ tay", warn));
+        if (pkg.getPackageName() != null
+                && !pkg.getPackageName().isBlank()) {
+            infoCell.addElement(new Paragraph(
+                    pkg.getPackageName(), normalFont
+            ));
         }
 
         if (pkg.getActualWeightKg() != null) {
-            infoCell.addElement(new Phrase("Khối lượng: " + pkg.getActualWeightKg() + " kg", normal));
+            infoCell.addElement(new Paragraph(
+                    "Khối lượng: "
+                            + pkg.getActualWeightKg()
+                            + " kg",
+                    normalFont
+            ));
         }
+
         String dimensions = formatDimensionsCm(pkg);
         if (dimensions != null) {
-            infoCell.addElement(new Phrase("Kích thước: " + dimensions + " cm", normal));
+            infoCell.addElement(new Paragraph(
+                    "Kích thước: " + dimensions + " cm",
+                    normalFont
+            ));
         }
+
         String destination = resolveDestination(pkg);
         if (destination != null) {
-            infoCell.addElement(new Phrase("Điểm đến: " + destination, normal));
+            infoCell.addElement(new Paragraph(
+                    "Điểm đến: " + destination,
+                    normalFont
+            ));
         }
 
+        String handlingClass = pkg.getHandlingClass() != null
+                ? pkg.getHandlingClass().name()
+                : HandlingClass.STANDARD.name();
 
-        inner.addCell(infoCell);
+        infoCell.addElement(new Paragraph(
+                "Loại hàng: " + handlingClass,
+                normalFont
+        ));
 
-        // Wrap inner table in an outer cell with border
-        PdfPCell outerCell = new PdfPCell();
-        outerCell.addElement(inner);
-        outerCell.setFixedHeight(LABEL_HEIGHT_PT);
-        outerCell.setPadding(6);
-        return outerCell;
+        if (HandlingClass.FRAGILE.name()
+                .equals(handlingClass)) {
+            infoCell.addElement(new Paragraph(
+                    "DỄ VỠ - XỬ LÝ NHẸ TAY",
+                    warningFont
+            ));
+        }
+
+        body.addCell(infoCell);
+
+        PdfPCell bodyCell = new PdfPCell();
+        bodyCell.setBorder(Rectangle.NO_BORDER);
+        bodyCell.setPadding(0);
+        bodyCell.addElement(body);
+
+        content.addCell(bodyCell);
+
+        // ===== KHUNG NGOÀI =====
+
+        PdfPCell outer = new PdfPCell();
+        outer.setBorderColor(BORDER_COLOR);
+        outer.setBorderWidth(0.8f);
+        outer.setPadding(8f);
+        outer.setFixedHeight(LABEL_HEIGHT_PT);
+        outer.addElement(content);
+
+        return outer;
     }
+
 
     private BaseFont regularBaseFont() throws DocumentException, IOException {
         if (regularBaseFont == null) {
@@ -189,7 +345,9 @@ public class PdfLabelExportServiceImpl implements PdfLabelExportService {
         }
     }
 
-    /** Destination stored on the package (import); otherwise the order's delivery stop address/name; else null. */
+    /**
+     * Destination stored on the package (import); otherwise the order's delivery stop address/name; else null.
+     */
     private static String resolveDestination(CargoPackage pkg) {
         if (pkg.getDestination() != null && !pkg.getDestination().isBlank()) {
             return pkg.getDestination();
@@ -201,7 +359,9 @@ public class PdfLabelExportServiceImpl implements PdfLabelExportService {
         return null;
     }
 
-    /** Company of the package itself; legacy packages (created via an order) fall back to the order's company. */
+    /**
+     * Company of the package itself; legacy packages (created via an order) fall back to the order's company.
+     */
     private static String resolveCompanyName(CargoPackage pkg) {
         Company company = pkg.getCompany();
         if (company == null && pkg.getOrder() != null) {
@@ -212,24 +372,32 @@ public class PdfLabelExportServiceImpl implements PdfLabelExportService {
                 : null;
     }
 
-    /**
-     * "L × W × H" in centimetres, or null when the size is not fully known. Package values are
-     * millimetres; each missing side falls back to the package type's catalogue size.
-     */
+
     private static String formatDimensionsCm(CargoPackage pkg) {
         PackageType type = pkg.getPackageType();
-        Integer length = firstNonNull(pkg.getActualLength(), type != null ? type.getLength() : null);
-        Integer width = firstNonNull(pkg.getActualWidth(), type != null ? type.getWidth() : null);
-        Integer height = firstNonNull(pkg.getActualHeight(), type != null ? type.getHeight() : null);
+
+        Integer length = firstNonNull(
+                pkg.getActualLength(),
+                type != null ? type.getLength() : null
+        );
+
+        Integer width = firstNonNull(
+                pkg.getActualWidth(),
+                type != null ? type.getWidth() : null
+        );
+
+        Integer height = firstNonNull(
+                pkg.getActualHeight(),
+                type != null ? type.getHeight() : null
+        );
+
         if (length == null || width == null || height == null) {
             return null;
         }
-        return mmToCm(length) + " × " + mmToCm(width) + " × " + mmToCm(height);
+
+        return length + " × " + width + " × " + height;
     }
 
-    private static String mmToCm(int mm) {
-        return BigDecimal.valueOf(mm).divide(BigDecimal.TEN).stripTrailingZeros().toPlainString();
-    }
 
     private static Integer firstNonNull(Integer first, Integer second) {
         return first != null ? first : second;
