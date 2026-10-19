@@ -1,5 +1,6 @@
 package fu.se184491.loadmaster_be.service.subscription;
 
+import fu.se184491.loadmaster_be.config.SubscriptionPlanInitializer;
 import fu.se184491.loadmaster_be.constant.billing.AlgorithmTier;
 import fu.se184491.loadmaster_be.constant.billing.BillingCycle;
 import fu.se184491.loadmaster_be.constant.billing.SubscriptionStatus;
@@ -119,8 +120,9 @@ public class SubscriptionPlanServiceTest {
     }
 
     @Test
-    @DisplayName("Update plan should succeed when plan exists and tier unique")
+    @DisplayName("Update plan should succeed and SubscriptionPlan/DTOs should not expose redundant maxVehicles or maxMonthlyJobs")
     void updatePlan_success() {
+        request.setMonthlyCredits(15000);
         when(planRepository.findById(1L)).thenReturn(Optional.of(plan));
         when(planRepository.existsByTierAndActiveTrueAndIdNot(SubscriptionTier.PRO, 1L)).thenReturn(false);
         when(planRepository.save(any(SubscriptionPlan.class))).thenReturn(plan);
@@ -128,6 +130,13 @@ public class SubscriptionPlanServiceTest {
         SubscriptionPlanResponse response = planService.updatePlan(1L, request);
 
         assertNotNull(response);
+        assertEquals(15000, plan.getMonthlyCredits());
+        assertThrows(NoSuchFieldException.class, () -> SubscriptionPlan.class.getDeclaredField("maxVehicles"));
+        assertThrows(NoSuchFieldException.class, () -> SubscriptionPlan.class.getDeclaredField("maxMonthlyJobs"));
+        assertThrows(NoSuchFieldException.class, () -> SubscriptionPlanRequest.class.getDeclaredField("maxVehicles"));
+        assertThrows(NoSuchFieldException.class, () -> SubscriptionPlanRequest.class.getDeclaredField("maxMonthlyJobs"));
+        assertThrows(NoSuchFieldException.class, () -> SubscriptionPlanResponse.class.getDeclaredField("maxVehicles"));
+        assertThrows(NoSuchFieldException.class, () -> SubscriptionPlanResponse.class.getDeclaredField("maxMonthlyJobs"));
         verify(planRepository).save(plan);
     }
 
@@ -164,5 +173,21 @@ public class SubscriptionPlanServiceTest {
         assertEquals(1, responses.size());
         assertEquals(4L, responses.get(0).getActiveCompanyCount());
         verify(companySubscriptionRepository).countByPlanIdAndStatus(1L, SubscriptionStatus.ACTIVE);
+    }
+
+    @Test
+    @DisplayName("SubscriptionPlanInitializer should seed 3 default plans (3,000 / 15,000 / 30,000 credits) when missing")
+    void seedDefaultPlans_whenEmpty() throws Exception {
+        when(planRepository.existsByPlanCode("BASIC_MONTHLY")).thenReturn(false);
+        when(planRepository.existsByPlanCode("PRO_MONTHLY")).thenReturn(false);
+        when(planRepository.existsByPlanCode("ULTIMATE_MONTHLY")).thenReturn(false);
+        SubscriptionPlanInitializer initializer = new SubscriptionPlanInitializer(planRepository);
+
+        initializer.run(null);
+
+        verify(planRepository, times(3)).save(any(SubscriptionPlan.class));
+        verify(planRepository).save(argThat(p -> p.getTier() == SubscriptionTier.BASIC && Integer.valueOf(3000).equals(p.getMonthlyCredits())));
+        verify(planRepository).save(argThat(p -> p.getTier() == SubscriptionTier.PRO && Integer.valueOf(15000).equals(p.getMonthlyCredits())));
+        verify(planRepository).save(argThat(p -> p.getTier() == SubscriptionTier.ULTIMATE && Integer.valueOf(30000).equals(p.getMonthlyCredits())));
     }
 }

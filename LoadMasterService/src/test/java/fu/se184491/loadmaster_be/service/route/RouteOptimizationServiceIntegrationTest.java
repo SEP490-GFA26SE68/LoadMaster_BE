@@ -116,7 +116,7 @@ class RouteOptimizationServiceIntegrationTest {
                 .thenReturn(directions(route(4000, 320, "slow"), route(3500, 280, "origin-second")))
                 .thenReturn(directions(route(2800, 250, "slow"), route(2500, 200, "second-first")));
 
-        RouteOptimizationResult result = routeOptimizationService.optimizeRoute(trip.getId());
+        RouteOptimizationResult result = routeOptimizationService.optimizeRoute(trip.getId(), null);
 
         assertEquals(List.of(secondStop.getId(), firstStop.getId()), result.getOrderedStops());
         assertEquals(480, result.getTotalTravelDurationSeconds());
@@ -175,7 +175,7 @@ class RouteOptimizationServiceIntegrationTest {
 
         assertThrows(
                 MissingCoordinatesException.class,
-                () -> routeOptimizationService.optimizeRoute(trip.getId()));
+                () -> routeOptimizationService.optimizeRoute(trip.getId(), null));
     }
 
     @Test
@@ -185,7 +185,7 @@ class RouteOptimizationServiceIntegrationTest {
 
         assertThrows(
                 RouteOptimizationUnavailableException.class,
-                () -> routeOptimizationService.optimizeRoute(trip.getId()));
+                () -> routeOptimizationService.optimizeRoute(trip.getId(), null));
     }
 
     private DeliveryStop persistStop(int sequence, String name, String latitude, String longitude) {

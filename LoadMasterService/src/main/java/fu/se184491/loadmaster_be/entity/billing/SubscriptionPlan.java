@@ -28,12 +28,6 @@ public class SubscriptionPlan {
     @Column(name = "billing_cycle")
     private BillingCycle billingCycle;
 
-    @Column(name = "max_vehicles")
-    private Integer maxVehicles;
-
-    @Column(name = "max_monthly_jobs")
-    private Integer maxMonthlyJobs;
-
     @Builder.Default
     @Enumerated(EnumType.STRING)
     @Column(name = "tier", length = 20, nullable = false)

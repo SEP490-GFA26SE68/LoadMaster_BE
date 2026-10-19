@@ -59,8 +59,6 @@ public class SubscriptionPlanServiceImpl implements SubscriptionPlanService {
                 .algorithmTier(request.getAlgorithmTier())
                 .features(request.getFeatures())
                 .billingCycle(request.getBillingCycle())
-                .maxVehicles(request.getMaxVehicles())
-                .maxMonthlyJobs(request.getMaxMonthlyJobs())
                 .active(request.getActive() != null ? request.getActive() : true)
                 .build();
 
@@ -125,8 +123,6 @@ public class SubscriptionPlanServiceImpl implements SubscriptionPlanService {
                 .algorithmTier(plan.getAlgorithmTier())
                 .features(plan.getFeatures())
                 .billingCycle(plan.getBillingCycle())
-                .maxVehicles(plan.getMaxVehicles())
-                .maxMonthlyJobs(plan.getMaxMonthlyJobs())
                 .active(plan.getActive())
                 .activeCompanyCount(activeCompanyCount)
                 .build();

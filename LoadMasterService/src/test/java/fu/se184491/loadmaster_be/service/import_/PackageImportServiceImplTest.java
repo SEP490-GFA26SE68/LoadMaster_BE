@@ -123,7 +123,7 @@ class PackageImportServiceImplTest {
         when(cargoPackageRepository.save(any(CargoPackage.class))).thenReturn(pkg1, pkg2);
 
         // When
-        ImportConfirmResult result = packageImportService.confirm(mockFile, companyId, userId);
+        ImportConfirmResult result = packageImportService.confirm(mockFile, companyId, userId, null);
 
         // Then
         assertNotNull(result);
@@ -174,7 +174,7 @@ class PackageImportServiceImplTest {
 
         // When & Then
         ImportValidationException exception = assertThrows(ImportValidationException.class, () ->
-                packageImportService.confirm(mockFile, companyId, userId)
+                packageImportService.confirm(mockFile, companyId, userId, null)
         );
         assertEquals(ErrorCode.IMPORT_HAS_ERRORS, exception.getErrorCode());
         assertNotNull(exception.getPreviewResult());

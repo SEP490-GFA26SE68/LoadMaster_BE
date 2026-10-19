@@ -61,6 +61,7 @@ public class SubscriptionServiceTest {
     private Company company;
     private SubscriptionPlan proPlan;
     private SubscriptionPlan freePlan;
+    private SubscriptionPlan ultimatePlan;
 
     @BeforeEach
     void setUp() {
@@ -83,6 +84,16 @@ public class SubscriptionServiceTest {
                 .price(BigDecimal.ZERO)
                 .monthlyCredits(50)
                 .algorithmTier(AlgorithmTier.EP_DBLF)
+                .active(true)
+                .build();
+
+        ultimatePlan = SubscriptionPlan.builder()
+                .id(3L)
+                .name("Ultimate Plan")
+                .tier(SubscriptionTier.ULTIMATE)
+                .price(new BigDecimal("7900000"))
+                .monthlyCredits(30000)
+                .algorithmTier(AlgorithmTier.EP_DBLF_GA_AI)
                 .active(true)
                 .build();
     }
@@ -140,21 +151,214 @@ public class SubscriptionServiceTest {
     }
 
     @Test
-    @DisplayName("subscribe - Active subscription already exists throws exception")
+    @DisplayName("subscribe - Different plan while active subscription exists throws exception requiring support ticket")
     void testSubscribeAlreadyActiveThrowsException() {
         when(companyRepository.findById(1L)).thenReturn(Optional.of(company));
         CompanySubscription activeSub = CompanySubscription.builder()
                 .id(10L)
                 .company(company)
+                .plan(freePlan)
                 .status(SubscriptionStatus.ACTIVE)
                 .expiresAt(LocalDateTime.now().plusDays(15))
                 .build();
-        when(companySubscriptionRepository.findByCompanyIdAndStatus(1L, SubscriptionStatus.ACTIVE))
+        lenient().when(companySubscriptionRepository.findByCompanyIdAndStatus(1L, SubscriptionStatus.ACTIVE))
+                .thenReturn(Optional.of(activeSub));
+        lenient().when(companySubscriptionRepository.findByCompanyId(1L))
                 .thenReturn(Optional.of(activeSub));
 
         SubscribeRequest request = SubscribeRequest.builder().planId(2L).build();
 
-        assertThrows(AppException.class, () -> subscriptionService.subscribe(1L, request, "127.0.0.1"));
+        AppException ex = assertThrows(AppException.class, () -> subscriptionService.subscribe(1L, request, "127.0.0.1"));
+        assertTrue(ex.getMessage().contains("Support Ticket") || ex.getMessage().contains("phiếu hỗ trợ"));
+    }
+
+    @Test
+    @DisplayName("subscribe - Different plan when subscription is EXPIRED also throws exception requiring support ticket (Method 3B)")
+    void testSubscribeDifferentPlanWhenExpiredThrowsException() {
+        when(companyRepository.findById(1L)).thenReturn(Optional.of(company));
+        CompanySubscription expiredBasicSub = CompanySubscription.builder()
+                .id(10L)
+                .company(company)
+                .plan(freePlan)
+                .status(SubscriptionStatus.EXPIRED)
+                .expiresAt(LocalDateTime.now().minusDays(2))
+                .build();
+        lenient().when(companySubscriptionRepository.findByCompanyId(1L))
+                .thenReturn(Optional.of(expiredBasicSub));
+
+        lenient().when(subscriptionPlanRepository.findById(1L)).thenReturn(Optional.of(freePlan));
+        lenient().when(subscriptionPlanRepository.findById(2L)).thenReturn(Optional.of(proPlan));
+
+        SubscribeRequest request = SubscribeRequest.builder()
+                .planId(2L)
+                .gateway(PaymentGateway.VNPAY)
+                .build();
+
+        AppException ex = assertThrows(AppException.class, () -> subscriptionService.subscribe(1L, request, "127.0.0.1"));
+        assertTrue(ex.getMessage().contains("Support Ticket") || ex.getMessage().contains("phiếu hỗ trợ"));
+        verify(paymentGatewayService, never()).createPayment(any(), any(), any(), any(), any(), any(), any());
+    }
+
+    @Test
+    @DisplayName("subscribe - Same plan when subscription is EXPIRED allows renewal payment (Method 3B)")
+    void testSubscribeSamePlanWhenExpiredAllowsRenewal() {
+        when(companyRepository.findById(1L)).thenReturn(Optional.of(company));
+        CompanySubscription expiredProSub = CompanySubscription.builder()
+                .id(10L)
+                .company(company)
+                .plan(proPlan)
+                .status(SubscriptionStatus.EXPIRED)
+                .expiresAt(LocalDateTime.now().minusDays(2))
+                .build();
+        lenient().when(companySubscriptionRepository.findByCompanyId(1L))
+                .thenReturn(Optional.of(expiredProSub));
+        when(subscriptionPlanRepository.findById(2L)).thenReturn(Optional.of(proPlan));
+
+        PaymentUrlResponse paymentResponse = PaymentUrlResponse.builder()
+                .paymentUrl("/api/payment/mock-checkout?txnRef=VNP_RENEW_EXP")
+                .transactionId("VNP_RENEW_EXP")
+                .status("PENDING")
+                .build();
+        when(paymentGatewayService.createPayment(eq(company), eq(PaymentGateway.VNPAY), eq("SUBSCRIPTION"),
+                eq(2L), eq(new BigDecimal("1000000")), anyString(), any()))
+                .thenReturn(paymentResponse);
+
+        SubscribeRequest request = SubscribeRequest.builder()
+                .planId(2L)
+                .gateway(PaymentGateway.VNPAY)
+                .build();
+
+        PaymentUrlResponse res = subscriptionService.subscribe(1L, request, "127.0.0.1");
+
+        assertNotNull(res);
+        assertEquals("VNP_RENEW_EXP", res.getTransactionId());
+    }
+
+    @Test
+    @DisplayName("subscribe - EXPIRED Pro allows renewing Basic (lower tier) or Pro, but blocks Ultimate (higher tier)")
+    void testSubscribeExpiredProAllowsBasicAndBlocksUltimate() {
+        when(companyRepository.findById(1L)).thenReturn(Optional.of(company));
+        CompanySubscription expiredProSub = CompanySubscription.builder()
+                .id(10L)
+                .company(company)
+                .plan(proPlan)
+                .status(SubscriptionStatus.EXPIRED)
+                .expiresAt(LocalDateTime.now().minusDays(2))
+                .build();
+        when(companySubscriptionRepository.findByCompanyId(1L)).thenReturn(Optional.of(expiredProSub));
+        when(subscriptionPlanRepository.findById(1L)).thenReturn(Optional.of(freePlan));
+        when(subscriptionPlanRepository.findById(3L)).thenReturn(Optional.of(ultimatePlan));
+
+        SubscribeRequest ultimateReq = SubscribeRequest.builder()
+                .planId(3L)
+                .gateway(PaymentGateway.VNPAY)
+                .build();
+        assertThrows(AppException.class, () -> subscriptionService.subscribe(1L, ultimateReq, "127.0.0.1"));
+
+        SubscribeRequest basicReq = SubscribeRequest.builder()
+                .planId(1L)
+                .gateway(PaymentGateway.VNPAY)
+                .build();
+        PaymentUrlResponse basicRes = subscriptionService.subscribe(1L, basicReq, "127.0.0.1");
+        assertNotNull(basicRes);
+        assertEquals("ACTIVE", basicRes.getStatus());
+    }
+
+    @Test
+    @DisplayName("subscribe - EXPIRED Ultimate allows renewing any of the 3 plans (Basic, Pro, Ultimate)")
+    void testSubscribeExpiredUltimateAllowsAllThreePlans() {
+        when(companyRepository.findById(1L)).thenReturn(Optional.of(company));
+        CompanySubscription expiredUltimateSub = CompanySubscription.builder()
+                .id(10L)
+                .company(company)
+                .plan(ultimatePlan)
+                .status(SubscriptionStatus.EXPIRED)
+                .expiresAt(LocalDateTime.now().minusDays(2))
+                .build();
+        when(companySubscriptionRepository.findByCompanyId(1L)).thenReturn(Optional.of(expiredUltimateSub));
+        when(subscriptionPlanRepository.findById(2L)).thenReturn(Optional.of(proPlan));
+
+        PaymentUrlResponse paymentResponse = PaymentUrlResponse.builder()
+                .paymentUrl("/api/payment/mock-checkout?txnRef=VNP_ULT_TO_PRO")
+                .transactionId("VNP_ULT_TO_PRO")
+                .status("PENDING")
+                .build();
+        when(paymentGatewayService.createPayment(eq(company), eq(PaymentGateway.VNPAY), eq("SUBSCRIPTION"),
+                eq(2L), eq(new BigDecimal("1000000")), anyString(), any()))
+                .thenReturn(paymentResponse);
+
+        SubscribeRequest proReq = SubscribeRequest.builder()
+                .planId(2L)
+                .gateway(PaymentGateway.VNPAY)
+                .build();
+        PaymentUrlResponse proRes = subscriptionService.subscribe(1L, proReq, "127.0.0.1");
+        assertNotNull(proRes);
+        assertEquals("VNP_ULT_TO_PRO", proRes.getTransactionId());
+    }
+
+    @Test
+    @DisplayName("subscribe - Same active plan allows early renewal / buying additional month")
+    void testSubscribeSameActivePlanAllowsEarlyRenewal() {
+        when(companyRepository.findById(1L)).thenReturn(Optional.of(company));
+        CompanySubscription activeSub = CompanySubscription.builder()
+                .id(10L)
+                .company(company)
+                .plan(proPlan)
+                .status(SubscriptionStatus.ACTIVE)
+                .expiresAt(LocalDateTime.now().plusDays(15))
+                .build();
+        lenient().when(companySubscriptionRepository.findByCompanyIdAndStatus(1L, SubscriptionStatus.ACTIVE))
+                .thenReturn(Optional.of(activeSub));
+        lenient().when(companySubscriptionRepository.findByCompanyId(1L))
+                .thenReturn(Optional.of(activeSub));
+        when(subscriptionPlanRepository.findById(2L)).thenReturn(Optional.of(proPlan));
+
+        PaymentUrlResponse paymentResponse = PaymentUrlResponse.builder()
+                .paymentUrl("/api/payment/mock-checkout?txnRef=VNP_RENEW_123")
+                .transactionId("VNP_RENEW_123")
+                .status("PENDING")
+                .build();
+        when(paymentGatewayService.createPayment(eq(company), eq(PaymentGateway.VNPAY), eq("SUBSCRIPTION"),
+                eq(2L), eq(new BigDecimal("1000000")), anyString(), any()))
+                .thenReturn(paymentResponse);
+
+        SubscribeRequest request = SubscribeRequest.builder()
+                .planId(2L)
+                .gateway(PaymentGateway.VNPAY)
+                .build();
+
+        PaymentUrlResponse res = subscriptionService.subscribe(1L, request, "127.0.0.1");
+
+        assertNotNull(res);
+        assertEquals("VNP_RENEW_123", res.getTransactionId());
+    }
+
+    @Test
+    @DisplayName("activateSubscription - Renewing same active plan extends existing expiresAt and grants additional credits")
+    void testActivateSubscriptionExtendsExpiresAtForSamePlan() {
+        proPlan.setBillingCycle(BillingCycle.MONTHLY);
+        LocalDateTime originalStart = LocalDateTime.now().minusDays(10);
+        LocalDateTime existingExpiry = LocalDateTime.now().plusDays(20);
+        CompanySubscription existingSub = CompanySubscription.builder()
+                .id(10L)
+                .company(company)
+                .plan(proPlan)
+                .status(SubscriptionStatus.ACTIVE)
+                .startedAt(originalStart)
+                .expiresAt(existingExpiry)
+                .autoRenew(true)
+                .build();
+
+        when(companyRepository.findById(1L)).thenReturn(Optional.of(company));
+        when(subscriptionPlanRepository.findById(2L)).thenReturn(Optional.of(proPlan));
+        when(companySubscriptionRepository.findByCompanyId(1L)).thenReturn(Optional.of(existingSub));
+
+        subscriptionService.activateSubscription(1L, 2L);
+
+        assertEquals(originalStart, existingSub.getStartedAt());
+        assertEquals(existingExpiry.plusMonths(1), existingSub.getExpiresAt());
+        verify(companySubscriptionRepository).save(existingSub);
+        verify(creditService).grantMonthlyCredits(1L, 200);
     }
 
     @Test
@@ -210,6 +414,29 @@ public class SubscriptionServiceTest {
         assertEquals(SubscriptionTier.PRO, res.getTier());
         assertEquals(180, res.getCreditsBalance());
         assertEquals(200, res.getCreditsMonthlyGrant());
+    }
+
+    @Test
+    @DisplayName("getCurrentSubscription - Returns subscription details when status is EXPIRED")
+    void testGetCurrentSubscriptionWhenExpiredReturnsDetails() {
+        CompanySubscription expiredSub = CompanySubscription.builder()
+                .id(10L)
+                .company(company)
+                .plan(proPlan)
+                .status(SubscriptionStatus.EXPIRED)
+                .startedAt(LocalDateTime.now().minusDays(35))
+                .expiresAt(LocalDateTime.now().minusDays(5))
+                .autoRenew(false)
+                .build();
+        when(companySubscriptionRepository.findByCompanyId(1L)).thenReturn(Optional.of(expiredSub));
+        when(creditService.getBalance(1L)).thenReturn(CreditBalanceResponse.builder().balance(180).build());
+
+        SubscriptionCurrentResponse res = subscriptionService.getCurrentSubscription(1L);
+
+        assertNotNull(res);
+        assertEquals(10L, res.getSubscriptionId());
+        assertEquals(SubscriptionStatus.EXPIRED, res.getStatus());
+        assertEquals("Pro Plan", res.getPlanName());
     }
 
     @Test

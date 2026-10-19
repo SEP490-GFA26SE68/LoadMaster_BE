@@ -170,8 +170,19 @@ public class GlobalExceptionHandler {
             DataIntegrityViolationException ex,
             HttpServletRequest request) {
 
+        String causeMsg = ex.getMostSpecificCause() != null ? ex.getMostSpecificCause().getMessage() : ex.getMessage();
         log.warn("Database constraint violation at {}: {}",
-                request.getRequestURI(), ex.getMessage());
+                request.getRequestURI(), causeMsg);
+
+        if (causeMsg != null && causeMsg.toLowerCase().contains("value too long")) {
+            return ResponseEntity
+                    .status(HttpStatus.BAD_REQUEST)
+                    .body(ApiResponse.<Void>builder()
+                            .success(false)
+                            .message("Dữ liệu đầu vào vượt quá độ dài tối đa cho phép")
+                            .data(null)
+                            .build());
+        }
 
         Throwable cause = ex;
 
@@ -389,28 +400,6 @@ public class GlobalExceptionHandler {
                 .body(ApiResponse.<Void>builder()
                         .success(false)
                         .message("Không tìm thấy đường dẫn API hoặc thiếu tham số đường dẫn: " + request.getRequestURI())
-                        .data(null)
-                        .build());
-    }
-
-    @ExceptionHandler(DataIntegrityViolationException.class)
-    public ResponseEntity<ApiResponse<Void>> handleDataIntegrityViolationException(
-            DataIntegrityViolationException ex, HttpServletRequest request) {
-        String causeMsg = ex.getMostSpecificCause() != null ? ex.getMostSpecificCause().getMessage() : ex.getMessage();
-        log.warn("Data integrity violation at {}: {}", request.getRequestURI(), causeMsg);
-
-        String message = "Dữ liệu vi phạm ràng buộc toàn vẹn hoặc đang được tham chiếu bởi bản ghi khác";
-        HttpStatus status = HttpStatus.CONFLICT;
-        if (causeMsg != null && causeMsg.toLowerCase().contains("value too long")) {
-            message = "Dữ liệu đầu vào vượt quá độ dài tối đa cho phép";
-            status = HttpStatus.BAD_REQUEST;
-        }
-
-        return ResponseEntity
-                .status(status)
-                .body(ApiResponse.<Void>builder()
-                        .success(false)
-                        .message(message)
                         .data(null)
                         .build());
     }

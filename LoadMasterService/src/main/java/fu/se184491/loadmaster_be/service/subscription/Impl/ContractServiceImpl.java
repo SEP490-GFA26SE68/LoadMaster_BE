@@ -4,6 +4,7 @@ import fu.se184491.loadmaster_be.constant.billing.BillingCycle;
 import fu.se184491.loadmaster_be.constant.billing.CreditTransactionType;
 import fu.se184491.loadmaster_be.constant.billing.InvoiceStatus;
 import fu.se184491.loadmaster_be.constant.billing.SubscriptionStatus;
+import fu.se184491.loadmaster_be.constant.billing.SubscriptionTier;
 import fu.se184491.loadmaster_be.dto.request.subscription.CreateContractRequest;
 import fu.se184491.loadmaster_be.dto.request.subscription.UpdateContractRequest;
 import fu.se184491.loadmaster_be.dto.response.subscription.ContractResponse;
@@ -78,12 +79,28 @@ public class ContractServiceImpl implements ContractService {
                 .orElseThrow(() -> new AppException(ErrorCode.SUBSCRIPTION_PLAN_NOT_FOUND));
 
         LocalDateTime now = LocalDateTime.now();
+        CompanySubscription subscription = companySubscriptionRepository.findByCompanyId(company.getId())
+                .orElseGet(() -> CompanySubscription.builder().company(company).build());
+
+        boolean wasActiveAndInTerm = subscription.getId() != null
+                && subscription.getStatus() == SubscriptionStatus.ACTIVE
+                && subscription.getExpiresAt() != null
+                && subscription.getExpiresAt().isAfter(now);
+        SubscriptionPlan previousPlan = subscription.getPlan();
+
+        if (wasActiveAndInTerm && previousPlan != null) {
+            int currentRank = tierRank(previousPlan.getTier());
+            int targetRank = tierRank(plan.getTier());
+            if (targetRank <= currentRank) {
+                throw new AppException(ErrorCode.INVALID_INPUT,
+                        "Khách hàng đang còn hạn gói " + previousPlan.getName()
+                                + ". Chỉ được nâng cấp lên gói cao hơn khi gói hiện tại đang hoạt động.");
+            }
+        }
+
         LocalDateTime expiresAt = (plan.getBillingCycle() == BillingCycle.YEARLY)
                 ? now.plusYears(1)
                 : now.plusMonths(1);
-
-        CompanySubscription subscription = companySubscriptionRepository.findByCompanyId(company.getId())
-                .orElseGet(() -> CompanySubscription.builder().company(company).build());
 
         subscription.setPlan(plan);
         subscription.setStatus(SubscriptionStatus.ACTIVE);
@@ -115,7 +132,7 @@ public class ContractServiceImpl implements ContractService {
                 .build();
         invoiceRepository.save(invoice);
 
-        // 2. Cộng credit và ghi CreditTransaction
+        // 2. Khi đổi/kích hoạt gói: reset số dư credit về 0 rồi cộng đúng số credit định mức của gói mới
         if (plan.getMonthlyCredits() != null && plan.getMonthlyCredits() > 0) {
             CreditAccount creditAccount = creditAccountRepository.findByCompanyId(company.getId())
                     .orElseGet(() -> {
@@ -126,12 +143,13 @@ public class ContractServiceImpl implements ContractService {
                         return creditAccountRepository.save(newAcc);
                     });
 
-            creditAccount.setBalance(creditAccount.getBalance() + plan.getMonthlyCredits());
+            int newPlanCredits = plan.getMonthlyCredits();
+            creditAccount.setBalance(newPlanCredits);
             creditAccountRepository.save(creditAccount);
 
             CreditTransaction transaction = CreditTransaction.builder()
                     .creditAccount(creditAccount)
-                    .amount(plan.getMonthlyCredits())
+                    .amount(newPlanCredits)
                     .type(CreditTransactionType.MONTHLY_GRANT)
                     .reference("CONTRACT-" + savedSubscription.getId())
                     .refunded(false)
@@ -179,5 +197,14 @@ public class ContractServiceImpl implements ContractService {
                 .expiresAt(entity.getExpiresAt())
                 .autoRenew(entity.getAutoRenew())
                 .build();
+    }
+
+    private int tierRank(SubscriptionTier tier) {
+        if (tier == null) return 0;
+        return switch (tier) {
+            case BASIC -> 1;
+            case PRO -> 2;
+            case ULTIMATE -> 3;
+        };
     }
 }
