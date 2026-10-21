@@ -16,5 +16,10 @@ public class ApproveTrialAccountRequest {
 
     private Long planId;
 
+    @Builder.Default
+    private Integer trialDays = 14;
+
+    private Integer trialCredits;
+
     private String note;
 }

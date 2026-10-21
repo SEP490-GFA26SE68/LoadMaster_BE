@@ -39,6 +39,9 @@ public class ContractServiceImpl implements ContractService {
     private final CreditAccountRepository creditAccountRepository;
     private final CreditTransactionRepository creditTransactionRepository;
 
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private fu.se184491.loadmaster_be.repository.account.UserRepository userRepository;
+
     @Override
     @Transactional(readOnly = true)
     public List<ContractResponse> getContracts(Long companyId, SubscriptionStatus status, Long planId) {
@@ -181,6 +184,18 @@ public class ContractServiceImpl implements ContractService {
     }
 
     private ContractResponse mapToResponse(CompanySubscription entity) {
+        var adminOpt = (userRepository != null && entity.getCompany() != null && entity.getCompany().getId() != null)
+                ? userRepository.findByCompanyId(entity.getCompany().getId()).stream()
+                    .filter(u -> u.getUserRoleType() == fu.se184491.loadmaster_be.constant.account.UserRole.ADMIN)
+                    .findFirst()
+                    .or(() -> userRepository.findByCompanyId(entity.getCompany().getId()).stream().findFirst())
+                : java.util.Optional.<fu.se184491.loadmaster_be.entity.account.User>empty();
+
+        String adminName = adminOpt.map(fu.se184491.loadmaster_be.entity.account.User::getFullName).orElse(null);
+        String adminEmail = adminOpt.map(fu.se184491.loadmaster_be.entity.account.User::getEmail).orElse(null);
+        String adminPhone = adminOpt.map(fu.se184491.loadmaster_be.entity.account.User::getPhoneNumber).orElse(null);
+        Integer creditsGranted = entity.getPlan() != null ? entity.getPlan().getMonthlyCredits() : null;
+
         return ContractResponse.builder()
                 .id(entity.getId())
                 .companyId(entity.getCompany() != null ? entity.getCompany().getId() : null)
@@ -196,6 +211,10 @@ public class ContractServiceImpl implements ContractService {
                 .startedAt(entity.getStartedAt())
                 .expiresAt(entity.getExpiresAt())
                 .autoRenew(entity.getAutoRenew())
+                .adminName(adminName)
+                .adminEmail(adminEmail)
+                .adminPhone(adminPhone)
+                .creditsGranted(creditsGranted)
                 .build();
     }
 

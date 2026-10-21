@@ -80,10 +80,22 @@ public class ContactOfGuestServiceImpl implements ContactOfGuestService {
             if (requestType != null) {
                 predicates.add(cb.equal(root.get("requestType"), requestType));
             }
+            if (query != null && status == null) {
+                query.orderBy(
+                        cb.asc(
+                                cb.selectCase()
+                                        .when(cb.equal(root.get("status"), ContactStatus.NEW), 1)
+                                        .when(cb.equal(root.get("status"), ContactStatus.IN_PROGRESS), 2)
+                                        .when(cb.equal(root.get("status"), ContactStatus.RESOLVED), 3)
+                                        .otherwise(4)
+                        ),
+                        cb.desc(root.get("createdAt"))
+                );
+            }
             return cb.and(predicates.toArray(new Predicate[0]));
         };
 
-        return contactOfGuestRepository.findAll(spec, Sort.by(Sort.Direction.DESC, "createdAt"))
+        return contactOfGuestRepository.findAll(spec)
                 .stream()
                 .map(this::mapToResponse)
                 .toList();
@@ -113,6 +125,18 @@ public class ContactOfGuestServiceImpl implements ContactOfGuestService {
                         cb.like(cb.lower(root.get("phoneNumber")), pattern),
                         cb.like(cb.lower(root.get("companyName")), pattern)
                 ));
+            }
+            if (query != null && status == null) {
+                query.orderBy(
+                        cb.asc(
+                                cb.selectCase()
+                                        .when(cb.equal(root.get("status"), ContactStatus.NEW), 1)
+                                        .when(cb.equal(root.get("status"), ContactStatus.IN_PROGRESS), 2)
+                                        .when(cb.equal(root.get("status"), ContactStatus.RESOLVED), 3)
+                                        .otherwise(4)
+                        ),
+                        cb.desc(root.get("createdAt"))
+                );
             }
             return cb.and(predicates.toArray(new Predicate[0]));
         };

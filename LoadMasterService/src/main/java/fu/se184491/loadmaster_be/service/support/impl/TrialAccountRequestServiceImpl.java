@@ -1,6 +1,11 @@
 package fu.se184491.loadmaster_be.service.support.impl;
 
 import fu.se184491.loadmaster_be.client.BrevoClient;
+import fu.se184491.loadmaster_be.client.KeycloakAdminClient;
+import fu.se184491.loadmaster_be.constant.account.UserRole;
+import fu.se184491.loadmaster_be.constant.account.UserStatus;
+import fu.se184491.loadmaster_be.constant.billing.SubscriptionStatus;
+import fu.se184491.loadmaster_be.constant.billing.SubscriptionTier;
 import fu.se184491.loadmaster_be.constant.company.CompanyStatus;
 import fu.se184491.loadmaster_be.constant.support.ContactStatus;
 import fu.se184491.loadmaster_be.constant.support.TrialRequestStatus;
@@ -9,16 +14,21 @@ import fu.se184491.loadmaster_be.dto.request.support.ApproveTrialAccountRequest;
 import fu.se184491.loadmaster_be.dto.request.support.CreateTrialAccountRequest;
 import fu.se184491.loadmaster_be.dto.response.support.TrialAccountRequestResponse;
 import fu.se184491.loadmaster_be.entity.account.User;
+import fu.se184491.loadmaster_be.entity.billing.CompanySubscription;
 import fu.se184491.loadmaster_be.entity.billing.SubscriptionPlan;
 import fu.se184491.loadmaster_be.entity.company.Company;
 import fu.se184491.loadmaster_be.entity.support.ContactOfGuest;
 import fu.se184491.loadmaster_be.entity.support.TrialAccountRequest;
 import fu.se184491.loadmaster_be.exception.AppException;
 import fu.se184491.loadmaster_be.exception.ErrorCode;
+import fu.se184491.loadmaster_be.helpers.TemporaryPasswordGenerator;
+import fu.se184491.loadmaster_be.repository.account.UserRepository;
+import fu.se184491.loadmaster_be.repository.billing.CompanySubscriptionRepository;
 import fu.se184491.loadmaster_be.repository.billing.SubscriptionPlanRepository;
 import fu.se184491.loadmaster_be.repository.company.CompanyRepository;
 import fu.se184491.loadmaster_be.repository.support.ContactOfGuestRepository;
 import fu.se184491.loadmaster_be.repository.support.TrialAccountRequestRepository;
+import fu.se184491.loadmaster_be.service.credit.CreditService;
 import fu.se184491.loadmaster_be.service.support.TrialAccountRequestService;
 import jakarta.persistence.criteria.Predicate;
 import lombok.RequiredArgsConstructor;
@@ -28,10 +38,17 @@ import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.HttpStatus;
+import org.springframework.web.client.HttpStatusCodeException;
+
 import java.time.Instant;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.UUID;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 @Transactional
@@ -41,6 +58,11 @@ public class TrialAccountRequestServiceImpl implements TrialAccountRequestServic
     private final ContactOfGuestRepository contactOfGuestRepository;
     private final SubscriptionPlanRepository subscriptionPlanRepository;
     private final CompanyRepository companyRepository;
+    private final UserRepository userRepository;
+    private final CompanySubscriptionRepository companySubscriptionRepository;
+    private final CreditService creditService;
+    private final KeycloakAdminClient keycloakAdminClient;
+    private final TemporaryPasswordGenerator temporaryPasswordGenerator;
     private final BrevoClient brevoClient;
 
     @Override
@@ -100,6 +122,17 @@ public class TrialAccountRequestServiceImpl implements TrialAccountRequestServic
                         cb.like(cb.lower(root.get("companyName")), pattern)
                 ));
             }
+            if (query != null && status == null) {
+                query.orderBy(
+                        cb.asc(
+                                cb.selectCase()
+                                        .when(cb.equal(root.get("status"), TrialRequestStatus.PENDING), 1)
+                                        .when(cb.equal(root.get("status"), TrialRequestStatus.APPROVED), 2)
+                                        .otherwise(3)
+                        ),
+                        cb.desc(root.get("createdAt"))
+                );
+            }
             return cb.and(predicates.toArray(new Predicate[0]));
         };
 
@@ -124,23 +157,38 @@ public class TrialAccountRequestServiceImpl implements TrialAccountRequestServic
             throw new AppException(ErrorCode.TRIAL_REQUEST_ALREADY_PROCESSED);
         }
 
-        // Create trial company
+        // 1. Kiểm tra email người dùng đã tồn tại trong DB chưa
+        if (userRepository.existsByEmail(trial.getEmail())) {
+            throw new AppException(ErrorCode.EMAIL_ALREADY_EXISTS, "Email '" + trial.getEmail() + "' đã được sử dụng cho một tài khoản khác trong hệ thống.");
+        }
+
+        // 2. Chuẩn bị và kiểm tra thông tin công ty
         String compName = (request.getCompanyName() != null && !request.getCompanyName().trim().isEmpty())
                 ? request.getCompanyName().trim()
-                : (trial.getCompanyName() != null ? trial.getCompanyName() : "Công ty dùng thử " + trial.getFullName());
+                : (trial.getCompanyName() != null && !trial.getCompanyName().trim().isEmpty()
+                        ? trial.getCompanyName().trim()
+                        : "Công ty " + trial.getFullName());
 
         String compCode = (request.getCompanyCode() != null && !request.getCompanyCode().trim().isEmpty())
                 ? request.getCompanyCode().trim()
-                : (trial.getCompanyCode() != null && !trial.getCompanyCode().trim().isEmpty()
+                : (trial.getCompanyCode() != null && !trial.getCompanyCode().trim().isEmpty() && !companyRepository.existsByCompanyCode(trial.getCompanyCode().trim())
                         ? trial.getCompanyCode().trim()
-                        : "COMP-TRIAL-" + System.currentTimeMillis() % 100000);
+                        : "COMP-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase());
 
         String taxCode = (request.getTaxCode() != null && !request.getTaxCode().trim().isEmpty())
                 ? request.getTaxCode().trim()
-                : (trial.getTaxCode() != null && !trial.getTaxCode().trim().isEmpty()
+                : (trial.getTaxCode() != null && !trial.getTaxCode().trim().isEmpty() && !companyRepository.existsByTaxCode(trial.getTaxCode().trim())
                         ? trial.getTaxCode().trim()
-                        : "TAX-TRIAL-" + System.currentTimeMillis() % 100000);
+                        : "TAX-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase());
 
+        if (companyRepository.existsByCompanyCode(compCode)) {
+            throw new AppException(ErrorCode.COMPANY_ALREADY_EXISTS, "Mã công ty '" + compCode + "' đã tồn tại trong hệ thống.");
+        }
+        if (companyRepository.existsByTaxCode(taxCode)) {
+            throw new AppException(ErrorCode.TAX_CODE_ALREADY_EXISTS, "Mã số thuế '" + taxCode + "' đã tồn tại trong hệ thống.");
+        }
+
+        // 3. Tạo Company
         Company company = Company.builder()
                 .companyCode(compCode)
                 .companyName(compName)
@@ -149,9 +197,156 @@ public class TrialAccountRequestServiceImpl implements TrialAccountRequestServic
                 .status(CompanyStatus.ACTIVE)
                 .createdAt(Instant.now())
                 .build();
-
         Company savedCompany = companyRepository.save(company);
 
+        // 4. Tạo hoặc liên kết tài khoản User với vai trò ADMIN (Company Admin)
+        String temporaryPassword = temporaryPasswordGenerator.generate();
+        String keycloakUserId = null;
+        boolean newlyCreatedInKeycloak = false;
+
+        try {
+            String existingKeycloakId = keycloakAdminClient.findUserIdByEmail(trial.getEmail());
+            if (existingKeycloakId != null) {
+                // Kiểm tra xem ID này đã gắn với DB user nào chưa
+                if (userRepository.findByKeycloakId(existingKeycloakId).isPresent()) {
+                    throw new AppException(ErrorCode.EMAIL_ALREADY_EXISTS,
+                            "Email '" + trial.getEmail() + "' đã được sử dụng cho một tài khoản khác trong hệ thống.");
+                }
+                log.info("Reusing orphaned Keycloak user {} for email {}", existingKeycloakId, trial.getEmail());
+                keycloakUserId = existingKeycloakId;
+            } else {
+                keycloakUserId = keycloakAdminClient.createUser(trial.getEmail(), trial.getFullName());
+                newlyCreatedInKeycloak = true;
+            }
+
+            keycloakAdminClient.setPassword(keycloakUserId, temporaryPassword);
+            keycloakAdminClient.assignRealmRole(keycloakUserId, UserRole.ADMIN.name());
+
+            User user = User.builder()
+                    .keycloakId(keycloakUserId)
+                    .company(savedCompany)
+                    .email(trial.getEmail())
+                    .fullName(trial.getFullName())
+                    .phoneNumber(trial.getPhoneNumber())
+                    .userRoleType(UserRole.ADMIN)
+                    .status(UserStatus.ACTIVE)
+                    .build();
+            userRepository.save(user);
+        } catch (AppException ex) {
+            if (newlyCreatedInKeycloak && keycloakUserId != null) {
+                try {
+                    keycloakAdminClient.deleteUser(keycloakUserId);
+                } catch (Exception ignored) {}
+            }
+            throw ex;
+        } catch (HttpStatusCodeException ex) {
+            log.error("Keycloak HTTP error while approving trial request {}: {} - {}", id, ex.getStatusCode(), ex.getResponseBodyAsString(), ex);
+            if (newlyCreatedInKeycloak && keycloakUserId != null) {
+                try {
+                    keycloakAdminClient.deleteUser(keycloakUserId);
+                } catch (Exception ignored) {}
+            }
+            if (ex.getStatusCode() == HttpStatus.CONFLICT) {
+                throw new AppException(ErrorCode.EMAIL_ALREADY_EXISTS, "Email '" + trial.getEmail() + "' đã tồn tại trên hệ thống định danh Keycloak.");
+            }
+            throw new AppException(ErrorCode.INTERNAL_SERVER_ERROR, "Lỗi kết nối định danh tài khoản (Keycloak): " + ex.getMessage());
+        } catch (Exception ex) {
+            log.error("Unexpected error creating user for trial request {}: ", id, ex);
+            if (newlyCreatedInKeycloak && keycloakUserId != null) {
+                try {
+                    keycloakAdminClient.deleteUser(keycloakUserId);
+                } catch (Exception ignored) {}
+            }
+            throw new AppException(ErrorCode.INTERNAL_SERVER_ERROR, "Không thể khởi tạo tài khoản quản trị: " + ex.getMessage());
+        }
+
+        // 5. Kích hoạt gói dịch vụ dùng thử (CompanySubscription)
+        SubscriptionPlan plan = null;
+        if (request.getPlanId() != null) {
+            plan = subscriptionPlanRepository.findById(request.getPlanId()).orElse(null);
+        }
+        if (plan == null) {
+            plan = trial.getInterestedPlan();
+        }
+        if (plan == null) {
+            plan = subscriptionPlanRepository.findByTierAndActiveTrue(SubscriptionTier.PRO)
+                    .or(() -> subscriptionPlanRepository.findByTierAndActiveTrue(SubscriptionTier.BASIC))
+                    .orElse(null);
+        }
+        if (plan == null) {
+            plan = subscriptionPlanRepository.findByActiveTrue().stream().findFirst().orElse(null);
+        }
+
+        int trialDays = (request.getTrialDays() != null && request.getTrialDays() > 0) ? request.getTrialDays() : 14;
+        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime expiresAt = now.plusDays(trialDays);
+
+        if (plan != null) {
+            CompanySubscription subscription = CompanySubscription.builder()
+                    .company(savedCompany)
+                    .plan(plan)
+                    .status(SubscriptionStatus.ACTIVE)
+                    .startedAt(now)
+                    .expiresAt(expiresAt)
+                    .autoRenew(false)
+                    .build();
+            companySubscriptionRepository.save(subscription);
+        }
+
+        // 6. Cấp hạn mức Credit dùng thử
+        int credits = (request.getTrialCredits() != null && request.getTrialCredits() > 0)
+                ? request.getTrialCredits()
+                : (plan != null && plan.getMonthlyCredits() != null && plan.getMonthlyCredits() > 0
+                        ? Math.min(plan.getMonthlyCredits(), 1000)
+                        : 1000);
+        creditService.grantMonthlyCredits(savedCompany.getId(), credits);
+
+        // 7. Gửi email bàn giao tài khoản trực tiếp đến khách hàng
+        String planName = plan != null ? plan.getName() : "Gói dùng thử";
+        String emailContent = """
+                Xin chào %s,
+
+                Yêu cầu đăng ký trải nghiệm giải pháp LoadMaster của bạn đã được phê duyệt thành công!
+
+                THÔNG TIN DOANH NGHIỆP:
+                • Tên công ty: %s
+                • Mã công ty: %s
+                • Mã số thuế: %s
+
+                THÔNG TIN TÀI KHOẢN ĐĂNG NHẬP:
+                • Tên đăng nhập / Email: %s
+                • Mật khẩu tạm thời: %s
+                • Vai trò tài khoản: Quản trị viên Doanh nghiệp (Company Admin)
+
+                THÔNG TIN GÓI TRẢI NGHIỆM:
+                • Gói dịch vụ: %s
+                • Thời hạn dùng thử: %d ngày (Có hiệu lực đến %s)
+                • Hạn mức tối ưu (Credits): %d credits
+
+                HƯỚNG DẪN BẮT ĐẦU:
+                Vui lòng truy cập hệ thống để đăng nhập và tiến hành đổi mật khẩu ở lần đầu tiên.
+                Đường dẫn truy cập: http://localhost:5173/dang-nhap
+
+                Nếu cần hỗ trợ kỹ thuật trong quá trình trải nghiệm, vui lòng liên hệ đội ngũ hỗ trợ của chúng tôi.
+
+                Trân trọng,
+                Đội ngũ Quản lý Nền tảng LoadMaster
+                """.formatted(
+                trial.getFullName(),
+                savedCompany.getCompanyName(),
+                savedCompany.getCompanyCode(),
+                savedCompany.getTaxCode(),
+                trial.getEmail(),
+                temporaryPassword,
+                planName,
+                trialDays,
+                expiresAt.toLocalDate(),
+                credits
+        );
+
+        brevoClient.sendEmail(trial.getEmail(), "LoadMaster - Thông tin tài khoản trải nghiệm dịch vụ", emailContent);
+
+        // 8. Cập nhật trạng thái TrialAccountRequest & ContactOfGuest
         trial.setStatus(TrialRequestStatus.APPROVED);
         trial.setApprovedBy(approvedBy);
         trial.setCreatedCompany(savedCompany);
@@ -166,22 +361,6 @@ public class TrialAccountRequestServiceImpl implements TrialAccountRequestServic
             contact.setResolvedAt(Instant.now());
             contactOfGuestRepository.save(contact);
         }
-
-        // Send email to customer with trial account confirmation
-        String emailContent = """
-                Xin chào %s,
-                
-                Yêu cầu đăng ký tài khoản dùng thử của bạn đã được phê duyệt thành công!
-                Công ty của bạn: %s
-                Mã công ty: %s
-                
-                Đội ngũ kỹ thuật LoadMaster đang tiến hành khởi tạo môi trường và thông tin đăng nhập chi tiết sẽ được gửi tiếp theo.
-                
-                Trân trọng,
-                Đội ngũ Quản lý Nền tảng LoadMaster
-                """.formatted(trial.getFullName(), savedCompany.getCompanyName(), savedCompany.getCompanyCode());
-
-        brevoClient.sendEmail(trial.getEmail(), "LoadMaster - Tài khoản dùng thử của bạn đã được phê duyệt", emailContent);
 
         TrialAccountRequest updated = trialAccountRequestRepository.save(trial);
         return mapToResponse(updated);
@@ -213,16 +392,22 @@ public class TrialAccountRequestServiceImpl implements TrialAccountRequestServic
         // Send refusal email
         String emailContent = """
                 Xin chào %s,
-                
-                Cảm ơn bạn đã quan tâm đến giải pháp LoadMaster.
-                Về yêu cầu đăng ký dùng thử của bạn, chúng tôi rất tiếc chưa thể phê duyệt vào thời điểm này.
+
+                Cảm ơn bạn đã quan tâm và gửi yêu cầu đăng ký trải nghiệm giải pháp tối ưu logistics LoadMaster.
+
+                Sau khi xem xét kỹ lưỡng thông tin, chúng tôi rất tiếc phải thông báo yêu cầu của bạn chưa thể được phê duyệt vào thời điểm hiện tại.
+
+                CHI TIẾT LÝ DO:
                 %s
-                
-                Nếu có thêm thắc mắc, vui lòng phản hồi email này để được hỗ trợ.
-                
+
+                Nếu bạn cần cung cấp bổ sung thông tin hoặc muốn được tư vấn giải pháp phù hợp hơn, xin vui lòng liên hệ lại với đội ngũ hỗ trợ của chúng tôi qua hotline hoặc phản hồi trực tiếp email này.
+
                 Trân trọng,
-                LoadMaster Team
-                """.formatted(trial.getFullName(), reason != null ? "Lý do: " + reason : "");
+                Đội ngũ Quản trị Nền tảng LoadMaster
+                """.formatted(
+                trial.getFullName(),
+                (reason != null && !reason.trim().isEmpty()) ? reason.trim() : "Thông tin đăng ký chưa đáp ứng đủ tiêu chuẩn phê duyệt tài khoản doanh nghiệp."
+        );
 
         brevoClient.sendEmail(trial.getEmail(), "LoadMaster - Thông báo về yêu cầu dùng thử", emailContent);
 

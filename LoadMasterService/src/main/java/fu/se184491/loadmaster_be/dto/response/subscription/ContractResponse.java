@@ -41,4 +41,12 @@ public class ContractResponse {
     private LocalDateTime expiresAt;
 
     private Boolean autoRenew;
+
+    private String adminName;
+
+    private String adminEmail;
+
+    private String adminPhone;
+
+    private Integer creditsGranted;
 }

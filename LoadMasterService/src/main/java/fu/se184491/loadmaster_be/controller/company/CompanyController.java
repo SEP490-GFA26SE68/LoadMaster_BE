@@ -46,8 +46,11 @@ public class CompanyController {
 
     @GetMapping
     @PreAuthorize("hasAnyRole('SYSTEM_SUPPORTER', 'SYSTEM_MANAGER', 'SYSTEM_ADMIN') or hasAnyAuthority('SYSTEM_SUPPORTER', 'SYSTEM_MANAGER', 'SYSTEM_ADMIN')")
-    public ResponseEntity<Page<CompanyResponse>> getAllCompanies(Pageable pageable) {
-        return ResponseEntity.ok(companyService.getAllCompanies(pageable));
+    public ResponseEntity<Page<CompanyResponse>> getAllCompanies(
+            @RequestParam(required = false) String search,
+            Pageable pageable
+    ) {
+        return ResponseEntity.ok(companyService.getAllCompanies(search, pageable));
     }
 
     @PatchMapping("/{id}/status")

@@ -37,13 +37,12 @@ public class KeycloakAdminClient {
     ) {
         String token = serviceTokenProvider.getKeycloakAdminToken();
 
-        Map<String, Object> body = Map.of(
-                "username", email,
-                "email", email,
-                "emailVerified", true,
-                "enabled", true,
-                "firstName", fullName
-        );
+        Map<String, Object> body = new java.util.HashMap<>();
+        body.put("username", email);
+        body.put("email", email);
+        body.put("emailVerified", true);
+        body.put("enabled", true);
+        body.put("firstName", (fullName != null && !fullName.trim().isEmpty()) ? fullName.trim() : email);
 
         ResponseEntity<Void> response =
                 keycloakAdminRestClient
