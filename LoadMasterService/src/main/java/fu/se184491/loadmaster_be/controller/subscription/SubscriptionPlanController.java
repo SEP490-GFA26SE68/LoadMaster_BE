@@ -1,10 +1,14 @@
 package fu.se184491.loadmaster_be.controller.subscription;
 
+import fu.se184491.loadmaster_be.constant.billing.SubscriptionTier;
 import fu.se184491.loadmaster_be.dto.request.subscription.SubscriptionPlanRequest;
 import fu.se184491.loadmaster_be.dto.response.subscription.SubscriptionPlanResponse;
 import fu.se184491.loadmaster_be.service.subscription.SubscriptionPlanService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -20,7 +24,19 @@ public class SubscriptionPlanController {
     private final SubscriptionPlanService planService;
 
     @GetMapping
-    public ResponseEntity<List<SubscriptionPlanResponse>> getActivePlans() {
+    public ResponseEntity<?> getPlans(
+            @RequestParam(required = false) String search,
+            @RequestParam(required = false) Boolean active,
+            @RequestParam(required = false) SubscriptionTier tier,
+            @RequestParam(required = false) Integer page,
+            @RequestParam(required = false) Integer size,
+            @RequestParam(required = false, defaultValue = "false") boolean paged) {
+        if (paged || page != null || size != null || active != null || search != null) {
+            int pageNum = page != null ? page : 0;
+            int pageSize = size != null ? size : 10;
+            Pageable pageable = PageRequest.of(pageNum, pageSize, Sort.by(Sort.Direction.ASC, "id"));
+            return ResponseEntity.ok(planService.getAllPlans(search, active, tier, pageable));
+        }
         return ResponseEntity.ok(planService.getActivePlans());
     }
 

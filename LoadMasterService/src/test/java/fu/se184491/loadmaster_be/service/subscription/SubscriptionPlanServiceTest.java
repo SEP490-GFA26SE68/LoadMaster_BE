@@ -1,9 +1,11 @@
 package fu.se184491.loadmaster_be.service.subscription;
 
+import fu.se184491.loadmaster_be.config.SubscriptionPlanInitializer;
 import fu.se184491.loadmaster_be.constant.billing.AlgorithmTier;
 import fu.se184491.loadmaster_be.constant.billing.BillingCycle;
 import fu.se184491.loadmaster_be.constant.billing.SubscriptionStatus;
 import fu.se184491.loadmaster_be.constant.billing.SubscriptionTier;
+import fu.se184491.loadmaster_be.dto.PageResponse;
 import fu.se184491.loadmaster_be.dto.request.subscription.SubscriptionPlanRequest;
 import fu.se184491.loadmaster_be.dto.response.subscription.SubscriptionPlanResponse;
 import fu.se184491.loadmaster_be.entity.billing.SubscriptionPlan;
@@ -19,6 +21,10 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.jpa.domain.Specification;
 
 import java.math.BigDecimal;
 import java.util.List;
@@ -119,8 +125,9 @@ public class SubscriptionPlanServiceTest {
     }
 
     @Test
-    @DisplayName("Update plan should succeed when plan exists and tier unique")
+    @DisplayName("Update plan should succeed and SubscriptionPlan/DTOs should not expose redundant maxVehicles or maxMonthlyJobs")
     void updatePlan_success() {
+        request.setMonthlyCredits(15000);
         when(planRepository.findById(1L)).thenReturn(Optional.of(plan));
         when(planRepository.existsByTierAndActiveTrueAndIdNot(SubscriptionTier.PRO, 1L)).thenReturn(false);
         when(planRepository.save(any(SubscriptionPlan.class))).thenReturn(plan);
@@ -128,6 +135,15 @@ public class SubscriptionPlanServiceTest {
         SubscriptionPlanResponse response = planService.updatePlan(1L, request);
 
         assertNotNull(response);
+        assertEquals(15000, plan.getMonthlyCredits());
+        assertThrows(NoSuchFieldException.class, () -> SubscriptionPlan.class.getDeclaredField("maxVehicles"));
+        assertThrows(NoSuchFieldException.class, () -> SubscriptionPlan.class.getDeclaredField("maxMonthlyJobs"));
+        assertThrows(NoSuchFieldException.class, () -> SubscriptionPlanRequest.class.getDeclaredField("maxVehicles"));
+        assertThrows(NoSuchFieldException.class,
+                () -> SubscriptionPlanRequest.class.getDeclaredField("maxMonthlyJobs"));
+        assertThrows(NoSuchFieldException.class, () -> SubscriptionPlanResponse.class.getDeclaredField("maxVehicles"));
+        assertThrows(NoSuchFieldException.class,
+                () -> SubscriptionPlanResponse.class.getDeclaredField("maxMonthlyJobs"));
         verify(planRepository).save(plan);
     }
 
@@ -150,7 +166,7 @@ public class SubscriptionPlanServiceTest {
 
         AppException ex = assertThrows(AppException.class, () -> planService.deletePlan(1L));
         assertEquals(ErrorCode.PLAN_IN_USE, ex.getErrorCode());
-        verify(planRepository, never()).delete(any());
+        verify(planRepository, never()).delete(any(SubscriptionPlan.class));
     }
 
     @Test
@@ -164,5 +180,22 @@ public class SubscriptionPlanServiceTest {
         assertEquals(1, responses.size());
         assertEquals(4L, responses.get(0).getActiveCompanyCount());
         verify(companySubscriptionRepository).countByPlanIdAndStatus(1L, SubscriptionStatus.ACTIVE);
+    }
+
+    @Test
+    @DisplayName("getAllPlans with pagination and filter should return PageResponse with activeCompanyCount")
+    void getAllPlans_paged_success() {
+        Page<SubscriptionPlan> pageResult = new PageImpl<>(List.of(plan), PageRequest.of(0, 10), 1);
+        when(planRepository.findAll(any(Specification.class), any(PageRequest.class))).thenReturn(pageResult);
+        when(companySubscriptionRepository.countByPlanIdAndStatus(1L, SubscriptionStatus.ACTIVE)).thenReturn(2L);
+
+        PageResponse<SubscriptionPlanResponse> response = planService.getAllPlans("PRO", true, SubscriptionTier.PRO,
+                PageRequest.of(0, 10));
+
+        assertNotNull(response);
+        assertEquals(1, response.getData().size());
+        assertEquals(1, response.getTotalElements());
+        assertEquals(2L, response.getData().get(0).getActiveCompanyCount());
+        verify(planRepository).findAll(any(Specification.class), any(PageRequest.class));
     }
 }
