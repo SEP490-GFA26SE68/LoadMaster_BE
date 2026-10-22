@@ -106,6 +106,23 @@ public class KeycloakAdminClient {
                 .toBodilessEntity();
     }
 
+    public void setUserEnabled(String keycloakUserId, boolean enabled) {
+        String token = serviceTokenProvider.getKeycloakAdminToken();
+        Map<String, Object> body = Map.of("enabled", enabled);
+
+        keycloakAdminRestClient
+                .put()
+                .uri(
+                        "/admin/realms/{realm}/users/{userId}",
+                        REALM,
+                        keycloakUserId
+                )
+                .headers(headers -> headers.setBearerAuth(token))
+                .body(body)
+                .retrieve()
+                .toBodilessEntity();
+    }
+
     public void assignRealmRole(
             String keycloakUserId,
             String roleName

@@ -224,7 +224,14 @@ public enum ErrorCode {
     INVOICE_NOT_FOUND("Không tìm thấy hóa đơn", HttpStatus.NOT_FOUND),
     TRIAL_REQUEST_NOT_FOUND("Không tìm thấy đơn yêu cầu tạo tài khoản dùng thử", HttpStatus.NOT_FOUND),
     TRIAL_REQUEST_ALREADY_PROCESSED("Đơn yêu cầu tạo tài khoản dùng thử đã được xử lý trước đó", HttpStatus.BAD_REQUEST),
-    CANNOT_DIRECTLY_APPROVE_DEMO_REQUEST("Yêu cầu dùng thử phải được chuyển sang Quản lý nền tảng duyệt tạo tài khoản", HttpStatus.BAD_REQUEST);
+    CANNOT_DIRECTLY_APPROVE_DEMO_REQUEST("Yêu cầu dùng thử phải được chuyển sang Quản lý nền tảng duyệt tạo tài khoản", HttpStatus.BAD_REQUEST),
+
+    // -------------------------------------------------------------------------
+    // Company Service Agreement errors
+    // -------------------------------------------------------------------------
+    AGREEMENT_NOT_FOUND("Không tìm thấy thỏa thuận dịch vụ của doanh nghiệp", HttpStatus.NOT_FOUND),
+    AGREEMENT_ALREADY_SIGNED("Thỏa thuận dịch vụ này đã được ký trước đó", HttpStatus.BAD_REQUEST),
+    AGREEMENT_DEADLINE_EXPIRED("Đã quá thời hạn 3 ngày ký thỏa thuận dịch vụ. Tài khoản đã bị khóa", HttpStatus.FORBIDDEN);
 
     private final String message;
     private final HttpStatus httpStatus;
