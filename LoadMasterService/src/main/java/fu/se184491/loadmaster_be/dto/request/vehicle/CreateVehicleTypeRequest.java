@@ -1,3 +1,4 @@
+
 package fu.se184491.loadmaster_be.dto.request.vehicle;
 
 import jakarta.validation.Valid;
@@ -24,6 +25,13 @@ public record CreateVehicleTypeRequest(
         @NotNull
         @Positive
         Integer innerHeight,
+
+        // Kích thước cửa khoang hàng (cm)
+        @Positive
+        Integer doorWidth,
+
+        @Positive
+        Integer doorHeight,
 
         @NotNull
         @Positive

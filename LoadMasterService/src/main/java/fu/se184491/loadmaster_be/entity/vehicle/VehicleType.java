@@ -73,7 +73,14 @@ public class VehicleType {
     @Builder.Default
     private List<VehicleTypeObstacle> obstacles =
             new ArrayList<>();
+    // Kích thước cửa khoang hàng, đơn vị cm
+    @Positive
+    @Column(name = "door_width")
+    private Integer doorWidth;
 
+    @Positive
+    @Column(name = "door_height")
+    private Integer doorHeight;
     public void addObstacle(
             VehicleTypeObstacle obstacle
     ) {

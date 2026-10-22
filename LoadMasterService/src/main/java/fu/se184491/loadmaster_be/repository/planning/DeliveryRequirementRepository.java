@@ -7,6 +7,7 @@ import org.springframework.data.jpa.repository.*;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
@@ -44,6 +45,25 @@ public interface DeliveryRequirementRepository extends JpaRepository<DeliveryReq
     List<DeliveryRequirement> findByCompanyIdAndStatusAndTripIsNullOrderByDeadlineAsc(
             Long companyId,
             DeliveryRequirementStatus status
+    );
+
+
+    /**
+     * Đếm số kiện thực tế được gán vào các yêu cầu giao
+     * thuộc từng chuyến.
+     *
+     * Object[0]: tripId (Long)
+     * Object[1]: packageCount (Long)
+     */
+    @Query("""
+    SELECT dr.trip.id, COUNT(DISTINCT p.id)
+    FROM DeliveryRequirement dr
+    JOIN dr.packages p
+    WHERE dr.trip.id IN :tripIds
+    GROUP BY dr.trip.id
+    """)
+    List<Object[]> countPackagesByTripIds(
+            @Param("tripIds") Collection<Long> tripIds
     );
 
 

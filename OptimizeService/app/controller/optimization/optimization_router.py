@@ -7,7 +7,7 @@ from app.dto.api_response import ApiResponse
 from app.dto.request.optimization_request import OptimizationJobRequest
 from app.dto.response.load_plan_response import LoadPlanResponse
 from app.dto.response.optimization_job_response import OptimizationJobResponse
-from app.service.auth.auth_dependency import require_role
+from app.service.auth.auth_dependency import require_optimization_service
 from app.service.optimize.async_optimization_runner import AsyncOptimizationRunner
 from app.service.optimize.load_plan_service import LoadPlanService
 from app.service.optimize.optimization_job_service import OptimizationJobService
@@ -38,14 +38,19 @@ async def submit_job(
     db: Session = Depends(get_db),
     job_service: OptimizationJobService = Depends(get_optimization_job_service),
     runner: AsyncOptimizationRunner = Depends(get_async_runner),
-    current_user: dict = Depends(require_role("DISPATCHER", "ADMIN")),
+        service_claims: dict = Depends(require_optimization_service),
 ) -> ApiResponse[Any]:
     """
     Tạo và khởi chạy tác vụ tối ưu xếp hàng (bất đồng bộ).
     Trả về 202 Accepted kèm job_id.
     """
     job = job_service.create_job(trip_id=request.trip_id, config=request, db=db)
-    background_tasks.add_task(runner.run, job.job_uuid, db=db)
+
+    background_tasks.add_task(
+        runner.run,
+        job.job_uuid,
+    )
+
     return ApiResponse.ok(
         data={"job_id": job.job_uuid},
         message="Tác vụ tối ưu đã được khởi tạo",
@@ -60,7 +65,7 @@ async def get_job(
     id: str,
     db: Session = Depends(get_db),
     job_service: OptimizationJobService = Depends(get_optimization_job_service),
-    current_user: dict = Depends(require_role("DISPATCHER", "ADMIN")),
+        service_claims: dict = Depends(require_optimization_service),
 ) -> ApiResponse[OptimizationJobResponse]:
     """
     Lấy thông tin và trạng thái hiện tại của job theo ID hoặc UUID.
@@ -90,7 +95,7 @@ async def get_job_plans(
     id: str,
     db: Session = Depends(get_db),
     load_plan_service: LoadPlanService = Depends(get_load_plan_service),
-    current_user: dict = Depends(require_role("DISPATCHER", "ADMIN")),
+        service_claims: dict = Depends(require_optimization_service),
 ) -> ApiResponse[List[LoadPlanResponse]]:
     """
     Lấy danh sách các phương án xếp hàng (LoadPlan) được sinh ra từ job.

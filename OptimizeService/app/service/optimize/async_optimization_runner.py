@@ -56,7 +56,7 @@ class AsyncOptimizationRunner:
         from app.entity.trip_model import Trip, CargoPackage, TransportOrder, DeliveryStop
 
         job = self.job_service.get_job(str(job_uuid), db)
-        trip = db.query(Trip).filter(Trip.id == str(job.trip_id)).first()
+        trip = db.query(Trip).filter(Trip.id == job.trip_id).first()
         if not trip:
             raise AppException(ErrorCode.TRIP_NOT_FOUND)
 
@@ -65,24 +65,53 @@ class AsyncOptimizationRunner:
 
         vt = trip.vehicle.vehicle_type
         # Quy đổi đơn vị mm sang m nếu lớn hơn 50mm
-        inner_l = float(vt.inner_length) / 1000.0 if (vt.inner_length and vt.inner_length > 50) else float(vt.inner_length or 0)
-        inner_w = float(vt.inner_width) / 1000.0 if (vt.inner_width and vt.inner_width > 50) else float(vt.inner_width or 0)
-        inner_h = float(vt.inner_height) / 1000.0 if (vt.inner_height and vt.inner_height > 50) else float(vt.inner_height or 0)
+        # Tất cả kích thước sử dụng cm
+        inner_l = float(vt.inner_length or 0)
+        inner_w = float(vt.inner_width or 0)
+        inner_h = float(vt.inner_height or 0)
+
         payload = float(vt.max_payload_kg or 0)
+
 
         vehicle_data = VehicleData(
             inner_l=inner_l,
             inner_w=inner_w,
             inner_h=inner_h,
             max_payload_kg=payload,
-            front_axle_limit_kg=float(vt.front_axle_limit_kg) if getattr(vt, "front_axle_limit_kg", None) else None,
-            rear_axle_limit_kg=float(vt.rear_axle_limit_kg) if getattr(vt, "rear_axle_limit_kg", None) else None,
-            max_cog_offset_ratio=float(vt.max_cog_offset_ratio) if getattr(vt, "max_cog_offset_ratio", None) else 0.15,
+
+            # Cửa khoang hàng, đơn vị cm
+            door_w=(
+                float(vt.door_width)
+                if vt.door_width is not None
+                else None
+            ),
+            door_h=(
+                float(vt.door_height)
+                if vt.door_height is not None
+                else None
+            ),
+
+            front_axle_limit_kg=(
+                float(vt.front_axle_limit_kg)
+                if getattr(vt, "front_axle_limit_kg", None) is not None
+                else None
+            ),
+            rear_axle_limit_kg=(
+                float(vt.rear_axle_limit_kg)
+                if getattr(vt, "rear_axle_limit_kg", None) is not None
+                else None
+            ),
+            max_cog_offset_ratio=(
+                float(vt.max_cog_offset_ratio)
+                if getattr(vt, "max_cog_offset_ratio", None) is not None
+                else 0.15
+            ),
         )
+
 
         stops_query = (
             db.query(DeliveryStop)
-            .filter(DeliveryStop.trip_id == str(job.trip_id))
+            .filter(DeliveryStop.trip_id == job.trip_id)
             .order_by(DeliveryStop.stop_sequence)
             .all()
         )
@@ -98,7 +127,7 @@ class AsyncOptimizationRunner:
             db.query(CargoPackage, DeliveryStop)
             .join(TransportOrder, CargoPackage.order_id == TransportOrder.id)
             .join(DeliveryStop, TransportOrder.delivery_stop_id == DeliveryStop.id)
-            .filter(DeliveryStop.trip_id == str(job.trip_id))
+            .filter(DeliveryStop.trip_id == job.trip_id)
             .all()
         )
 
@@ -107,17 +136,45 @@ class AsyncOptimizationRunner:
             w = float(pkg.actual_weight_kg or 0)
             pt = pkg.package_type
             if pt:
-                l = float(pt.length) / 1000.0 if (pt.length and pt.length > 50) else float(pt.length or 0)
-                width = float(pt.width) / 1000.0 if (pt.width and pt.width > 50) else float(pt.width or 0)
-                h = float(pt.height) / 1000.0 if (pt.height and pt.height > 50) else float(pt.height or 0)
+                l = float(pt.length or 0)
+                width = float(pt.width or 0)
+                h = float(pt.height or 0)
                 fragile = getattr(pt, "is_fragile", None) or getattr(pt, "fragile", False) or False
-                rot_allowed = getattr(pt, "rotation_allowed", True) is not False
+
+
+                # HC-03: Đọc quyền xoay thực tế từ PackageType.
+                # rotation_allowed là công tắc tổng.
+                rotation_enabled = pt.rotation_allowed is True
+
+                allow_x = pt.allow_rotate_x is True
+                allow_y = pt.allow_rotate_y is True
+                allow_z = pt.allow_rotate_z is True
+
+                # Quy ước đang được solver hỗ trợ:
+                # 0 = (length, width, height)
+                # 1 = (width, length, height)
+                #
+                # Hướng 1 tương ứng với xoay 90° quanh Z.
+                allowed_rotations = [0]
+
+                if rotation_enabled and allow_z:
+                    allowed_rotations.append(1)
+
+                rot_allowed = rotation_enabled
+
+
                 max_stack = getattr(pt, "max_stack_weight_kg", None)
+
             else:
                 l, width, h = 0.0, 0.0, 0.0
                 fragile = False
-                rot_allowed = True
+
+                # Không tự cho phép xoay khi thiếu PackageType
+                allowed_rotations = [0]
+                rot_allowed = False
+
                 max_stack = None
+
 
             package_items.append(
                 PackageData(
@@ -127,9 +184,19 @@ class AsyncOptimizationRunner:
                     h=h,
                     weight=w,
                     stop_index=stop.stop_sequence or 1,
+
                     fragile=bool(fragile),
+
+                    # HC-03: Danh sách hướng xoay hợp lệ
+                    allowed_rotations=allowed_rotations,
                     rotation_allowed=bool(rot_allowed),
-                    max_stack_weight_kg=float(max_stack) if max_stack else None,
+
+                    max_stack_weight_kg=(
+                        float(max_stack)
+                        if max_stack is not None
+                        else None
+                    ),
+
                 )
             )
 
@@ -202,6 +269,9 @@ class AsyncOptimizationRunner:
 
         except Exception as exc:
             logger.error(f"Error executing async optimization job {job_uuid_str}: {exc}")
+            # Khôi phục Session sau lỗi SQLAlchemy/PostgreSQL.
+            # Bắt buộc trước khi truy vấn hoặc cập nhật Job tiếp theo.
+            session.rollback()
             # Hoàn trả credit nếu job bị FAILED (fix B4 PRD)
             if is_credit_deducted and job and job.company_id and self.credit_client is not None:
                 try:

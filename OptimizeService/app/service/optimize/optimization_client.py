@@ -17,7 +17,9 @@ from app.service.auth.keycloak_token_provider import KeycloakTokenProvider
 
 from app.service.optimize.stop_zone_calculator import StopZoneCalculator
 from app.service.optimize.constraint_engine import ConstraintEngine
-
+from app.service.optimize.unload_feasibility_validator import (
+    UnloadFeasibilityValidator,
+)
 
 class OptimizationClient:
     """
@@ -34,7 +36,9 @@ class OptimizationClient:
         timeout_sec: Optional[int] = None,
         http_client: Optional[httpx.AsyncClient] = None,
     ):
-        self.token_provider = token_provider or KeycloakTokenProvider()
+        # self.token_provider = token_provider or KeycloakTokenProvider()
+# Không khởi tạo Keycloak khi chỉ chạy solver nội bộ.
+        self.token_provider = token_provider
         self.engine_url = engine_url or settings.OPTIMIZATION_ENGINE_URL
         self.timeout_sec = timeout_sec or settings.OPTIMIZATION_ENGINE_TIMEOUT_SEC
         self.http_client = http_client
@@ -51,9 +55,13 @@ class OptimizationClient:
 
     async def _solve_http(self, problem: ProblemRequest) -> EngineOptimizationResponse:
         headers = {}
-        if self.token_provider:
-            token = await self.token_provider.get_service_token()
-            headers["Authorization"] = f"Bearer {token}"
+
+# Chỉ tạo token provider khi thực sự gọi HTTP.
+        if self.token_provider is None:
+            self.token_provider = KeycloakTokenProvider()
+
+        token = await self.token_provider.get_service_token()
+        headers["Authorization"] = f"Bearer {token}"
 
         url = f"{self.engine_url.rstrip('/')}/api/v1/optimization/jobs"
 
@@ -136,13 +144,20 @@ class OptimizationClient:
         sorted_zones = sorted(zone_calc_res.zones, key=lambda z: z.zone_start_x)
 
         # Context cho ConstraintEngine
+
         context = {
             "vehicle": vt,
             "existing_placements": placements,
             "packages_map": packages_map,
+
+            # HC-11/HC-12 chưa hoàn thiện.
+            # Không kiểm tra COG/Axle tại từng placement.
+            "check_cog": False,
+            "check_axle": False,
         }
 
-        # 2. Xếp hàng theo từng zone
+
+# 2. Xếp hàng theo từng zone
         for zone in sorted_zones:
             zone_pkgs = stops_dict.get(zone.stop_id, [])
             # Sắp xếp kiện hàng trong zone: giảm dần theo thể tích
@@ -160,24 +175,56 @@ class OptimizationClient:
                     ))
                     continue
 
-                # Kiểm tra kích thước cơ bản xem có thể chứa trong xe không
-                is_rot_allowed = getattr(pkg, "rotation_allowed", True) is not False
-                can_fit_unrotated = (pkg.l <= vt.inner_l and pkg.w <= vt.inner_w and pkg.h <= vt.inner_h)
-                can_fit_rotated = (pkg.w <= vt.inner_l and pkg.l <= vt.inner_w and pkg.h <= vt.inner_h)
 
-                if not can_fit_unrotated and not (can_fit_rotated and is_rot_allowed):
-                    violation = "ROTATION_NOT_ALLOWED" if (can_fit_rotated and not is_rot_allowed) else "DIMENSIONS_EXCEEDED"
-                    unplaced.append(UnplacedData(
-                        package_id=pkg.id,
-                        reason="CONSTRAINT_VIOLATED" if violation == "ROTATION_NOT_ALLOWED" else "DOES_NOT_FIT_DIMENSIONS",
-                        violated_constraints=[violation],
-                    ))
+                # HC-03: Chỉ sinh orientation được PackageData cho phép.
+                #
+                # Quy ước hiện tại:
+                # 0 = (length, width, height)
+                # 1 = (width, length, height)
+                #
+                # Chưa mở rộng 2-5 cho đến khi thống nhất
+                # quy ước xoay với 3D Viewer.
+
+                rotation_enabled = pkg.rotation_allowed is True
+
+                allowed_rotations = {
+                    int(rotation)
+                    for rotation in (pkg.allowed_rotations or [])
+                }
+
+                # Công tắc tổng luôn có độ ưu tiên cao nhất.
+                if not rotation_enabled:
+                    allowed_rotations = {0}
+
+                # Chỉ hỗ trợ mã 0 và 1 ở giai đoạn này.
+                orientation_candidates = [
+                    (float(pkg.l), float(pkg.w), float(pkg.h), 0),
+                    (float(pkg.w), float(pkg.l), float(pkg.h), 1),
+                ]
+
+                orientations = [
+                    orientation
+                    for orientation in orientation_candidates
+                    if orientation[3] in allowed_rotations
+                       and (
+                               orientation[0] <= vt.inner_l
+                               and orientation[1] <= vt.inner_w
+                               and orientation[2] <= vt.inner_h
+                       )
+                ]
+
+                if not orientations:
+                    unplaced.append(
+                        UnplacedData(
+                            package_id=pkg.id,
+                            reason="CONSTRAINT_VIOLATED",
+                            violated_constraints=[
+                                "ORIENTATION_NOT_ALLOWED"
+                            ],
+                        )
+                    )
                     continue
 
-                # Xác định các hướng xoay cho phép
-                orientations = [(pkg.l, pkg.w, pkg.h, 0)]
-                if is_rot_allowed and (pkg.l != pkg.w):
-                    orientations.append((pkg.w, pkg.l, pkg.h, 1))
 
                 # Thử tìm vị trí trong zone hiện tại
                 chosen_placement = None
@@ -328,11 +375,66 @@ class OptimizationClient:
             rehandling_count=rehandling_count,
         )
 
+
+        # HC-09: Final Unload Feasibility Validation
+        # Kiểm tra toàn bộ LoadPlan sau khi xếp.
+
+        unload_result = UnloadFeasibilityValidator.validate(
+            placements=placements,
+            packages_map=packages_map,
+            vehicle=vt,
+        )
+
+        if not unload_result.passed:
+            # Không trả về một phương án xếp hàng
+            # có trình tự dỡ không hợp lệ.
+            #
+            # Đây là cơ chế fail-safe tạm thời:
+            # từ chối toàn bộ phương án,
+            # chưa thực hiện tìm lại phương án khác.
+
+            rejected_ids = {
+                str(p.package_id)
+                for p in placements
+            }
+
+            for package_id in rejected_ids:
+                unplaced.append(
+                    UnplacedData(
+                        package_id=package_id,
+                        reason="CONSTRAINT_VIOLATED",
+                        violated_constraints=[
+                            unload_result.violation_code
+                            or "MULTI_DROP_LIFO_VIOLATION"
+                        ],
+                    )
+                )
+
+            # Xóa placements đã bị từ chối.
+            placements = []
+
+            # Đồng bộ lại metrics với kết quả thực tế.
+            metrics = MetricsData(
+                volume_utilization=0.0,
+                weight_utilization=0.0,
+                packed_count=0,
+                computation_ms=int(
+                    (time.time() - start_time) * 1000
+                ),
+                cog_x=None,
+                cog_y=None,
+                cog_z=None,
+                front_axle_load=None,
+                rear_axle_load=None,
+                rehandling_count=0,
+            )
+
         return EngineOptimizationResponse(
             placements=placements,
             unplaced=unplaced,
             metrics=metrics,
         )
+
 
     @staticmethod
     def _check_overlap(

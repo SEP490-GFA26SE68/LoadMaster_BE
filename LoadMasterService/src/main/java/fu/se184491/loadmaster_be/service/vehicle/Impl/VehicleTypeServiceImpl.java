@@ -44,6 +44,39 @@ public class VehicleTypeServiceImpl implements VehicleTypeService {
         User currentUser =
                 currentUserService.getCurrentUser();
 
+
+        // Kiểm tra kích thước cửa khoang hàng (cm)
+        Integer doorWidth = request.doorWidth();
+        Integer doorHeight = request.doorHeight();
+
+        // Phải cung cấp cả hai thông số hoặc không cung cấp thông số nào
+        if ((doorWidth == null) != (doorHeight == null)) {
+            throw new AppException(
+                    ErrorCode.VEHICLE_WIDTH_HIGH
+            );
+        }
+
+        if (doorWidth != null) {
+            if (doorWidth <= 0 || doorHeight <= 0) {
+                throw new AppException(
+                        ErrorCode.VEHICLE_SIZE
+                );
+            }
+
+            if (doorWidth > request.innerWidth()) {
+                throw new AppException(
+                        ErrorCode.WIDTH_RATIO
+                );
+            }
+
+            if (doorHeight > request.innerHeight()) {
+                throw new AppException(
+                        ErrorCode.HIGH_RATIO
+                );
+            }
+        }
+
+
         if (currentUser.getCompany() == null) {
             throw new AppException(
                     ErrorCode.COMPANY_REQUIRED
@@ -54,9 +87,13 @@ public class VehicleTypeServiceImpl implements VehicleTypeService {
                 VehicleType.builder()
                         .company(currentUser.getCompany())
                         .name(request.name())
+
                         .innerLength(request.innerLength())
                         .innerWidth(request.innerWidth())
                         .innerHeight(request.innerHeight())
+                        .doorWidth(request.doorWidth())
+                        .doorHeight(request.doorHeight())
+
                         .maxPayloadKg(request.maxPayloadKg())
                         .frontAxleLimitKg(
                                 request.frontAxleLimitKg()
@@ -199,9 +236,13 @@ public class VehicleTypeServiceImpl implements VehicleTypeService {
         return VehicleTypeResponse.builder()
                 .id(vehicleType.getId())
                 .name(vehicleType.getName())
+
                 .innerLength(vehicleType.getInnerLength())
                 .innerWidth(vehicleType.getInnerWidth())
                 .innerHeight(vehicleType.getInnerHeight())
+                .doorWidth(vehicleType.getDoorWidth())
+                .doorHeight(vehicleType.getDoorHeight())
+
                 .maxPayloadKg(vehicleType.getMaxPayloadKg())
                 .frontAxleLimitKg(vehicleType.getFrontAxleLimitKg())
                 .rearAxleLimitKg(vehicleType.getRearAxleLimitKg())

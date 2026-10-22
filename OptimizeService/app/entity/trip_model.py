@@ -20,9 +20,9 @@ class VehicleType(Base):
     inner_length = Column(Integer, nullable=True)  # mm or m
     inner_width = Column(Integer, nullable=True)
     inner_height = Column(Integer, nullable=True)
-    max_payload_kg = Column(Numeric(10, 2), nullable=True)
     door_width = Column(Integer, nullable=True)
     door_height = Column(Integer, nullable=True)
+    max_payload_kg = Column(Numeric(10, 2), nullable=True)
 
     vehicles = relationship("Vehicle", back_populates="vehicle_type")
 
@@ -42,7 +42,7 @@ class Vehicle(Base):
 class Trip(Base):
     __tablename__ = "trips"
 
-    id = Column(String(64), primary_key=True)  # supports UUID or string
+    id = pk_id()  # supports UUID or string
     vehicle_id = fk_id("vehicles.id", nullable=True)
     trip_code = Column(String(50), nullable=True)
     status = Column(String(50), nullable=True)
@@ -56,13 +56,12 @@ class DeliveryStop(Base):
     __tablename__ = "delivery_stops"
 
     id = pk_id()
-    trip_id = Column(String(64), ForeignKey("trips.id"), nullable=False)
+    trip_id = fk_id("trips.id", nullable=False)
     stop_sequence = Column(Integer, nullable=False)
     stop_name = Column(String(150), nullable=True)
     latitude = Column(Numeric(10, 6), nullable=True)
     longitude = Column(Numeric(10, 6), nullable=True)
     planned_arrival = Column(DateTime, nullable=True)
-    deadline = Column(DateTime, nullable=True)
 
     trip = relationship("Trip", back_populates="delivery_stops")
     orders = relationship("TransportOrder", back_populates="delivery_stop")
@@ -89,10 +88,17 @@ class PackageType(Base):
     width = Column(Integer, nullable=True)
     height = Column(Integer, nullable=True)
     max_stack_weight_kg = Column(Numeric(10, 2), nullable=True)
+
+    # HC-03: Công tắc tổng cho phép xoay kiện hàng
+    rotation_allowed = Column(Boolean, default=True)
+
+    # HC-03: Quyền xoay theo từng trục
     allow_rotate_x = Column(Boolean, default=True)
     allow_rotate_y = Column(Boolean, default=True)
     allow_rotate_z = Column(Boolean, default=True)
+
     is_fragile = Column(Boolean, default=False)
+
 
     packages = relationship("CargoPackage", back_populates="package_type")
 
