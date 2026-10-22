@@ -83,7 +83,7 @@ class PackageImportControllerTest {
                 1, 0, List.of(error), Collections.emptyList()
         );
 
-        when(packageImportService.confirm(any(), any(), any()))
+        when(packageImportService.confirm(any(), any(), any(), any()))
                 .thenThrow(new ImportValidationException(previewResult));
 
         // When & Then

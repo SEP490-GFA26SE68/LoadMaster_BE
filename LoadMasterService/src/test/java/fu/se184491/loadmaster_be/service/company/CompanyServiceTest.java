@@ -27,11 +27,24 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
+import fu.se184491.loadmaster_be.repository.account.UserRepository;
+import fu.se184491.loadmaster_be.repository.billing.CompanySubscriptionRepository;
+import fu.se184491.loadmaster_be.repository.billing.CreditAccountRepository;
+
 @ExtendWith(MockitoExtension.class)
 public class CompanyServiceTest {
 
     @Mock
     private CompanyRepository companyRepository;
+
+    @Mock
+    private CompanySubscriptionRepository companySubscriptionRepository;
+
+    @Mock
+    private UserRepository userRepository;
+
+    @Mock
+    private CreditAccountRepository creditAccountRepository;
 
     @InjectMocks
     private CompanyServiceImpl companyService;
@@ -237,5 +250,58 @@ public class CompanyServiceTest {
 
         AppException exNull = assertThrows(AppException.class, () -> companyService.updateCompanyProfile(null, updateReq));
         assertEquals(ErrorCode.COMPANY_NOT_FOUND, exNull.getErrorCode());
+    }
+
+    @Test
+    @DisplayName("getAllCompanies with search and enrichment should return populated subscription and user info")
+    void getAllCompanies_withSearchAndEnrichment_success() {
+        when(companyRepository.findAll(any(org.springframework.data.jpa.domain.Specification.class), any(Pageable.class)))
+                .thenReturn(new PageImpl<>(List.of(company)));
+
+        fu.se184491.loadmaster_be.entity.billing.SubscriptionPlan plan = fu.se184491.loadmaster_be.entity.billing.SubscriptionPlan.builder()
+                .id(2L)
+                .name("Gói Pro")
+                .planCode("PLAN-PRO")
+                .tier(fu.se184491.loadmaster_be.constant.billing.SubscriptionTier.PRO)
+                .build();
+
+        fu.se184491.loadmaster_be.entity.billing.CompanySubscription subscription = fu.se184491.loadmaster_be.entity.billing.CompanySubscription.builder()
+                .company(company)
+                .plan(plan)
+                .status(fu.se184491.loadmaster_be.constant.billing.SubscriptionStatus.ACTIVE)
+                .build();
+
+        when(companySubscriptionRepository.findByCompanyId(1L)).thenReturn(Optional.of(subscription));
+
+        fu.se184491.loadmaster_be.entity.account.User adminUser = fu.se184491.loadmaster_be.entity.account.User.builder()
+                .id(10L)
+                .fullName("Nguyễn Quản Trị")
+                .email("admin@logistics.vn")
+                .phoneNumber("0912345678")
+                .userRoleType(fu.se184491.loadmaster_be.constant.account.UserRole.ADMIN)
+                .build();
+
+        when(userRepository.findByCompanyId(1L)).thenReturn(List.of(adminUser));
+
+        fu.se184491.loadmaster_be.entity.billing.CreditAccount creditAccount = fu.se184491.loadmaster_be.entity.billing.CreditAccount.builder()
+                .company(company)
+                .balance(500)
+                .build();
+        when(creditAccountRepository.findByCompanyId(1L)).thenReturn(Optional.of(creditAccount));
+
+        Page<CompanyResponse> result = companyService.getAllCompanies("logistics", Pageable.unpaged());
+
+        assertNotNull(result);
+        assertEquals(1, result.getContent().size());
+        CompanyResponse res = result.getContent().get(0);
+        assertEquals("Gói Pro", res.getPlanName());
+        assertEquals("PRO", res.getPlanTier());
+        assertEquals("ACTIVE", res.getSubscriptionStatus());
+        assertEquals(1, res.getUserCount());
+        assertEquals(10L, res.getAdminId());
+        assertEquals("Nguyễn Quản Trị", res.getAdminName());
+        assertEquals("admin@logistics.vn", res.getAdminEmail());
+        assertEquals("0912345678", res.getAdminPhone());
+        assertEquals(500, res.getCreditBalance());
     }
 }

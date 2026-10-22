@@ -226,7 +226,10 @@ public enum ErrorCode {
     // -------------------------------------------------------------------------
     CONTACT_REQUEST_NOT_FOUND("Không tìm thấy yêu cầu liên hệ", HttpStatus.NOT_FOUND),
     CONTRACT_NOT_FOUND("Không tìm thấy hợp đồng", HttpStatus.NOT_FOUND),
-    INVOICE_NOT_FOUND("Không tìm thấy hóa đơn", HttpStatus.NOT_FOUND);
+    INVOICE_NOT_FOUND("Không tìm thấy hóa đơn", HttpStatus.NOT_FOUND),
+    TRIAL_REQUEST_NOT_FOUND("Không tìm thấy đơn yêu cầu tạo tài khoản dùng thử", HttpStatus.NOT_FOUND),
+    TRIAL_REQUEST_ALREADY_PROCESSED("Đơn yêu cầu tạo tài khoản dùng thử đã được xử lý trước đó", HttpStatus.BAD_REQUEST),
+    CANNOT_DIRECTLY_APPROVE_DEMO_REQUEST("Yêu cầu dùng thử phải được chuyển sang Quản lý nền tảng duyệt tạo tài khoản", HttpStatus.BAD_REQUEST);
 
     private final String message;
     private final HttpStatus httpStatus;

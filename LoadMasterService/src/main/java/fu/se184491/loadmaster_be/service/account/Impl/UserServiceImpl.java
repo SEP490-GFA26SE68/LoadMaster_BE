@@ -43,6 +43,12 @@ public class UserServiceImpl implements UserService {
     private final CurrentUserService currentUserService;
     private final TemporaryPasswordGenerator temporaryPasswordGenerator;
 
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private fu.se184491.loadmaster_be.repository.billing.CompanySubscriptionRepository companySubscriptionRepository;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private fu.se184491.loadmaster_be.repository.billing.CreditAccountRepository creditAccountRepository;
+
     public UserProfileResponse getUserProfile(Jwt jwt) {
 
         String keycloakId = jwt.getSubject();
@@ -414,6 +420,19 @@ public class UserServiceImpl implements UserService {
             targetUser.setUserRoleType(request.role());
         }
 
+        if (request.companyId() != null) {
+            UserRole callerRole = currentUser.getUserRoleType();
+            if (callerRole != UserRole.SYSTEM_MANAGER && callerRole != UserRole.SYSTEM_ADMIN) {
+                throw new AppException(
+                        ErrorCode.UNAUTHORIZED,
+                        "Chỉ tài khoản quản lý hệ thống / quản lý nền tảng mới được phép thay đổi công ty của người dùng"
+                );
+            }
+            fu.se184491.loadmaster_be.entity.company.Company targetCompany = companyRepository.findById(request.companyId())
+                    .orElseThrow(() -> new AppException(ErrorCode.COMPANY_NOT_FOUND));
+            targetUser.setCompany(targetCompany);
+        }
+
         User saved = userRepository.save(targetUser);
         return toUserListItemResponse(saved);
     }
@@ -498,6 +517,44 @@ public class UserServiceImpl implements UserService {
     private UserListItemResponse toUserListItemResponse(
             User user
     ) {
+        String companyCode = null;
+        String taxCode = null;
+        String planName = null;
+        String planTier = null;
+        String planCode = null;
+        String subscriptionStatus = null;
+        java.time.LocalDateTime subscriptionExpiresAt = null;
+        Integer creditBalance = null;
+
+        if (user.getCompany() != null) {
+            companyCode = user.getCompany().getCompanyCode();
+            taxCode = user.getCompany().getTaxCode();
+            Long companyId = user.getCompany().getId();
+
+            if (companySubscriptionRepository != null && companyId != null) {
+                var subOpt = companySubscriptionRepository.findByCompanyId(companyId);
+                if (subOpt.isPresent()) {
+                    var sub = subOpt.get();
+                    if (sub.getPlan() != null) {
+                        planName = sub.getPlan().getName();
+                        planCode = sub.getPlan().getPlanCode();
+                        planTier = sub.getPlan().getTier() != null ? sub.getPlan().getTier().name() : null;
+                    }
+                    if (sub.getStatus() != null) {
+                        subscriptionStatus = sub.getStatus().name();
+                    }
+                    subscriptionExpiresAt = sub.getExpiresAt();
+                }
+            }
+
+            if (creditAccountRepository != null && companyId != null) {
+                var creditOpt = creditAccountRepository.findByCompanyId(companyId);
+                if (creditOpt.isPresent()) {
+                    creditBalance = creditOpt.get().getBalance();
+                }
+            }
+        }
+
         return new UserListItemResponse(
                 user.getId(),
                 user.getKeycloakId(),
@@ -511,7 +568,16 @@ public class UserServiceImpl implements UserService {
                         : null,
                 user.getCompany() != null
                         ? user.getCompany().getCompanyName()
-                        : null
+                        : null,
+                companyCode,
+                taxCode,
+                planName,
+                planTier,
+                planCode,
+                subscriptionStatus,
+                subscriptionExpiresAt,
+                creditBalance,
+                user.getCreatedAt()
         );
     }
 }

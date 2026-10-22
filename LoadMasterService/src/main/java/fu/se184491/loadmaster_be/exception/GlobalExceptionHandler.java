@@ -170,8 +170,19 @@ public class GlobalExceptionHandler {
             DataIntegrityViolationException ex,
             HttpServletRequest request) {
 
+        String causeMsg = ex.getMostSpecificCause() != null ? ex.getMostSpecificCause().getMessage() : ex.getMessage();
         log.warn("Database constraint violation at {}: {}",
-                request.getRequestURI(), ex.getMessage());
+                request.getRequestURI(), causeMsg);
+
+        if (causeMsg != null && causeMsg.toLowerCase().contains("value too long")) {
+            return ResponseEntity
+                    .status(HttpStatus.BAD_REQUEST)
+                    .body(ApiResponse.<Void>builder()
+                            .success(false)
+                            .message("Dữ liệu đầu vào vượt quá độ dài tối đa cho phép")
+                            .data(null)
+                            .build());
+        }
 
         Throwable cause = ex;
 

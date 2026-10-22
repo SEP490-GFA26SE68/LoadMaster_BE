@@ -31,21 +31,24 @@ import java.util.Optional;
 @Slf4j
 public class CreditServiceImpl implements CreditService {
 
+    public static final int INITIAL_OPTIMIZATION_CREDIT_COST = 2;
+    public static final int RERUN_OPTIMIZATION_CREDIT_COST = 1;
+
     private final CreditAccountRepository creditAccountRepository;
     private final CreditTransactionRepository creditTransactionRepository;
     private final CompanySubscriptionRepository companySubscriptionRepository;
     private final CompanyRepository companyRepository;
 
     @Override
-    @Transactional(readOnly = true)
+    @Transactional
     public CreditBalanceResponse getBalance(Long companyId) {
         CreditAccount account = getOrCreateAccount(companyId);
-        boolean isUnlimited = isUnlimitedPlan(companyId);
+        resetBalanceIfSubscriptionInactive(companyId, account);
 
         return CreditBalanceResponse.builder()
                 .companyId(companyId)
                 .balance(account.getBalance())
-                .isUnlimited(isUnlimited)
+                .isUnlimited(false)
                 .build();
     }
 
@@ -60,32 +63,38 @@ public class CreditServiceImpl implements CreditService {
     @Override
     @Transactional
     public void deductCredit(Long companyId, String reference) {
-        if (isUnlimitedPlan(companyId)) {
-            log.info("Company {} has ULTIMATE plan. Skipping credit deduction for reference {}", companyId, reference);
-            return;
-        }
+        deductCredit(companyId, reference, INITIAL_OPTIMIZATION_CREDIT_COST);
+    }
+
+    @Override
+    @Transactional
+    public void deductCredit(Long companyId, String reference, int amount) {
+        int creditsToDeduct = amount > 0 ? amount : INITIAL_OPTIMIZATION_CREDIT_COST;
 
         CreditAccount account = creditAccountRepository.findByCompanyIdForUpdate(companyId)
                 .orElseGet(() -> getOrCreateAccount(companyId));
 
-        if (account.getBalance() <= 0) {
-            log.warn("Company {} has insufficient credits (balance: {}) for reference {}", companyId, account.getBalance(), reference);
+        resetBalanceIfSubscriptionInactive(companyId, account);
+
+        if (account.getBalance() < creditsToDeduct) {
+            log.warn("Company {} has insufficient credits (balance: {}, required: {}) for reference {}",
+                    companyId, account.getBalance(), creditsToDeduct, reference);
             throw new InsufficientCreditsException();
         }
 
-        account.setBalance(account.getBalance() - 1);
+        account.setBalance(account.getBalance() - creditsToDeduct);
         creditAccountRepository.save(account);
 
         CreditTransaction tx = CreditTransaction.builder()
                 .creditAccount(account)
-                .amount(-1)
+                .amount(-creditsToDeduct)
                 .type(CreditTransactionType.USAGE)
                 .reference(reference)
                 .refunded(false)
                 .createdAt(LocalDateTime.now())
                 .build();
         creditTransactionRepository.save(tx);
-        log.info("Deducted 1 credit for company {}. New balance: {}", companyId, account.getBalance());
+        log.info("Deducted {} credit(s) for company {}. New balance: {}", creditsToDeduct, companyId, account.getBalance());
     }
 
     @Override
@@ -118,21 +127,26 @@ public class CreditServiceImpl implements CreditService {
             return;
         }
 
+        int refundAmount = originalUsage.getAmount() != null ? Math.abs(originalUsage.getAmount()) : 1;
+        if (refundAmount <= 0) {
+            refundAmount = 1;
+        }
+
         CreditAccount account = creditAccountRepository.findByCompanyIdForUpdate(targetCompanyId)
                 .orElseGet(() -> getOrCreateAccount(targetCompanyId));
-        account.setBalance(account.getBalance() + 1);
+        account.setBalance(account.getBalance() + refundAmount);
         creditAccountRepository.save(account);
 
         CreditTransaction refundTx = CreditTransaction.builder()
                 .creditAccount(account)
-                .amount(1)
+                .amount(refundAmount)
                 .type(CreditTransactionType.REFUND)
                 .reference(reference)
                 .refunded(false)
                 .createdAt(LocalDateTime.now())
                 .build();
         creditTransactionRepository.save(refundTx);
-        log.info("Refunded 1 credit for company {} on reference {}. New balance: {}", companyId, reference, account.getBalance());
+        log.info("Refunded {} credit(s) for company {} on reference {}. New balance: {}", refundAmount, companyId, reference, account.getBalance());
     }
 
     @Override
@@ -183,6 +197,17 @@ public class CreditServiceImpl implements CreditService {
                             .build();
                     return creditAccountRepository.save(newAccount);
                 });
+    }
+
+    private void resetBalanceIfSubscriptionInactive(Long companyId, CreditAccount account) {
+        boolean inactive = companySubscriptionRepository.findByCompanyId(companyId)
+                .map(sub -> sub.getStatus() == SubscriptionStatus.EXPIRED || sub.getStatus() == SubscriptionStatus.CANCELLED)
+                .orElse(false);
+        if (inactive && account.getBalance() != null && account.getBalance() > 0) {
+            log.info("Company {} subscription is EXPIRED/CANCELLED. Resetting credit balance from {} to 0.", companyId, account.getBalance());
+            account.setBalance(0);
+            creditAccountRepository.save(account);
+        }
     }
 
     private boolean isUnlimitedPlan(Long companyId) {

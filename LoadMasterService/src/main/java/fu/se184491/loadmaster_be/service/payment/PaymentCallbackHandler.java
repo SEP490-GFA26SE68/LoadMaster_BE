@@ -31,7 +31,9 @@ public class PaymentCallbackHandler {
         Map<String, String> response = new HashMap<>();
 
         String txnRef = params.get("vnp_TxnRef");
-        boolean isMock = txnRef != null && txnRef.startsWith("MOCK_");
+        boolean isMock = (txnRef != null && txnRef.startsWith("MOCK_"))
+                || "true".equalsIgnoreCase(params.get("vnp_Mock"))
+                || vnPayClient.isMock();
 
         // 1. Verify Checksum (skip for mock dev transactions)
         if (!isMock) {

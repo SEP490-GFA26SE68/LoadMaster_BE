@@ -8,13 +8,13 @@ import java.security.SecureRandom;
 @Component
 public class TemporaryPasswordGenerator {
 
-    @Value("${app.password.generator.upper}")
+    @Value("${app.password.generator.upper:ABCDEFGHIJKLMNOPQRSTUVWXYZ}")
     private String upper;
 
-    @Value("${app.password.generator.lower}")
+    @Value("${app.password.generator.lower:abcdefghijklmnopqrstuvwxyz}")
     private String lower;
 
-    @Value("${app.password.generator.digits}")
+    @Value("${app.password.generator.digits:0123456789}")
     private String digits;
 
     private static final String SPECIAL =

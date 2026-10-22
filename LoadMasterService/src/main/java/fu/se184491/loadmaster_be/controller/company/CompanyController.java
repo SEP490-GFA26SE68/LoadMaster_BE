@@ -45,9 +45,12 @@ public class CompanyController {
     }
 
     @GetMapping
-    @PreAuthorize("hasAnyRole('SYSTEM_MANAGER', 'SYSTEM_ADMIN') or hasAuthority('SYSTEM_MANAGER')")
-    public ResponseEntity<Page<CompanyResponse>> getAllCompanies(Pageable pageable) {
-        return ResponseEntity.ok(companyService.getAllCompanies(pageable));
+    @PreAuthorize("hasAnyRole('SYSTEM_SUPPORTER', 'SYSTEM_MANAGER', 'SYSTEM_ADMIN') or hasAnyAuthority('SYSTEM_SUPPORTER', 'SYSTEM_MANAGER', 'SYSTEM_ADMIN')")
+    public ResponseEntity<Page<CompanyResponse>> getAllCompanies(
+            @RequestParam(required = false) String search,
+            Pageable pageable
+    ) {
+        return ResponseEntity.ok(companyService.getAllCompanies(search, pageable));
     }
 
     @PatchMapping("/{id}/status")
@@ -58,7 +61,7 @@ public class CompanyController {
         return ResponseEntity.ok(companyService.changeCompanyStatus(id, status));
     }
 
-    @PreAuthorize("hasAuthority('USERS_CREATE')")
+    @PreAuthorize("hasAuthority('USERS_CREATE') or hasAnyRole('SYSTEM_MANAGER', 'SYSTEM_SUPPORTER', 'SYSTEM_ADMIN') or hasAnyAuthority('SYSTEM_MANAGER', 'SYSTEM_SUPPORTER', 'SYSTEM_ADMIN')")
     @GetMapping("/options")
     public ApiResponse<List<CompanyOptionResponse>> getCompanies() {
         return ApiResponse.success(

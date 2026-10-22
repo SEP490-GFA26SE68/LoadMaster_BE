@@ -144,7 +144,61 @@ class SupportTicketControllerTest {
     }
 
     @Test
-    @DisplayName("PATCH /api/support-tickets/{id} - Denies Company ADMIN with 403 Forbidden")
+    @DisplayName("PATCH /api/support-tickets/{id} - Allows SYSTEM_MANAGER to update status and resolutionNote")
+    @WithMockUser(roles = "SYSTEM_MANAGER")
+    void updateTicket_whenSystemManager_returnsOk() throws Exception {
+        UpdateSupportTicketRequest request = new UpdateSupportTicketRequest(
+                TicketStatus.IN_PROGRESS,
+                3L,
+                "System Manager đang kiểm tra gói cước"
+        );
+        SupportTicketResponse updatedResponse = SupportTicketResponse.builder()
+                .id(1L)
+                .ticketCode("TCK-20261014-0001")
+                .status(TicketStatus.IN_PROGRESS)
+                .assignedToId(3L)
+                .resolutionNote("System Manager đang kiểm tra gói cước")
+                .build();
+
+        when(supportTicketService.updateTicket(eq(1L), any(UpdateSupportTicketRequest.class)))
+                .thenReturn(updatedResponse);
+
+        mockMvc.perform(patch("/api/support-tickets/1")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.status").value("IN_PROGRESS"));
+    }
+
+    @Test
+    @DisplayName("PATCH /api/support-tickets/{id} - Allows Company ADMIN to append reply note when status and assignedToId are null")
+    @WithMockUser(roles = "ADMIN")
+    void updateTicket_whenCompanyAdminRepliesOnly_returnsOk() throws Exception {
+        UpdateSupportTicketRequest request = new UpdateSupportTicketRequest(
+                null,
+                null,
+                "Phản hồi thêm từ Company Admin"
+        );
+        SupportTicketResponse updatedResponse = SupportTicketResponse.builder()
+                .id(1L)
+                .ticketCode("TCK-20261014-0001")
+                .status(TicketStatus.OPEN)
+                .resolutionNote("Phản hồi thêm từ Company Admin")
+                .build();
+
+        when(supportTicketService.updateTicket(eq(1L), any(UpdateSupportTicketRequest.class)))
+                .thenReturn(updatedResponse);
+
+        mockMvc.perform(patch("/api/support-tickets/1")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true));
+    }
+
+    @Test
+    @DisplayName("PATCH /api/support-tickets/{id} - Denies Company ADMIN changing status with 403 Forbidden")
     @WithMockUser(roles = "ADMIN")
     void updateTicket_whenCompanyAdmin_returnsForbidden() throws Exception {
         UpdateSupportTicketRequest request = new UpdateSupportTicketRequest(

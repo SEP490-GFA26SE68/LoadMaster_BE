@@ -65,7 +65,6 @@ public class PackageControllerTest {
         request = PackageRequest.builder()
                 .orderId(10L)
                 .packageTypeId(20L)
-                .trackingBarcode("PKG-123456")
                 .actualLength(300)
                 .actualWeightKg(new BigDecimal("15.50"))
                 .isPinned(false)
@@ -103,7 +102,6 @@ public class PackageControllerTest {
     @WithMockUser(authorities = "PACKAGE_MANAGE")
     void createPackage_WithoutOrderId_Success() throws Exception {
         PackageRequest standaloneRequest = PackageRequest.builder()
-                .trackingBarcode("PKG-NO-ORDER")
                 .actualLength(300)
                 .actualWeightKg(new BigDecimal("15.50"))
                 .build();

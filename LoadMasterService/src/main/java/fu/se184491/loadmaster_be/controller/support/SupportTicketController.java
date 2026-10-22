@@ -52,7 +52,7 @@ public class SupportTicketController {
     }
 
     @PatchMapping("/{id}")
-    @PreAuthorize("hasAnyRole('SYSTEM_SUPPORTER', 'SYSTEM_MANAGER', 'SYSTEM_ADMIN') or hasAnyAuthority('SYSTEM_SUPPORTER', 'SYSTEM_MANAGER', 'SYSTEM_ADMIN')")
+    @PreAuthorize("hasAnyRole('SYSTEM_SUPPORTER', 'SYSTEM_MANAGER', 'SYSTEM_ADMIN') or hasAnyAuthority('SYSTEM_SUPPORTER', 'SYSTEM_MANAGER', 'SYSTEM_ADMIN') or (#request.status() == null and #request.assignedToId() == null)")
     public ApiResponse<SupportTicketResponse> updateTicket(
             @PathVariable Long id,
             @Valid @RequestBody UpdateSupportTicketRequest request
