@@ -1,5 +1,5 @@
 from __future__ import annotations
-
+import math
 from typing import Optional, List, Dict, Any, Union
 from app.dto.optimization.engine.problem_request import VehicleData, PackageData
 from app.dto.optimization.engine.engine_response import PlacementData
@@ -700,6 +700,7 @@ class ConstraintEngine:
         return ConstraintResult.success()
 
 
+
     @classmethod
     def check_cog(
         cls,
@@ -707,56 +708,104 @@ class ConstraintEngine:
         vehicle: VehicleData,
         packages_map: Optional[Dict[str, PackageData]] = None,
     ) -> ConstraintResult:
-        """Kiểm tra: Trọng tâm (COG) không lệch quá max_cog_offset_ratio theo cả X và Y."""
+        """
+        HC-11: Center of Gravity.
+
+        Kiểm tra trọng tâm hàng hóa theo X/Y.
+        Ngưỡng thử nghiệm: tối đa 15% kích thước thùng xe
+        tính từ tâm hình học mỗi trục.
+
+        Trọng tâm Z được tính nhưng chưa áp giới hạn.
+        """
+
         if not all_placements:
             return ConstraintResult.success()
+
+        # 1. Bắt buộc có dữ liệu kiện hàng.
+        if packages_map is None:
+            return ConstraintResult.fail(
+                violation_code="COG_PACKAGE_DATA_MISSING",
+                detail="HC-11: packages_map is required",
+            )
+
+    # 2. Kiểm tra kích thước thùng xe.
+        length = float(vehicle.inner_l)
+        width = float(vehicle.inner_w)
+
+        if length <= 0 or width <= 0:
+            return ConstraintResult.fail(
+                violation_code="COG_CONFIG_INVALID",
+                detail="HC-11: Vehicle length and width must be positive",
+            )
+
+        max_ratio = float(vehicle.max_cog_offset_ratio)
 
         total_mass = 0.0
         weighted_x = 0.0
         weighted_y = 0.0
         weighted_z = 0.0
 
-        for p in all_placements:
-            pkg = packages_map.get(str(p.package_id)) if packages_map else None
-            m = float(pkg.weight if pkg else 1.0)
-            if m <= 0:
-                m = 1.0
+        # 3. Tính trọng tâm dựa trên khối lượng thực tế.
+        for placement in all_placements:
+            package = packages_map.get(str(placement.package_id))
 
-            cx = float(p.x) + float(p.packed_l) / 2.0
-            cy = float(p.y) + float(p.packed_w) / 2.0
-            cz = float(p.z) + float(p.packed_h) / 2.0
+            if package is None:
+                return ConstraintResult.fail(
+                    violation_code="COG_PACKAGE_DATA_MISSING",
+                    detail=(
+                        f"HC-11: Package {placement.package_id} not found"
+                    ),
+                )
 
-            total_mass += m
-            weighted_x += m * cx
-            weighted_y += m * cy
-            weighted_z += m * cz
+            mass = float(package.weight)
 
-        if total_mass <= 0:
-            return ConstraintResult.success()
+            if not math.isfinite(mass) or mass <= 0:
+                return ConstraintResult.fail(
+                    violation_code="COG_INVALID_WEIGHT",
+                    detail=(
+                        f"HC-11: Invalid weight for package "
+                        f"{placement.package_id}: {mass}"
+                    ),
+                )
+
+            center_x = float(placement.x) + float(placement.packed_l) / 2.0
+            center_y = float(placement.y) + float(placement.packed_w) / 2.0
+            center_z = float(placement.z) + float(placement.packed_h) / 2.0
+
+            total_mass += mass
+            weighted_x += mass * center_x
+            weighted_y += mass * center_y
+            weighted_z += mass * center_z
 
         cog_x = weighted_x / total_mass
         cog_y = weighted_y / total_mass
+        cog_z = weighted_z / total_mass
 
-        center_x = float(vehicle.inner_l) / 2.0
-        center_y = float(vehicle.inner_w) / 2.0
+        # 4. Kiểm tra độ lệch X/Y so với tâm thùng xe.
+        center_x = length / 2.0
+        center_y = width / 2.0
 
-        delta_x = abs(cog_x - center_x)
-        delta_y = abs(cog_y - center_y)
+        offset_ratio_x = abs(cog_x - center_x) / length
+        offset_ratio_y = abs(cog_y - center_y) / width
 
-        max_ratio = float(getattr(vehicle, "max_cog_offset_ratio", 0.15) or 0.15)
-        offset_ratio_x = delta_x / float(vehicle.inner_l) if vehicle.inner_l > 0 else 0.0
-        offset_ratio_y = delta_y / float(vehicle.inner_w) if vehicle.inner_w > 0 else 0.0
-
-        if offset_ratio_x > max_ratio + cls.EPSILON or offset_ratio_y > max_ratio + cls.EPSILON:
+        if (
+                offset_ratio_x > max_ratio + cls.EPSILON
+                or offset_ratio_y > max_ratio + cls.EPSILON
+        ):
             return ConstraintResult.fail(
-                violation_code="COG_OFFSET_EXCEEDED",
+                violation_code="CENTER_OF_GRAVITY_OUT_OF_RANGE",
                 detail=(
-                    f"COG offset exceeds limit {max_ratio:.2%}: "
-                    f"X ratio {offset_ratio_x:.2%}, Y ratio {offset_ratio_y:.2%}"
+                    f"HC-11: COG ({cog_x:.2f}, {cog_y:.2f}, "
+                    f"{cog_z:.2f}) exceeds the X/Y "
+                    f"offset limit of {max_ratio:.0%}. "
+                    f"X offset: {offset_ratio_x:.2%}, "
+                    f"Y offset: {offset_ratio_y:.2%}"
                 ),
             )
 
         return ConstraintResult.success()
+
+
 
     @classmethod
     def check_axle_load(
@@ -765,52 +814,153 @@ class ConstraintEngine:
         vehicle: VehicleData,
         packages_map: Optional[Dict[str, PackageData]] = None,
     ) -> ConstraintResult:
-        """Kiểm tra: Tải trọng phân bổ lên trục trước/sau không vượt giới hạn."""
-        front_limit = getattr(vehicle, "front_axle_limit_kg", None)
-        rear_limit = getattr(vehicle, "rear_axle_limit_kg", None)
+        """
+        HC-12: Axle Load.
 
-        if not front_limit and not rear_limit:
-            return ConstraintResult.success()
+        Mô hình cân bằng tĩnh xe hai trục.
+        Đơn vị tọa độ: cm.
+        Đơn vị tải trọng: kg.
+        """
 
-        if not all_placements:
-            return ConstraintResult.success()
+        required_fields = (
+            "front_axle_x",
+            "rear_axle_x",
+            "front_axle_limit_kg",
+            "rear_axle_limit_kg",
+            "empty_front_axle_load_kg",
+            "empty_rear_axle_load_kg",
+        )
 
-        total_weight = 0.0
-        weighted_x = 0.0
+        # 1. Kiểm tra đầy đủ cấu hình xe.
+        for field_name in required_fields:
+            value = getattr(vehicle, field_name, None)
 
-        for p in all_placements:
-            pkg = packages_map.get(str(p.package_id)) if packages_map else None
-            w = float(pkg.weight if pkg else 0.0)
-            cx = float(p.x) + float(p.packed_l) / 2.0
-            total_weight += w
-            weighted_x += w * cx
+            if value is None:
+                return ConstraintResult.fail(
+                    violation_code="AXLE_CONFIG_MISSING",
+                    detail=f"HC-12: Missing vehicle field {field_name}",
+                )
 
-        if total_weight <= 0:
-            return ConstraintResult.success()
+            if not math.isfinite(float(value)):
+                return ConstraintResult.fail(
+                    violation_code="AXLE_CONFIG_INVALID",
+                    detail=f"HC-12: Invalid vehicle field {field_name}",
+                )
 
-        cog_x = weighted_x / total_weight
-        inner_l = float(vehicle.inner_l)
+        front_x = float(vehicle.front_axle_x)
+        rear_x = float(vehicle.rear_axle_x)
 
-        # Static moment distribution:
-        # x = 0 is Front (cabin), x = inner_l is Rear (door)
-        # Rear axle load = Total * (cog_x / inner_l)
-        # Front axle load = Total * ((inner_l - cog_x) / inner_l)
-        rear_load = total_weight * (cog_x / inner_l) if inner_l > 0 else 0.0
-        front_load = total_weight - rear_load
+        front_limit = float(vehicle.front_axle_limit_kg)
+        rear_limit = float(vehicle.rear_axle_limit_kg)
 
-        if front_limit and front_load > float(front_limit) + cls.EPSILON:
+        empty_front = float(vehicle.empty_front_axle_load_kg)
+        empty_rear = float(vehicle.empty_rear_axle_load_kg)
+
+        # 2. Kiểm tra cấu hình hợp lệ.
+        wheelbase = rear_x - front_x
+
+        if (
+            wheelbase <= 0
+            or front_limit <= 0
+            or rear_limit <= 0
+            or empty_front < 0
+            or empty_rear < 0
+        ):
             return ConstraintResult.fail(
-                violation_code="AXLE_LOAD_EXCEEDED",
-                detail=f"Front axle load {front_load:.2f}kg exceeds limit {front_limit}kg",
+                violation_code="AXLE_CONFIG_INVALID",
+                detail="HC-12: Invalid axle positions, limits or empty loads",
             )
 
-        if rear_limit and rear_load > float(rear_limit) + cls.EPSILON:
+        # 3. Bắt buộc có dữ liệu khối lượng hàng.
+        if all_placements and packages_map is None:
+            return ConstraintResult.fail(
+                violation_code="AXLE_PACKAGE_DATA_MISSING",
+                detail="HC-12: packages_map is required",
+            )
+
+        total_cargo_weight = 0.0
+        cargo_moment = 0.0
+
+        for placement in all_placements:
+            package = packages_map.get(str(placement.package_id))
+
+            if package is None:
+                return ConstraintResult.fail(
+                    violation_code="AXLE_PACKAGE_DATA_MISSING",
+                    detail=(
+                        f"HC-12: Package {placement.package_id} not found"
+                    ),
+                )
+
+            mass = float(package.weight)
+
+            if not math.isfinite(mass) or mass <= 0:
+                return ConstraintResult.fail(
+                    violation_code="AXLE_INVALID_WEIGHT",
+                    detail=(
+                        f"HC-12: Invalid weight for package "
+                        f"{placement.package_id}: {mass}"
+                    ),
+                )
+
+            cargo_center_x = (
+                float(placement.x)
+                + float(placement.packed_l) / 2.0
+            )
+
+            if not math.isfinite(cargo_center_x):
+                return ConstraintResult.fail(
+                    violation_code="AXLE_CONFIG_INVALID",
+                    detail="HC-12: Invalid cargo center coordinate",
+                )
+
+            total_cargo_weight += mass
+            cargo_moment += mass * (cargo_center_x - front_x)
+
+        # 4. Phân bố khối lượng hàng lên hai trục.
+        rear_cargo_load = cargo_moment / wheelbase
+        front_cargo_load = total_cargo_weight - rear_cargo_load
+
+        # 5. Cộng tải trục xe rỗng.
+        front_total = empty_front + front_cargo_load
+        rear_total = empty_rear + rear_cargo_load
+
+        # 6. Kiểm tra giới hạn tải trục.
+        if front_total > front_limit + cls.EPSILON:
             return ConstraintResult.fail(
                 violation_code="AXLE_LOAD_EXCEEDED",
-                detail=f"Rear axle load {rear_load:.2f}kg exceeds limit {rear_limit}kg",
+                detail=(
+                    f"HC-12: Front axle load {front_total:.2f} kg "
+                    f"exceeds limit {front_limit:.2f} kg"
+                ),
+            )
+
+        if rear_total > rear_limit + cls.EPSILON:
+            return ConstraintResult.fail(
+                violation_code="AXLE_LOAD_EXCEEDED",
+                detail=(
+                    f"HC-12: Rear axle load {rear_total:.2f} kg "
+                    f"exceeds limit {rear_limit:.2f} kg"
+                ),
+            )
+
+        # 7. Phản lực âm biểu thị cấu hình có vấn đề
+        # hoặc xe có nguy cơ mất tiếp xúc tại một trục.
+        if (
+            front_total < -cls.EPSILON
+            or rear_total < -cls.EPSILON
+        ):
+            return ConstraintResult.fail(
+                violation_code="AXLE_LOAD_INVALID",
+                detail=(
+                    f"HC-12: Negative axle reaction. "
+                    f"Front={front_total:.2f} kg, "
+                    f"Rear={rear_total:.2f} kg"
+                ),
             )
 
         return ConstraintResult.success()
+
 
 
     @classmethod

@@ -53,7 +53,13 @@ class AsyncOptimizationRunner:
         """
         Xây dựng ProblemRequest từ Trip, Vehicle, Package lưu trong DB (S5b-04).
         """
-        from app.entity.trip_model import Trip, CargoPackage, TransportOrder, DeliveryStop
+        from app.entity.trip_model import (
+            Trip,
+            CargoPackage,
+            DeliveryStop,
+            DeliveryRequirement,
+            DeliveryRequirementPackage,
+        )
 
         job = self.job_service.get_job(str(job_uuid), db)
         trip = db.query(Trip).filter(Trip.id == job.trip_id).first()
@@ -101,6 +107,33 @@ class AsyncOptimizationRunner:
                 if getattr(vt, "rear_axle_limit_kg", None) is not None
                 else None
             ),
+
+            # HC-12: Vị trí hai trục xe (cm).
+            front_axle_x=(
+                float(vt.front_axle_x)
+                if vt.front_axle_x is not None
+                else None
+            ),
+
+            rear_axle_x=(
+                float(vt.rear_axle_x)
+                if vt.rear_axle_x is not None
+                else None
+            ),
+
+            # HC-12: Tải xe rỗng trên từng trục (kg).
+            empty_front_axle_load_kg=(
+                float(vt.empty_front_axle_load_kg)
+                if vt.empty_front_axle_load_kg is not None
+                else None
+            ),
+
+            empty_rear_axle_load_kg=(
+                float(vt.empty_rear_axle_load_kg)
+                if vt.empty_rear_axle_load_kg is not None
+                else None
+            ),
+
             max_cog_offset_ratio=(
                 float(vt.max_cog_offset_ratio)
                 if getattr(vt, "max_cog_offset_ratio", None) is not None
@@ -123,22 +156,118 @@ class AsyncOptimizationRunner:
             for idx, s in enumerate(stops_query)
         ]
 
+
+
+        # Trip -> DeliveryRequirement -> Packages
+        # DeliveryRequirement -> DeliveryStop -> stop_sequence
         packages_query = (
-            db.query(CargoPackage, DeliveryStop)
-            .join(TransportOrder, CargoPackage.order_id == TransportOrder.id)
-            .join(DeliveryStop, TransportOrder.delivery_stop_id == DeliveryStop.id)
-            .filter(DeliveryStop.trip_id == job.trip_id)
+            db.query(
+                CargoPackage,
+                DeliveryRequirement,
+                DeliveryStop,
+            )
+            .join(
+                DeliveryRequirementPackage,
+                DeliveryRequirementPackage.package_id
+                == CargoPackage.id,
+                )
+            .join(
+                DeliveryRequirement,
+                DeliveryRequirement.id
+                == DeliveryRequirementPackage.delivery_requirement_id,
+                )
+            .join(
+                DeliveryStop,
+                (DeliveryStop.delivery_requirement_id
+                 == DeliveryRequirement.id)
+                & (DeliveryStop.trip_id == DeliveryRequirement.trip_id),
+                )
+            .filter(
+                DeliveryRequirement.trip_id == job.trip_id
+            )
+            .order_by(
+                DeliveryStop.stop_sequence,
+                CargoPackage.id,
+            )
             .all()
         )
 
+
+        # Không âm thầm bỏ sót kiện của Requirement
+        # chưa được liên kết với DeliveryStop.
+        requirement_ids = {
+            row[0]
+            for row in (
+                db.query(DeliveryRequirement.id)
+                .filter(DeliveryRequirement.trip_id == job.trip_id)
+                .all()
+            )
+        }
+
+        mapped_requirement_ids = {
+            requirement.id
+            for _, requirement, _ in packages_query
+        }
+
+        missing_requirements = (
+                requirement_ids - mapped_requirement_ids
+        )
+
+        if missing_requirements:
+            raise ValueError(
+                "Trip has DeliveryRequirements without mapped "
+                f"packages/DeliveryStops: {sorted(missing_requirements)}"
+            )
+
+
+
+
         package_items: list[PackageData] = []
-        for pkg, stop in packages_query:
+        for pkg, requirement, stop in packages_query:
             w = float(pkg.actual_weight_kg or 0)
             pt = pkg.package_type
+
+
+            def resolve_dimension(actual_value, type_value):
+                if actual_value is not None:
+                    actual = float(actual_value)
+                    if actual <= 0:
+                        raise ValueError(
+                            f"Package {pkg.id}: actual dimension must be positive"
+                        )
+                    return actual
+
+                if type_value is not None:
+                    fallback = float(type_value)
+                    if fallback <= 0:
+                        raise ValueError(
+                            f"Package {pkg.id}: PackageType dimension must be positive"
+                        )
+                    return fallback
+
+                raise ValueError(
+                    f"Package {pkg.id}: missing dimensions in "
+                    "both CargoPackage and PackageType"
+                )
+
+
+            l = resolve_dimension(
+                pkg.actual_length,
+                pt.length if pt else None,
+            )
+
+            width = resolve_dimension(
+                pkg.actual_width,
+                pt.width if pt else None,
+            )
+
+            h = resolve_dimension(
+                pkg.actual_height,
+                pt.height if pt else None,
+            )
+
+
             if pt:
-                l = float(pt.length or 0)
-                width = float(pt.width or 0)
-                h = float(pt.height or 0)
                 fragile = getattr(pt, "is_fragile", None) or getattr(pt, "fragile", False) or False
 
 
@@ -150,15 +279,58 @@ class AsyncOptimizationRunner:
                 allow_y = pt.allow_rotate_y is True
                 allow_z = pt.allow_rotate_z is True
 
-                # Quy ước đang được solver hỗ trợ:
-                # 0 = (length, width, height)
-                # 1 = (width, length, height)
-                #
-                # Hướng 1 tương ứng với xoay 90° quanh Z.
-                allowed_rotations = [0]
+                # HC-03: Sinh các hướng từ những phép xoay được PackageType cho phép.
+# Mã hướng giữ tương thích với dữ liệu cũ:
+# 0=LWH, 1=WLH, 2=LHW, 3=WHL, 4=HLW, 5=HWL.
+#
+# Xoay 90 độ quanh trục X/Y/Z của thùng.
+# Nếu cho phép nhiều trục, xét cả tổ hợp các phép xoay.
 
-                if rotation_enabled and allow_z:
-                    allowed_rotations.append(1)
+                orientation_to_code = {
+                    ("L", "W", "H"): 0,
+                    ("W", "L", "H"): 1,
+                    ("L", "H", "W"): 2,
+                    ("W", "H", "L"): 3,
+                    ("H", "L", "W"): 4,
+                    ("H", "W", "L"): 5,
+                }
+
+                def rotate_x(o):
+                    return (o[0], o[2], o[1])
+
+                def rotate_y(o):
+                    return (o[2], o[1], o[0])
+
+                def rotate_z(o):
+                    return (o[1], o[0], o[2])
+
+                start = ("L", "W", "H")
+                orientations = {start}
+                pending = [start]
+
+                if rotation_enabled:
+                    rotations = []
+
+                    if allow_x:
+                        rotations.append(rotate_x)
+                    if allow_y:
+                        rotations.append(rotate_y)
+                    if allow_z:
+                        rotations.append(rotate_z)
+
+                    while pending:
+                        current = pending.pop()
+
+                        for rotate in rotations:
+                            candidate = rotate(current)
+
+                            if candidate not in orientations:
+                                orientations.add(candidate)
+                                pending.append(candidate)
+
+                allowed_rotations = sorted(
+                    orientation_to_code[o] for o in orientations
+                )
 
                 rot_allowed = rotation_enabled
 
@@ -166,7 +338,6 @@ class AsyncOptimizationRunner:
                 max_stack = getattr(pt, "max_stack_weight_kg", None)
 
             else:
-                l, width, h = 0.0, 0.0, 0.0
                 fragile = False
 
                 # Không tự cho phép xoay khi thiếu PackageType
@@ -183,7 +354,7 @@ class AsyncOptimizationRunner:
                     w=width,
                     h=h,
                     weight=w,
-                    stop_index=stop.stop_sequence or 1,
+                    stop_index=stop.stop_sequence,
 
                     fragile=bool(fragile),
 

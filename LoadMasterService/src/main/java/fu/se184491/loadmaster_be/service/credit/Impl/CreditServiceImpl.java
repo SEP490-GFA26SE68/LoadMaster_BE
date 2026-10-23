@@ -69,6 +69,41 @@ public class CreditServiceImpl implements CreditService {
     @Override
     @Transactional
     public void deductCredit(Long companyId, String reference, int amount) {
+
+
+        if (reference == null || reference.isBlank()) {
+            throw new IllegalArgumentException(
+                    "Credit transaction reference must not be blank"
+            );
+        }
+
+// Không trừ credit lần thứ hai cho cùng một Optimization Job.
+        Optional<CreditTransaction> existingUsage =
+                creditTransactionRepository.findByReferenceAndType(
+                        reference,
+                        CreditTransactionType.USAGE
+                );
+
+        if (existingUsage.isPresent()) {
+            CreditTransaction existing = existingUsage.get();
+
+            Long existingCompanyId = existing.getCreditAccount()
+                    .getCompany()
+                    .getId();
+
+            if (!existingCompanyId.equals(companyId)) {
+                throw new IllegalStateException(
+                        "Credit reference belongs to another company"
+                );
+            }
+
+            log.info(
+                    "Credit already deducted for reference {}. Skipping duplicate.",
+                    reference
+            );
+            return;
+        }
+
         int creditsToDeduct = amount > 0 ? amount : INITIAL_OPTIMIZATION_CREDIT_COST;
 
         CreditAccount account = creditAccountRepository.findByCompanyIdForUpdate(companyId)
@@ -81,6 +116,8 @@ public class CreditServiceImpl implements CreditService {
                     companyId, account.getBalance(), creditsToDeduct, reference);
             throw new InsufficientCreditsException();
         }
+
+
 
         account.setBalance(account.getBalance() - creditsToDeduct);
         creditAccountRepository.save(account);
@@ -97,46 +134,89 @@ public class CreditServiceImpl implements CreditService {
         log.info("Deducted {} credit(s) for company {}. New balance: {}", creditsToDeduct, companyId, account.getBalance());
     }
 
+
     @Override
     @Transactional
     public void refundCredit(Long companyId, String reference) {
-        Optional<CreditTransaction> originalUsageOpt = creditTransactionRepository
-                .findByReferenceAndType(reference, CreditTransactionType.USAGE);
 
-        if (originalUsageOpt.isEmpty()) {
-            log.warn("No USAGE transaction found for reference {}. Skipping refund.", reference);
+        // 1. Kiểm tra reference.
+        if (reference == null || reference.isBlank()) {
+            throw new IllegalArgumentException(
+                    "Credit refund reference must not be blank"
+            );
+        }
+
+        // 2. Tìm giao dịch trừ credit ban đầu.
+        CreditTransaction originalUsage = creditTransactionRepository
+                .findByReferenceAndType(
+                        reference,
+                        CreditTransactionType.USAGE
+                )
+                .orElse(null);
+
+        if (originalUsage == null) {
+            log.warn(
+                    "No USAGE transaction found for reference {}. Skipping refund.",
+                    reference
+            );
             return;
         }
 
-        CreditTransaction originalUsage = originalUsageOpt.get();
+        // 3. Công ty nhận refund phải là công ty sở hữu giao dịch.
+        Long originalCompanyId = originalUsage
+                .getCreditAccount()
+                .getCompany()
+                .getId();
+
+        if (companyId != null && !companyId.equals(originalCompanyId)) {
+            throw new IllegalArgumentException(
+                    "Refund company does not match original credit transaction"
+            );
+        }
+
+        // 4. Khóa tài khoản trước khi kiểm tra và thay đổi số dư.
+        CreditAccount account = creditAccountRepository
+                .findByCompanyIdForUpdate(originalCompanyId)
+                .orElseThrow(() -> new IllegalStateException(
+                        "Credit account not found for refund"
+                ));
+
+        // 5. Kiểm tra lại giao dịch sau khi có khóa tài khoản.
+        originalUsage = creditTransactionRepository
+                .findByReferenceAndType(
+                        reference,
+                        CreditTransactionType.USAGE
+                )
+                .orElseThrow(() -> new IllegalStateException(
+                        "Original credit transaction disappeared"
+                ));
+
         if (Boolean.TRUE.equals(originalUsage.getRefunded())) {
-            log.info("Reference {} already refunded. Skipping duplicate refund.", reference);
+            log.info(
+                    "Reference {} already refunded. Skipping duplicate refund.",
+                    reference
+            );
             return;
         }
 
-        originalUsage.setRefunded(true);
-        creditTransactionRepository.save(originalUsage);
+        // 6. Tính đúng số credit đã trừ ban đầu.
+        int refundAmount = Math.abs(originalUsage.getAmount());
 
-        Long targetCompanyId = companyId != null ? companyId :
-                (originalUsage.getCreditAccount() != null && originalUsage.getCreditAccount().getCompany() != null
-                        ? originalUsage.getCreditAccount().getCompany().getId()
-                        : null);
-
-        if (targetCompanyId == null) {
-            log.warn("Cannot determine companyId for refund on reference {}. Skipping.", reference);
-            return;
-        }
-
-        int refundAmount = originalUsage.getAmount() != null ? Math.abs(originalUsage.getAmount()) : 1;
         if (refundAmount <= 0) {
-            refundAmount = 1;
+            throw new IllegalStateException(
+                    "Invalid original credit transaction amount"
+            );
         }
 
-        CreditAccount account = creditAccountRepository.findByCompanyIdForUpdate(targetCompanyId)
-                .orElseGet(() -> getOrCreateAccount(targetCompanyId));
+        // 7. Hoàn credit.
         account.setBalance(account.getBalance() + refundAmount);
         creditAccountRepository.save(account);
 
+        // 8. Đánh dấu giao dịch gốc đã hoàn.
+        originalUsage.setRefunded(true);
+        creditTransactionRepository.save(originalUsage);
+
+        // 9. Ghi nhận giao dịch REFUND.
         CreditTransaction refundTx = CreditTransaction.builder()
                 .creditAccount(account)
                 .amount(refundAmount)
@@ -145,9 +225,18 @@ public class CreditServiceImpl implements CreditService {
                 .refunded(false)
                 .createdAt(LocalDateTime.now())
                 .build();
+
         creditTransactionRepository.save(refundTx);
-        log.info("Refunded {} credit(s) for company {} on reference {}. New balance: {}", refundAmount, companyId, reference, account.getBalance());
+
+        log.info(
+                "Refunded {} credit(s) for company {} on reference {}. New balance: {}",
+                refundAmount,
+                originalCompanyId,
+                reference,
+                account.getBalance()
+        );
     }
+
 
     @Override
     @Transactional

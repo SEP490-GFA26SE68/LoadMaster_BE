@@ -24,6 +24,47 @@ class VehicleType(Base):
     door_height = Column(Integer, nullable=True)
     max_payload_kg = Column(Numeric(10, 2), nullable=True)
 
+    # HC-11: Center of Gravity
+    max_cog_offset_ratio = Column(
+        Numeric(5, 4),
+        nullable=False,
+    )
+
+    # HC-12: Axle Load
+    front_axle_limit_kg = Column(
+        Numeric(10, 2),
+        nullable=True,
+    )
+
+    rear_axle_limit_kg = Column(
+        Numeric(10, 2),
+        nullable=True,
+    )
+
+    # Vị trí hai trục tính bằng cm.
+    # X = 0 tại mặt trước bên trong khoang hàng.
+    front_axle_x = Column(
+        Numeric(10, 2),
+        nullable=True,
+    )
+
+    rear_axle_x = Column(
+        Numeric(10, 2),
+        nullable=True,
+    )
+
+    # Tải trọng xe rỗng trên từng trục, đơn vị kg.
+    empty_front_axle_load_kg = Column(
+        Numeric(10, 2),
+        nullable=True,
+    )
+
+    empty_rear_axle_load_kg = Column(
+        Numeric(10, 2),
+        nullable=True,
+    )
+
+
     vehicles = relationship("Vehicle", back_populates="vehicle_type")
 
 
@@ -52,11 +93,46 @@ class Trip(Base):
     delivery_stops = relationship("DeliveryStop", back_populates="trip")
 
 
+
+class DeliveryRequirement(Base):
+    __tablename__ = "delivery_requirements"
+
+    id = pk_id()
+    trip_id = fk_id("trips.id", nullable=True)
+
+    # Mapping bảng trung gian DeliveryRequirement - Package
+    # được thực hiện trong truy vấn SQLAlchemy.
+
+
+class DeliveryRequirementPackage(Base):
+    __tablename__ = "delivery_requirement_packages"
+
+    delivery_requirement_id = Column(
+        BigInteger,
+        ForeignKey("delivery_requirements.id"),
+        primary_key=True,
+    )
+
+    package_id = Column(
+        BigInteger,
+        ForeignKey("packages.id"),
+        primary_key=True,
+    )
+
+
 class DeliveryStop(Base):
     __tablename__ = "delivery_stops"
 
     id = pk_id()
     trip_id = fk_id("trips.id", nullable=False)
+
+    # DeliveryRequirement sinh ra DeliveryStop này.
+    # Có thể NULL đối với điểm dừng được tạo thủ công.
+    delivery_requirement_id = fk_id(
+        "delivery_requirements.id",
+        nullable=True,
+    )
+
     stop_sequence = Column(Integer, nullable=False)
     stop_name = Column(String(150), nullable=True)
     latitude = Column(Numeric(10, 6), nullable=True)
@@ -106,11 +182,19 @@ class PackageType(Base):
 class CargoPackage(Base):
     __tablename__ = "packages"
 
+
     id = pk_id()
     order_id = fk_id("orders.id", nullable=False)
     package_type_id = fk_id("package_types.id", nullable=True)
     tracking_barcode = Column(String(100), nullable=True)
     actual_weight_kg = Column(Numeric(10, 2), nullable=True)
+
+    # Kích thước thực tế do người dùng nhập cho từng Package.
+    # Đơn vị: mm theo mô tả trong CargoPackage.java.
+    actual_length = Column(Integer, nullable=True)
+    actual_width = Column(Integer, nullable=True)
+    actual_height = Column(Integer, nullable=True)
+
     handling_class = Column(String(20), nullable=True, default="STANDARD")
 
     order = relationship("TransportOrder", back_populates="packages")

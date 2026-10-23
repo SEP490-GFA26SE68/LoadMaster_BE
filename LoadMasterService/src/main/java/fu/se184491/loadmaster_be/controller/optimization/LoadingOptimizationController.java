@@ -56,4 +56,14 @@ public class LoadingOptimizationController {
         return ResponseEntity.ok(response);
     }
 
+    @GetMapping("/optimization-jobs/{jobId}/plans")
+    @PreAuthorize("hasRole('DISPATCHER')")
+    public ResponseEntity<String> getOptimizationJobPlans(
+            @PathVariable String jobId
+    ) {
+        String response = optimizationClient.getJobPlans(jobId);
+
+        return ResponseEntity.ok(response);
+    }
+
 }

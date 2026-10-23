@@ -69,6 +69,20 @@ public class OptimizationClient {
                 .body(String.class);
     }
 
+    public String getJobPlans(String jobId) {
+
+        String token =
+                serviceTokenProvider.getOptimizationServiceToken();
+
+        return optimizationRestClient
+                .get()
+                .uri("/api/v1/optimization/jobs/{id}/plans", jobId)
+                .accept(MediaType.APPLICATION_JSON)
+                .headers(headers -> headers.setBearerAuth(token))
+                .retrieve()
+                .body(String.class);
+    }
+
 
 
 }

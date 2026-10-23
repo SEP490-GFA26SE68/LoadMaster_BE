@@ -11,12 +11,14 @@ import fu.se184491.loadmaster_be.dto.request.trip.TripCreateRequest;
 import fu.se184491.loadmaster_be.dto.response.trip.TripDetailResponse;
 import fu.se184491.loadmaster_be.dto.response.trip.TripResponse;
 import fu.se184491.loadmaster_be.dto.response.trip.TripStopResponse;
+import fu.se184491.loadmaster_be.dto.response.trip.TripVehicleConfigResponse;
 import fu.se184491.loadmaster_be.entity.account.User;
 import fu.se184491.loadmaster_be.entity.company.CompanyWarehouse;
 import fu.se184491.loadmaster_be.entity.planning.DeliveryRequirement;
 import fu.se184491.loadmaster_be.entity.trip.DeliveryStop;
 import fu.se184491.loadmaster_be.entity.trip.Trip;
 import fu.se184491.loadmaster_be.entity.vehicle.Vehicle;
+import fu.se184491.loadmaster_be.entity.vehicle.VehicleType;
 import fu.se184491.loadmaster_be.exception.AppException;
 import fu.se184491.loadmaster_be.exception.ErrorCode;
 import fu.se184491.loadmaster_be.helpers.CurrentUserService;
@@ -445,6 +447,70 @@ public class TripServiceImpl implements TripService {
         return TripStopResponse.fromEntity(savedStop);
     }
 
+    @Override
+    @Transactional(readOnly = true)
+    public TripVehicleConfigResponse getTripVehicleConfig(Long tripId) {
+        Long companyId = currentUserService.getCurrentCompanyId();
+
+        // Chỉ cho phép xem chuyến thuộc công ty hiện tại.
+        Trip trip = tripRepository
+                .findByIdAndCompanyId(tripId, companyId)
+                .orElseThrow(() ->
+                        new AppException(ErrorCode.TRIP_NOT_FOUND)
+                );
+
+        Vehicle vehicle = trip.getVehicle();
+
+        if (vehicle == null || vehicle.getVehicleType() == null) {
+            throw new AppException(ErrorCode.INVALID_INPUT);
+        }
+
+        VehicleType type = vehicle.getVehicleType();
+
+        List<TripVehicleConfigResponse.Obstacle> obstacles =
+                type.getObstacles().stream()
+                        .map(obstacle -> new TripVehicleConfigResponse.Obstacle(
+                                obstacle.getId(),
+                                obstacle.getName(),
+                                obstacle.getType().name(),
+                                obstacle.getX(),
+                                obstacle.getY(),
+                                obstacle.getZ(),
+                                obstacle.getLength(),
+                                obstacle.getWidth(),
+                                obstacle.getHeight(),
+                                obstacle.getLoadBearing()
+                        ))
+                        .toList();
+
+        return new TripVehicleConfigResponse(
+                vehicle.getId(),
+                vehicle.getName(),
+                vehicle.getLicensePlate(),
+
+                type.getId(),
+                type.getName(),
+
+                type.getInnerLength(),
+                type.getInnerWidth(),
+                type.getInnerHeight(),
+
+                type.getDoorWidth(),
+                type.getDoorHeight(),
+
+                type.getMaxPayloadKg(),
+                type.getFrontAxleLimitKg(),
+                type.getRearAxleLimitKg(),
+                type.getMaxCogOffsetRatio(),
+
+                type.getFrontAxleX(),
+                type.getRearAxleX(),
+                type.getEmptyFrontAxleLoadKg(),
+                type.getEmptyRearAxleLoadKg(),
+
+                obstacles
+        );
+    }
 
 
     private TripResponse toResponse(Trip trip) {
