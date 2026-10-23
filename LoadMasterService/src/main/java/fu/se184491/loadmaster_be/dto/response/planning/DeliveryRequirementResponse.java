@@ -39,6 +39,7 @@ public class DeliveryRequirementResponse {
 
     // Chuyến xe được gán (null nếu chưa gán)
     private Long tripId;
+    private String tripCode;
 
     // Thông tin tạo
     private Long createdBy;

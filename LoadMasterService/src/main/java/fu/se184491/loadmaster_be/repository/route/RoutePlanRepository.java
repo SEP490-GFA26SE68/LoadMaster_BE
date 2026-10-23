@@ -25,6 +25,20 @@ public interface RoutePlanRepository extends JpaRepository<RoutePlan, Long> {
 
     List<RoutePlan> findByTripId(Long tripId);
 
+
+    /**
+     * Lấy ID của các chuyến có kế hoạch tuyến đường đang hoạt động.
+     * Dùng cho API danh sách chuyến để tránh truy vấn từng chuyến.
+     */
+    @Query("""
+        SELECT DISTINCT rp.trip.id
+        FROM RoutePlan rp
+        WHERE rp.trip.id IN :tripIds
+          AND rp.isActive = true
+        """)
+    List<Long> findTripIdsWithActiveRoutePlan(
+            @Param("tripIds") List<Long> tripIds
+    );
     @Modifying
     @Query("UPDATE RoutePlan rp SET rp.isActive = false WHERE rp.trip.id = :tripId")
     void deactivateAllByTripId(@Param("tripId") Long tripId);

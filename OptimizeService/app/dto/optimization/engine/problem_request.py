@@ -15,7 +15,25 @@ class VehicleData(BaseModel):
     door_h: Optional[float] = None
     front_axle_limit_kg: Optional[float] = None
     rear_axle_limit_kg: Optional[float] = None
-    max_cog_offset_ratio: Optional[float] = 0.15
+
+    # HC-12: Vị trí trục xe theo hệ tọa độ X của khoang hàng.
+    # Đơn vị: cm. X = 0 tại mặt trước bên trong thùng.
+    # Trục trước có thể nằm ở X âm.
+    front_axle_x: Optional[float] = None
+    rear_axle_x: Optional[float] = None
+
+    # HC-12: Tải trên từng trục khi xe chưa chở hàng.
+    # Đơn vị: kg.
+    empty_front_axle_load_kg: Optional[float] = Field(
+        default=None,
+        ge=0,
+    )
+    empty_rear_axle_load_kg: Optional[float] = Field(
+        default=None,
+        ge=0,
+    )
+
+    max_cog_offset_ratio: float = Field(default=0.15, ge=0, le=0.5)
 
 
 class PackageData(BaseModel):

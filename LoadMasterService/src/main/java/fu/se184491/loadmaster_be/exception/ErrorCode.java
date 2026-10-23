@@ -76,6 +76,11 @@ public enum ErrorCode {
     CARGO_SEGREGATION_CONFLICT("Kiện hàng xung đột quy tắc phân tách hàng hóa", HttpStatus.CONFLICT),
     LICENSE_PLATE_ALREADY_EXISTS("Biển số phương tiện đã tồn tại trong hệ thống", HttpStatus.CONFLICT),
 
+    VEHICLE_WIDTH_HIGH("Phải nhập cả chiều rộng và chiều cao cửa xe", HttpStatus.BAD_REQUEST),
+    VEHICLE_SIZE("Kích thước cửa xe phải lớn hơn 0", HttpStatus.BAD_REQUEST),
+    WIDTH_RATIO("Chiều rộng cửa không được vượt quá chiều rộng thùng xe", HttpStatus.BAD_REQUEST),
+
+    HIGH_RATIO("Chiều cao cửa không được vượt quá chiều cao thùng xe", HttpStatus.BAD_REQUEST),
 
     // -------------------------------------------------------------------------
     // Subscription & Payment errors

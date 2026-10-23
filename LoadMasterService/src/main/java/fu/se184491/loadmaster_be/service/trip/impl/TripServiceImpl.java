@@ -11,18 +11,21 @@ import fu.se184491.loadmaster_be.dto.request.trip.TripCreateRequest;
 import fu.se184491.loadmaster_be.dto.response.trip.TripDetailResponse;
 import fu.se184491.loadmaster_be.dto.response.trip.TripResponse;
 import fu.se184491.loadmaster_be.dto.response.trip.TripStopResponse;
+import fu.se184491.loadmaster_be.dto.response.trip.TripVehicleConfigResponse;
 import fu.se184491.loadmaster_be.entity.account.User;
 import fu.se184491.loadmaster_be.entity.company.CompanyWarehouse;
 import fu.se184491.loadmaster_be.entity.planning.DeliveryRequirement;
 import fu.se184491.loadmaster_be.entity.trip.DeliveryStop;
 import fu.se184491.loadmaster_be.entity.trip.Trip;
 import fu.se184491.loadmaster_be.entity.vehicle.Vehicle;
+import fu.se184491.loadmaster_be.entity.vehicle.VehicleType;
 import fu.se184491.loadmaster_be.exception.AppException;
 import fu.se184491.loadmaster_be.exception.ErrorCode;
 import fu.se184491.loadmaster_be.helpers.CurrentUserService;
 import fu.se184491.loadmaster_be.repository.account.UserRepository;
 import fu.se184491.loadmaster_be.repository.company.CompanyWarehouseRepository;
 import fu.se184491.loadmaster_be.repository.planning.DeliveryRequirementRepository;
+import fu.se184491.loadmaster_be.repository.route.RoutePlanRepository;
 import fu.se184491.loadmaster_be.repository.trip.DeliveryStopRepository;
 import fu.se184491.loadmaster_be.repository.trip.TripRepository;
 import fu.se184491.loadmaster_be.repository.vehicle.VehicleRepository;
@@ -37,8 +40,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
-import java.util.List;
-import java.util.UUID;
+import java.util.*;
 
 @Service
 @RequiredArgsConstructor
@@ -51,6 +53,8 @@ public class TripServiceImpl implements TripService {
     private final CurrentUserService currentUserService;
     private final DeliveryStopRepository deliveryStopRepository;
     private final DeliveryRequirementRepository deliveryRequirementRepository;
+    private final RoutePlanRepository routePlanRepository;
+
     @Transactional
     public TripResponse createTrip(TripCreateRequest request) {
 
@@ -283,9 +287,55 @@ public class TripServiceImpl implements TripService {
                     cb.equal(root.get("driver").get("id"), driverId));
         }
 
-        return tripRepository
-                .findAll(spec, pageable)
-                .map(this::toResponse);
+
+        Page<Trip> tripPage = tripRepository.findAll(spec, pageable);
+
+        if (tripPage.isEmpty()) {
+            return tripPage.map(this::toResponse);
+        }
+
+        List<Long> tripIds = tripPage.getContent()
+                .stream()
+                .map(Trip::getId)
+                .toList();
+
+// 1. Đếm số điểm giao theo chuyến
+        Map<Long, Integer> stopCountByTrip = new HashMap<>();
+
+        for (Object[] result :
+                deliveryStopRepository.countStopsByTripIds(tripIds)) {
+
+            Long tripId = (Long) result[0];
+            Long count = (Long) result[1];
+
+            stopCountByTrip.put(tripId, Math.toIntExact(count));
+        }
+
+// 2. Đếm số kiện thực tế theo chuyến
+        Map<Long, Integer> packageCountByTrip = new HashMap<>();
+
+        for (Object[] result :
+                deliveryRequirementRepository.countPackagesByTripIds(tripIds)) {
+
+            Long tripId = (Long) result[0];
+            Long count = (Long) result[1];
+
+            packageCountByTrip.put(tripId, Math.toIntExact(count));
+        }
+
+// 3. Kiểm tra chuyến đã tối ưu tuyến đường hay chưa
+        Set<Long> tripsWithActiveRoutePlan = new HashSet<>(
+                routePlanRepository.findTripIdsWithActiveRoutePlan(tripIds)
+        );
+
+// 4. Ánh xạ dữ liệu vào TripResponse
+        return tripPage.map(trip -> toResponse(
+                trip,
+                stopCountByTrip.getOrDefault(trip.getId(), 0),
+                packageCountByTrip.getOrDefault(trip.getId(), 0),
+                tripsWithActiveRoutePlan.contains(trip.getId())
+        ));
+
     }
 
 
@@ -397,6 +447,70 @@ public class TripServiceImpl implements TripService {
         return TripStopResponse.fromEntity(savedStop);
     }
 
+    @Override
+    @Transactional(readOnly = true)
+    public TripVehicleConfigResponse getTripVehicleConfig(Long tripId) {
+        Long companyId = currentUserService.getCurrentCompanyId();
+
+        // Chỉ cho phép xem chuyến thuộc công ty hiện tại.
+        Trip trip = tripRepository
+                .findByIdAndCompanyId(tripId, companyId)
+                .orElseThrow(() ->
+                        new AppException(ErrorCode.TRIP_NOT_FOUND)
+                );
+
+        Vehicle vehicle = trip.getVehicle();
+
+        if (vehicle == null || vehicle.getVehicleType() == null) {
+            throw new AppException(ErrorCode.INVALID_INPUT);
+        }
+
+        VehicleType type = vehicle.getVehicleType();
+
+        List<TripVehicleConfigResponse.Obstacle> obstacles =
+                type.getObstacles().stream()
+                        .map(obstacle -> new TripVehicleConfigResponse.Obstacle(
+                                obstacle.getId(),
+                                obstacle.getName(),
+                                obstacle.getType().name(),
+                                obstacle.getX(),
+                                obstacle.getY(),
+                                obstacle.getZ(),
+                                obstacle.getLength(),
+                                obstacle.getWidth(),
+                                obstacle.getHeight(),
+                                obstacle.getLoadBearing()
+                        ))
+                        .toList();
+
+        return new TripVehicleConfigResponse(
+                vehicle.getId(),
+                vehicle.getName(),
+                vehicle.getLicensePlate(),
+
+                type.getId(),
+                type.getName(),
+
+                type.getInnerLength(),
+                type.getInnerWidth(),
+                type.getInnerHeight(),
+
+                type.getDoorWidth(),
+                type.getDoorHeight(),
+
+                type.getMaxPayloadKg(),
+                type.getFrontAxleLimitKg(),
+                type.getRearAxleLimitKg(),
+                type.getMaxCogOffsetRatio(),
+
+                type.getFrontAxleX(),
+                type.getRearAxleX(),
+                type.getEmptyFrontAxleLoadKg(),
+                type.getEmptyRearAxleLoadKg(),
+
+                obstacles
+        );
+    }
 
 
     private TripResponse toResponse(Trip trip) {
@@ -420,6 +534,52 @@ public class TripServiceImpl implements TripService {
                 .createdAt(trip.getCreatedAt())
                 .build();
     }
+
+
+    private TripResponse toResponse(
+            Trip trip,
+            int stopCount,
+            int packageCount,
+            boolean hasActiveRoutePlan
+    ) {
+        return TripResponse.builder()
+                .id(trip.getId())
+                .tripCode(trip.getTripCode())
+                .tripName(trip.getTripName())
+                .companyId(
+                        trip.getCompany() != null
+                                ? trip.getCompany().getId()
+                                : null
+                )
+                .vehicleId(trip.getVehicle().getId())
+                .vehicleName(trip.getVehicle().getName())
+                .licensePlate(trip.getVehicle().getLicensePlate())
+                .driverId(
+                        trip.getDriver() != null
+                                ? trip.getDriver().getId()
+                                : null
+                )
+                .driverName(
+                        trip.getDriver() != null
+                                ? trip.getDriver().getFullName()
+                                : null
+                )
+                .createdByDispatcherId(
+                        trip.getCreatedByDispatcher().getId()
+                )
+                .departureTime(trip.getDepartureTime())
+                .originName(trip.getOriginName())
+                .originAddress(trip.getOriginAddress())
+                .originLatitude(trip.getOriginLatitude())
+                .originLongitude(trip.getOriginLongitude())
+                .status(trip.getStatus())
+                .createdAt(trip.getCreatedAt())
+                .stopCount(stopCount)
+                .packageCount(packageCount)
+                .hasActiveRoutePlan(hasActiveRoutePlan)
+                .build();
+    }
+
 
 
 }

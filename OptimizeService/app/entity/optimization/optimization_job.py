@@ -11,7 +11,11 @@ class OptimizationJob(Base):
     __tablename__ = "optimization_jobs"
 
     id = Column(Integer().with_variant(BigInteger, "postgresql"), primary_key=True, autoincrement=True)
-    trip_id = Column(String(64), ForeignKey("trips.id"), nullable=False)
+    trip_id = Column(
+        BigInteger,
+        ForeignKey("trips.id"),
+        nullable=False,
+    )
     job_uuid = Column(String(64), unique=True, nullable=False, index=True)
     algorithm_name = Column(String(50), nullable=True)
     objective = Column(String(50), nullable=True, default=OptimizationObjective.MAX_VOLUME.value)

@@ -47,17 +47,34 @@ class LoadMasterCreditClient:
             except ImportError:
                 self.token_provider = None
 
+
     async def _get_headers(self) -> dict[str, str]:
-        headers = {"Content-Type": "application/json"}
-        if self.token_provider:
-            try:
-                if hasattr(self.token_provider, "get_service_token"):
-                    token = await self.token_provider.get_service_token()
-                    if token:
-                        headers["Authorization"] = f"Bearer {token}"
-            except Exception as e:
-                logger.warning(f"Could not obtain service token for LoadMaster credit client: {e}")
-        return headers
+        if self.token_provider is None:
+            raise RuntimeError(
+                "LoadMaster Credit Client chưa được cấu hình KeycloakTokenProvider"
+            )
+
+        try:
+            token = await self.token_provider.get_service_token()
+        except Exception as exc:
+            logger.error(
+                "Không thể lấy service token để gọi LoadMaster Credit API: %s",
+                type(exc).__name__,
+            )
+            raise RuntimeError(
+                "Không thể xác thực với Keycloak để gọi Credit API"
+            ) from exc
+
+        if not token:
+            raise RuntimeError(
+                "KeycloakTokenProvider trả về service token rỗng"
+            )
+
+        return {
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {token}",
+        }
+
 
     async def deduct_credit(self, company_id: Union[str, int], reference: str) -> bool:
         """
