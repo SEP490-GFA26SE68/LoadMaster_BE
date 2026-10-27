@@ -4,6 +4,7 @@ import fu.se184491.loadmaster_be.entity.company.Company;
 import fu.se184491.loadmaster_be.entity.order.TransportOrder;
 import fu.se184491.loadmaster_be.constant.cargo.HandlingClass;
 import fu.se184491.loadmaster_be.constant.cargo.PackageStatus;
+import fu.se184491.loadmaster_be.service.qr.Impl.AesQrTokenServiceImpl;
 import jakarta.persistence.*;
 import jakarta.validation.constraints.Positive;
 import lombok.*;
@@ -37,7 +38,8 @@ public class CargoPackage {
     @Column(name = "tracking_barcode", length = 100, unique = true)
     private String trackingBarcode;
 
-    @Column(name = "qr_token", length = 64, unique = true, nullable = false, updatable = false)
+    @Convert(converter = AesQrTokenServiceImpl.class)
+    @Column(name = "qr_token", length = 128, unique = true, nullable = false, updatable = false)
     private String qrToken;
 
     @Enumerated(EnumType.STRING)
@@ -46,18 +48,18 @@ public class CargoPackage {
     private HandlingClass handlingClass = HandlingClass.STANDARD;
 
     @Positive
-    @Column(name = "actual_length")
-    private Integer actualLength;
+    @Column(name = "actual_length", precision = 10, scale = 2)
+    private BigDecimal actualLength;
 
-    /** Package width in millimetres (imported or measured). */
+    /** Package width in centimetres (imported or measured, up to 2 decimal places). */
     @Positive
-    @Column(name = "actual_width")
-    private Integer actualWidth;
+    @Column(name = "actual_width", precision = 10, scale = 2)
+    private BigDecimal actualWidth;
 
-    /** Package height in millimetres (imported or measured). */
+    /** Package height in centimetres (imported or measured, up to 2 decimal places). */
     @Positive
-    @Column(name = "actual_height")
-    private Integer actualHeight;
+    @Column(name = "actual_height", precision = 10, scale = 2)
+    private BigDecimal actualHeight;
 
     @Positive
     @Column(name = "actual_weight_kg", precision = 10, scale = 2)

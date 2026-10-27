@@ -25,6 +25,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.domain.Specification;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 
@@ -79,7 +80,7 @@ class SupportTicketServiceTest {
     }
 
     @Test
-    @DisplayName("createTicket - Generates ticketCode with TCK- prefix, sets status OPEN and saves description")
+    @DisplayName("createTicket - Generates ticketCode with TCK- prefix, sets status OPEN, saves description, and truncates createdAt to seconds")
     void createTicket_generatesTicketCodeAndSavesOpenTicket() {
         when(currentUserService.getCurrentUser()).thenReturn(companyAdmin);
         when(supportTicketRepository.save(any(SupportTicket.class))).thenAnswer(inv -> {
@@ -92,7 +93,7 @@ class SupportTicketServiceTest {
                 "Yêu cầu gia hạn gói",
                 "Gia hạn thêm 1 năm cho công ty Acme",
                 TicketCategory.BILLING,
-                TicketPriority.HIGH
+                null
         );
 
         SupportTicketResponse response = supportTicketService.createTicket(request);
@@ -101,8 +102,37 @@ class SupportTicketServiceTest {
         assertEquals(101L, response.getId());
         assertTrue(response.getTicketCode().startsWith("TCK-"));
         assertEquals(TicketStatus.OPEN, response.getStatus());
+        assertEquals(TicketPriority.MEDIUM, response.getPriority());
         assertEquals("Gia hạn thêm 1 năm cho công ty Acme", response.getDescription());
         assertEquals(10L, response.getCompanyId());
+        LocalDateTime createdAt = response.getCreatedAt();
+        assertNotNull(createdAt);
+        assertEquals(0, createdAt.getNano(), "createdAt should be truncated to seconds without fractional milliseconds");
+    }
+
+    @Test
+    @DisplayName("createTicket - Technical category (SYSTEM_BUG / ALGORITHM_ERROR) automatically sets priority HIGH, and TicketPriority only contains MEDIUM and HIGH")
+    void createTicket_whenTechnicalCategory_setsPriorityHigh() {
+        when(currentUserService.getCurrentUser()).thenReturn(companyAdmin);
+        when(supportTicketRepository.save(any(SupportTicket.class))).thenAnswer(inv -> {
+            SupportTicket t = inv.getArgument(0);
+            t.setId(102L);
+            return t;
+        });
+
+        CreateSupportTicketRequest request = new CreateSupportTicketRequest(
+                "Lỗi không tải được sơ đồ 3D",
+                "Màn hình 3D bị trắng khi bấm xem chuyến",
+                TicketCategory.SYSTEM_BUG,
+                null
+        );
+
+        SupportTicketResponse response = supportTicketService.createTicket(request);
+
+        assertNotNull(response);
+        assertEquals(TicketCategory.SYSTEM_BUG, response.getCategory());
+        assertEquals(TicketPriority.HIGH, response.getPriority());
+        assertEquals(List.of(TicketPriority.MEDIUM, TicketPriority.HIGH), List.of(TicketPriority.values()));
     }
 
     @Test
@@ -130,7 +160,7 @@ class SupportTicketServiceTest {
     }
 
     @Test
-    @DisplayName("updateTicket - Updates status to RESOLVED, sets resolutionNote, assignedTo, and resolvedAt")
+    @DisplayName("updateTicket - Updates status to RESOLVED, sets resolutionNote, assignedTo, and resolvedAt truncated to seconds as LocalDateTime")
     void updateTicket_whenResolved_setsResolutionFieldsAndTimestamp() {
         SupportTicket existing = SupportTicket.builder()
                 .id(101L)
@@ -157,6 +187,13 @@ class SupportTicketServiceTest {
         assertEquals(TicketStatus.RESOLVED, response.getStatus());
         assertEquals(5L, response.getAssignedToId());
         assertEquals("Đã gia hạn thành công", response.getResolutionNote());
-        assertNotNull(response.getResolvedAt());
+        LocalDateTime resolvedAt = response.getResolvedAt();
+        assertNotNull(resolvedAt);
+        assertEquals(0, resolvedAt.getNano(), "resolvedAt should be truncated to seconds without fractional milliseconds");
+
+        SupportTicket.LocalDateTimeSecondsConverter converter = new SupportTicket.LocalDateTimeSecondsConverter();
+        String dbResolved = converter.convertToDatabaseColumn(LocalDateTime.of(2026, 10, 19, 20, 19, 22, 709_000_000));
+        assertEquals("2026-10-19 20:19:22", dbResolved);
+        assertEquals(LocalDateTime.of(2026, 10, 19, 20, 19, 22), converter.convertToEntityAttribute(dbResolved));
     }
 }

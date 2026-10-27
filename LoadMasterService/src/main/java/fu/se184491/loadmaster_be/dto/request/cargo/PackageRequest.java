@@ -1,4 +1,3 @@
-
 package fu.se184491.loadmaster_be.dto.request.cargo;
 
 import fu.se184491.loadmaster_be.constant.cargo.HandlingClass;
@@ -44,16 +43,17 @@ public class PackageRequest {
     @Max(value = 1000, message = "Tối đa 1000 kiện mỗi lần")
     private Integer quantity = 1;
 
-    // Giữ nguyên đơn vị và kiểu dữ liệu của API hiện tại.
-    // Cần xác nhận BE đang quy ước mm hay cm trước khi nối với form.
     @Positive
-    private Integer actualLength;
+    @Digits(integer = 8, fraction = 2)
+    private BigDecimal actualLength;
 
     @Positive
-    private Integer actualWidth;
+    @Digits(integer = 8, fraction = 2)
+    private BigDecimal actualWidth;
 
     @Positive
-    private Integer actualHeight;
+    @Digits(integer = 8, fraction = 2)
+    private BigDecimal actualHeight;
 
     @NotNull(message = "Khối lượng kiện không được để trống")
     @Positive(message = "Khối lượng kiện phải lớn hơn 0")

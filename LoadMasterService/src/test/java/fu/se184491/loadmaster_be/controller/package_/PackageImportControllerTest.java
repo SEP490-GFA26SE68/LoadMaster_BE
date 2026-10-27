@@ -63,7 +63,7 @@ class PackageImportControllerTest {
     private RestAccessDeniedHandler accessDeniedHandler;
 
     @Test
-    @org.springframework.security.test.context.support.WithMockUser(roles = "DISPATCHER")
+    @org.springframework.security.test.context.support.WithMockUser(roles = "WAREHOUSE_WORKER")
     @DisplayName("POST /api/packages/import/confirm with errors returns 422 with error details in data and errors fields")
     void confirm_whenValidationFails_returns422WithDetailedErrors() throws Exception {
         // Given
@@ -87,7 +87,9 @@ class PackageImportControllerTest {
                 .thenThrow(new ImportValidationException(previewResult));
 
         // When & Then
-        mockMvc.perform(multipart("/api/packages/import/confirm").file(file))
+        mockMvc.perform(multipart("/api/packages/import/confirm")
+                        .file(file)
+                        .param("deliveryRequirementId", "1"))
                 .andExpect(status().isUnprocessableEntity())
                 .andExpect(jsonPath("$.success").value(false))
                 .andExpect(jsonPath("$.code").value("IMPORT_HAS_ERRORS"))
