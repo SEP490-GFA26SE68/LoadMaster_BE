@@ -2,6 +2,7 @@ package fu.se184491.loadmaster_be.controller.planning;
 
 import fu.se184491.loadmaster_be.dto.ApiResponse;
 import fu.se184491.loadmaster_be.dto.request.planning.DeliveryRequirementRequest;
+import fu.se184491.loadmaster_be.dto.request.planning.ExtendDeliveryDeadlineRequest;
 import fu.se184491.loadmaster_be.dto.request.planning.UpdateDeliveryRequirementRequest;
 import fu.se184491.loadmaster_be.dto.request.planning.UpdateRequirementCoordinatesRequest;
 import fu.se184491.loadmaster_be.dto.response.planning.DeliveryRequirementResponse;
@@ -107,4 +108,28 @@ public class DeliveryRequirementController {
                 )
         );
     }
+
+
+    @PatchMapping("/{id}/extend-deadline")
+    @PreAuthorize("hasAuthority('DELIVERY_DEMAND_MANAGE')")
+    public ApiResponse<DeliveryRequirementResponse> extendDeadline(
+            @PathVariable Long id,
+            @Valid @RequestBody ExtendDeliveryDeadlineRequest request
+    ) {
+        User user = currentUserService.getCurrentUser();
+
+        DeliveryRequirementResponse response =
+                deliveryRequirementService.extendDeadline(
+                        user.getCompany().getId(),
+                        user.getId(),
+                        id,
+                        request
+                );
+
+        return ApiResponse.success(
+                "Gia hạn giao hàng thành công",
+                response
+        );
+    }
+
 }

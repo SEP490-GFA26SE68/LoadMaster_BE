@@ -5,6 +5,7 @@ import fu.se184491.loadmaster_be.constant.trip.TripStatus;
 import fu.se184491.loadmaster_be.constant.vehicle.VehicleStatus;
 import fu.se184491.loadmaster_be.dto.PageResponse;
 import fu.se184491.loadmaster_be.dto.request.vehicle.CreateVehicleRequest;
+import fu.se184491.loadmaster_be.dto.response.trip.TripVehicleConfigResponse;
 import fu.se184491.loadmaster_be.dto.response.vehicle.VehicleResponse;
 import fu.se184491.loadmaster_be.entity.account.User;
 import fu.se184491.loadmaster_be.entity.vehicle.Vehicle;
@@ -181,6 +182,78 @@ public class VehicleServiceImpl implements VehicleService {
         return PageResponse.of(
                 "Vehicles retrieved successfully",
                 result
+        );
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public VehicleResponse getVehicleById(Long vehicleId) {
+        Long companyId = currentUserService.getCurrentCompanyId();
+
+        Vehicle vehicle = vehicleRepository
+                .findByIdAndCompanyId(vehicleId, companyId)
+                .orElseThrow(() ->
+                        new AppException(ErrorCode.VEHICLE_NOT_FOUND)
+                );
+
+        return toVehicleResponse(vehicle);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public TripVehicleConfigResponse getVehicleConfig(Long vehicleId) {
+        Long companyId = currentUserService.getCurrentCompanyId();
+
+        Vehicle vehicle = vehicleRepository
+                .findByIdAndCompanyId(vehicleId, companyId)
+                .orElseThrow(() ->
+                        new AppException(ErrorCode.VEHICLE_NOT_FOUND)
+                );
+
+        VehicleType type = vehicle.getVehicleType();
+
+        List<TripVehicleConfigResponse.Obstacle> obstacles =
+                type.getObstacles().stream()
+                        .map(obstacle -> new TripVehicleConfigResponse.Obstacle(
+                                obstacle.getId(),
+                                obstacle.getName(),
+                                obstacle.getType().name(),
+                                obstacle.getX(),
+                                obstacle.getY(),
+                                obstacle.getZ(),
+                                obstacle.getLength(),
+                                obstacle.getWidth(),
+                                obstacle.getHeight(),
+                                obstacle.getLoadBearing()
+                        ))
+                        .toList();
+
+        return new TripVehicleConfigResponse(
+                vehicle.getId(),
+                vehicle.getName(),
+                vehicle.getLicensePlate(),
+
+                type.getId(),
+                type.getName(),
+
+                type.getInnerLength(),
+                type.getInnerWidth(),
+                type.getInnerHeight(),
+
+                type.getDoorWidth(),
+                type.getDoorHeight(),
+
+                type.getMaxPayloadKg(),
+                type.getFrontAxleLimitKg(),
+                type.getRearAxleLimitKg(),
+                type.getMaxCogOffsetRatio(),
+
+                type.getFrontAxleX(),
+                type.getRearAxleX(),
+                type.getEmptyFrontAxleLoadKg(),
+                type.getEmptyRearAxleLoadKg(),
+
+                obstacles
         );
     }
 

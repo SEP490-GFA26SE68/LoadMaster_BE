@@ -1,3 +1,4 @@
+
 package fu.se184491.loadmaster_be.dto.response.trip;
 
 import fu.se184491.loadmaster_be.constant.trip.TripStatus;
@@ -33,42 +34,70 @@ public record TripResponse(
         BigDecimal originLongitude,
 
         TripStatus status,
-        Instant createdAt
+        Instant createdAt,
+
+        Integer stopCount,
+        Integer packageCount,
+        Boolean hasActiveRoutePlan
 ) {
 
+    // Dùng cho các API hiện tại.
+    // Số liệu tổng hợp sẽ được bổ sung tại Service.
     public static TripResponse fromEntity(Trip trip) {
-        return new TripResponse(
-                trip.getId(),
-                trip.getTripCode(),
-                trip.getTripName(),
+        return fromEntity(trip, 0, 0, false);
+    }
 
-                trip.getCompany() != null
-                        ? trip.getCompany().getId()
-                        : null,
+    // Dùng khi trả danh sách chuyến có dữ liệu tổng hợp.
+    public static TripResponse fromEntity(
+            Trip trip,
+            int stopCount,
+            int packageCount,
+            boolean hasActiveRoutePlan
+    ) {
+        return TripResponse.builder()
+                .id(trip.getId())
+                .tripCode(trip.getTripCode())
+                .tripName(trip.getTripName())
 
-                trip.getVehicle().getId(),
-                trip.getVehicle().getName(),
-                trip.getVehicle().getLicensePlate(),
+                .companyId(
+                        trip.getCompany() != null
+                                ? trip.getCompany().getId()
+                                : null
+                )
 
-                trip.getDriver() != null
-                        ? trip.getDriver().getId()
-                        : null,
+                .vehicleId(trip.getVehicle().getId())
+                .vehicleName(trip.getVehicle().getName())
+                .licensePlate(trip.getVehicle().getLicensePlate())
 
-                trip.getDriver() != null
-                        ? trip.getDriver().getFullName()
-                        : null,
+                .driverId(
+                        trip.getDriver() != null
+                                ? trip.getDriver().getId()
+                                : null
+                )
+                .driverName(
+                        trip.getDriver() != null
+                                ? trip.getDriver().getFullName()
+                                : null
+                )
 
-                trip.getCreatedByDispatcher().getId(),
+                .createdByDispatcherId(
+                        trip.getCreatedByDispatcher().getId()
+                )
 
-                trip.getDepartureTime(),
+                .departureTime(trip.getDepartureTime())
 
-                trip.getOriginName(),
-                trip.getOriginAddress(),
-                trip.getOriginLatitude(),
-                trip.getOriginLongitude(),
+                .originName(trip.getOriginName())
+                .originAddress(trip.getOriginAddress())
+                .originLatitude(trip.getOriginLatitude())
+                .originLongitude(trip.getOriginLongitude())
 
-                trip.getStatus(),
-                trip.getCreatedAt()
-        );
+                .status(trip.getStatus())
+                .createdAt(trip.getCreatedAt())
+
+                .stopCount(stopCount)
+                .packageCount(packageCount)
+                .hasActiveRoutePlan(hasActiveRoutePlan)
+
+                .build();
     }
 }

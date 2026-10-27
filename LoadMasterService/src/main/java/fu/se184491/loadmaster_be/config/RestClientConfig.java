@@ -12,12 +12,30 @@ import java.time.Duration;
 @Configuration
 public class RestClientConfig {
 
+
+
     @Bean
-    public RestClient optimizationRestClient() {
+    public RestClient optimizationRestClient(
+            @Value("${optimization.service.base-url:http://localhost:8000}")
+            String baseUrl
+    ) {
+        HttpClient httpClient = HttpClient.newBuilder()
+                .version(HttpClient.Version.HTTP_1_1)
+                .connectTimeout(Duration.ofSeconds(10))
+                .build();
+
+        JdkClientHttpRequestFactory requestFactory =
+                new JdkClientHttpRequestFactory(httpClient);
+
+        requestFactory.setReadTimeout(Duration.ofSeconds(60));
+
         return RestClient.builder()
-                .baseUrl("http://localhost:8000")
+                .baseUrl(baseUrl)
+                .requestFactory(requestFactory)
                 .build();
     }
+
+
 
     @Bean
     public RestClient keycloakAdminRestClient(

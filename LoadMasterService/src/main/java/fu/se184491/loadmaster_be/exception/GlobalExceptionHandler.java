@@ -404,6 +404,7 @@ public class GlobalExceptionHandler {
                         .build());
     }
 
+
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ApiResponse<Void>> handleGlobalException(
             Exception ex, HttpServletRequest request) {

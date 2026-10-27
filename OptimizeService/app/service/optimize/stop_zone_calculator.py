@@ -8,6 +8,7 @@ from app.dto.optimization.engine.zone_data import (
     ZoneData,
     StopZoneCalculationResponse,
 )
+import math
 
 
 class StopZoneCalculator:
@@ -22,7 +23,8 @@ class StopZoneCalculator:
       - Tổng zone_length <= vehicle.inner_l (trừ sum of buffers)
     """
 
-    ACCESSIBILITY_BUFFER_M = 0.1
+    # Khoảng cách giữa các zone, đơn vị cm.
+    ACCESSIBILITY_BUFFER_CM = 10.0
 
     @classmethod
     def calculate_zones(
@@ -46,15 +48,20 @@ class StopZoneCalculator:
         max_payload = float(vehicle_data.max_payload_kg or 0.0)
         cross_section = inner_w * inner_h
 
-        # 2. Determine buffer based on unit (m vs mm)
-        is_mm = inner_l > 50.0
-        if accessibility_buffer is not None:
-            if is_mm and accessibility_buffer < 1.0:
-                buffer = accessibility_buffer * 1000.0
-            else:
-                buffer = float(accessibility_buffer)
-        else:
-            buffer = 100.0 if is_mm else cls.ACCESSIBILITY_BUFFER_M
+
+        # 2. Accessibility buffer — thống nhất đơn vị cm.
+        # Không suy đoán mm/m từ chiều dài xe.
+        buffer = (
+            float(accessibility_buffer)
+            if accessibility_buffer is not None
+            else cls.ACCESSIBILITY_BUFFER_CM
+        )
+
+        if not math.isfinite(buffer) or buffer < 0:
+            raise ValueError(
+                "accessibility_buffer must be finite and >= 0 cm"
+            )
+
 
         num_stops = len(stops)
         num_buffers = max(0, num_stops - 1)
@@ -122,8 +129,23 @@ class StopZoneCalculator:
         # Ordering along X from 0 (deepest) to inner_l (door):
         # Position 0 has the deepest stop (reversed delivery sequence).
         # Position last has the first delivery stop.
-        stops_by_delivery = list(parsed_stops)  # delivery order: 1, 2, ... N
-        deepest_to_door = list(reversed(stops_by_delivery))  # N, N-1, ... 1
+
+        # HC-09: Stop giao trước gần cửa sau.
+        # Không phụ thuộc thứ tự của danh sách đầu vào.
+        stops_by_delivery = sorted(
+            parsed_stops,
+            key=lambda s: (
+                int(s["sequence"]),
+                s["original_idx"],
+            ),
+        )
+
+        # Từ đầu xe (x=0) đến cửa sau (x=inner_l):
+        # stop giao cuối -> stop giao đầu.
+        deepest_to_door = list(
+            reversed(stops_by_delivery)
+        )
+
 
         cur_x = 0.0
         for i, s in enumerate(deepest_to_door):

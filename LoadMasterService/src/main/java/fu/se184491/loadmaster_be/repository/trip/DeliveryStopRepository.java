@@ -8,6 +8,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
@@ -22,6 +23,25 @@ public interface DeliveryStopRepository extends JpaRepository<DeliveryStop, Long
     );
 
     long countByTripId(Long tripId);
+
+
+    /**
+     * Đếm số điểm giao của nhiều chuyến trong một truy vấn.
+     * Dùng để hiển thị cột "Điểm giao" trong danh sách chuyến.
+     *
+     * Object[0]: tripId (Long)
+     * Object[1]: stopCount (Long)
+     */
+    @Query("""
+        SELECT ds.trip.id, COUNT(ds.id)
+        FROM DeliveryStop ds
+        WHERE ds.trip.id IN :tripIds
+        GROUP BY ds.trip.id
+        """)
+    List<Object[]> countStopsByTripIds(
+            @Param("tripIds") Collection<Long> tripIds
+    );
+
 
     // Lấy thứ tự điểm giao lớn nhất trong chuyến.
     @Query("""

@@ -19,7 +19,9 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 from starlette.testclient import TestClient
-
+from unittest.mock import patch
+from app.controller.optimization.optimization_router import get_async_runner
+from app.service.optimize.async_optimization_runner import AsyncOptimizationRunner
 from app.main import app
 from app.config.database import Base, get_db
 from app.constant.optimization.job_status import OptimizationJobStatus
@@ -29,6 +31,7 @@ from app.dto.optimization.engine.engine_response import (
     UnplacedData,
     MetricsData,
 )
+from app.service.auth.auth_dependency import require_optimization_service
 from app.entity.optimization.optimization_job import OptimizationJob
 from app.entity.optimization.load_plan import LoadPlan
 from app.entity.optimization.package_placement import PackagePlacement
@@ -57,12 +60,27 @@ def db_session():
     session.add(v)
     session.commit()
 
-    trip_id = str(uuid.uuid4())
-    trip = Trip(id=trip_id, vehicle_id=1, status="DRAFT")
+
+    # Trip.id là BIGINT trong PostgreSQL
+    # và INTEGER PRIMARY KEY trong SQLite test.
+    trip = Trip(
+        vehicle_id=1,
+        status="DRAFT",
+    )
+
     session.add(trip)
+    session.flush()
+
+    # Lấy ID số nguyên do database sinh ra.
+    trip_id = trip.id
     session.commit()
 
-    stop = DeliveryStop(id=1, trip_id=trip_id, stop_sequence=1)
+    stop = DeliveryStop(
+        id=1,
+        trip_id=trip_id,
+        stop_sequence=1,
+    )
+
     session.add(stop)
     session.commit()
 
@@ -225,16 +243,37 @@ class TestLoadPlanServiceQuery:
 class TestIntegrationEndToEndPlansApi:
     def test_post_job_then_get_job_plans_returns_persisted_load_plan(self, db_session):
         """End-to-End: POST /jobs -> background task solves and persists -> GET /jobs/{id}/plans returns plans"""
-        import jwt
-        token = jwt.encode(
-            {"preferred_username": "dispatcher_user", "roles": ["DISPATCHER"]},
-            "a_very_secret_key_for_testing_1234567890",
-            algorithm="HS256",
-        )
-        headers = {"Authorization": f"Bearer {token}"}
+        headers = {}
 
         trip = db_session.query(Trip).first()
         app.dependency_overrides[get_db] = lambda: db_session
+        # Giả lập service account đã được Keycloak xác thực.
+# Chỉ áp dụng trong bài test, không ảnh hưởng production.
+        app.dependency_overrides[require_optimization_service] = lambda: {
+            "sub": "test-service-account",
+            "azp": "loadmaster-backend-service",
+            "aud": "optimization-service",
+            "resource_access": {
+                "optimization-service": {
+                    "roles": ["OPTIMIZATION_EXECUTE"]
+                }
+            },
+        }
+
+        class FakeCreditClient:
+            async def deduct_credit(self, company_id, job_uuid):
+                return None
+
+            async def refund_credit(self, company_id, job_uuid):
+                return None
+
+        def get_test_runner():
+            return AsyncOptimizationRunner(
+                credit_client=FakeCreditClient(),
+                session_factory=lambda: db_session,
+            )
+
+        app.dependency_overrides[get_async_runner] = get_test_runner
 
         client = TestClient(app)
 
