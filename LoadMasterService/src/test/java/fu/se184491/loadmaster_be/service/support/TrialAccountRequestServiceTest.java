@@ -82,6 +82,9 @@ class TrialAccountRequestServiceTest {
     @Mock
     private BrevoClient brevoClient;
 
+    @Mock
+    private fu.se184491.loadmaster_be.service.company.CompanyAgreementService companyAgreementService;
+
     @InjectMocks
     private TrialAccountRequestServiceImpl trialAccountRequestService;
 
@@ -217,6 +220,10 @@ class TrialAccountRequestServiceTest {
 
         // Verify Credits granted
         verify(creditService).grantMonthlyCredits(50L, 1000);
+
+        // Verify Agreement creation with 3-day deadline
+        verify(companyAgreementService).createTrialAgreement(eq(savedCompany), eq(savedUser), any(LocalDateTime.class));
+
         // Verify Email sent with credentials
         ArgumentCaptor<String> emailBodyCaptor = ArgumentCaptor.forClass(String.class);
         verify(brevoClient).sendEmail(eq("khach@logistics.vn"), anyString(), emailBodyCaptor.capture());
@@ -225,6 +232,8 @@ class TrialAccountRequestServiceTest {
         assertThat(emailBody).contains("khach@logistics.vn");
         assertThat(emailBody).contains("COMP-KHACH");
         assertThat(emailBody).contains("Company Admin");
+        assertThat(emailBody).contains("Thỏa thuận");
+        assertThat(emailBody).contains("3 ngày");
     }
 
     @Test
