@@ -22,10 +22,10 @@ public class PackageResponse {
     private String trackingBarcode;
     private String qrToken;
 
-    // Kích thước và khối lượng
-    private Integer actualLength;
-    private Integer actualWidth;
-    private Integer actualHeight;
+    // Kích thước và khối lượng (tối đa 2 chữ số sau dấu phẩy)
+    private BigDecimal actualLength;
+    private BigDecimal actualWidth;
+    private BigDecimal actualHeight;
     private BigDecimal actualWeightKg;
 
     // Thông tin giao hàng

@@ -1,4 +1,3 @@
-
 package fu.se184491.loadmaster_be.dto.request;
 
 import java.math.BigDecimal;
@@ -77,6 +76,12 @@ public record PackageImportRow(
         String packageTypeCode
 
 ) {
+
+    /**
+     * Giá trị đánh dấu trường số bị sai định dạng (ví dụ nhập chữ cái vào ô số)
+     * để Validator trả về RowError đúng dòng và đúng cột thay vì văng lỗi FILE_INVALID toàn cục.
+     */
+    public static final BigDecimal INVALID_NUMBER_SENTINEL = new BigDecimal("-999999999.999999");
 
     /**
      * Constructor cũ để code parser hiện tại

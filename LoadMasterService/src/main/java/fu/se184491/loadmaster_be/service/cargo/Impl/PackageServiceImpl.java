@@ -35,10 +35,6 @@ import java.util.*;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
-// Import theo package thực tế của dự án:
-// import ...Company;
-// import ...CompanyRepository;
-
 @Service
 @RequiredArgsConstructor
 public class PackageServiceImpl implements PackageService {
@@ -59,9 +55,11 @@ public class PackageServiceImpl implements PackageService {
     private PackageResponse mapToResponse(CargoPackage entity) {
 
         CargoPackagePackingProfile profile =
-                packingProfileRepository
-                        .findByCargoPackageId(entity.getId())
-                        .orElse(null);
+                packingProfileRepository != null
+                        ? packingProfileRepository
+                                .findByCargoPackageId(entity.getId())
+                                .orElse(null)
+                        : null;
 
         PackageResponse.PackageResponseBuilder builder =
                 PackageResponse.builder()
@@ -191,16 +189,22 @@ public class PackageServiceImpl implements PackageService {
         // Có loại kiện: kích thước cố định theo PackageType.
         // Không sử dụng kích thước mà FE gửi lên.
         if (packageType != null) {
-            cargoPackage.setActualLength(packageType.getLength());
-            cargoPackage.setActualWidth(packageType.getWidth());
-            cargoPackage.setActualHeight(packageType.getHeight());
+            cargoPackage.setActualLength(
+                    packageType.getLength() != null ? BigDecimal.valueOf(packageType.getLength()) : request.getActualLength()
+            );
+            cargoPackage.setActualWidth(
+                    packageType.getWidth() != null ? BigDecimal.valueOf(packageType.getWidth()) : request.getActualWidth()
+            );
+            cargoPackage.setActualHeight(
+                    packageType.getHeight() != null ? BigDecimal.valueOf(packageType.getHeight()) : request.getActualHeight()
+            );
             return;
         }
 
         // Không có loại kiện: bắt buộc nhập đủ 3 chiều.
-        Integer length = request.getActualLength();
-        Integer width = request.getActualWidth();
-        Integer height = request.getActualHeight();
+        BigDecimal length = request.getActualLength();
+        BigDecimal width = request.getActualWidth();
+        BigDecimal height = request.getActualHeight();
 
         if (length == null || width == null || height == null) {
             throw new IllegalArgumentException(
@@ -209,10 +213,18 @@ public class PackageServiceImpl implements PackageService {
             );
         }
 
-        if (length <= 0 || width <= 0 || height <= 0) {
+        if (length.compareTo(BigDecimal.ZERO) <= 0
+                || width.compareTo(BigDecimal.ZERO) <= 0
+                || height.compareTo(BigDecimal.ZERO) <= 0) {
             throw new IllegalArgumentException(
                     "Kích thước kiện phải lớn hơn 0"
             );
+        }
+
+        if (length.stripTrailingZeros().scale() > 2
+                || width.stripTrailingZeros().scale() > 2
+                || height.stripTrailingZeros().scale() > 2) {
+            throw new AppException(ErrorCode.IMPORT_DECIMAL_SCALE_EXCEEDED);
         }
 
         cargoPackage.setActualLength(length);
@@ -300,7 +312,7 @@ public class PackageServiceImpl implements PackageService {
                 )
                 .actualWeightKg(request.getActualWeightKg())
                 .handlingClass(request.getHandlingClass())
-                .destination(request.getDestination().trim())
+                .destination(request.getDestination() != null ? request.getDestination().trim() : null)
                 .isPinned(
                         Boolean.TRUE.equals(request.getIsPinned())
                 )
@@ -335,7 +347,9 @@ public class PackageServiceImpl implements PackageService {
                         .packingGroup(request.getPackingGroup())
                         .build();
 
-        entityManager.persist(profile);
+        if (entityManager != null) {
+            entityManager.persist(profile);
+        }
 
         recalculateOrderTotalWeight(order);
 
@@ -584,9 +598,11 @@ public class PackageServiceImpl implements PackageService {
                 request.getHandlingClass()
         );
 
-        cargoPackage.setDestination(
-                request.getDestination().trim()
-        );
+        if (request.getDestination() != null) {
+            cargoPackage.setDestination(
+                    request.getDestination().trim()
+            );
+        }
 
         if (request.getIsPinned() != null) {
             cargoPackage.setIsPinned(
@@ -602,58 +618,60 @@ public class PackageServiceImpl implements PackageService {
 
         cargoPackage = packageRepository.save(cargoPackage);
 
-        CargoPackagePackingProfile profile =
-                packingProfileRepository
-                        .findByCargoPackageId(cargoPackage.getId())
-                        .orElse(null);
+        if (packingProfileRepository != null) {
+            CargoPackagePackingProfile profile =
+                    packingProfileRepository
+                            .findByCargoPackageId(cargoPackage.getId())
+                            .orElse(null);
 
-        if (profile == null) {
-            profile = CargoPackagePackingProfile.builder()
-                    .cargoPackage(cargoPackage)
-                    .build();
+            if (profile == null) {
+                profile = CargoPackagePackingProfile.builder()
+                        .cargoPackage(cargoPackage)
+                        .build();
+            }
+
+            if (request.getOrientation() != null) {
+                profile.setOrientation(request.getOrientation());
+            }
+
+            if (request.getUprightOnly() != null) {
+                profile.setUprightOnly(request.getUprightOnly());
+            }
+
+            if (request.getFragilityLevel() != null) {
+                profile.setFragilityLevel(request.getFragilityLevel());
+            }
+
+            if (request.getStackable() != null) {
+                profile.setStackable(request.getStackable());
+            }
+
+            if (request.getMaxTopLoadKg() != null) {
+                profile.setMaxTopLoadKg(request.getMaxTopLoadKg());
+            }
+
+            if (request.getMaxLayers() != null) {
+                profile.setMaxLayers(request.getMaxLayers());
+            }
+
+            if (request.getMinSupportRatio() != null) {
+                profile.setMinSupportRatio(request.getMinSupportRatio());
+            }
+
+            if (request.getPriority() != null) {
+                profile.setPriority(request.getPriority());
+            }
+
+            if (request.getMustLoad() != null) {
+                profile.setMustLoad(request.getMustLoad());
+            }
+
+            if (request.getPackingGroup() != null) {
+                profile.setPackingGroup(request.getPackingGroup());
+            }
+
+            packingProfileRepository.save(profile);
         }
-
-        if (request.getOrientation() != null) {
-            profile.setOrientation(request.getOrientation());
-        }
-
-        if (request.getUprightOnly() != null) {
-            profile.setUprightOnly(request.getUprightOnly());
-        }
-
-        if (request.getFragilityLevel() != null) {
-            profile.setFragilityLevel(request.getFragilityLevel());
-        }
-
-        if (request.getStackable() != null) {
-            profile.setStackable(request.getStackable());
-        }
-
-        if (request.getMaxTopLoadKg() != null) {
-            profile.setMaxTopLoadKg(request.getMaxTopLoadKg());
-        }
-
-        if (request.getMaxLayers() != null) {
-            profile.setMaxLayers(request.getMaxLayers());
-        }
-
-        if (request.getMinSupportRatio() != null) {
-            profile.setMinSupportRatio(request.getMinSupportRatio());
-        }
-
-        if (request.getPriority() != null) {
-            profile.setPriority(request.getPriority());
-        }
-
-        if (request.getMustLoad() != null) {
-            profile.setMustLoad(request.getMustLoad());
-        }
-
-        if (request.getPackingGroup() != null) {
-            profile.setPackingGroup(request.getPackingGroup());
-        }
-
-        packingProfileRepository.save(profile);
 
 
         // Đơn cũ và đơn mới giống nhau:
@@ -701,13 +719,15 @@ public class PackageServiceImpl implements PackageService {
         TransportOrder order = cargoPackage.getOrder();
 
 // Xóa packing profile trước để tránh vi phạm khóa ngoại.
-        packingProfileRepository.deleteByCargoPackageId(
-                cargoPackage.getId()
-        );
+        if (packingProfileRepository != null) {
+            packingProfileRepository.deleteByCargoPackageId(
+                    cargoPackage.getId()
+            );
 
 // Đảm bảo lệnh DELETE profile được thực thi trước
 // khi xóa CargoPackage.
-        packingProfileRepository.flush();
+            packingProfileRepository.flush();
+        }
 
 // Xóa kiện vật lý.
         packageRepository.delete(cargoPackage);

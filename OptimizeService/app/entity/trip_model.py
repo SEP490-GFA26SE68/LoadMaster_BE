@@ -189,11 +189,10 @@ class CargoPackage(Base):
     tracking_barcode = Column(String(100), nullable=True)
     actual_weight_kg = Column(Numeric(10, 2), nullable=True)
 
-    # Kích thước thực tế do người dùng nhập cho từng Package.
-    # Đơn vị: mm theo mô tả trong CargoPackage.java.
-    actual_length = Column(Integer, nullable=True)
-    actual_width = Column(Integer, nullable=True)
-    actual_height = Column(Integer, nullable=True)
+    # Kích thước thực tế do người dùng nhập cho từng Package (cm, tối đa 2 chữ số sau dấu phẩy).
+    actual_length = Column(Numeric(10, 2), nullable=True)
+    actual_width = Column(Numeric(10, 2), nullable=True)
+    actual_height = Column(Numeric(10, 2), nullable=True)
 
     handling_class = Column(String(20), nullable=True, default="STANDARD")
 
