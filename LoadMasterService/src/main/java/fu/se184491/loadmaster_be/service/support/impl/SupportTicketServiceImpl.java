@@ -21,10 +21,10 @@ import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.concurrent.ThreadLocalRandom;
 
@@ -49,9 +49,9 @@ public class SupportTicketServiceImpl implements SupportTicketService {
                 .subject(request.subject())
                 .description(request.description())
                 .category(request.category())
-                .priority(request.priority() != null ? request.priority() : TicketPriority.MEDIUM)
+                .priority(resolvePriority(request.category()))
                 .status(TicketStatus.OPEN)
-                .createdAt(LocalDateTime.now())
+                .createdAt(LocalDateTime.now().truncatedTo(ChronoUnit.SECONDS))
                 .build();
 
         SupportTicket saved = supportTicketRepository.save(ticket);
@@ -101,7 +101,7 @@ public class SupportTicketServiceImpl implements SupportTicketService {
             ticket.setStatus(request.status());
             if ((request.status() == TicketStatus.RESOLVED || request.status() == TicketStatus.CLOSED)
                     && ticket.getResolvedAt() == null) {
-                ticket.setResolvedAt(Instant.now());
+                ticket.setResolvedAt(LocalDateTime.now().truncatedTo(ChronoUnit.SECONDS));
             }
         }
 
@@ -123,6 +123,12 @@ public class SupportTicketServiceImpl implements SupportTicketService {
         return role == UserRole.SYSTEM_SUPPORTER
                 || role == UserRole.SYSTEM_MANAGER
                 || role == UserRole.SYSTEM_ADMIN;
+    }
+
+    private TicketPriority resolvePriority(TicketCategory category) {
+        return category == TicketCategory.BILLING
+                ? TicketPriority.MEDIUM
+                : TicketPriority.HIGH;
     }
 
     private String generateTicketCode() {

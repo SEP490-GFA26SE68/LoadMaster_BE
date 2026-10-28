@@ -64,6 +64,7 @@ public class TrialAccountRequestServiceImpl implements TrialAccountRequestServic
     private final KeycloakAdminClient keycloakAdminClient;
     private final TemporaryPasswordGenerator temporaryPasswordGenerator;
     private final BrevoClient brevoClient;
+    private final fu.se184491.loadmaster_be.service.company.CompanyAgreementService companyAgreementService;
 
     @Override
     public TrialAccountRequestResponse createTrialRequest(CreateTrialAccountRequest request, User requestedBy) {
@@ -203,6 +204,7 @@ public class TrialAccountRequestServiceImpl implements TrialAccountRequestServic
         String temporaryPassword = temporaryPasswordGenerator.generate();
         String keycloakUserId = null;
         boolean newlyCreatedInKeycloak = false;
+        User savedUser = null;
 
         try {
             String existingKeycloakId = keycloakAdminClient.findUserIdByEmail(trial.getEmail());
@@ -231,7 +233,7 @@ public class TrialAccountRequestServiceImpl implements TrialAccountRequestServic
                     .userRoleType(UserRole.ADMIN)
                     .status(UserStatus.ACTIVE)
                     .build();
-            userRepository.save(user);
+            savedUser = userRepository.save(user);
         } catch (AppException ex) {
             if (newlyCreatedInKeycloak && keycloakUserId != null) {
                 try {
@@ -301,7 +303,10 @@ public class TrialAccountRequestServiceImpl implements TrialAccountRequestServic
                         : 1000);
         creditService.grantMonthlyCredits(savedCompany.getId(), credits);
 
-        // 7. Gửi email bàn giao tài khoản trực tiếp đến khách hàng
+        // 7. Tạo Thỏa thuận dịch vụ thử nghiệm (Hạn chót ký 3 ngày)
+        companyAgreementService.createTrialAgreement(savedCompany, savedUser, now);
+
+        // 8. Gửi email bàn giao tài khoản trực tiếp đến khách hàng
         String planName = plan != null ? plan.getName() : "Gói dùng thử";
         String emailContent = """
                 Xin chào %s,
@@ -322,6 +327,10 @@ public class TrialAccountRequestServiceImpl implements TrialAccountRequestServic
                 • Gói dịch vụ: %s
                 • Thời hạn dùng thử: %d ngày (Có hiệu lực đến %s)
                 • Hạn mức tối ưu (Credits): %d credits
+
+                LƯU Ý QUAN TRỌNG VỀ THỎA THUẬN DỊCH VỤ:
+                • Bạn vui lòng đăng nhập và thực hiện ký Thỏa thuận dịch vụ thử nghiệm trong vòng 3 ngày kể từ khi nhận được email này.
+                • Sau 3 ngày, nếu chưa hoàn tất ký thỏa thuận điện tử, tài khoản quản trị sẽ tự động bị tạm khóa theo quy định bảo mật của nền tảng (kể cả khi thời gian thử nghiệm vẫn còn hiệu lực).
 
                 HƯỚNG DẪN BẮT ĐẦU:
                 Vui lòng truy cập hệ thống để đăng nhập và tiến hành đổi mật khẩu ở lần đầu tiên.

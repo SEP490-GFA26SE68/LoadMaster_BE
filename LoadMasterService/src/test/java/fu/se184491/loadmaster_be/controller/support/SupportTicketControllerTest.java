@@ -22,8 +22,8 @@ import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
-import java.time.Instant;
 import java.time.LocalDateTime;
+import java.time.temporal.ChronoUnit;
 import java.util.List;
 
 import static org.mockito.ArgumentMatchers.any;
@@ -70,7 +70,7 @@ class SupportTicketControllerTest {
                 .requesterEmail("admin@acme.vn")
                 .companyId(10L)
                 .companyName("Acme Logistics")
-                .createdAt(LocalDateTime.now())
+                .createdAt(LocalDateTime.of(2026, 10, 15, 21, 2, 6))
                 .build();
     }
 
@@ -93,7 +93,8 @@ class SupportTicketControllerTest {
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.data.ticketCode").value("TCK-20261014-0001"))
                 .andExpect(jsonPath("$.data.category").value("BILLING"))
-                .andExpect(jsonPath("$.data.status").value("OPEN"));
+                .andExpect(jsonPath("$.data.status").value("OPEN"))
+                .andExpect(jsonPath("$.data.createdAt").value("2026-10-15 21:02:06"));
 
         verify(supportTicketService).createTicket(any(CreateSupportTicketRequest.class));
     }
@@ -128,7 +129,7 @@ class SupportTicketControllerTest {
                 .status(TicketStatus.RESOLVED)
                 .assignedToId(5L)
                 .resolutionNote("Đã kích hoạt gói Enterprise theo hợp đồng")
-                .resolvedAt(Instant.now())
+                .resolvedAt(LocalDateTime.of(2026, 10, 19, 20, 19, 22))
                 .build();
 
         when(supportTicketService.updateTicket(eq(1L), any(UpdateSupportTicketRequest.class)))
@@ -140,7 +141,8 @@ class SupportTicketControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.data.status").value("RESOLVED"))
-                .andExpect(jsonPath("$.data.resolutionNote").value("Đã kích hoạt gói Enterprise theo hợp đồng"));
+                .andExpect(jsonPath("$.data.resolutionNote").value("Đã kích hoạt gói Enterprise theo hợp đồng"))
+                .andExpect(jsonPath("$.data.resolvedAt").value("2026-10-19 20:19:22"));
     }
 
     @Test

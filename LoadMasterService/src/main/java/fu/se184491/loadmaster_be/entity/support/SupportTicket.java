@@ -8,8 +8,9 @@ import fu.se184491.loadmaster_be.entity.optimization.OptimizationJob;
 import jakarta.persistence.*;
 import lombok.*;
 
-import java.time.Instant;
 import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+import java.time.temporal.ChronoUnit;
 
 @Entity
 @Table(name = "support_tickets")
@@ -48,9 +49,36 @@ public class SupportTicket {
     @Enumerated(EnumType.STRING) @Column(name = "status")
     private TicketStatus status;
 
-    @Column(name = "created_at")
+    @Convert(converter = LocalDateTimeSecondsConverter.class)
+    @Column(name = "created_at", length = 19)
     private LocalDateTime createdAt;
 
-    @Column(name = "resolved_at")
-    private Instant resolvedAt;
+    @Convert(converter = LocalDateTimeSecondsConverter.class)
+    @Column(name = "resolved_at", length = 19)
+    private LocalDateTime resolvedAt;
+
+    @Converter
+    public static class LocalDateTimeSecondsConverter implements AttributeConverter<LocalDateTime, String> {
+        private static final DateTimeFormatter FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+
+        @Override
+        public String convertToDatabaseColumn(LocalDateTime attribute) {
+            if (attribute == null) {
+                return null;
+            }
+            return attribute.truncatedTo(ChronoUnit.SECONDS).format(FORMATTER);
+        }
+
+        @Override
+        public LocalDateTime convertToEntityAttribute(String dbData) {
+            if (dbData == null || dbData.isBlank()) {
+                return null;
+            }
+            String trimmed = dbData.trim();
+            if (trimmed.length() > 19) {
+                trimmed = trimmed.substring(0, 19);
+            }
+            return LocalDateTime.parse(trimmed.replace('T', ' '), FORMATTER);
+        }
+    }
 }

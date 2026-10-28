@@ -49,6 +49,7 @@ public enum ErrorCode {
     CUSTOMER_NOT_FOUND("Không tìm thấy khách hàng", HttpStatus.NOT_FOUND),
     ORDER_NOT_FOUND("Không tìm thấy đơn hàng vận chuyển", HttpStatus.NOT_FOUND),
     PACKAGE_NOT_FOUND("Không tìm thấy kiện hàng", HttpStatus.NOT_FOUND),
+    QR_ENCRYPTION_FAILED("Lỗi mã hóa hoặc giải mã mã QR kiện hàng", HttpStatus.INTERNAL_SERVER_ERROR),
     PACKAGE_TYPE_NOT_FOUND("Không tìm thấy loại kiện hàng", HttpStatus.NOT_FOUND),
     TRACKING_BARCODE_ALREADY_EXISTS("Mã barcode kiện hàng đã tồn tại trong hệ thống", HttpStatus.CONFLICT),
     PACKAGE_TYPE_CODE_ALREADY_EXISTS("Mã loại kiện hàng đã tồn tại trong hệ thống", HttpStatus.CONFLICT),
@@ -109,7 +110,7 @@ public enum ErrorCode {
     IMPORT_INVALID_WIDTH("Chiều rộng phải là số dương (> 0 cm)", HttpStatus.BAD_REQUEST),
     IMPORT_INVALID_HEIGHT("Chiều cao phải là số dương (> 0 cm)", HttpStatus.BAD_REQUEST),
     IMPORT_INVALID_WEIGHT("Khối lượng phải là số dương (> 0 kg)", HttpStatus.BAD_REQUEST),
-    IMPORT_INVALID_HANDLING_CLASS("Loại hàng không hợp lệ. Chỉ chấp nhận: STANDARD, FRAGILE, REFRIGERATED, HAZARDOUS, HIGH_VALUE", HttpStatus.BAD_REQUEST),
+    IMPORT_INVALID_HANDLING_CLASS("Loại hàng không hợp lệ. Chỉ chấp nhận: STANDARD, FRAGILE", HttpStatus.BAD_REQUEST),
     IMPORT_BLANK_DESTINATION("Điểm đến / nơi nhận hàng không được để trống", HttpStatus.BAD_REQUEST),
 
     IMPORT_EXISTING_CODE("Mã kiện đã tồn tại trong hệ thống, hệ thống sẽ tạo bản ghi mới", HttpStatus.OK),
@@ -165,6 +166,14 @@ public enum ErrorCode {
 
     IMPORT_INVALID_PACKING_GROUP(
             "Nhóm kiện vượt quá độ dài cho phép",
+            HttpStatus.BAD_REQUEST),
+
+    IMPORT_DECIMAL_SCALE_EXCEEDED(
+            "Giá trị số chỉ được phép tối đa 2 chữ số sau dấu phẩy",
+            HttpStatus.BAD_REQUEST),
+
+    IMPORT_INVALID_NUMBER_FORMAT(
+            "Định dạng số không hợp lệ",
             HttpStatus.BAD_REQUEST),
 
     IMPORT_HAS_ERRORS("File import chứa lỗi dữ liệu, vui lòng kiểm tra preview trước khi xác nhận", HttpStatus.UNPROCESSABLE_ENTITY),
@@ -230,7 +239,14 @@ public enum ErrorCode {
     INVOICE_NOT_FOUND("Không tìm thấy hóa đơn", HttpStatus.NOT_FOUND),
     TRIAL_REQUEST_NOT_FOUND("Không tìm thấy đơn yêu cầu tạo tài khoản dùng thử", HttpStatus.NOT_FOUND),
     TRIAL_REQUEST_ALREADY_PROCESSED("Đơn yêu cầu tạo tài khoản dùng thử đã được xử lý trước đó", HttpStatus.BAD_REQUEST),
-    CANNOT_DIRECTLY_APPROVE_DEMO_REQUEST("Yêu cầu dùng thử phải được chuyển sang Quản lý nền tảng duyệt tạo tài khoản", HttpStatus.BAD_REQUEST);
+    CANNOT_DIRECTLY_APPROVE_DEMO_REQUEST("Yêu cầu dùng thử phải được chuyển sang Quản lý nền tảng duyệt tạo tài khoản", HttpStatus.BAD_REQUEST),
+
+    // -------------------------------------------------------------------------
+    // Company Service Agreement errors
+    // -------------------------------------------------------------------------
+    AGREEMENT_NOT_FOUND("Không tìm thấy thỏa thuận dịch vụ của doanh nghiệp", HttpStatus.NOT_FOUND),
+    AGREEMENT_ALREADY_SIGNED("Thỏa thuận dịch vụ này đã được ký trước đó", HttpStatus.BAD_REQUEST),
+    AGREEMENT_DEADLINE_EXPIRED("Đã quá thời hạn 3 ngày ký thỏa thuận dịch vụ. Tài khoản đã bị khóa", HttpStatus.FORBIDDEN);
 
     private final String message;
     private final HttpStatus httpStatus;

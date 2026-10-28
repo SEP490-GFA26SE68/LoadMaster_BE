@@ -2,8 +2,10 @@ package fu.se184491.loadmaster_be.controller.cargo;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import fu.se184491.loadmaster_be.config.security.WebSecurityConfig;
+import fu.se184491.loadmaster_be.constant.cargo.HandlingClass;
 import fu.se184491.loadmaster_be.dto.request.cargo.PackageRequest;
 import fu.se184491.loadmaster_be.dto.response.cargo.PackageResponse;
+import fu.se184491.loadmaster_be.helpers.CurrentUserService;
 import fu.se184491.loadmaster_be.service.cargo.PackageService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -11,9 +13,6 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.context.annotation.Import;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageImpl;
-import org.springframework.data.domain.Pageable;
 import org.springframework.http.MediaType;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationConverter;
 import org.springframework.security.test.context.support.WithMockUser;
@@ -21,11 +20,11 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.math.BigDecimal;
-import java.util.Collections;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doNothing;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.when;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
@@ -41,6 +40,9 @@ public class PackageControllerTest {
 
     @MockitoBean
     private PackageService packageService;
+
+    @MockitoBean
+    private CurrentUserService currentUserService;
 
     @MockitoBean
     private JwtAuthenticationConverter jwtAuthenticationConverter;
@@ -61,12 +63,17 @@ public class PackageControllerTest {
     @BeforeEach
     void setUp() {
         objectMapper = new ObjectMapper();
+        lenient().when(currentUserService.getCurrentCompanyId()).thenReturn(1L);
 
         request = PackageRequest.builder()
                 .orderId(10L)
                 .packageTypeId(20L)
-                .actualLength(300)
+                .actualLength(new BigDecimal("2.22"))
+                .actualWidth(new BigDecimal("3.45"))
+                .actualHeight(new BigDecimal("4.56"))
                 .actualWeightKg(new BigDecimal("15.50"))
+                .handlingClass(HandlingClass.STANDARD)
+                .destination("HCM")
                 .isPinned(false)
                 .build();
 
@@ -75,8 +82,12 @@ public class PackageControllerTest {
                 .orderId(10L)
                 .packageTypeId(20L)
                 .trackingBarcode("PKG-123456")
-                .actualLength(300)
+                .actualLength(new BigDecimal("2.22"))
+                .actualWidth(new BigDecimal("3.45"))
+                .actualHeight(new BigDecimal("4.56"))
                 .actualWeightKg(new BigDecimal("15.50"))
+                .handlingClass(HandlingClass.STANDARD)
+                .destination("HCM")
                 .isPinned(false)
                 .build();
     }
@@ -91,26 +102,32 @@ public class PackageControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.id").value(100L))
-                .andExpect(jsonPath("$.orderId").value(10L))
-                .andExpect(jsonPath("$.trackingBarcode").value("PKG-123456"))
-                .andExpect(jsonPath("$.actualLength").value(300))
-                .andExpect(jsonPath("$.actualWeightKg").value(15.50));
+                .andExpect(jsonPath("$.data.id").value(100L))
+                .andExpect(jsonPath("$.data.orderId").value(10L))
+                .andExpect(jsonPath("$.data.trackingBarcode").value("PKG-123456"))
+                .andExpect(jsonPath("$.data.actualLength").value(2.22))
+                .andExpect(jsonPath("$.data.actualWeightKg").value(15.50));
     }
 
     @Test
     @WithMockUser(authorities = "PACKAGE_MANAGE")
     void createPackage_WithoutOrderId_Success() throws Exception {
         PackageRequest standaloneRequest = PackageRequest.builder()
-                .actualLength(300)
+                .actualLength(new BigDecimal("30.25"))
+                .actualWidth(new BigDecimal("20.50"))
+                .actualHeight(new BigDecimal("10.75"))
                 .actualWeightKg(new BigDecimal("15.50"))
+                .handlingClass(HandlingClass.STANDARD)
+                .destination("Ha Noi")
                 .build();
 
         PackageResponse standaloneResponse = PackageResponse.builder()
                 .id(101L)
                 .orderId(null)
                 .trackingBarcode("PKG-NO-ORDER")
-                .actualLength(300)
+                .actualLength(new BigDecimal("30.25"))
+                .actualWidth(new BigDecimal("20.50"))
+                .actualHeight(new BigDecimal("10.75"))
                 .actualWeightKg(new BigDecimal("15.50"))
                 .build();
 
@@ -121,14 +138,14 @@ public class PackageControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(standaloneRequest)))
                 .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.id").value(101L))
-                .andExpect(jsonPath("$.orderId").doesNotExist());
+                .andExpect(jsonPath("$.data.id").value(101L))
+                .andExpect(jsonPath("$.data.orderId").isEmpty());
     }
 
     @Test
     @WithMockUser(authorities = "PACKAGE_MANAGE")
     void createPackage_ValidationError_InvalidActualLength() throws Exception {
-        request.setActualLength(0); // must be > 0
+        request.setActualLength(BigDecimal.ZERO); // must be > 0
 
         mockMvc.perform(post("/api/packages")
                         .with(csrf())
@@ -147,8 +164,8 @@ public class PackageControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.id").value(100L))
-                .andExpect(jsonPath("$.trackingBarcode").value("PKG-123456"));
+                .andExpect(jsonPath("$.data.id").value(100L))
+                .andExpect(jsonPath("$.data.trackingBarcode").value("PKG-123456"));
     }
 
     @Test
@@ -158,8 +175,8 @@ public class PackageControllerTest {
 
         mockMvc.perform(get("/api/packages/100"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.id").value(100L))
-                .andExpect(jsonPath("$.trackingBarcode").value("PKG-123456"));
+                .andExpect(jsonPath("$.data.id").value(100L))
+                .andExpect(jsonPath("$.data.trackingBarcode").value("PKG-123456"));
     }
 
     @Test
@@ -169,7 +186,7 @@ public class PackageControllerTest {
 
         mockMvc.perform(delete("/api/packages/100")
                         .with(csrf()))
-                .andExpect(status().isNoContent());
+                .andExpect(status().isOk());
     }
 
 }
