@@ -1084,7 +1084,9 @@
       "clientAuthenticatorType": "client-secret",
       "redirectUris": [
         "http://localhost:5173/*",
-        "https://oauth.pstmn.io/v1/callback"
+        "https://oauth.pstmn.io/v1/callback",
+        "loadmaster://*",
+        "exp://*"
       ],
       "webOrigins": [
         "http://localhost:5173"

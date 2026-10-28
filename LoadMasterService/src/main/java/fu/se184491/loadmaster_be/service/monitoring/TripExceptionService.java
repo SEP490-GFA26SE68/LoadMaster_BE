@@ -27,4 +27,14 @@ public interface TripExceptionService {
             ResolveExceptionRequest request,
             Long resolverUserId
     );
+
+    TripExceptionResponse escalate(
+            String tripIdOrCode,
+            String exceptionIdOrCode,
+            Long companyId,
+            Long escalatedByUserId,
+            String reason
+    );
+
+    int escalateOverdue();
 }

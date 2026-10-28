@@ -192,12 +192,25 @@ public class RerouteServiceImpl implements RerouteService {
             suggestionType = "REROUTE";
         }
 
+        String polyline = targetLeg.getPolyline();
+        List<Map<String, Object>> steps = targetLeg.getSteps();
+        DirectionsResponse.Route refreshed = refreshDirections(trip, targetLeg);
+        if (refreshed != null) {
+            if (refreshed.getPolyline() != null) {
+                polyline = refreshed.getPolyline();
+            }
+            List<Map<String, Object>> guidance = refreshed.toGuidanceSteps();
+            if (!guidance.isEmpty()) {
+                steps = guidance;
+            }
+        }
+
         RouteSuggestion suggestion = routeSuggestionRepository.save(RouteSuggestion.builder()
                 .routeLeg(targetLeg)
                 .suggestionType(suggestionType)
                 .distanceDiffMeters(distanceDiff)
                 .durationDiffSeconds(durationDiff)
-                .proposedPolyline(targetLeg.getPolyline())
+                .proposedPolyline(polyline)
                 .isAccepted(true)
                 .build());
 
@@ -208,7 +221,8 @@ public class RerouteServiceImpl implements RerouteService {
                 targetLeg.getId(),
                 selectedDistanceMeters,
                 selectedDurationSeconds,
-                targetLeg.getPolyline());
+                polyline,
+                steps);
 
         Map<String, Object> cache = trip.getRoutePlan() != null
                 ? new HashMap<>(trip.getRoutePlan())
@@ -339,6 +353,32 @@ public class RerouteServiceImpl implements RerouteService {
         map.put("confirmedAt", response.getConfirmedAt());
         map.put("confirmedBy", response.getConfirmedBy());
         return map;
+    }
+
+    private DirectionsResponse.Route refreshDirections(Trip trip, RouteLeg targetLeg) {
+        DeliveryStop end = targetLeg.getEndStop();
+        if (end == null || end.getLatitude() == null || end.getLongitude() == null) {
+            return null;
+        }
+        GpsTracking gps = gpsTrackingRepository.findFirstByTripIdOrderByRecordedAtDesc(trip.getId()).orElse(null);
+        if (gps == null || gps.getLatitude() == null || gps.getLongitude() == null) {
+            return null;
+        }
+        try {
+            DirectionsResponse directions = goongMapsClient.getDirections(
+                    new LatLng(gps.getLatitude().doubleValue(), gps.getLongitude().doubleValue()),
+                    new LatLng(end.getLatitude().doubleValue(), end.getLongitude().doubleValue()));
+            if (directions == null || directions.getRoutes() == null || directions.getRoutes().isEmpty()) {
+                return null;
+            }
+            return directions.getRoutes().getFirst();
+        } catch (ServiceUnavailableException ex) {
+            log.debug("Goong unavailable when refreshing reroute geometry: {}", ex.getMessage());
+            return null;
+        } catch (Exception ex) {
+            log.debug("Goong failed when refreshing reroute geometry: {}", ex.getMessage());
+            return null;
+        }
     }
 
     private double haversineKm(double lat1, double lng1, double lat2, double lng2) {

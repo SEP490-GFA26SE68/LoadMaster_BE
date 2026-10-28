@@ -211,6 +211,7 @@ public enum ErrorCode {
     // -------------------------------------------------------------------------
     GPS_TRIP_NOT_IN_TRANSIT("Chuyến đi không ở trạng thái đang vận chuyển", HttpStatus.BAD_REQUEST),
     TRIP_EXCEPTION_NOT_FOUND("Không tìm thấy sự cố chuyến đi", HttpStatus.NOT_FOUND),
+    EXCEPTION_STATUS_INVALID("Sự cố chuyến đi không ở trạng thái cho phép thao tác này", HttpStatus.CONFLICT),
     INVALID_REROUTE_INDEX("Chỉ số tuyến thay thế không hợp lệ", HttpStatus.BAD_REQUEST),
     NO_GPS_LOCATION("Chuyến đi chưa có vị trí GPS", HttpStatus.BAD_REQUEST),
 
