@@ -3,6 +3,11 @@ package fu.se184491.loadmaster_be.entity.route;
 import fu.se184491.loadmaster_be.entity.trip.DeliveryStop;
 import jakarta.persistence.*;
 import lombok.*;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
+
+import java.util.List;
+import java.util.Map;
 
 @Entity
 @Table(
@@ -51,4 +56,9 @@ public class RouteLeg {
 
     @Column(name = "polyline", columnDefinition = "text")
     private String polyline;
+
+    /** Bước chỉ dẫn Goong (instruction, maneuver, toạ độ) — tài xế chỉ đường trong app. */
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "steps", columnDefinition = "json")
+    private List<Map<String, Object>> steps;
 }

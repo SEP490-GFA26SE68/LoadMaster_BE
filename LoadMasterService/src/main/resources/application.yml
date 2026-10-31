@@ -65,7 +65,7 @@ goong:
 springdoc:
   swagger-ui:
     oauth:
-      client-id: loadmaster-web
+      client-id: loadmaster-web, loadmaster-mobile
 
 app:
   security:

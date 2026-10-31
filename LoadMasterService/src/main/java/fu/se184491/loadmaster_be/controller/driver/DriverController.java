@@ -2,13 +2,20 @@ package fu.se184491.loadmaster_be.controller.driver;
 
 import fu.se184491.loadmaster_be.dto.ApiResponse;
 import fu.se184491.loadmaster_be.dto.request.monitoring.DriverLocationRequest;
+import fu.se184491.loadmaster_be.dto.request.monitoring.ReportExceptionRequest;
 import fu.se184491.loadmaster_be.dto.response.driver.CompleteStopResponse;
 import fu.se184491.loadmaster_be.dto.response.driver.ConfirmUnloadResponse;
 import fu.se184491.loadmaster_be.dto.response.driver.CurrentStopResponse;
 import fu.se184491.loadmaster_be.dto.response.driver.DriverTripResponse;
 import fu.se184491.loadmaster_be.dto.response.monitoring.LocationPointResponse;
+import fu.se184491.loadmaster_be.dto.response.monitoring.TripExceptionResponse;
+import fu.se184491.loadmaster_be.entity.trip.Trip;
+import fu.se184491.loadmaster_be.exception.AppException;
+import fu.se184491.loadmaster_be.exception.ErrorCode;
 import fu.se184491.loadmaster_be.service.driver.DriverService;
 import fu.se184491.loadmaster_be.service.monitoring.GpsTrackingService;
+import fu.se184491.loadmaster_be.service.monitoring.TripExceptionService;
+import fu.se184491.loadmaster_be.service.monitoring.TripLookupHelper;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -32,8 +39,15 @@ public class DriverController {
 
     private final DriverService driverService;
     private final GpsTrackingService gpsTrackingService;
+    private final TripExceptionService tripExceptionService;
+    private final TripLookupHelper tripLookupHelper;
 
-
+    @GetMapping("/trips")
+    @Operation(summary = "List driver trips", description = "Retrieve trips assigned to the driver, newest departure first")
+    public ResponseEntity<ApiResponse<List<DriverTripResponse>>> listTrips(
+            @RequestParam(value = "driverId", required = false) Long driverId) {
+        return ResponseEntity.ok(ApiResponse.success("Lấy danh sách chuyến đi của tài xế thành công", driverService.listTrips(driverId)));
+    }
 
     @GetMapping("/trips/{id}/current-stop")
     @Operation(summary = "Get current stop", description = "Retrieve current pending stop and recommended packages to unload in LIFO order")
@@ -67,5 +81,21 @@ public class DriverController {
             @Valid @RequestBody DriverLocationRequest request) {
         LocationPointResponse point = gpsTrackingService.recordLocation(request);
         return ResponseEntity.ok(ApiResponse.success("Ghi nhận vị trí GPS thành công", point));
+    }
+
+    @PostMapping("/trips/{id}/exceptions")
+    @Operation(summary = "Report a trip-level exception from the driver app")
+    public ResponseEntity<ApiResponse<TripExceptionResponse>> reportException(
+            @PathVariable("id") String id,
+            @Valid @RequestBody ReportExceptionRequest request,
+            @RequestParam(value = "driverId", required = false) Long driverId
+    ) {
+        Trip trip = tripLookupHelper.requireTripByIdOrCode(id);
+        if (trip.getCompany() == null) {
+            throw new AppException(ErrorCode.COMPANY_NOT_FOUND);
+        }
+        TripExceptionResponse response = tripExceptionService.report(
+                String.valueOf(trip.getId()), trip.getCompany().getId(), request, driverId);
+        return ResponseEntity.ok(ApiResponse.success("Báo cáo sự cố thành công", response));
     }
 }
