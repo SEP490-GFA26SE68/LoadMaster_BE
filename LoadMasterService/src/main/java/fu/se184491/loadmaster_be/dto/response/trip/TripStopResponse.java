@@ -20,7 +20,8 @@ public record TripStopResponse(
         BigDecimal longitude,
         DeliveryStopStatus status,
         LocalDateTime plannedArrival,
-        LocalDateTime actualArrival
+        LocalDateTime actualArrival,
+        LocalDateTime deadline
 ) {
 
     public static TripStopResponse fromEntity(DeliveryStop stop) {
@@ -44,6 +45,11 @@ public record TripStopResponse(
                 .status(stop.getStatus())
                 .plannedArrival(stop.getPlannedArrival())
                 .actualArrival(stop.getActualArrival())
+                .deadline(
+                        stop.getDeliveryRequirement() != null
+                                ? stop.getDeliveryRequirement().getDeadline()
+                                : null
+                )
                 .build();
     }
 }

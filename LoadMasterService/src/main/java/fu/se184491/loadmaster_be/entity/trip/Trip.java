@@ -2,6 +2,7 @@ package fu.se184491.loadmaster_be.entity.trip;
 
 import fu.se184491.loadmaster_be.entity.account.User;
 import fu.se184491.loadmaster_be.entity.company.Company;
+import fu.se184491.loadmaster_be.entity.company.CompanyWarehouse;
 import fu.se184491.loadmaster_be.entity.vehicle.Vehicle;
 
 
@@ -26,6 +27,10 @@ public class Trip {
 
     @ManyToOne(fetch = FetchType.LAZY) @JoinColumn(name = "company_id")
     private Company company;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "origin_warehouse_id")
+    private CompanyWarehouse originWarehouse;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(

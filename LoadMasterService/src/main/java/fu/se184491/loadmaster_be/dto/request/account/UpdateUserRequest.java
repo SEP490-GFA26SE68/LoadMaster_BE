@@ -12,7 +12,12 @@ public record UpdateUserRequest(
         @Size(max = 20, message = "Số điện thoại không được vượt quá 20 ký tự")
         String phoneNumber,
 
-        UserRole role
+        UserRole role,
+
+        Long companyId
 ) {
+    public UpdateUserRequest(String fullName, String phoneNumber, UserRole role) {
+        this(fullName, phoneNumber, role, null);
+    }
 }
 

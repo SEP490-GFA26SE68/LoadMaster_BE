@@ -1,19 +1,28 @@
 package fu.se184491.loadmaster_be.service.planning.Impl;
 
+import fu.se184491.loadmaster_be.constant.trip.TripStatus;
 import fu.se184491.loadmaster_be.dto.request.planning.DeliveryRequirementRequest;
+import fu.se184491.loadmaster_be.dto.request.planning.ExtendDeliveryDeadlineRequest;
 import fu.se184491.loadmaster_be.dto.request.planning.UpdateDeliveryRequirementRequest;
+import fu.se184491.loadmaster_be.dto.request.planning.UpdateRequirementCoordinatesRequest;
 import fu.se184491.loadmaster_be.dto.response.planning.DeliveryRequirementResponse;
 import fu.se184491.loadmaster_be.constant.planning.DeliveryRequirementStatus;
 import fu.se184491.loadmaster_be.entity.Customer;
 import fu.se184491.loadmaster_be.entity.account.User;
 import fu.se184491.loadmaster_be.entity.cargo.CargoPackage;
+import fu.se184491.loadmaster_be.entity.common.AuditLog;
 import fu.se184491.loadmaster_be.entity.company.Company;
 import fu.se184491.loadmaster_be.entity.planning.DeliveryRequirement;
+import fu.se184491.loadmaster_be.entity.trip.DeliveryStop;
+import fu.se184491.loadmaster_be.entity.trip.Trip;
 import fu.se184491.loadmaster_be.exception.AppException;
 import fu.se184491.loadmaster_be.exception.ErrorCode;
+import fu.se184491.loadmaster_be.repository.account.UserRepository;
 import fu.se184491.loadmaster_be.repository.cargo.CargoPackageRepository;
+import fu.se184491.loadmaster_be.repository.common.AuditLogRepository;
 import fu.se184491.loadmaster_be.repository.customer.CustomerRepository;
 import fu.se184491.loadmaster_be.repository.planning.DeliveryRequirementRepository;
+import fu.se184491.loadmaster_be.repository.trip.DeliveryStopRepository;
 import fu.se184491.loadmaster_be.service.planning.DeliveryRequirementService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -22,10 +31,9 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
 
+import java.time.Instant;
 import java.time.LocalDateTime;
-import java.util.LinkedHashSet;
-import java.util.List;
-import java.util.ArrayList;
+import java.util.*;
 
 @Service
 @RequiredArgsConstructor
@@ -33,8 +41,10 @@ import java.util.ArrayList;
 public class DeliveryRequirementServiceImpl implements DeliveryRequirementService {
 
     private final DeliveryRequirementRepository deliveryRequirementRepository;
-    private final CargoPackageRepository cargoPackageRepository;
     private final CustomerRepository customerRepository;
+    private final DeliveryStopRepository deliveryStopRepository;
+    private final AuditLogRepository auditLogRepository;
+    private final UserRepository userRepository;
 
     @Override
     @Transactional
@@ -122,12 +132,48 @@ public class DeliveryRequirementServiceImpl implements DeliveryRequirementServic
                 ));
 
         // Chỉ cho chỉnh sửa khi yêu cầu chưa được đưa vào chuyến.
-        if (requirement.getStatus() != DeliveryRequirementStatus.PENDING
-                || requirement.getTrip() != null) {
+
+        boolean assignedToTrip = requirement.getTrip() != null;
+
+        if (!assignedToTrip
+                && requirement.getStatus() != DeliveryRequirementStatus.PENDING) {
             throw new AppException(
                     ErrorCode.INVALID_DELIVERY_REQUIREMENT_TRANSITION
             );
         }
+
+        if (assignedToTrip) {
+            Trip trip = requirement.getTrip();
+
+            if (trip.getStatus() != TripStatus.DRAFT
+                    && trip.getStatus() != TripStatus.PLANNED) {
+                throw new AppException(
+                        ErrorCode.INVALID_DELIVERY_REQUIREMENT_TRANSITION
+                );
+            }
+
+            // Khi đã vào Trip, request chỉ được chứa
+            // deadline và priority.
+            if (request.getCustomerId() != null
+                    || request.getDestination() != null
+                    || request.getDestinationLat() != null
+                    || request.getDestinationLng() != null
+                    || request.getExpectedPackageCount() != null
+                    || request.getNote() != null) {
+                throw new AppException(ErrorCode.INVALID_INPUT);
+            }
+
+            if (request.getDeadline() != null) {
+                requirement.setDeadline(request.getDeadline());
+            }
+
+            if (request.getPriority() != null) {
+                requirement.setPriority(request.getPriority());
+            }
+
+            return toResponse(requirement);
+        }
+
 
         boolean hasPackages = !requirement.getPackages().isEmpty();
 
@@ -241,6 +287,72 @@ public class DeliveryRequirementServiceImpl implements DeliveryRequirementServic
         deliveryRequirementRepository.delete(requirement);
     }
 
+
+    @Override
+    @Transactional
+    public DeliveryRequirementResponse updateCoordinates(
+            Long companyId,
+            Long id,
+            UpdateRequirementCoordinatesRequest request
+    ) {
+        DeliveryRequirement requirement =
+                deliveryRequirementRepository
+                        .findByIdAndCompanyId(id, companyId)
+                        .orElseThrow(() -> new AppException(
+                                ErrorCode.DELIVERY_REQUIREMENT_NOT_FOUND
+                        ));
+
+        // Chỉ được bổ sung tọa độ còn thiếu,
+        // không thay đổi vị trí đã xác nhận.
+        if (requirement.getDestinationLat() != null
+                || requirement.getDestinationLng() != null) {
+            throw new AppException(ErrorCode.INVALID_INPUT);
+        }
+
+        Trip trip = requirement.getTrip();
+
+        if (trip != null) {
+            // Không thay đổi điểm giao khi chuyến đã bắt đầu xếp hàng.
+            if (trip.getStatus() != TripStatus.DRAFT
+                    && trip.getStatus() != TripStatus.PLANNED) {
+                throw new AppException(
+                        ErrorCode.INVALID_DELIVERY_REQUIREMENT_TRANSITION
+                );
+            }
+
+            List<DeliveryStop> stops =
+                    deliveryStopRepository
+                            .findByTripIdAndDeliveryRequirementId(
+                                    trip.getId(),
+                                    requirement.getId()
+                            );
+
+            // Nếu yêu cầu đã vào chuyến nhưng không tìm được
+            // điểm giao, dữ liệu đang không nhất quán.
+            if (stops.isEmpty()) {
+                throw new AppException(ErrorCode.INVALID_INPUT);
+            }
+
+            // Chỉ bổ sung tọa độ cho điểm giao chưa có tọa độ.
+            // Không ghi đè các tọa độ đã được xác nhận.
+            for (DeliveryStop stop : stops) {
+                if (stop.getLatitude() != null
+                        || stop.getLongitude() != null) {
+                    throw new AppException(ErrorCode.INVALID_INPUT);
+                }
+
+                stop.setLatitude(request.destinationLat());
+                stop.setLongitude(request.destinationLng());
+            }
+        }
+
+        requirement.setDestinationLat(request.destinationLat());
+        requirement.setDestinationLng(request.destinationLng());
+
+        return toResponse(requirement);
+    }
+
+
     @Override
     @Transactional
     public DeliveryRequirementResponse markAssigned(Long companyId, Long id) {
@@ -258,6 +370,85 @@ public class DeliveryRequirementServiceImpl implements DeliveryRequirementServic
         requirement.setStatus(DeliveryRequirementStatus.IN_TRIP);
         return toResponse(requirement);
     }
+
+
+
+    @Override
+    @Transactional
+    public DeliveryRequirementResponse extendDeadline(
+            Long companyId,
+            Long userId,
+            Long requirementId,
+            ExtendDeliveryDeadlineRequest request
+    ) {
+        DeliveryRequirement requirement = deliveryRequirementRepository
+                .findByIdAndCompanyId(requirementId, companyId)
+                .orElseThrow(() -> new AppException(
+                        ErrorCode.DELIVERY_REQUIREMENT_NOT_FOUND
+                ));
+
+        Trip trip = requirement.getTrip();
+
+        // Chỉ gia hạn khi chuyến đang vận chuyển.
+        if (trip == null || trip.getStatus() != TripStatus.IN_TRANSIT) {
+            throw new AppException(
+                    ErrorCode.INVALID_DELIVERY_REQUIREMENT_TRANSITION
+            );
+        }
+
+        LocalDateTime oldDeadline = requirement.getDeadline();
+        LocalDateTime newDeadline = request.getNewDeadline();
+
+        if (newDeadline == null
+                || !newDeadline.isAfter(LocalDateTime.now())
+                || (oldDeadline != null
+                && !newDeadline.isAfter(oldDeadline))) {
+            throw new AppException(ErrorCode.INVALID_INPUT);
+        }
+
+        String reason = request.getReason() == null
+                ? ""
+                : request.getReason().trim();
+
+        if (reason.isBlank()) {
+            throw new AppException(ErrorCode.INVALID_INPUT);
+        }
+
+        // Chỉ cập nhật deadline, không thay đổi ETA hoặc thông tin điểm giao.
+        requirement.setDeadline(newDeadline);
+
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new AppException(ErrorCode.INVALID_INPUT));
+
+        if (user.getCompany() == null
+                || !companyId.equals(user.getCompany().getId())) {
+            throw new AppException(ErrorCode.INVALID_INPUT);
+        }
+
+        AuditLog auditLog = AuditLog.builder()
+                .user(user)
+                .actionType("DELIVERY_DEADLINE_EXTENDED")
+                .entityName("DeliveryRequirement")
+                .entityId(requirementId.toString())
+                .oldValues(Map.of(
+                        "deadline", oldDeadline == null
+                                ? ""
+                                : oldDeadline.toString()
+                ))
+                .newValues(Map.of(
+                        "deadline", newDeadline.toString(),
+                        "reason", reason,
+                        "tripId", trip.getId()
+                ))
+                .createdAt(Instant.now())
+                .build();
+
+        auditLogRepository.save(auditLog);
+
+        return toResponse(requirement);
+    }
+
+
 
     private DeliveryRequirement findByTenant(Long companyId, Long id) {
         return deliveryRequirementRepository.findByIdAndCompanyId(id, companyId)
@@ -311,7 +502,9 @@ public class DeliveryRequirementServiceImpl implements DeliveryRequirementServic
                 .tripId(requirement.getTrip() == null
                         ? null
                         : requirement.getTrip().getId())
-
+                .tripCode(requirement.getTrip() == null
+                        ? null
+                        : requirement.getTrip().getTripCode())
                 // Thông tin tạo
                 .createdBy(requirement.getCreatedBy() == null
                         ? null

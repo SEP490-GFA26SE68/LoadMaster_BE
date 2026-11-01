@@ -12,6 +12,7 @@ import fu.se184491.loadmaster_be.dto.response.route.RouteLegResponse;
 import fu.se184491.loadmaster_be.dto.response.route.RoutePlanDetailResponse;
 import fu.se184491.loadmaster_be.dto.response.route.RoutePlanSummaryResponse;
 import fu.se184491.loadmaster_be.dto.response.route.RouteSuggestionResponse;
+import fu.se184491.loadmaster_be.client.GoongMapsClient;
 import fu.se184491.loadmaster_be.entity.trip.Trip;
 import fu.se184491.loadmaster_be.helpers.CurrentUserService;
 import fu.se184491.loadmaster_be.service.monitoring.TripLookupHelper;
@@ -58,6 +59,9 @@ public class RoutePlanControllerTest {
 
     @MockitoBean
     private TripLookupHelper tripLookupHelper;
+
+    @MockitoBean
+    private GoongMapsClient goongMapsClient;
 
     @MockitoBean
     private JwtAuthenticationConverter jwtAuthenticationConverter;

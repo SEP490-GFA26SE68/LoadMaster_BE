@@ -9,6 +9,9 @@ public interface CreditService {
     CreditBalanceResponse getBalance(Long companyId);
     Page<CreditTransactionResponse> getTransactions(Long companyId, Pageable pageable);
     void deductCredit(Long companyId, String reference);
+    default void deductCredit(Long companyId, String reference, int amount) {
+        deductCredit(companyId, reference);
+    }
     void refundCredit(Long companyId, String reference);
     void grantMonthlyCredits(Long companyId, int amount);
     void addCredits(Long companyId, int amount, String reference);

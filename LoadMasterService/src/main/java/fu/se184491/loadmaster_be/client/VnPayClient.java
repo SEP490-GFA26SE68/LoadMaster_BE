@@ -24,6 +24,10 @@ public class VnPayClient {
     private final VnPayConfig config;
     private static final DateTimeFormatter DATE_FORMATTER = DateTimeFormatter.ofPattern("yyyyMMddHHmmss");
 
+    public boolean isMock() {
+        return config.isMock();
+    }
+
     public String createPaymentUrl(PaymentTransaction txn, String orderInfo, String ipAddress) {
         if (config.isMock()) {
             return "/api/payment/mock-checkout?txnRef=" + txn.getGatewayTransactionId();

@@ -25,10 +25,10 @@ public class LoadPlan {
     @Column(name = "packed_items_count")
     private Integer packedItemsCount;
 
-    @Column(name = "volume_utilization", precision = 5, scale = 2)
+    @Column(name = "volume_utilization", precision = 7, scale = 4)
     private BigDecimal volumeUtilization;
 
-    @Column(name = "weight_utilization", precision = 5, scale = 2)
+    @Column(name = "weight_utilization", precision = 7, scale = 4)
     private BigDecimal weightUtilization;
 
     @Builder.Default @Column(name = "is_approved")

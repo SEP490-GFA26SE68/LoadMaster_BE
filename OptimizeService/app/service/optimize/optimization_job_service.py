@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import uuid
 from typing import Optional, Union
-from uuid import UUID
 from sqlalchemy.orm import Session
 
 from app.constant.optimization.job_status import OptimizationJobStatus
@@ -18,29 +17,43 @@ class OptimizationJobService:
     def __init__(self, repository: Optional[OptimizationJobRepository] = None):
         self.repository = repository or OptimizationJobRepository()
 
+
     def create_job(
-        self,
-        trip_id: Union[UUID, str],
-        config: OptimizationJobRequest,
-        db: Session,
+            self,
+            trip_id: int,
+            config: OptimizationJobRequest,
+            db: Session,
     ) -> OptimizationJob:
         """
-        Tạo optimization job mới cho trip.
-        Kiểm tra trip có tồn tại, khởi tạo job với status PENDING và UUID ngẫu nhiên.
+        Tạo Optimization Job cho Trip có ID kiểu BIGINT.
         """
-        trip_str = str(trip_id)
-        trip = db.query(Trip).filter(Trip.id == trip_str).first()
+        if isinstance(trip_id, bool) or not isinstance(trip_id, int) or trip_id <= 0:
+            raise AppException(ErrorCode.INVALID_INPUT)
+
+        trip = db.query(Trip).filter(Trip.id == trip_id).first()
+
         if not trip:
             raise AppException(ErrorCode.TRIP_NOT_FOUND)
 
         from app.service.optimize.algorithm_tier_service import AlgorithmTierService
 
-        objective_val = config.objective.value if hasattr(config.objective, "value") else str(config.objective)
-        tier = AlgorithmTierService.get_algorithm_tier(config.subscription_tier)
-        resolved_algo = AlgorithmTierService.resolve_algorithm(tier, config.algorithm_name)
+        objective_val = (
+            config.objective.value
+            if hasattr(config.objective, "value")
+            else str(config.objective)
+        )
+
+        tier = AlgorithmTierService.get_algorithm_tier(
+            config.subscription_tier
+        )
+
+        resolved_algo = AlgorithmTierService.resolve_algorithm(
+            tier,
+            config.algorithm_name,
+        )
 
         job = OptimizationJob(
-            trip_id=trip_str,
+            trip_id=trip_id,
             job_uuid=str(uuid.uuid4()),
             objective=objective_val,
             time_limit_sec=config.time_limit_sec,
@@ -50,7 +63,9 @@ class OptimizationJobService:
             subscription_tier=tier,
             algorithm_tier=tier,
         )
+
         return self.repository.create(job, db)
+
 
     def get_job(self, job_uuid: str, db: Session) -> OptimizationJob:
         """
@@ -62,11 +77,8 @@ class OptimizationJobService:
             raise AppException(ErrorCode.OPTIMIZATION_JOB_NOT_FOUND)
         return job
 
-    def find_by_trip_id(self, trip_id: Union[UUID, str], db: Session) -> list[OptimizationJob]:
-        """
-        Tìm tất cả jobs theo trip_id.
-        """
-        return self.repository.find_by_trip_id(str(trip_id), db)
+    def find_by_trip_id(self, trip_id: int, db: Session) -> list[OptimizationJob]:
+        return self.repository.find_by_trip_id(trip_id, db)
 
     def find_by_status(
         self,

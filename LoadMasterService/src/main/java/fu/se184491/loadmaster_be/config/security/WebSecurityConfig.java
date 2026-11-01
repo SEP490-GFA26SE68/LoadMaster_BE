@@ -53,9 +53,11 @@ public class WebSecurityConfig {
                                 "/api/driver/**",
                                 "/webhook/**",
                                 "/api/payment/**",
-                                "/api/subscription/plans",
                                 "/api/internal/**"
                         )
+                        .permitAll()
+
+                        .requestMatchers(org.springframework.http.HttpMethod.GET, "/api/subscription/plans", "/api/subscription/plans/**")
                         .permitAll()
 
                         .requestMatchers(org.springframework.http.HttpMethod.POST, "/api/contact-guests")

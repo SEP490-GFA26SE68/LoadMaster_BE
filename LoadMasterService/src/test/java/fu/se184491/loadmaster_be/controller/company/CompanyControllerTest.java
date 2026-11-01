@@ -193,7 +193,7 @@ public class CompanyControllerTest {
     @WithMockUser(roles = "SYSTEM_ADMIN")
     void getAllCompanies_success() throws Exception {
         Page<CompanyResponse> page = new PageImpl<>(Collections.singletonList(response));
-        when(companyService.getAllCompanies(any(Pageable.class))).thenReturn(page);
+        when(companyService.getAllCompanies(any(), any(Pageable.class))).thenReturn(page);
 
         mockMvc.perform(get("/api/companies"))
                 .andExpect(status().isOk())

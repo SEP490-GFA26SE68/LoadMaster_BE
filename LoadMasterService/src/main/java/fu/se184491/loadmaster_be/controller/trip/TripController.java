@@ -8,6 +8,8 @@ import fu.se184491.loadmaster_be.dto.request.trip.DriverResponse;
 import fu.se184491.loadmaster_be.dto.request.trip.TripCreateRequest;
 import fu.se184491.loadmaster_be.dto.response.trip.TripDetailResponse;
 import fu.se184491.loadmaster_be.dto.response.trip.TripResponse;
+import fu.se184491.loadmaster_be.dto.response.trip.TripStopResponse;
+import fu.se184491.loadmaster_be.dto.response.trip.TripVehicleConfigResponse;
 import fu.se184491.loadmaster_be.service.trip.TripService;
 
 import jakarta.validation.Valid;
@@ -60,7 +62,7 @@ public class TripController {
     }
 
     @GetMapping("/{id}")
-    @PreAuthorize("hasRole('DISPATCHER')")
+    @PreAuthorize("hasAnyRole('DISPATCHER', 'MANAGER')")
     public ResponseEntity<ApiResponse<TripResponse>> getTripById(
             @PathVariable Long id
     ) {
@@ -70,7 +72,7 @@ public class TripController {
     }
 
     @GetMapping
-    @PreAuthorize("hasRole('DISPATCHER')")
+    @PreAuthorize("hasAnyRole('DISPATCHER', 'WAREHOUSE_WORKER', 'ROLE_MANAGER')")
     public ResponseEntity<PageResponse<TripResponse>> getTrips(
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size,
@@ -166,6 +168,7 @@ public class TripController {
 
 
     @GetMapping("/{id}/detail")
+    @PreAuthorize("hasAnyRole('DISPATCHER', 'MANAGER')")
     public ApiResponse<TripDetailResponse> getTripDetail(
             @PathVariable Long id
     ) {
@@ -176,5 +179,53 @@ public class TripController {
                 response
         );
     }
+
+
+    /**
+     * Dispatcher gán toàn bộ yêu cầu giao vào một chuyến.
+     *
+     * Backend kiểm tra điều kiện và tự sinh DeliveryStop.
+     * Không chọn từng kiện thủ công.
+     */
+    @PostMapping("/{tripId}/delivery-requirements/{requirementId}")
+    @PreAuthorize("hasRole('DISPATCHER')")
+    public ResponseEntity<ApiResponse<TripStopResponse>> assignRequirementToTrip(
+            @PathVariable Long tripId,
+            @PathVariable Long requirementId
+    ) {
+        TripStopResponse response =
+                tripService.assignRequirementToTrip(
+                        tripId,
+                        requirementId
+                );
+
+        return ResponseEntity
+                .status(HttpStatus.CREATED)
+                .body(ApiResponse.success(
+                        "Gán yêu cầu giao vào chuyến thành công",
+                        response
+                ));
+    }
+
+    /**
+     * Lấy cấu hình xe được gán cho chuyến hàng.
+     * Bao gồm thông tin xe, loại xe, kích thước và vật cản.
+     */
+    @GetMapping("/{id}/vehicle-config")
+    @PreAuthorize("hasAnyRole('DISPATCHER', 'MANAGER')")
+    public ResponseEntity<ApiResponse<TripVehicleConfigResponse>> getTripVehicleConfig(
+            @PathVariable Long id
+    ) {
+        TripVehicleConfigResponse response =
+                tripService.getTripVehicleConfig(id);
+
+        return ResponseEntity.ok(
+                ApiResponse.success(
+                        "Lấy cấu hình xe của chuyến hàng thành công",
+                        response
+                )
+        );
+    }
+
 
 }

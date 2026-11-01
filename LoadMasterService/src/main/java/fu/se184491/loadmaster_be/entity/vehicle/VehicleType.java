@@ -51,6 +51,25 @@ public class VehicleType {
     @Column(name = "rear_axle_limit_kg", precision = 10, scale = 2)
     private BigDecimal rearAxleLimitKg;
 
+
+    // HC-12: Vị trí hai trục xe trên hệ tọa độ X của khoang hàng.
+    // Đơn vị: cm. X = 0 tại mặt trước bên trong khoang hàng.
+    // Trục trước có thể có tọa độ âm.
+    @Column(name = "front_axle_x", precision = 10, scale = 2)
+    private BigDecimal frontAxleX;
+
+    @Column(name = "rear_axle_x", precision = 10, scale = 2)
+    private BigDecimal rearAxleX;
+
+    // HC-12: Tải trọng tĩnh trên mỗi trục khi xe chưa chở hàng.
+    // Đơn vị: kg.
+    @Column(name = "empty_front_axle_load_kg", precision = 10, scale = 2)
+    private BigDecimal emptyFrontAxleLoadKg;
+
+    @Column(name = "empty_rear_axle_load_kg", precision = 10, scale = 2)
+    private BigDecimal emptyRearAxleLoadKg;
+
+
     @Builder.Default
     @Column(
             name = "max_cog_offset_ratio",
@@ -73,7 +92,14 @@ public class VehicleType {
     @Builder.Default
     private List<VehicleTypeObstacle> obstacles =
             new ArrayList<>();
+    // Kích thước cửa khoang hàng, đơn vị cm
+    @Positive
+    @Column(name = "door_width")
+    private Integer doorWidth;
 
+    @Positive
+    @Column(name = "door_height")
+    private Integer doorHeight;
     public void addObstacle(
             VehicleTypeObstacle obstacle
     ) {

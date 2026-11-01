@@ -11,18 +11,23 @@ import fu.se184491.loadmaster_be.repository.cargo.PackageTypeRepository;
 import fu.se184491.loadmaster_be.service.import_.PackageImportValidatorService;
 import jakarta.persistence.EntityManager;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
 import java.util.*;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class PackageImportValidatorServiceImpl implements PackageImportValidatorService {
 
+    public static final int MAX_DECIMAL_SCALE = 2;
+
     private final CargoPackageRepository cargoPackageRepository;
     private final PackageTypeRepository packageTypeRepository;
     private final EntityManager entityManager;
+
     @Override
     public ImportPreviewResult validate(List<PackageImportRow> rows, Long companyId) {
         if (rows == null || rows.isEmpty()) {
@@ -43,7 +48,7 @@ public class PackageImportValidatorServiceImpl implements PackageImportValidator
                 if (seenCodes.containsKey(code)) {
                     int originalRowIndex = seenCodes.get(code);
                     duplicateRowIndices.add(row.rowIndex());
-                    errors.add(new RowError(
+                    addError(errors, new RowError(
                             row.rowIndex(),
                             "packageCode",
                             ErrorCode.IMPORT_DUPLICATE_CODE,
@@ -59,25 +64,21 @@ public class PackageImportValidatorServiceImpl implements PackageImportValidator
         for (PackageImportRow row : rows) {
             boolean hasError = duplicateRowIndices.contains(row.rowIndex());
 
-            // Validate dimensions: length, width, height > 0
-            if (row.lengthCm() == null || row.lengthCm().compareTo(BigDecimal.ZERO) <= 0) {
-                errors.add(new RowError(row.rowIndex(), "lengthCm", ErrorCode.IMPORT_INVALID_LENGTH));
+            // Validate dimensions (lengthCm, widthCm, heightCm) & weightKg:
+            // Must be valid number, > 0, and at most 2 decimal places after comma/dot
+            if (validateDimensionOrWeight(row.rowIndex(), "lengthCm", row.lengthCm(), ErrorCode.IMPORT_INVALID_LENGTH, errors)) {
                 hasError = true;
             }
 
-            if (row.widthCm() == null || row.widthCm().compareTo(BigDecimal.ZERO) <= 0) {
-                errors.add(new RowError(row.rowIndex(), "widthCm", ErrorCode.IMPORT_INVALID_WIDTH));
+            if (validateDimensionOrWeight(row.rowIndex(), "widthCm", row.widthCm(), ErrorCode.IMPORT_INVALID_WIDTH, errors)) {
                 hasError = true;
             }
 
-            if (row.heightCm() == null || row.heightCm().compareTo(BigDecimal.ZERO) <= 0) {
-                errors.add(new RowError(row.rowIndex(), "heightCm", ErrorCode.IMPORT_INVALID_HEIGHT));
+            if (validateDimensionOrWeight(row.rowIndex(), "heightCm", row.heightCm(), ErrorCode.IMPORT_INVALID_HEIGHT, errors)) {
                 hasError = true;
             }
 
-            // Validate weight: weightKg > 0
-            if (row.weightKg() == null || row.weightKg().compareTo(BigDecimal.ZERO) <= 0) {
-                errors.add(new RowError(row.rowIndex(), "weightKg", ErrorCode.IMPORT_INVALID_WEIGHT));
+            if (validateDimensionOrWeight(row.rowIndex(), "weightKg", row.weightKg(), ErrorCode.IMPORT_INVALID_WEIGHT, errors)) {
                 hasError = true;
             }
 
@@ -86,7 +87,7 @@ public class PackageImportValidatorServiceImpl implements PackageImportValidator
                 try {
                     HandlingClass.valueOf(row.handlingClass().trim().toUpperCase());
                 } catch (IllegalArgumentException e) {
-                    errors.add(new RowError(
+                    addError(errors, new RowError(
                             row.rowIndex(),
                             "handlingClass",
                             ErrorCode.IMPORT_INVALID_HANDLING_CLASS,
@@ -98,14 +99,14 @@ public class PackageImportValidatorServiceImpl implements PackageImportValidator
 
             // Validate destination: must not be blank
             if (row.destination() == null || row.destination().trim().isEmpty()) {
-                errors.add(new RowError(row.rowIndex(), "destination", ErrorCode.IMPORT_BLANK_DESTINATION));
+                addError(errors, new RowError(row.rowIndex(), "destination", ErrorCode.IMPORT_BLANK_DESTINATION));
                 hasError = true;
             }
 
             // Validate package code
             if (row.packageCode() == null
                     || row.packageCode().isBlank()) {
-                errors.add(new RowError(
+                addError(errors, new RowError(
                         row.rowIndex(),
                         "packageCode",
                         ErrorCode.IMPORT_BLANK_PACKAGE_CODE
@@ -116,7 +117,7 @@ public class PackageImportValidatorServiceImpl implements PackageImportValidator
             // Validate package name length
             if (row.packageName() != null
                     && row.packageName().length() > 150) {
-                errors.add(new RowError(
+                addError(errors, new RowError(
                         row.rowIndex(),
                         "packageName",
                         ErrorCode.IMPORT_INVALID_PACKAGE_NAME
@@ -127,7 +128,7 @@ public class PackageImportValidatorServiceImpl implements PackageImportValidator
             // Quantity must be a positive integer
             if (row.quantity() == null
                     || row.quantity() < 1) {
-                errors.add(new RowError(
+                addError(errors, new RowError(
                         row.rowIndex(),
                         "quantity",
                         ErrorCode.IMPORT_INVALID_QUANTITY
@@ -138,7 +139,7 @@ public class PackageImportValidatorServiceImpl implements PackageImportValidator
             // Fragility level cannot be negative
             if (row.fragilityLevel() != null
                     && row.fragilityLevel() < 0) {
-                errors.add(new RowError(
+                addError(errors, new RowError(
                         row.rowIndex(),
                         "fragilityLevel",
                         ErrorCode.IMPORT_INVALID_FRAGILITY_LEVEL
@@ -150,7 +151,7 @@ public class PackageImportValidatorServiceImpl implements PackageImportValidator
             if (row.maxTopLoadKg() != null
                     && row.maxTopLoadKg()
                     .compareTo(BigDecimal.ZERO) < 0) {
-                errors.add(new RowError(
+                addError(errors, new RowError(
                         row.rowIndex(),
                         "maxTopLoadKg",
                         ErrorCode.IMPORT_INVALID_MAX_TOP_LOAD
@@ -161,7 +162,7 @@ public class PackageImportValidatorServiceImpl implements PackageImportValidator
             // Maximum layers must be >= 1 when provided
             if (row.maxLayers() != null
                     && row.maxLayers() < 1) {
-                errors.add(new RowError(
+                addError(errors, new RowError(
                         row.rowIndex(),
                         "maxLayers",
                         ErrorCode.IMPORT_INVALID_MAX_LAYERS
@@ -175,7 +176,7 @@ public class PackageImportValidatorServiceImpl implements PackageImportValidator
                     .compareTo(BigDecimal.ZERO) < 0
                     || row.minSupportRatio()
                     .compareTo(BigDecimal.ONE) > 0)) {
-                errors.add(new RowError(
+                addError(errors, new RowError(
                         row.rowIndex(),
                         "minSupportRatio",
                         ErrorCode.IMPORT_INVALID_MIN_SUPPORT_RATIO
@@ -186,7 +187,7 @@ public class PackageImportValidatorServiceImpl implements PackageImportValidator
             // Packing group length matches the entity
             if (row.packingGroup() != null
                     && row.packingGroup().length() > 100) {
-                errors.add(new RowError(
+                addError(errors, new RowError(
                         row.rowIndex(),
                         "packingGroup",
                         ErrorCode.IMPORT_INVALID_PACKING_GROUP
@@ -198,7 +199,7 @@ public class PackageImportValidatorServiceImpl implements PackageImportValidator
             // Allowed orientation values will be checked later.
             if (row.orientation() != null
                     && row.orientation().length() > 100) {
-                errors.add(new RowError(
+                addError(errors, new RowError(
                         row.rowIndex(),
                         "orientation",
                         ErrorCode.IMPORT_INVALID_ORIENTATION
@@ -207,7 +208,7 @@ public class PackageImportValidatorServiceImpl implements PackageImportValidator
             }
             if (row.packageCode() != null
                     && row.packageCode().length() > 100) {
-                errors.add(new RowError(
+                addError(errors, new RowError(
                         row.rowIndex(),
                         "packageCode",
                         ErrorCode.INVALID_INPUT,
@@ -218,7 +219,7 @@ public class PackageImportValidatorServiceImpl implements PackageImportValidator
 
             if (row.destination() != null
                     && row.destination().length() > 255) {
-                errors.add(new RowError(
+                addError(errors, new RowError(
                         row.rowIndex(),
                         "destination",
                         ErrorCode.INVALID_INPUT,
@@ -241,7 +242,7 @@ public class PackageImportValidatorServiceImpl implements PackageImportValidator
                         );
 
                 if (!exists) {
-                    errors.add(new RowError(
+                    addError(errors, new RowError(
                             row.rowIndex(),
                             "packageTypeCode",
                             ErrorCode.IMPORT_PACKAGE_TYPE_NOT_FOUND,
@@ -280,7 +281,7 @@ public class PackageImportValidatorServiceImpl implements PackageImportValidator
 
             // Avoid unnecessarily generating huge numbers of codes.
             if (totalPhysicalPackages > maxPhysicalPackages) {
-                errors.add(new RowError(
+                addError(errors, new RowError(
                         row.rowIndex(),
                         "quantity",
                         ErrorCode.BATCH_SIZE_LIMIT_EXCEEDED,
@@ -299,7 +300,7 @@ public class PackageImportValidatorServiceImpl implements PackageImportValidator
                 );
 
                 if (generatedCode.length() > 100) {
-                    errors.add(new RowError(
+                    addError(errors, new RowError(
                             row.rowIndex(),
                             "packageCode",
                             ErrorCode.INVALID_INPUT,
@@ -319,7 +320,7 @@ public class PackageImportValidatorServiceImpl implements PackageImportValidator
                 );
 
                 if (originalRow != null) {
-                    errors.add(new RowError(
+                    addError(errors, new RowError(
                             row.rowIndex(),
                             "packageCode",
                             ErrorCode.IMPORT_DUPLICATE_GENERATED_CODE,
@@ -346,7 +347,7 @@ public class PackageImportValidatorServiceImpl implements PackageImportValidator
                             .getSingleResult();
 
                     if (existingCount > 0) {
-                        errors.add(new RowError(
+                        addError(errors, new RowError(
                                 row.rowIndex(),
                                 "packageCode",
                                 ErrorCode.IMPORT_DUPLICATE_GENERATED_CODE,
@@ -371,6 +372,59 @@ public class PackageImportValidatorServiceImpl implements PackageImportValidator
                 errors,
                 warnings,
                 validRows
+        );
+    }
+
+    private boolean validateDimensionOrWeight(
+            int rowIndex,
+            String fieldName,
+            BigDecimal value,
+            ErrorCode nonPositiveErrorCode,
+            List<RowError> errors
+    ) {
+        if (PackageImportRow.INVALID_NUMBER_SENTINEL.equals(value)) {
+            addError(errors, new RowError(
+                    rowIndex,
+                    fieldName,
+                    ErrorCode.IMPORT_INVALID_NUMBER_FORMAT
+            ));
+            return true;
+        }
+
+        if (value == null || value.compareTo(BigDecimal.ZERO) <= 0) {
+            addError(errors, new RowError(
+                    rowIndex,
+                    fieldName,
+                    nonPositiveErrorCode
+            ));
+            return true;
+        }
+
+        if (hasMoreThanTwoDecimalPlaces(value)) {
+            addError(errors, new RowError(
+                    rowIndex,
+                    fieldName,
+                    ErrorCode.IMPORT_DECIMAL_SCALE_EXCEEDED,
+                    "'" + value.toPlainString() + "'"
+            ));
+            return true;
+        }
+
+        return false;
+    }
+
+    private static boolean hasMoreThanTwoDecimalPlaces(BigDecimal value) {
+        return value.stripTrailingZeros().scale() > MAX_DECIMAL_SCALE;
+    }
+
+    private void addError(List<RowError> errors, RowError error) {
+        errors.add(error);
+        log.warn(
+                "Import row {} field '{}' error [{}]: {}",
+                error.rowIndex(),
+                error.field(),
+                error.errorCode().name(),
+                error.message()
         );
     }
 

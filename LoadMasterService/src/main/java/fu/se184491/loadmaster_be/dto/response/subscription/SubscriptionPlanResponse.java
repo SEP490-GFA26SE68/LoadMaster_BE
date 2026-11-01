@@ -22,8 +22,6 @@ public class SubscriptionPlanResponse {
     private AlgorithmTier algorithmTier;
     private String features;
     private BillingCycle billingCycle;
-    private Integer maxVehicles;
-    private Integer maxMonthlyJobs;
     private Boolean active;
     private long activeCompanyCount;
 }

@@ -376,30 +376,32 @@ public class PdfLabelExportServiceImpl implements PdfLabelExportService {
     private static String formatDimensionsCm(CargoPackage pkg) {
         PackageType type = pkg.getPackageType();
 
-        Integer length = firstNonNull(
+        BigDecimal length = firstNonNull(
                 pkg.getActualLength(),
-                type != null ? type.getLength() : null
+                type != null && type.getLength() != null ? BigDecimal.valueOf(type.getLength()) : null
         );
 
-        Integer width = firstNonNull(
+        BigDecimal width = firstNonNull(
                 pkg.getActualWidth(),
-                type != null ? type.getWidth() : null
+                type != null && type.getWidth() != null ? BigDecimal.valueOf(type.getWidth()) : null
         );
 
-        Integer height = firstNonNull(
+        BigDecimal height = firstNonNull(
                 pkg.getActualHeight(),
-                type != null ? type.getHeight() : null
+                type != null && type.getHeight() != null ? BigDecimal.valueOf(type.getHeight()) : null
         );
 
         if (length == null || width == null || height == null) {
             return null;
         }
 
-        return length + " × " + width + " × " + height;
+        return length.stripTrailingZeros().toPlainString()
+                + " × " + width.stripTrailingZeros().toPlainString()
+                + " × " + height.stripTrailingZeros().toPlainString();
     }
 
 
-    private static Integer firstNonNull(Integer first, Integer second) {
+    private static BigDecimal firstNonNull(BigDecimal first, BigDecimal second) {
         return first != null ? first : second;
     }
 

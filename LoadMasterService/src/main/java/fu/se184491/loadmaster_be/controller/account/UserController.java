@@ -55,7 +55,7 @@ public class UserController {
                 );
     }
 
-    @PreAuthorize("hasAuthority('USERS_READ')")
+    @PreAuthorize("hasAuthority('USERS_READ') or hasAnyRole('SYSTEM_MANAGER', 'SYSTEM_ADMIN')")
     @GetMapping
     public PageResponse<UserListItemResponse> getUsers(
             @RequestParam(defaultValue = "0") int page,
@@ -75,7 +75,7 @@ public class UserController {
         );
     }
 
-    @PreAuthorize("hasAuthority('USERS_READ')")
+    @PreAuthorize("hasAuthority('USERS_READ') or hasAnyRole('SYSTEM_MANAGER', 'SYSTEM_ADMIN')")
     @GetMapping("/stats")
     public ApiResponse<UserStatsResponse> getUserStats() {
         return ApiResponse.success(
@@ -85,7 +85,7 @@ public class UserController {
     }
 
     @PutMapping("/{id}")
-    @PreAuthorize("hasAuthority('USERS_UPDATE')")
+    @PreAuthorize("hasAuthority('USERS_UPDATE') or hasAnyRole('SYSTEM_MANAGER', 'SYSTEM_ADMIN')")
     public ApiResponse<UserListItemResponse> updateUser(
             @PathVariable Long id,
             @Valid @RequestBody UpdateUserRequest request
@@ -97,7 +97,7 @@ public class UserController {
     }
 
     @PatchMapping("/{id}/status")
-    @PreAuthorize("hasAuthority('USERS_LOCK')")
+    @PreAuthorize("hasAuthority('USERS_LOCK') or hasAnyRole('SYSTEM_MANAGER', 'SYSTEM_ADMIN')")
     public ApiResponse<UserListItemResponse> updateUserStatus(
             @PathVariable Long id,
             @Valid @RequestBody UpdateUserStatusRequest request

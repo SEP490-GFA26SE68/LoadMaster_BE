@@ -9,7 +9,7 @@ from app.constant.optimization.objective import OptimizationObjective
 class OptimizationJobResponse(BaseModel):
     id: Optional[int] = None
     job_uuid: str
-    trip_id: str
+    trip_id: int
     objective: Optional[OptimizationObjective] = None
     time_limit_sec: Optional[int] = None
     status: OptimizationJobStatus

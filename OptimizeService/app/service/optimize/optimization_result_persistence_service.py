@@ -51,6 +51,20 @@ class OptimizationResultPersistenceService:
           5. Insert danh sách UnplacedPackage
         """
         job = self.job_service.get_job(str(job_uuid), db)
+        logger.info(
+            "Optimization persistence: job=%s, placements=%d, unplaced=%d",
+            job_uuid,
+            len(result.placements or []),
+            len(result.unplaced or []),
+        )
+
+        for item in result.unplaced or []:
+            logger.info(
+            "Unplaced package: package_id=%s, reason=%s, violations=%s",
+            item.package_id,
+            item.reason,
+            item.violated_constraints,
+        )
 
         vol_util = 0.0
         wt_util = 0.0
@@ -83,21 +97,57 @@ class OptimizationResultPersistenceService:
 
         savepoint = db.begin_nested()
         try:
-            plan = LoadPlan(
-                job_id=job.id,
-                plan_name=resolved_plan_name,
-                packed_items_count=packed_count,
-                volume_utilization=vol_util,
-                weight_utilization=wt_util,
-                approved=False,
-                cog_x=cog_x,
-                cog_y=cog_y,
-                cog_z=cog_z,
-                front_axle_load=front_axle_load,
-                rear_axle_load=rear_axle_load,
-                rehandling_count=rehandling_count,
+    # Tìm các LoadPlan hiện có của Job.
+            existing_plans = self.load_plan_repository.find_by_job_id(
+                job.id, db
             )
-            self.load_plan_repository.create(plan, db)
+
+            plan = None
+
+# Chỉ tái sử dụng khi Job có đúng một LoadPlan.
+            if len(existing_plans) == 1:
+                existing = existing_plans[0]
+
+                existing_placements = (
+                    self.package_placement_repository.find_by_plan_id(
+                        existing.id, db
+                    )           
+                )
+
+                existing_unplaced = (
+                    self.unplaced_package_repository.find_by_plan_id(
+                        existing.id, db
+                    )
+                )
+
+                if (
+                    existing.approved is False
+                    and existing.packed_items_count == 0
+                    and not existing_placements
+                    and not existing_unplaced
+                ):
+                    plan = existing
+
+            if plan is None:
+                plan = LoadPlan(
+                    job_id=job.id,
+                    approved=False,
+                )
+                self.load_plan_repository.create(plan, db)
+
+# Đồng bộ thông tin với kết quả solver.
+            plan.plan_name = resolved_plan_name
+            plan.packed_items_count = packed_count
+            plan.volume_utilization = vol_util
+            plan.weight_utilization = wt_util
+            plan.cog_x = cog_x
+            plan.cog_y = cog_y
+            plan.cog_z = cog_z
+            plan.front_axle_load = front_axle_load
+            plan.rear_axle_load = rear_axle_load
+            plan.rehandling_count = rehandling_count
+
+            self.load_plan_repository.update(plan, db)
 
             # Placements
             placement_entities: List[PackagePlacement] = []

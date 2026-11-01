@@ -40,10 +40,6 @@ public class SubscriptionPlanRequest {
 
     private BillingCycle billingCycle;
 
-    private Integer maxVehicles;
-
-    private Integer maxMonthlyJobs;
-
     @Builder.Default
     private Boolean active = true;
 }

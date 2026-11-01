@@ -5,6 +5,8 @@ import fu.se184491.loadmaster_be.dto.request.trip.DriverResponse;
 import fu.se184491.loadmaster_be.dto.request.trip.TripCreateRequest;
 import fu.se184491.loadmaster_be.dto.response.trip.TripDetailResponse;
 import fu.se184491.loadmaster_be.dto.response.trip.TripResponse;
+import fu.se184491.loadmaster_be.dto.response.trip.TripStopResponse;
+import fu.se184491.loadmaster_be.dto.response.trip.TripVehicleConfigResponse;
 import fu.se184491.loadmaster_be.entity.trip.Trip;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -32,4 +34,11 @@ public interface TripService {
     );
 
     TripDetailResponse getTripDetail(Long tripId);
+
+    TripStopResponse assignRequirementToTrip(
+            Long tripId,
+            Long requirementId
+    );
+
+    TripVehicleConfigResponse getTripVehicleConfig(Long tripId);
 }

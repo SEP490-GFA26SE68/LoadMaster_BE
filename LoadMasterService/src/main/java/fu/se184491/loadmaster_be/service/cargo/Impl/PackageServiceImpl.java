@@ -1,6 +1,7 @@
 package fu.se184491.loadmaster_be.service.cargo.Impl;
 
 import fu.se184491.loadmaster_be.constant.cargo.PackageStatus;
+import fu.se184491.loadmaster_be.constant.planning.DeliveryRequirementStatus;
 import fu.se184491.loadmaster_be.dto.request.cargo.PackageRequest;
 import fu.se184491.loadmaster_be.dto.response.cargo.PackageResponse;
 import fu.se184491.loadmaster_be.entity.cargo.CargoPackage;
@@ -8,6 +9,7 @@ import fu.se184491.loadmaster_be.entity.cargo.CargoPackagePackingProfile;
 import fu.se184491.loadmaster_be.entity.cargo.PackageType;
 import fu.se184491.loadmaster_be.entity.company.Company;
 import fu.se184491.loadmaster_be.entity.order.TransportOrder;
+import fu.se184491.loadmaster_be.entity.planning.DeliveryRequirement;
 import fu.se184491.loadmaster_be.exception.AppException;
 import fu.se184491.loadmaster_be.exception.ErrorCode;
 import fu.se184491.loadmaster_be.repository.cargo.CargoPackagePackingProfileRepository;
@@ -15,6 +17,7 @@ import fu.se184491.loadmaster_be.repository.cargo.PackageRepository;
 import fu.se184491.loadmaster_be.repository.cargo.PackageTypeRepository;
 import fu.se184491.loadmaster_be.repository.company.CompanyRepository;
 import fu.se184491.loadmaster_be.repository.order.OrderRepository;
+import fu.se184491.loadmaster_be.repository.planning.DeliveryRequirementRepository;
 import fu.se184491.loadmaster_be.service.cargo.PackageService;
 
 import jakarta.persistence.EntityManager;
@@ -29,10 +32,8 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.util.*;
-
-// Import theo package thực tế của dự án:
-// import ...Company;
-// import ...CompanyRepository;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -44,6 +45,7 @@ public class PackageServiceImpl implements PackageService {
     private final CompanyRepository companyRepository;
     private final EntityManager entityManager;
     private final CargoPackagePackingProfileRepository packingProfileRepository;
+    private final DeliveryRequirementRepository deliveryRequirementRepository;
 
     // =====================================================
     // MAPPING
@@ -53,9 +55,11 @@ public class PackageServiceImpl implements PackageService {
     private PackageResponse mapToResponse(CargoPackage entity) {
 
         CargoPackagePackingProfile profile =
-                packingProfileRepository
-                        .findByCargoPackageId(entity.getId())
-                        .orElse(null);
+                packingProfileRepository != null
+                        ? packingProfileRepository
+                                .findByCargoPackageId(entity.getId())
+                                .orElse(null)
+                        : null;
 
         PackageResponse.PackageResponseBuilder builder =
                 PackageResponse.builder()
@@ -185,16 +189,22 @@ public class PackageServiceImpl implements PackageService {
         // Có loại kiện: kích thước cố định theo PackageType.
         // Không sử dụng kích thước mà FE gửi lên.
         if (packageType != null) {
-            cargoPackage.setActualLength(packageType.getLength());
-            cargoPackage.setActualWidth(packageType.getWidth());
-            cargoPackage.setActualHeight(packageType.getHeight());
+            cargoPackage.setActualLength(
+                    packageType.getLength() != null ? BigDecimal.valueOf(packageType.getLength()) : request.getActualLength()
+            );
+            cargoPackage.setActualWidth(
+                    packageType.getWidth() != null ? BigDecimal.valueOf(packageType.getWidth()) : request.getActualWidth()
+            );
+            cargoPackage.setActualHeight(
+                    packageType.getHeight() != null ? BigDecimal.valueOf(packageType.getHeight()) : request.getActualHeight()
+            );
             return;
         }
 
         // Không có loại kiện: bắt buộc nhập đủ 3 chiều.
-        Integer length = request.getActualLength();
-        Integer width = request.getActualWidth();
-        Integer height = request.getActualHeight();
+        BigDecimal length = request.getActualLength();
+        BigDecimal width = request.getActualWidth();
+        BigDecimal height = request.getActualHeight();
 
         if (length == null || width == null || height == null) {
             throw new IllegalArgumentException(
@@ -203,10 +213,18 @@ public class PackageServiceImpl implements PackageService {
             );
         }
 
-        if (length <= 0 || width <= 0 || height <= 0) {
+        if (length.compareTo(BigDecimal.ZERO) <= 0
+                || width.compareTo(BigDecimal.ZERO) <= 0
+                || height.compareTo(BigDecimal.ZERO) <= 0) {
             throw new IllegalArgumentException(
                     "Kích thước kiện phải lớn hơn 0"
             );
+        }
+
+        if (length.stripTrailingZeros().scale() > 2
+                || width.stripTrailingZeros().scale() > 2
+                || height.stripTrailingZeros().scale() > 2) {
+            throw new AppException(ErrorCode.IMPORT_DECIMAL_SCALE_EXCEEDED);
         }
 
         cargoPackage.setActualLength(length);
@@ -294,7 +312,7 @@ public class PackageServiceImpl implements PackageService {
                 )
                 .actualWeightKg(request.getActualWeightKg())
                 .handlingClass(request.getHandlingClass())
-                .destination(request.getDestination().trim())
+                .destination(request.getDestination() != null ? request.getDestination().trim() : null)
                 .isPinned(
                         Boolean.TRUE.equals(request.getIsPinned())
                 )
@@ -329,7 +347,9 @@ public class PackageServiceImpl implements PackageService {
                         .packingGroup(request.getPackingGroup())
                         .build();
 
-        entityManager.persist(profile);
+        if (entityManager != null) {
+            entityManager.persist(profile);
+        }
 
         recalculateOrderTotalWeight(order);
 
@@ -349,6 +369,33 @@ public class PackageServiceImpl implements PackageService {
         if (quantity == null || quantity < 1 || quantity > 1000) {
             throw new AppException(ErrorCode.IMPORT_INVALID_QUANTITY);
         }
+
+
+        Long requirementId = request.getDeliveryRequirementId();
+
+        if (requirementId == null) {
+            throw new AppException(ErrorCode.INVALID_INPUT);
+        }
+
+// Khóa yêu cầu để tránh nhập kiện đồng thời với việc phân chuyến.
+        DeliveryRequirement requirement = deliveryRequirementRepository
+                .findByIdAndCompanyIdForUpdate(
+                        requirementId,
+                        companyId
+                )
+                .orElseThrow(() ->
+                        new AppException(
+                                ErrorCode.DELIVERY_REQUIREMENT_NOT_FOUND
+                        )
+                );
+
+        if (requirement.getStatus() != DeliveryRequirementStatus.PENDING
+                || requirement.getTrip() != null) {
+            throw new AppException(
+                    ErrorCode.INVALID_DELIVERY_REQUIREMENT_TRANSITION
+            );
+        }
+
 
         String baseCode = normalizeOptionalCode(request.getPackageCode());
 
@@ -408,6 +455,7 @@ public class PackageServiceImpl implements PackageService {
             }
         }
 
+        List<CargoPackage> createdPackages = new ArrayList<>();
         List<PackageResponse> results = new ArrayList<>();
 
         for (int i = 1; i <= quantity; i++) {
@@ -437,6 +485,7 @@ public class PackageServiceImpl implements PackageService {
 
             // QR riêng được tạo bởi @PrePersist của CargoPackage.
             CargoPackage saved = packageRepository.save(cargoPackage);
+            createdPackages.add(saved);
 
             CargoPackagePackingProfile profile =
                     CargoPackagePackingProfile.builder()
@@ -457,6 +506,13 @@ public class PackageServiceImpl implements PackageService {
 
             results.add(mapToResponse(saved));
         }
+
+
+// Liên kết toàn bộ kiện vật lý vừa tạo với yêu cầu giao.
+        requirement.getPackages().addAll(createdPackages);
+
+// Đồng bộ liên kết trong transaction hiện tại.
+        deliveryRequirementRepository.save(requirement);
 
         // Nếu có TransportOrder, cập nhật tổng khối lượng
         // sau khi tạo đủ các kiện.
@@ -542,9 +598,11 @@ public class PackageServiceImpl implements PackageService {
                 request.getHandlingClass()
         );
 
-        cargoPackage.setDestination(
-                request.getDestination().trim()
-        );
+        if (request.getDestination() != null) {
+            cargoPackage.setDestination(
+                    request.getDestination().trim()
+            );
+        }
 
         if (request.getIsPinned() != null) {
             cargoPackage.setIsPinned(
@@ -560,58 +618,60 @@ public class PackageServiceImpl implements PackageService {
 
         cargoPackage = packageRepository.save(cargoPackage);
 
-        CargoPackagePackingProfile profile =
-                packingProfileRepository
-                        .findByCargoPackageId(cargoPackage.getId())
-                        .orElse(null);
+        if (packingProfileRepository != null) {
+            CargoPackagePackingProfile profile =
+                    packingProfileRepository
+                            .findByCargoPackageId(cargoPackage.getId())
+                            .orElse(null);
 
-        if (profile == null) {
-            profile = CargoPackagePackingProfile.builder()
-                    .cargoPackage(cargoPackage)
-                    .build();
+            if (profile == null) {
+                profile = CargoPackagePackingProfile.builder()
+                        .cargoPackage(cargoPackage)
+                        .build();
+            }
+
+            if (request.getOrientation() != null) {
+                profile.setOrientation(request.getOrientation());
+            }
+
+            if (request.getUprightOnly() != null) {
+                profile.setUprightOnly(request.getUprightOnly());
+            }
+
+            if (request.getFragilityLevel() != null) {
+                profile.setFragilityLevel(request.getFragilityLevel());
+            }
+
+            if (request.getStackable() != null) {
+                profile.setStackable(request.getStackable());
+            }
+
+            if (request.getMaxTopLoadKg() != null) {
+                profile.setMaxTopLoadKg(request.getMaxTopLoadKg());
+            }
+
+            if (request.getMaxLayers() != null) {
+                profile.setMaxLayers(request.getMaxLayers());
+            }
+
+            if (request.getMinSupportRatio() != null) {
+                profile.setMinSupportRatio(request.getMinSupportRatio());
+            }
+
+            if (request.getPriority() != null) {
+                profile.setPriority(request.getPriority());
+            }
+
+            if (request.getMustLoad() != null) {
+                profile.setMustLoad(request.getMustLoad());
+            }
+
+            if (request.getPackingGroup() != null) {
+                profile.setPackingGroup(request.getPackingGroup());
+            }
+
+            packingProfileRepository.save(profile);
         }
-
-        if (request.getOrientation() != null) {
-            profile.setOrientation(request.getOrientation());
-        }
-
-        if (request.getUprightOnly() != null) {
-            profile.setUprightOnly(request.getUprightOnly());
-        }
-
-        if (request.getFragilityLevel() != null) {
-            profile.setFragilityLevel(request.getFragilityLevel());
-        }
-
-        if (request.getStackable() != null) {
-            profile.setStackable(request.getStackable());
-        }
-
-        if (request.getMaxTopLoadKg() != null) {
-            profile.setMaxTopLoadKg(request.getMaxTopLoadKg());
-        }
-
-        if (request.getMaxLayers() != null) {
-            profile.setMaxLayers(request.getMaxLayers());
-        }
-
-        if (request.getMinSupportRatio() != null) {
-            profile.setMinSupportRatio(request.getMinSupportRatio());
-        }
-
-        if (request.getPriority() != null) {
-            profile.setPriority(request.getPriority());
-        }
-
-        if (request.getMustLoad() != null) {
-            profile.setMustLoad(request.getMustLoad());
-        }
-
-        if (request.getPackingGroup() != null) {
-            profile.setPackingGroup(request.getPackingGroup());
-        }
-
-        packingProfileRepository.save(profile);
 
 
         // Đơn cũ và đơn mới giống nhau:
@@ -659,13 +719,15 @@ public class PackageServiceImpl implements PackageService {
         TransportOrder order = cargoPackage.getOrder();
 
 // Xóa packing profile trước để tránh vi phạm khóa ngoại.
-        packingProfileRepository.deleteByCargoPackageId(
-                cargoPackage.getId()
-        );
+        if (packingProfileRepository != null) {
+            packingProfileRepository.deleteByCargoPackageId(
+                    cargoPackage.getId()
+            );
 
 // Đảm bảo lệnh DELETE profile được thực thi trước
 // khi xóa CargoPackage.
-        packingProfileRepository.flush();
+            packingProfileRepository.flush();
+        }
 
 // Xóa kiện vật lý.
         packageRepository.delete(cargoPackage);
@@ -745,8 +807,50 @@ public class PackageServiceImpl implements PackageService {
                     );
                 };
 
-        return packageRepository
-                .findAll(spec, pageable)
-                .map(this::mapToResponse);
+
+        Page<CargoPackage> packagePage =
+                packageRepository.findAll(spec, pageable);
+
+        if (packagePage.isEmpty()) {
+            return packagePage.map(this::mapToResponse);
+        }
+
+        List<Long> packageIds = packagePage.getContent()
+                .stream()
+                .map(CargoPackage::getId)
+                .toList();
+
+        Map<Long, DeliveryRequirementRepository.PackageRequirementInfo> infoByPackageId =
+                deliveryRequirementRepository.findPackageRequirementInfo(
+                                companyId,
+                                packageIds
+                        )
+                        .stream()
+                        .collect(Collectors.toMap(
+                                DeliveryRequirementRepository.PackageRequirementInfo::getPackageId,
+                                Function.identity()
+                        ));
+
+        return packagePage.map(pkg -> {
+            PackageResponse response = mapToResponse(pkg);
+
+            var info = infoByPackageId.get(pkg.getId());
+
+            if (info != null) {
+                response.setDeliveryRequirementId(
+                        info.getDeliveryRequirementId()
+                );
+                response.setCustomerName(info.getCustomerName());
+                response.setReceivedPackageCount(
+                        Math.toIntExact(info.getReceivedPackageCount())
+                );
+                response.setExpectedPackageCount(
+                        info.getExpectedPackageCount()
+                );
+            }
+
+            return response;
+        });
+
     }
 }

@@ -40,15 +40,15 @@ public class SubscriptionServiceImpl implements SubscriptionService {
     private final PaymentGatewayService paymentGatewayService;
 
     @Override
-    @Transactional(readOnly = true)
+    @Transactional
     public SubscriptionCurrentResponse getCurrentSubscription(Long companyId) {
         Optional<CompanySubscription> subOpt = companySubscriptionRepository.findByCompanyId(companyId);
         CreditBalanceResponse balanceRes = creditService.getBalance(companyId);
         int balance = balanceRes != null ? balanceRes.getBalance() : 0;
 
-        if (subOpt.isEmpty() || subOpt.get().getStatus() != SubscriptionStatus.ACTIVE) {
+        if (subOpt.isEmpty()) {
             return SubscriptionCurrentResponse.builder()
-                    .status(subOpt.map(CompanySubscription::getStatus).orElse(null))
+                    .status(null)
                     .creditsBalance(balance)
                     .build();
         }
@@ -77,13 +77,32 @@ public class SubscriptionServiceImpl implements SubscriptionService {
         Company company = companyRepository.findById(companyId)
                 .orElseThrow(() -> new AppException(ErrorCode.COMPANY_NOT_FOUND));
 
-        Optional<CompanySubscription> activeOpt = companySubscriptionRepository
-                .findByCompanyIdAndStatus(companyId, SubscriptionStatus.ACTIVE);
+        Optional<CompanySubscription> existingSubOpt = companySubscriptionRepository
+                .findByCompanyId(companyId);
+        if (existingSubOpt.isEmpty()) {
+            existingSubOpt = companySubscriptionRepository
+                    .findByCompanyIdAndStatus(companyId, SubscriptionStatus.ACTIVE);
+        }
 
-        if (activeOpt.isPresent()) {
-            CompanySubscription activeSub = activeOpt.get();
-            if (activeSub.getExpiresAt() != null && activeSub.getExpiresAt().isAfter(LocalDateTime.now())) {
-                throw new AppException(ErrorCode.ACTIVE_SUBSCRIPTION_ALREADY_EXISTS);
+        if (existingSubOpt.isPresent()) {
+            CompanySubscription existingSub = existingSubOpt.get();
+            if (existingSub.getStatus() == SubscriptionStatus.CANCELLED) {
+                throw new AppException(
+                        ErrorCode.ACTIVE_SUBSCRIPTION_ALREADY_EXISTS,
+                        "Hợp đồng gói cước đang bị tạm ngưng/hủy. Vui lòng gửi phiếu hỗ trợ (Support Ticket) để ký lại hợp đồng."
+                );
+            }
+            boolean isSamePlan = existingSub.getPlan() != null
+                    && existingSub.getPlan().getId() != null
+                    && existingSub.getPlan().getId().equals(request.getPlanId());
+
+            if (existingSub.getStatus() == SubscriptionStatus.ACTIVE && !isSamePlan) {
+                throw new AppException(
+                        ErrorCode.ACTIVE_SUBSCRIPTION_ALREADY_EXISTS,
+                        "Doanh nghiệp chỉ được tự gia hạn gói hiện tại theo hợp đồng ("
+                                + (existingSub.getPlan() != null ? existingSub.getPlan().getName() : "")
+                                + "). Để nâng cấp hoặc đổi gói cước, vui lòng gửi phiếu hỗ trợ (Support Ticket) để được phê duyệt hợp đồng."
+                );
             }
         }
 
@@ -92,6 +111,24 @@ public class SubscriptionServiceImpl implements SubscriptionService {
 
         if (Boolean.FALSE.equals(plan.getActive())) {
             throw new AppException(ErrorCode.SUBSCRIPTION_PLAN_NOT_FOUND);
+        }
+
+        if (existingSubOpt.isPresent()) {
+            CompanySubscription existingSub = existingSubOpt.get();
+            boolean isSamePlan = existingSub.getPlan() != null
+                    && existingSub.getPlan().getId() != null
+                    && existingSub.getPlan().getId().equals(plan.getId());
+            if (existingSub.getStatus() == SubscriptionStatus.EXPIRED && !isSamePlan) {
+                int currentRank = tierRank(existingSub.getPlan() != null ? existingSub.getPlan().getTier() : null);
+                int targetRank = tierRank(plan.getTier());
+                if (targetRank > currentRank) {
+                    throw new AppException(
+                            ErrorCode.ACTIVE_SUBSCRIPTION_ALREADY_EXISTS,
+                            "Để nâng cấp lên gói cao hơn (" + plan.getName()
+                                    + "), vui lòng gửi phiếu hỗ trợ (Support Ticket) để được phê duyệt hợp đồng."
+                    );
+                }
+            }
         }
 
         BigDecimal price = plan.getPriceVnd() != null ? plan.getPriceVnd() : BigDecimal.ZERO;
@@ -112,6 +149,15 @@ public class SubscriptionServiceImpl implements SubscriptionService {
         return paymentGatewayService.createPayment(company, gateway, "SUBSCRIPTION", plan.getId(), price, orderInfo, ipAddress);
     }
 
+    private int tierRank(fu.se184491.loadmaster_be.constant.billing.SubscriptionTier tier) {
+        if (tier == null) return 0;
+        return switch (tier) {
+            case BASIC -> 1;
+            case PRO -> 2;
+            case ULTIMATE -> 3;
+        };
+    }
+
     @Override
     @Transactional
     public void activateSubscription(Long companyId, Long planId) {
@@ -126,10 +172,24 @@ public class SubscriptionServiceImpl implements SubscriptionService {
                         .build());
 
         LocalDateTime now = LocalDateTime.now();
+        boolean isExtendingSameActivePlan = sub.getStatus() == SubscriptionStatus.ACTIVE
+                && sub.getPlan() != null
+                && sub.getPlan().getId() != null
+                && sub.getPlan().getId().equals(plan.getId())
+                && sub.getExpiresAt() != null
+                && sub.getExpiresAt().isAfter(now);
+
+        if (!isExtendingSameActivePlan && sub.getId() != null) {
+            creditService.getBalance(companyId);
+        }
+
         sub.setPlan(plan);
         sub.setStatus(SubscriptionStatus.ACTIVE);
-        sub.setStartedAt(now);
-        sub.setExpiresAt(calculateExpiresAt(now, plan));
+        if (!isExtendingSameActivePlan || sub.getStartedAt() == null) {
+            sub.setStartedAt(now);
+        }
+        LocalDateTime baseExpiry = isExtendingSameActivePlan ? sub.getExpiresAt() : now;
+        sub.setExpiresAt(calculateExpiresAt(baseExpiry, plan));
         sub.setAutoRenew(true);
 
         companySubscriptionRepository.save(sub);

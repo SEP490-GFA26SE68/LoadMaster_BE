@@ -4,6 +4,7 @@ import fu.se184491.loadmaster_be.dto.ApiResponse;
 import fu.se184491.loadmaster_be.dto.PageResponse;
 import fu.se184491.loadmaster_be.dto.request.vehicle.AssignDriverRequest;
 import fu.se184491.loadmaster_be.dto.request.vehicle.CreateVehicleRequest;
+import fu.se184491.loadmaster_be.dto.response.trip.TripVehicleConfigResponse;
 import fu.se184491.loadmaster_be.dto.response.vehicle.VehicleResponse;
 import fu.se184491.loadmaster_be.service.vehicle.VehicleService;
 import jakarta.validation.Valid;
@@ -66,6 +67,30 @@ public class VehicleController {
                 size,
                 search,
                 vehicleTypeId
+        );
+    }
+
+    @GetMapping("/{id}")
+    @PreAuthorize("hasAuthority('VEHICLES_READ')")
+    public ResponseEntity<ApiResponse<VehicleResponse>> getVehicleById(
+            @PathVariable Long id
+    ) {
+        return ResponseEntity.ok(
+                ApiResponse.success(
+                        vehicleService.getVehicleById(id)
+                )
+        );
+    }
+
+    @GetMapping("/{id}/config")
+    @PreAuthorize("hasAuthority('VEHICLES_READ')")
+    public ResponseEntity<ApiResponse<TripVehicleConfigResponse>> getVehicleConfig(
+            @PathVariable Long id
+    ) {
+        return ResponseEntity.ok(
+                ApiResponse.success(
+                        vehicleService.getVehicleConfig(id)
+                )
         );
     }
 

@@ -54,15 +54,22 @@ public class CurrentUserService {
             return false;
         }
 
-        return authentication
+        boolean matchedAuthority = authentication
                 .getAuthorities()
                 .stream()
                 .anyMatch(authority ->
-                        Objects.equals(
-                                authority.getAuthority(),
-                                "ROLE_" + role
-                        )
+                        Objects.equals(authority.getAuthority(), "ROLE_" + role)
+                                || Objects.equals(authority.getAuthority(), role)
                 );
+        if (matchedAuthority) {
+            return true;
+        }
+        try {
+            User user = getCurrentUser();
+            return user.getUserRoleType() != null && Objects.equals(user.getUserRoleType().name(), role);
+        } catch (Exception ignored) {
+            return false;
+        }
     }
 
     public Long getCurrentCompanyId() {

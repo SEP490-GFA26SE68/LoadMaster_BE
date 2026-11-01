@@ -34,6 +34,12 @@ public class ContactOfGuest {
     @Column(name = "company_name", length = 200)
     private String companyName;
 
+    @Column(name = "company_code", length = 50)
+    private String companyCode;
+
+    @Column(name = "tax_code", length = 50)
+    private String taxCode;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "interested_plan_id")
     private SubscriptionPlan interestedPlan;

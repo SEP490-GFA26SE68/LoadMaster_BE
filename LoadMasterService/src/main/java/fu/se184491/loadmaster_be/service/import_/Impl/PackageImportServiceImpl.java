@@ -35,10 +35,8 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.math.BigDecimal;
-import java.math.RoundingMode;
 import java.time.Instant;
 import java.time.LocalDate;
-import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
 
@@ -244,9 +242,9 @@ public class PackageImportServiceImpl implements PackageImportService {
                         .destination(
                                 normalizeDestination(row.destination())
                         )
-                        .actualLength(cmToInt(row.lengthCm()))
-                        .actualWidth(cmToInt(row.widthCm()))
-                        .actualHeight(cmToInt(row.heightCm()))
+                        .actualLength(row.lengthCm())
+                        .actualWidth(row.widthCm())
+                        .actualHeight(row.heightCm())
                         .actualWeightKg(row.weightKg())
                         .status(PackageStatus.PENDING)
                         .build();
@@ -355,22 +353,5 @@ public class PackageImportServiceImpl implements PackageImportService {
 
     private static String normalizeDestination(String destination) {
         return destination == null || destination.isBlank() ? null : destination.trim();
-    }
-
-    /** Import files are in centimetres; packages store millimetres. */
-    /**
-     * Excel và database đều sử dụng centimet.
-     * Chỉ chấp nhận kích thước nguyên cm vì entity lưu Integer.
-     */
-    private static Integer cmToInt(BigDecimal cm) {
-        if (cm == null) {
-            return null;
-        }
-
-        try {
-            return cm.intValueExact();
-        } catch (ArithmeticException e) {
-            throw new AppException(ErrorCode.INVALID_INPUT);
-        }
     }
 }

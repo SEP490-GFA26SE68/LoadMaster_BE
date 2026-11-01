@@ -44,6 +44,12 @@ class ContactOfGuestServiceTest {
     @Mock
     private UserRepository userRepository;
 
+    @Mock
+    private fu.se184491.loadmaster_be.repository.support.TrialAccountRequestRepository trialAccountRequestRepository;
+
+    @Mock
+    private fu.se184491.loadmaster_be.client.BrevoClient brevoClient;
+
     @InjectMocks
     private ContactOfGuestServiceImpl contactOfGuestService;
 
@@ -136,7 +142,7 @@ class ContactOfGuestServiceTest {
                 .fullName("Trần Khách")
                 .email("khach@gmail.com")
                 .status(ContactStatus.NEW)
-                .requestType(ContactRequestType.DEMO_REQUEST)
+                .requestType(ContactRequestType.PRICING)
                 .createdAt(Instant.now().minusSeconds(3600))
                 .build();
 
@@ -156,5 +162,29 @@ class ContactOfGuestServiceTest {
         assertThat(response.getAssignedToName()).isEqualTo("Nguyễn Hỗ Trợ");
         assertThat(response.getNote()).isEqualTo("Đã tư vấn demo xong, khách hài lòng");
         assertThat(response.getResolvedAt()).isNotNull();
+    }
+
+    @Test
+    @DisplayName("Đơn DEMO_REQUEST không thể tự ý RESOLVED nếu chưa có TrialAccountRequest được duyệt")
+    void updateContact_DemoRequestWithoutApprovedTrial_ThrowsException() {
+        ContactOfGuest contact = ContactOfGuest.builder()
+                .id(10L)
+                .fullName("Trần Khách")
+                .email("khach@gmail.com")
+                .status(ContactStatus.IN_PROGRESS)
+                .requestType(ContactRequestType.DEMO_REQUEST)
+                .createdAt(Instant.now().minusSeconds(3600))
+                .build();
+
+        UpdateContactOfGuestRequest updateRequest = UpdateContactOfGuestRequest.builder()
+                .status(ContactStatus.RESOLVED)
+                .build();
+
+        when(contactOfGuestRepository.findById(10L)).thenReturn(Optional.of(contact));
+        when(trialAccountRequestRepository.findByContact_Id(10L)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> contactOfGuestService.updateContact(10L, updateRequest))
+                .isInstanceOf(AppException.class)
+                .hasFieldOrPropertyWithValue("errorCode", ErrorCode.CANNOT_DIRECTLY_APPROVE_DEMO_REQUEST);
     }
 }

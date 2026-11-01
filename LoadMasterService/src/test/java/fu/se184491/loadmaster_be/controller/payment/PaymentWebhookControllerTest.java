@@ -61,4 +61,16 @@ public class PaymentWebhookControllerTest {
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.txnRef").value("MOCK_123"));
     }
+
+    @Test
+    @DisplayName("GET /webhook/vnpay-return - Processes VNPay callback and redirects to FE /goi-cuoc")
+    void testVnPayReturnRedirect() throws Exception {
+        when(paymentCallbackHandler.handleVnPayCallback(anyMap()))
+                .thenReturn(Map.of("RspCode", "00", "Message", "Confirm Success"));
+
+        mockMvc.perform(get("/webhook/vnpay-return")
+                        .param("vnp_TxnRef", "VNPAY_123")
+                        .param("vnp_ResponseCode", "00"))
+                .andExpect(status().is3xxRedirection());
+    }
 }

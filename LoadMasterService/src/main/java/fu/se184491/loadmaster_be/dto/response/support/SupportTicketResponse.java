@@ -1,5 +1,6 @@
 package fu.se184491.loadmaster_be.dto.response.support;
 
+import com.fasterxml.jackson.annotation.JsonFormat;
 import fu.se184491.loadmaster_be.constant.support.TicketCategory;
 import fu.se184491.loadmaster_be.constant.support.TicketPriority;
 import fu.se184491.loadmaster_be.constant.support.TicketStatus;
@@ -9,7 +10,6 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
-import java.time.Instant;
 import java.time.LocalDateTime;
 
 @Getter
@@ -33,6 +33,10 @@ public class SupportTicketResponse {
     private Long assignedToId;
     private String assignedToName;
     private String resolutionNote;
+
+    @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
     private LocalDateTime createdAt;
-    private Instant resolvedAt;
+
+    @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
+    private LocalDateTime resolvedAt;
 }

@@ -15,6 +15,9 @@ public interface CompanyService {
     CompanyResponse updateCompany(Long id, CompanyRequest request);
     CompanyResponse getCompanyById(Long id);
     Page<CompanyResponse> getAllCompanies(Pageable pageable);
+    default Page<CompanyResponse> getAllCompanies(String search, Pageable pageable) {
+        return getAllCompanies(pageable);
+    }
     CompanyResponse changeCompanyStatus(Long id, CompanyStatus status);
 
     List<CompanyOptionResponse> getCompanyOptions();

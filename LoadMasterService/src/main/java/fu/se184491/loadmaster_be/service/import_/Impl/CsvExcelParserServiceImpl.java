@@ -100,6 +100,7 @@ public class CsvExcelParserServiceImpl implements CsvExcelParserService {
 
                 dataRowCount++;
                 if (dataRowCount > MAX_BATCH_ROWS) {
+                    log.warn("CSV import exceeded max batch rows ({}): row {}", MAX_BATCH_ROWS, i + 1);
                     throw new AppException(ErrorCode.BATCH_SIZE_LIMIT_EXCEEDED);
                 }
 
@@ -163,6 +164,7 @@ public class CsvExcelParserServiceImpl implements CsvExcelParserService {
 
                 dataRowCount++;
                 if (dataRowCount > MAX_BATCH_ROWS) {
+                    log.warn("Excel import exceeded max batch rows ({}): row {}", MAX_BATCH_ROWS, r.getRowNum() + 1);
                     throw new AppException(ErrorCode.BATCH_SIZE_LIMIT_EXCEEDED);
                 }
 
@@ -217,10 +219,10 @@ public class CsvExcelParserServiceImpl implements CsvExcelParserService {
 
     private PackageImportRow buildRow(int rowIndex, String[] line, Map<String, Integer> colMap) {
         String packageCode    = getField(line, colMap, "packagecode", "package_code", "code", "makien");
-        BigDecimal lengthCm   = parseBigDecimal(getField(line, colMap, "length", "lengthcm", "length_cm", "chieudai"));
-        BigDecimal widthCm    = parseBigDecimal(getField(line, colMap, "width", "widthcm", "width_cm", "chieurong"));
-        BigDecimal heightCm   = parseBigDecimal(getField(line, colMap, "height", "heightcm", "height_cm", "chieucao"));
-        BigDecimal weightKg   = parseBigDecimal(getField(line, colMap, "weight", "weightkg", "weight_kg", "khoiluong", "trongluong"));
+        BigDecimal lengthCm   = parseDimensionOrWeightDecimal(getField(line, colMap, "length", "lengthcm", "length_cm", "chieudai"), rowIndex, "lengthCm");
+        BigDecimal widthCm    = parseDimensionOrWeightDecimal(getField(line, colMap, "width", "widthcm", "width_cm", "chieurong"), rowIndex, "widthCm");
+        BigDecimal heightCm   = parseDimensionOrWeightDecimal(getField(line, colMap, "height", "heightcm", "height_cm", "chieucao"), rowIndex, "heightCm");
+        BigDecimal weightKg   = parseDimensionOrWeightDecimal(getField(line, colMap, "weight", "weightkg", "weight_kg", "khoiluong", "trongluong"), rowIndex, "weightKg");
         String handlingClass  = getField(line, colMap, "handlingclass", "handling_class", "loaihang");
         String destination    = getField(line, colMap, "destination", "dest", "dich", "diemden", "address", "stop");
 
@@ -242,35 +244,34 @@ public class CsvExcelParserServiceImpl implements CsvExcelParserService {
         );
 
 
-        BigDecimal lengthCm = parseExcelDecimal(
+        BigDecimal lengthCm = parseDimensionOrWeightDecimal(
                 getExcelField(row, colMap,
                         "length", "lengthcm", "chieudai", "dai"),
                 rowIndex, "lengthCm"
         );
 
-        BigDecimal widthCm = parseExcelDecimal(
+        BigDecimal widthCm = parseDimensionOrWeightDecimal(
                 getExcelField(row, colMap,
                         "width", "widthcm", "chieurong", "rong"),
                 rowIndex, "widthCm"
         );
 
-        BigDecimal heightCm = parseExcelDecimal(
+        BigDecimal heightCm = parseDimensionOrWeightDecimal(
                 getExcelField(row, colMap,
                         "height", "heightcm", "chieucao", "cao"),
                 rowIndex, "heightCm"
         );
 
-        BigDecimal weightKg = parseExcelDecimal(
+        BigDecimal weightKg = parseDimensionOrWeightDecimal(
                 getExcelField(row, colMap,
                         "weight", "weightkg", "khoiluong", "cannang"),
                 rowIndex, "weightKg"
         );
 
-        Integer quantity = parseExcelInteger(
-                getExcelField(row, colMap, "quantity", "soluong"),
-                rowIndex,
-                "quantity"
-        );
+        String rawQuantity = getExcelField(row, colMap, "quantity", "soluong");
+        Integer quantity = (rawQuantity == null || rawQuantity.isBlank())
+                ? 1
+                : parseExcelInteger(rawQuantity, rowIndex, "quantity");
 
         String destination = getExcelField(
                 row, colMap, "destination", "diemden", "diemgiao"
@@ -288,10 +289,10 @@ public class CsvExcelParserServiceImpl implements CsvExcelParserService {
                 "uprightOnly"
         );
 
-        Integer fragilityLevel = parseExcelInteger(
+        Integer fragilityLevel = parseFragilityLevel(
                 getExcelField(row, colMap,
                         "fragilitylevel", "mucdevo"),
-                rowIndex, "fragilityLevel"
+                rowIndex
         );
 
         Boolean stackable = parseExcelBoolean(
@@ -415,15 +416,19 @@ public class CsvExcelParserServiceImpl implements CsvExcelParserService {
                 return cell.getStringCellValue().trim();
             case NUMERIC:
                 double num = cell.getNumericCellValue();
-                if (num == Math.floor(num)) {
+                if (num == Math.floor(num) && !Double.isInfinite(num)) {
                     return String.valueOf((long) num);
                 }
-                return String.valueOf(num);
+                return BigDecimal.valueOf(num).stripTrailingZeros().toPlainString();
             case BOOLEAN:
                 return String.valueOf(cell.getBooleanCellValue());
             case FORMULA:
                 try {
-                    return String.valueOf(cell.getNumericCellValue());
+                    double formulaNum = cell.getNumericCellValue();
+                    if (formulaNum == Math.floor(formulaNum) && !Double.isInfinite(formulaNum)) {
+                        return String.valueOf((long) formulaNum);
+                    }
+                    return BigDecimal.valueOf(formulaNum).stripTrailingZeros().toPlainString();
                 } catch (Exception e) {
                     return cell.getStringCellValue();
                 }
@@ -480,6 +485,33 @@ public class CsvExcelParserServiceImpl implements CsvExcelParserService {
         }
     }
 
+    /**
+     * Dành riêng cho 4 trường kích thước & khối lượng (lengthCm, widthCm, heightCm, weightKg):
+     * - Hỗ trợ cả dấu phẩy (',') và dấu chấm ('.') làm dấu phân cách thập phân (ví dụ "2,22" -> 2.22).
+     * - Nếu nhập sai định dạng số (ví dụ "abc"), ghi log cảnh báo rõ dòng/cột và trả về INVALID_NUMBER_SENTINEL
+     *   để Validator ghi nhận RowError thông qua ErrorCode.IMPORT_INVALID_NUMBER_FORMAT.
+     */
+    private BigDecimal parseDimensionOrWeightDecimal(
+            String value,
+            int rowIndex,
+            String field
+    ) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+
+        String normalized = value.trim().replace(',', '.');
+        try {
+            return new BigDecimal(normalized);
+        } catch (NumberFormatException e) {
+            log.warn(
+                    "Invalid decimal format at row {}, field {}: '{}'",
+                    rowIndex, field, value
+            );
+            return PackageImportRow.INVALID_NUMBER_SENTINEL;
+        }
+    }
+
     private String normalize(String str) {
         if (str == null) {
             return "";
@@ -525,6 +557,20 @@ public class CsvExcelParserServiceImpl implements CsvExcelParserService {
         };
     }
 
+
+    private Integer parseFragilityLevel(String value, int rowIndex) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        String normalized = normalize(value);
+        return switch (normalized) {
+            case "none" -> 0;
+            case "low" -> 1;
+            case "medium" -> 2;
+            case "high" -> 3;
+            default -> parseExcelInteger(value, rowIndex, "fragilityLevel");
+        };
+    }
 
     private Integer parseExcelInteger(
             String value,

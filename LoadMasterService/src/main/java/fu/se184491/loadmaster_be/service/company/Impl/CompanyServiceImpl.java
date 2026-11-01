@@ -11,11 +11,18 @@ import fu.se184491.loadmaster_be.exception.ErrorCode;
 import fu.se184491.loadmaster_be.repository.company.CompanyRepository;
 import fu.se184491.loadmaster_be.service.company.CompanyService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+
+import fu.se184491.loadmaster_be.constant.account.UserRole;
+import fu.se184491.loadmaster_be.entity.account.User;
+import fu.se184491.loadmaster_be.repository.account.UserRepository;
+import fu.se184491.loadmaster_be.repository.billing.CompanySubscriptionRepository;
+import fu.se184491.loadmaster_be.repository.billing.CreditAccountRepository;
 
 import java.time.Instant;
 import java.util.List;
@@ -25,6 +32,9 @@ import java.util.List;
 public class CompanyServiceImpl implements CompanyService {
 
     private final CompanyRepository companyRepository;
+    private final CompanySubscriptionRepository companySubscriptionRepository;
+    private final UserRepository userRepository;
+    private final CreditAccountRepository creditAccountRepository;
 
     @Override
     @Transactional
@@ -81,6 +91,21 @@ public class CompanyServiceImpl implements CompanyService {
     @Override
     @Transactional(readOnly = true)
     public Page<CompanyResponse> getAllCompanies(Pageable pageable) {
+        return getAllCompanies(null, pageable);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Page<CompanyResponse> getAllCompanies(String search, Pageable pageable) {
+        if (search != null && !search.trim().isEmpty()) {
+            String term = "%" + search.trim().toLowerCase() + "%";
+            return companyRepository.findAll((root, query, cb) -> cb.or(
+                    cb.like(cb.lower(root.get("companyName")), term),
+                    cb.like(cb.lower(root.get("companyCode")), term),
+                    cb.like(cb.lower(root.get("taxCode")), term),
+                    cb.like(cb.lower(root.get("billingEmail")), term)
+            ), pageable).map(this::toResponse);
+        }
         return companyRepository.findAll(pageable).map(this::toResponse);
     }
 
@@ -140,14 +165,55 @@ public class CompanyServiceImpl implements CompanyService {
     }
 
     private CompanyResponse toResponse(Company company) {
-        return CompanyResponse.builder()
+        CompanyResponse.CompanyResponseBuilder builder = CompanyResponse.builder()
                 .id(company.getId())
                 .companyCode(company.getCompanyCode())
                 .companyName(company.getCompanyName())
                 .taxCode(company.getTaxCode())
                 .billingEmail(company.getBillingEmail())
                 .status(company.getStatus())
-                .createdAt(company.getCreatedAt())
-                .build();
+                .createdAt(company.getCreatedAt());
+
+        if (companySubscriptionRepository != null && company.getId() != null) {
+            companySubscriptionRepository.findByCompanyId(company.getId()).ifPresent(sub -> {
+                if (sub.getPlan() != null) {
+                    builder.planName(sub.getPlan().getName());
+                    builder.planCode(sub.getPlan().getPlanCode());
+                    builder.planTier(sub.getPlan().getTier() != null ? sub.getPlan().getTier().name() : null);
+                }
+                if (sub.getStatus() != null) {
+                    builder.subscriptionStatus(sub.getStatus().name());
+                }
+                builder.subscriptionStartedAt(sub.getStartedAt());
+                builder.subscriptionExpiresAt(sub.getExpiresAt());
+            });
+        }
+
+        if (creditAccountRepository != null && company.getId() != null) {
+            creditAccountRepository.findByCompanyId(company.getId()).ifPresent(credit -> {
+                builder.creditBalance(credit.getBalance());
+            });
+        }
+
+        if (userRepository != null && company.getId() != null) {
+            List<User> users = userRepository.findByCompanyId(company.getId());
+            if (users != null) {
+                builder.userCount(users.size());
+                users.stream()
+                        .filter(u -> u.getUserRoleType() == UserRole.ADMIN)
+                        .findFirst()
+                        .or(() -> users.stream().findFirst())
+                        .ifPresent(admin -> {
+                            builder.adminId(admin.getId());
+                            builder.adminName(admin.getFullName());
+                            builder.adminEmail(admin.getEmail());
+                            builder.adminPhone(admin.getPhoneNumber());
+                        });
+            } else {
+                builder.userCount(0);
+            }
+        }
+
+        return builder.build();
     }
 }

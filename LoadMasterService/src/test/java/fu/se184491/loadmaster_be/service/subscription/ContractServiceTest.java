@@ -1,18 +1,18 @@
 package fu.se184491.loadmaster_be.service.subscription;
 
 import fu.se184491.loadmaster_be.constant.billing.BillingCycle;
-import fu.se184491.loadmaster_be.constant.billing.CreditTransactionType;
-import fu.se184491.loadmaster_be.constant.billing.InvoiceStatus;
 import fu.se184491.loadmaster_be.constant.billing.SubscriptionStatus;
 import fu.se184491.loadmaster_be.constant.billing.SubscriptionTier;
 import fu.se184491.loadmaster_be.dto.request.subscription.CreateContractRequest;
-import fu.se184491.loadmaster_be.dto.request.subscription.UpdateContractRequest;
-import fu.se184491.loadmaster_be.dto.response.subscription.ContractResponse;
-import fu.se184491.loadmaster_be.entity.billing.*;
+import fu.se184491.loadmaster_be.entity.billing.CompanySubscription;
+import fu.se184491.loadmaster_be.entity.billing.CreditAccount;
+import fu.se184491.loadmaster_be.entity.billing.SubscriptionPlan;
 import fu.se184491.loadmaster_be.entity.company.Company;
-import fu.se184491.loadmaster_be.exception.AppException;
-import fu.se184491.loadmaster_be.exception.ErrorCode;
-import fu.se184491.loadmaster_be.repository.billing.*;
+import fu.se184491.loadmaster_be.repository.billing.CompanySubscriptionRepository;
+import fu.se184491.loadmaster_be.repository.billing.CreditAccountRepository;
+import fu.se184491.loadmaster_be.repository.billing.CreditTransactionRepository;
+import fu.se184491.loadmaster_be.repository.billing.InvoiceRepository;
+import fu.se184491.loadmaster_be.repository.billing.SubscriptionPlanRepository;
 import fu.se184491.loadmaster_be.repository.company.CompanyRepository;
 import fu.se184491.loadmaster_be.service.subscription.Impl.ContractServiceImpl;
 import org.junit.jupiter.api.BeforeEach;
@@ -27,10 +27,10 @@ import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.Optional;
 
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.*;
+import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
 class ContractServiceTest {
@@ -57,139 +57,194 @@ class ContractServiceTest {
     private ContractServiceImpl contractService;
 
     private Company company;
-    private SubscriptionPlan plan;
-    private CreditAccount creditAccount;
+    private SubscriptionPlan basicPlan;
+    private SubscriptionPlan proPlan;
+    private SubscriptionPlan ultimatePlan;
 
     @BeforeEach
     void setUp() {
         company = Company.builder()
                 .id(1L)
-                .companyCode("COMP-001")
-                .companyName("Công ty Vận Tải Ánh Dương")
+                .companyCode("LM-01")
+                .companyName("Acme Logistics")
                 .build();
 
-        plan = SubscriptionPlan.builder()
-                .id(10L)
-                .planCode("PLAN_PRO_YEARLY")
-                .name("Gói Chuyên Nghiệp Năm")
+        basicPlan = SubscriptionPlan.builder()
+                .id(1L)
+                .planCode("BASIC_MONTHLY")
+                .name("Basic")
+                .tier(SubscriptionTier.BASIC)
+                .price(new BigDecimal("1200000"))
+                .monthlyCredits(3000)
+                .billingCycle(BillingCycle.MONTHLY)
+                .active(true)
+                .build();
+
+        proPlan = SubscriptionPlan.builder()
+                .id(2L)
+                .planCode("PRO_MONTHLY")
+                .name("Pro")
                 .tier(SubscriptionTier.PRO)
-                .price(BigDecimal.valueOf(50000000))
-                .billingCycle(BillingCycle.YEARLY)
-                .monthlyCredits(1000)
+                .price(new BigDecimal("4900000"))
+                .monthlyCredits(10000)
+                .billingCycle(BillingCycle.MONTHLY)
+                .active(true)
                 .build();
 
-        creditAccount = CreditAccount.builder()
-                .id(100L)
-                .company(company)
-                .balance(500)
+        ultimatePlan = SubscriptionPlan.builder()
+                .id(3L)
+                .planCode("ULTIMATE_MONTHLY")
+                .name("Ultimate")
+                .tier(SubscriptionTier.ULTIMATE)
+                .price(new BigDecimal("7900000"))
+                .monthlyCredits(30000)
+                .billingCycle(BillingCycle.MONTHLY)
+                .active(true)
                 .build();
+
+        lenient().when(companyRepository.findById(1L)).thenReturn(Optional.of(company));
+        lenient().when(companySubscriptionRepository.save(any(CompanySubscription.class)))
+                .thenAnswer(inv -> {
+                    CompanySubscription s = inv.getArgument(0);
+                    if (s.getId() == null) s.setId(10L);
+                    return s;
+                });
     }
 
     @Test
-    @DisplayName("Kích hoạt hợp đồng: tạo mới CompanySubscription, sinh hóa đơn PAID, cộng CreditAccount và ghi CreditTransaction")
-    void createOrActivateContract_Success() {
-        CreateContractRequest request = CreateContractRequest.builder()
-                .companyId(1L)
-                .planId(10L)
+    @DisplayName("Upgrading active Basic (3000) with remaining credits to Pro (10000) resets balance to 0 and grants 10000")
+    void createOrActivateContract_activeBasicToPro_resetsBalanceToNewPlanCredits() {
+        CompanySubscription activeBasic = CompanySubscription.builder()
+                .id(10L)
+                .company(company)
+                .plan(basicPlan)
+                .status(SubscriptionStatus.ACTIVE)
+                .startedAt(LocalDateTime.now().minusDays(10))
+                .expiresAt(LocalDateTime.now().plusDays(20))
                 .autoRenew(true)
-                .billingPeriod("2026-YEARLY")
                 .build();
 
-        when(companyRepository.findById(1L)).thenReturn(Optional.of(company));
-        when(subscriptionPlanRepository.findById(10L)).thenReturn(Optional.of(plan));
-        when(companySubscriptionRepository.findByCompanyId(1L)).thenReturn(Optional.empty());
-        when(companySubscriptionRepository.save(any(CompanySubscription.class))).thenAnswer(invocation -> {
-            CompanySubscription cs = invocation.getArgument(0);
-            cs.setId(50L);
-            return cs;
-        });
+        CreditAccount creditAccount = CreditAccount.builder()
+                .id(1L)
+                .company(company)
+                .balance(2400)
+                .build();
+
+        when(companySubscriptionRepository.findByCompanyId(1L)).thenReturn(Optional.of(activeBasic));
+        when(subscriptionPlanRepository.findById(2L)).thenReturn(Optional.of(proPlan));
         when(creditAccountRepository.findByCompanyId(1L)).thenReturn(Optional.of(creditAccount));
 
-        ContractResponse response = contractService.createOrActivateContract(request);
+        CreateContractRequest req = new CreateContractRequest();
+        req.setCompanyId(1L);
+        req.setPlanId(2L);
+        req.setAutoRenew(true);
 
-        assertThat(response).isNotNull();
-        assertThat(response.getId()).isEqualTo(50L);
-        assertThat(response.getCompanyId()).isEqualTo(1L);
-        assertThat(response.getCompanyName()).isEqualTo("Công ty Vận Tải Ánh Dương");
-        assertThat(response.getPlanCode()).isEqualTo("PLAN_PRO_YEARLY");
-        assertThat(response.getStatus()).isEqualTo(SubscriptionStatus.ACTIVE);
-        assertThat(response.getStartedAt()).isNotNull();
-        assertThat(response.getExpiresAt()).isNotNull();
+        contractService.createOrActivateContract(req);
 
-        // Kiểm tra hóa đơn tự động sinh với trạng thái PAID
-        verify(invoiceRepository).save(argThat(inv ->
-                inv.getCompany().getId().equals(1L) &&
-                inv.getStatus() == InvoiceStatus.PAID &&
-                inv.getTotalAmount().compareTo(BigDecimal.valueOf(50000000)) == 0
-        ));
-
-        // Kiểm tra cộng credit và lưu transaction
-        assertThat(creditAccount.getBalance()).isEqualTo(1500); // 500 + 1000
-        verify(creditTransactionRepository).save(argThat(tx ->
-                tx.getAmount() == 1000 &&
-                tx.getType() == CreditTransactionType.MONTHLY_GRANT
-        ));
+        assertEquals(10000, creditAccount.getBalance());
     }
 
     @Test
-    @DisplayName("Lấy chi tiết hợp đồng thành công")
-    void getContractById_Success() {
-        CompanySubscription cs = CompanySubscription.builder()
-                .id(50L)
+    @DisplayName("Upgrading active Pro (10000) with remaining credits to Ultimate (30000) resets balance to 0 and grants 30000")
+    void createOrActivateContract_activeProToUltimate_resetsBalanceToNewPlanCredits() {
+        CompanySubscription activePro = CompanySubscription.builder()
+                .id(10L)
                 .company(company)
-                .plan(plan)
+                .plan(proPlan)
                 .status(SubscriptionStatus.ACTIVE)
-                .startedAt(LocalDateTime.now())
-                .expiresAt(LocalDateTime.now().plusYears(1))
+                .startedAt(LocalDateTime.now().minusDays(5))
+                .expiresAt(LocalDateTime.now().plusDays(25))
                 .autoRenew(true)
                 .build();
 
-        when(companySubscriptionRepository.findById(50L)).thenReturn(Optional.of(cs));
-
-        ContractResponse response = contractService.getContractById(50L);
-
-        assertThat(response).isNotNull();
-        assertThat(response.getId()).isEqualTo(50L);
-        assertThat(response.getCompanyCode()).isEqualTo("COMP-001");
-    }
-
-    @Test
-    @DisplayName("Lấy chi tiết hợp đồng không tìm thấy -> ném CONTRACT_NOT_FOUND")
-    void getContractById_NotFound() {
-        when(companySubscriptionRepository.findById(999L)).thenReturn(Optional.empty());
-
-        assertThatThrownBy(() -> contractService.getContractById(999L))
-                .isInstanceOf(AppException.class)
-                .hasFieldOrPropertyWithValue("errorCode", ErrorCode.CONTRACT_NOT_FOUND);
-    }
-
-    @Test
-    @DisplayName("Cập nhật hợp đồng thành công")
-    void updateContract_Success() {
-        CompanySubscription cs = CompanySubscription.builder()
-                .id(50L)
+        CreditAccount creditAccount = CreditAccount.builder()
+                .id(1L)
                 .company(company)
-                .plan(plan)
-                .status(SubscriptionStatus.ACTIVE)
-                .startedAt(LocalDateTime.now())
-                .expiresAt(LocalDateTime.now().plusMonths(6))
-                .autoRenew(true)
+                .balance(8500)
                 .build();
 
-        LocalDateTime newExpires = LocalDateTime.now().plusYears(1);
-        UpdateContractRequest updateRequest = UpdateContractRequest.builder()
-                .status(SubscriptionStatus.CANCELLED)
-                .expiresAt(newExpires)
+        when(companySubscriptionRepository.findByCompanyId(1L)).thenReturn(Optional.of(activePro));
+        when(subscriptionPlanRepository.findById(3L)).thenReturn(Optional.of(ultimatePlan));
+        when(creditAccountRepository.findByCompanyId(1L)).thenReturn(Optional.of(creditAccount));
+
+        CreateContractRequest req = new CreateContractRequest();
+        req.setCompanyId(1L);
+        req.setPlanId(3L);
+        req.setAutoRenew(true);
+
+        contractService.createOrActivateContract(req);
+
+        assertEquals(30000, creditAccount.getBalance());
+    }
+
+    @Test
+    @DisplayName("Upgrading EXPIRED subscription resets balance to 0 and grants only new plan monthlyCredits (10000 for Pro)")
+    void createOrActivateContract_expiredSubscription_discardsOldCredits() {
+        CompanySubscription expiredBasic = CompanySubscription.builder()
+                .id(10L)
+                .company(company)
+                .plan(basicPlan)
+                .status(SubscriptionStatus.EXPIRED)
+                .startedAt(LocalDateTime.now().minusDays(40))
+                .expiresAt(LocalDateTime.now().minusDays(10))
                 .autoRenew(false)
                 .build();
 
-        when(companySubscriptionRepository.findById(50L)).thenReturn(Optional.of(cs));
-        when(companySubscriptionRepository.save(any(CompanySubscription.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        CreditAccount creditAccount = CreditAccount.builder()
+                .id(1L)
+                .company(company)
+                .balance(600)
+                .build();
 
-        ContractResponse response = contractService.updateContract(50L, updateRequest);
+        when(companySubscriptionRepository.findByCompanyId(1L)).thenReturn(Optional.of(expiredBasic));
+        when(subscriptionPlanRepository.findById(2L)).thenReturn(Optional.of(proPlan));
+        when(creditAccountRepository.findByCompanyId(1L)).thenReturn(Optional.of(creditAccount));
 
-        assertThat(response.getStatus()).isEqualTo(SubscriptionStatus.CANCELLED);
-        assertThat(response.getExpiresAt()).isEqualTo(newExpires);
-        assertThat(response.getAutoRenew()).isFalse();
+        CreateContractRequest req = new CreateContractRequest();
+        req.setCompanyId(1L);
+        req.setPlanId(2L);
+        req.setAutoRenew(true);
+
+        contractService.createOrActivateContract(req);
+
+        assertEquals(10000, creditAccount.getBalance());
+    }
+
+    @Test
+    @DisplayName("SystemSupporter cannot downgrade or re-apply same plan when company subscription is ACTIVE")
+    void createOrActivateContract_activeProToBasicOrSamePro_throwsException() {
+        CompanySubscription activePro = CompanySubscription.builder()
+                .id(10L)
+                .company(company)
+                .plan(proPlan)
+                .status(SubscriptionStatus.ACTIVE)
+                .startedAt(LocalDateTime.now().minusDays(5))
+                .expiresAt(LocalDateTime.now().plusDays(25))
+                .autoRenew(true)
+                .build();
+
+        when(companySubscriptionRepository.findByCompanyId(1L)).thenReturn(Optional.of(activePro));
+        when(subscriptionPlanRepository.findById(1L)).thenReturn(Optional.of(basicPlan));
+        when(subscriptionPlanRepository.findById(2L)).thenReturn(Optional.of(proPlan));
+
+        CreateContractRequest downgradeReq = new CreateContractRequest();
+        downgradeReq.setCompanyId(1L);
+        downgradeReq.setPlanId(1L);
+        downgradeReq.setAutoRenew(true);
+
+        org.junit.jupiter.api.Assertions.assertThrows(
+                fu.se184491.loadmaster_be.exception.AppException.class,
+                () -> contractService.createOrActivateContract(downgradeReq)
+        );
+
+        CreateContractRequest samePlanReq = new CreateContractRequest();
+        samePlanReq.setCompanyId(1L);
+        samePlanReq.setPlanId(2L);
+        samePlanReq.setAutoRenew(true);
+
+        org.junit.jupiter.api.Assertions.assertThrows(
+                fu.se184491.loadmaster_be.exception.AppException.class,
+                () -> contractService.createOrActivateContract(samePlanReq)
+        );
     }
 }

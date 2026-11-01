@@ -154,9 +154,9 @@ public class LoadPlanServiceImpl implements LoadPlanService {
                 .pinnedPlacements(pinnedDtos)
                 .build();
 
-        // S8-08 Credit check & deduction before sending to Engine
+        // S8-08 Credit check & deduction before sending to Engine (Rerun = 1 credit)
         if (newJob.getTrip() != null && newJob.getTrip().getCompany() != null) {
-            creditService.deductCredit(newJob.getTrip().getCompany().getId(), jobUuid);
+            creditService.deductCredit(newJob.getTrip().getCompany().getId(), jobUuid, 1);
         }
 
         // 4. Send to Engine

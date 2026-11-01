@@ -22,7 +22,8 @@ public class CreateContactOfGuestRequest {
     private String phoneNumber;
 
     private String companyName;
-
+    private String companyCode;
+    private String taxCode;
     private Long interestedPlanId;
 
     private String message;

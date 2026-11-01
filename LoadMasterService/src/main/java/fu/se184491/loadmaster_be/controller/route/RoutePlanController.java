@@ -1,7 +1,10 @@
 package fu.se184491.loadmaster_be.controller.route;
 
+import fu.se184491.loadmaster_be.client.GoongMapsClient;
 import fu.se184491.loadmaster_be.dto.ApiResponse;
 import fu.se184491.loadmaster_be.dto.PageResponse;
+import fu.se184491.loadmaster_be.dto.goong.PlaceAutocompleteResponse;
+import fu.se184491.loadmaster_be.dto.goong.PlaceDetailResponse;
 import fu.se184491.loadmaster_be.dto.request.route.CreateRoutePlanRequest;
 import fu.se184491.loadmaster_be.dto.request.route.CreateRouteSuggestionRequest;
 import fu.se184491.loadmaster_be.dto.response.route.RouteLegResponse;
@@ -27,9 +30,10 @@ public class RoutePlanController {
     private final RoutePlanService routePlanService;
     private final CurrentUserService currentUserService;
     private final TripLookupHelper tripLookupHelper;
+    private final GoongMapsClient goongMapsClient;
 
     @PostMapping("/trips/{tripId}/route-plans")
-    @PreAuthorize("hasAnyAuthority('TRIP_MANAGE', 'DISPATCHER', 'COMPANY_ADMIN')")
+    @PreAuthorize("hasAnyAuthority('TRIP_MANAGE', 'ROLE_DISPATCHER', 'COMPANY_ADMIN')")
     public ResponseEntity<ApiResponse<RoutePlanDetailResponse>> createRoutePlan(
             @PathVariable String tripId,
             @Valid @RequestBody CreateRoutePlanRequest request
@@ -42,7 +46,7 @@ public class RoutePlanController {
     }
 
     @GetMapping("/trips/{tripId}/route-plans/active")
-    @PreAuthorize("hasAnyAuthority('TRIP_MANAGE', 'DISPATCHER', 'COMPANY_ADMIN', 'DRIVER')")
+    @PreAuthorize("hasAnyAuthority('TRIP_MANAGE', 'ROLE_DISPATCHER', 'COMPANY_ADMIN', 'DRIVER')")
     public ResponseEntity<ApiResponse<RoutePlanDetailResponse>> getActiveRoutePlan(
             @PathVariable String tripId
     ) {
@@ -53,7 +57,7 @@ public class RoutePlanController {
     }
 
     @GetMapping("/trips/{tripId}/route-plans")
-    @PreAuthorize("hasAnyAuthority('TRIP_MANAGE', 'DISPATCHER', 'COMPANY_ADMIN')")
+    @PreAuthorize("hasAnyAuthority('TRIP_MANAGE', 'ROLE_DISPATCHER', 'COMPANY_ADMIN')")
     public PageResponse<RoutePlanSummaryResponse> getRoutePlans(
             @PathVariable String tripId,
             Pageable pageable
@@ -64,7 +68,7 @@ public class RoutePlanController {
     }
 
     @GetMapping("/route-plans/{planId}/legs")
-    @PreAuthorize("hasAnyAuthority('TRIP_MANAGE', 'DISPATCHER', 'COMPANY_ADMIN', 'DRIVER')")
+    @PreAuthorize("hasAnyAuthority('TRIP_MANAGE', 'ROLE_DISPATCHER', 'COMPANY_ADMIN', 'DRIVER')")
     public PageResponse<RouteLegResponse> getRouteLegs(
             @PathVariable Long planId,
             Pageable pageable
@@ -74,7 +78,7 @@ public class RoutePlanController {
     }
 
     @PostMapping("/route-legs/{legId}/suggestions")
-    @PreAuthorize("hasAnyAuthority('TRIP_MANAGE', 'DISPATCHER', 'DRIVER')")
+    @PreAuthorize("hasAnyAuthority('TRIP_MANAGE', 'ROLE_DISPATCHER', 'DRIVER')")
     public ResponseEntity<ApiResponse<RouteSuggestionResponse>> createSuggestion(
             @PathVariable Long legId,
             @Valid @RequestBody CreateRouteSuggestionRequest request
@@ -86,7 +90,7 @@ public class RoutePlanController {
     }
 
     @GetMapping("/route-legs/{legId}/suggestions")
-    @PreAuthorize("hasAnyAuthority('TRIP_MANAGE', 'DISPATCHER', 'COMPANY_ADMIN')")
+    @PreAuthorize("hasAnyAuthority('TRIP_MANAGE', 'ROLE_DISPATCHER', 'COMPANY_ADMIN')")
     public PageResponse<RouteSuggestionResponse> getSuggestions(
             @PathVariable Long legId,
             Pageable pageable
@@ -96,7 +100,7 @@ public class RoutePlanController {
     }
 
     @PatchMapping("/route-suggestions/{id}/accept")
-    @PreAuthorize("hasAnyAuthority('TRIP_MANAGE', 'DISPATCHER', 'COMPANY_ADMIN')")
+    @PreAuthorize("hasAnyAuthority('TRIP_MANAGE', 'ROLE_DISPATCHER', 'COMPANY_ADMIN')")
     public ResponseEntity<ApiResponse<RouteSuggestionResponse>> acceptSuggestion(
             @PathVariable Long id
     ) {
@@ -104,4 +108,40 @@ public class RoutePlanController {
         RouteSuggestionResponse response = routePlanService.acceptSuggestion(companyId, id);
         return ResponseEntity.ok(ApiResponse.success("Chấp nhận đề xuất đổi tuyến thành công", response));
     }
+
+
+    @GetMapping("/places/autocomplete")
+    @PreAuthorize("hasAnyAuthority('TRIP_MANAGE', 'ROLE_DISPATCHER', 'COMPANY_ADMIN')")
+    public ResponseEntity<ApiResponse<PlaceAutocompleteResponse>> autocompletePlaces(
+            @RequestParam("input") String input
+    ) {
+        String keyword = input.trim();
+
+        if (keyword.length() < 2 || keyword.length() > 200) {
+            return ResponseEntity.badRequest().build();
+        }
+
+        PlaceAutocompleteResponse result =
+                goongMapsClient.getPlaceAutocomplete(keyword);
+
+        return ResponseEntity.ok(ApiResponse.success(result));
+    }
+
+    @GetMapping("/places/detail")
+    @PreAuthorize("hasAnyAuthority('TRIP_MANAGE', 'ROLE_DISPATCHER', 'COMPANY_ADMIN')")
+    public ResponseEntity<ApiResponse<PlaceDetailResponse>> getPlaceDetail(
+            @RequestParam("placeId") String placeId
+    ) {
+        String id = placeId.trim();
+
+        if (id.isEmpty() || id.length() > 255) {
+            return ResponseEntity.badRequest().build();
+        }
+
+        PlaceDetailResponse result =
+                goongMapsClient.getPlaceDetail(id);
+
+        return ResponseEntity.ok(ApiResponse.success(result));
+    }
+
 }
