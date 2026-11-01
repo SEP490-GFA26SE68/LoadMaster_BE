@@ -10,6 +10,8 @@ import java.util.List;
 public interface DriverService {
 
 
+    List<DriverTripResponse> listTrips(Long driverId);
+
     CurrentStopResponse getCurrentStop(Long tripId);
 
     ConfirmUnloadResponse confirmUnload(Long packageId, Long driverId);

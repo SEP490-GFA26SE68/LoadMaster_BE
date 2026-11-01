@@ -12,7 +12,9 @@ import fu.se184491.loadmaster_be.dto.response.route.RouteLegResponse;
 import fu.se184491.loadmaster_be.dto.response.route.RoutePlanDetailResponse;
 import fu.se184491.loadmaster_be.dto.response.route.RoutePlanSummaryResponse;
 import fu.se184491.loadmaster_be.dto.response.route.RouteSuggestionResponse;
+import fu.se184491.loadmaster_be.entity.trip.Trip;
 import fu.se184491.loadmaster_be.helpers.CurrentUserService;
+import fu.se184491.loadmaster_be.service.monitoring.TripLookupHelper;
 import fu.se184491.loadmaster_be.service.route.RoutePlanService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -55,6 +57,9 @@ public class RoutePlanControllerTest {
     private CurrentUserService currentUserService;
 
     @MockitoBean
+    private TripLookupHelper tripLookupHelper;
+
+    @MockitoBean
     private JwtAuthenticationConverter jwtAuthenticationConverter;
 
     @MockitoBean
@@ -72,6 +77,8 @@ public class RoutePlanControllerTest {
     void setUp() {
         objectMapper = new ObjectMapper();
         when(currentUserService.getCurrentCompanyId()).thenReturn(1L);
+        when(tripLookupHelper.requireTrip(eq("10"), eq(1L)))
+                .thenReturn(Trip.builder().id(10L).tripCode("TRIP-010").build());
     }
 
     @Test

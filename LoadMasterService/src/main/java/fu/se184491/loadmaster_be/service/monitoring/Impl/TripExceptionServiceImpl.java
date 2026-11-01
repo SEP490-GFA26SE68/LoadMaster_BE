@@ -1,5 +1,6 @@
 package fu.se184491.loadmaster_be.service.monitoring.Impl;
 
+import fu.se184491.loadmaster_be.constant.monitoring.ExceptionEscalationReason;
 import fu.se184491.loadmaster_be.constant.monitoring.TripExceptionStatus;
 import fu.se184491.loadmaster_be.constant.trip.DeliveryStopStatus;
 import fu.se184491.loadmaster_be.constant.trip.TripStatus;
@@ -111,6 +112,52 @@ public class TripExceptionServiceImpl implements TripExceptionService {
         TripException exception = tripExceptionRepository.findByIdAndTripId(exceptionId, trip.getId())
                 .orElseThrow(() -> new AppException(ErrorCode.TRIP_EXCEPTION_NOT_FOUND));
         return resolveEntity(exception, request, resolverUserId);
+    }
+
+    @Override
+    @Transactional
+    public TripExceptionResponse escalate(
+            String tripIdOrCode,
+            String exceptionIdOrCode,
+            Long companyId,
+            Long escalatedByUserId,
+            String reason
+    ) {
+        Trip trip = tripLookupHelper.requireTrip(tripIdOrCode, companyId);
+        TripException exception = tripExceptionRepository.findByIdAndTripId(parseExceptionId(exceptionIdOrCode), trip.getId())
+                .orElseThrow(() -> new AppException(ErrorCode.TRIP_EXCEPTION_NOT_FOUND));
+        String resolvedReason = reason == null || reason.isBlank()
+                ? ExceptionEscalationReason.NO_ROUTE.name()
+                : reason.trim();
+        return escalateEntity(exception, resolvedReason, escalatedByUserId);
+    }
+
+    @Override
+    @Transactional
+    public int escalateOverdue() {
+        var deadline = MonitoringTime.now().minusMinutes(ExceptionEscalationReason.AFTER_MINUTES);
+        List<TripException> overdue = tripExceptionRepository.findByStatusAndReportedAtBefore(
+                TripExceptionStatus.OPEN, deadline);
+        int count = 0;
+        for (TripException exception : overdue) {
+            escalateEntity(exception, ExceptionEscalationReason.TIMEOUT.name(), null);
+            count++;
+        }
+        return count;
+    }
+
+    private TripExceptionResponse escalateEntity(TripException exception, String reason, Long userId) {
+        if (exception.getStatus() != TripExceptionStatus.OPEN) {
+            throw new AppException(ErrorCode.EXCEPTION_STATUS_INVALID);
+        }
+        User escalatedBy = userId != null
+                ? userRepository.findById(userId).orElse(null)
+                : null;
+        exception.setStatus(TripExceptionStatus.ESCALATED);
+        exception.setEscalationReason(reason);
+        exception.setEscalatedAt(MonitoringTime.now());
+        exception.setEscalatedBy(escalatedBy);
+        return toResponse(tripExceptionRepository.save(exception));
     }
 
     private TripExceptionResponse resolveEntity(

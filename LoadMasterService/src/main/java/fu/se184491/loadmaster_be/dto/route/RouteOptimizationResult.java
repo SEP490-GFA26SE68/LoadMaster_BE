@@ -1,8 +1,8 @@
 package fu.se184491.loadmaster_be.dto.route;
 
-import java.time.Instant;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 
 public class RouteOptimizationResult {
 
@@ -75,8 +75,18 @@ public class RouteOptimizationResult {
             Long toStopId,
             long durationSeconds,
             long distanceMeters,
-            String polyline
+            String polyline,
+            List<Map<String, Object>> steps
     ) {
+        public RouteSegment(
+                Long fromStopId,
+                Long toStopId,
+                long durationSeconds,
+                long distanceMeters,
+                String polyline
+        ) {
+            this(fromStopId, toStopId, durationSeconds, distanceMeters, polyline, List.of());
+        }
     }
 
     public record StopSchedule(Long stopId, int stopSequence, LocalDateTime plannedArrival) {

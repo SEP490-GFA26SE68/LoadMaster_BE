@@ -299,7 +299,7 @@
                     </div>
                 </main>
             </div>
-            <#if pageId == "login" || pageId == "login-update-password" || pageId == "login-update-profile">>
+            <#if pageId == "login" || pageId == "login-update-password" || pageId == "login-update-profile">
                 <aside class="lm-login-showcase">
 
                     <div class="lm-showcase-inner">
