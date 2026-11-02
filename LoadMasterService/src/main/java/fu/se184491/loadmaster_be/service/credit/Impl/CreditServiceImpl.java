@@ -55,9 +55,10 @@ public class CreditServiceImpl implements CreditService {
     @Override
     @Transactional(readOnly = true)
     public Page<CreditTransactionResponse> getTransactions(Long companyId, Pageable pageable) {
-        CreditAccount account = getOrCreateAccount(companyId);
-        return creditTransactionRepository.findByCreditAccountIdOrderByCreatedAtDesc(account.getId(), pageable)
-                .map(this::toResponse);
+        return creditAccountRepository.findByCompanyId(companyId)
+                .map(account -> creditTransactionRepository.findByCreditAccountIdOrderByCreatedAtDesc(account.getId(), pageable)
+                        .map(this::toResponse))
+                .orElseGet(() -> Page.empty(pageable));
     }
 
     @Override

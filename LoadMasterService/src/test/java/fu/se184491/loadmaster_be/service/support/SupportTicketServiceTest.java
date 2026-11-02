@@ -196,4 +196,151 @@ class SupportTicketServiceTest {
         assertEquals("2026-10-19 20:19:22", dbResolved);
         assertEquals(LocalDateTime.of(2026, 10, 19, 20, 19, 22), converter.convertToEntityAttribute(dbResolved));
     }
+
+    @Test
+    @DisplayName("updateTicket - Seam 1: Keeps only the 2 most recent active chat dates in resolutionNote and formats 'at' as yyyy-MM-dd HH:mm:ss")
+    void updateTicket_whenChatSpansThreeActiveDates_prunesOldestDateAndFormatsAtTimestamp() {
+        SupportTicket existing = SupportTicket.builder()
+                .id(105L)
+                .ticketCode("TCK-20261020-5555")
+                .requester(companyAdmin)
+                .subject("Hỏi về nâng cấp gói")
+                .category(TicketCategory.BILLING)
+                .priority(TicketPriority.MEDIUM)
+                .status(TicketStatus.IN_PROGRESS)
+                .resolutionNote("""
+                        [
+                          {"authorId":"2","authorName":"Acme Admin","authorRole":"companyAdmin","text":"Tin nhắn ngày 20","at":"2026-10-20 09:00:00"},
+                          {"authorId":"5","authorName":"System Supporter","authorRole":"systemSupporter","text":"Phản hồi ngày 25","at":"2026-10-25 14:30:00"}
+                        ]
+                        """)
+                .build();
+
+        when(supportTicketRepository.findById(105L)).thenReturn(Optional.of(existing));
+        when(supportTicketRepository.save(any(SupportTicket.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        String incomingThreeDatesJson = """
+                [
+                  {"authorId":"2","authorName":"Acme Admin","authorRole":"companyAdmin","text":"Tin nhắn ngày 20","at":"2026-10-20T09:00:00.123Z"},
+                  {"authorId":"5","authorName":"System Supporter","authorRole":"systemSupporter","text":"Phản hồi ngày 25","at":"2026-10-25 14:30:00"},
+                  {"authorId":"2","authorName":"Acme Admin","authorRole":"companyAdmin","text":"Tin nhắn mới ngày 30","at":"2026-10-30T10:15:20.789"}
+                ]
+                """;
+
+        UpdateSupportTicketRequest request = new UpdateSupportTicketRequest(
+                TicketStatus.IN_PROGRESS,
+                null,
+                incomingThreeDatesJson
+        );
+
+        SupportTicketResponse response = supportTicketService.updateTicket(105L, request);
+
+        String savedNote = response.getResolutionNote();
+        assertNotNull(savedNote);
+        org.junit.jupiter.api.Assertions.assertFalse(
+                savedNote.contains("2026-10-20"),
+                "Messages from the oldest active date (2026-10-20) must be pruned when 2 newer active dates exist"
+        );
+        assertTrue(savedNote.contains("2026-10-25 14:30:00"), "Should retain messages from 2026-10-25");
+        assertTrue(savedNote.contains("2026-10-30 10:15:20"), "Should retain and format messages from 2026-10-30 as yyyy-MM-dd HH:mm:ss");
+    }
+
+    @Test
+    @DisplayName("cleanupClosedTicketChatHistory - Seam 2: Clears resolutionNote for CLOSED/RESOLVED tickets older than 15 days while keeping recent or open tickets")
+    void cleanupClosedTicketChatHistory_clearsOnlyClosedTicketsOlderThan15Days() {
+        LocalDateTime now = LocalDateTime.now().truncatedTo( java.time.temporal.ChronoUnit.SECONDS);
+
+        SupportTicket closed16DaysAgo = SupportTicket.builder()
+                .id(201L)
+                .ticketCode("TCK-20261001-0001")
+                .requester(companyAdmin)
+                .status(TicketStatus.CLOSED)
+                .resolvedAt(now.minusDays(16))
+                .resolutionNote("[{\"text\":\"Chat cách đây 16 ngày\",\"at\":\"2026-10-01 10:00:00\"}]")
+                .build();
+
+        SupportTicket closed5DaysAgo = SupportTicket.builder()
+                .id(202L)
+                .ticketCode("TCK-20261025-0002")
+                .requester(companyAdmin)
+                .status(TicketStatus.CLOSED)
+                .resolvedAt(now.minusDays(5))
+                .resolutionNote("[{\"text\":\"Chat mới đóng 5 ngày\",\"at\":\"2026-10-25 10:00:00\"}]")
+                .build();
+
+        SupportTicket stillInProgress = SupportTicket.builder()
+                .id(203L)
+                .ticketCode("TCK-20261001-0003")
+                .requester(companyAdmin)
+                .status(TicketStatus.IN_PROGRESS)
+                .createdAt(now.minusDays(20))
+                .resolutionNote("[{\"text\":\"Ticket chưa đóng\",\"at\":\"2026-10-01 10:00:00\"}]")
+                .build();
+
+        when(supportTicketRepository.findAll()).thenReturn(List.of(closed16DaysAgo, closed5DaysAgo, stillInProgress));
+
+        int cleanedCount = supportTicketService.cleanupClosedTicketChatHistory();
+
+        assertEquals(1, cleanedCount, "Only 1 closed ticket older than 15 days should have its chat history cleared");
+        org.junit.jupiter.api.Assertions.assertNull(closed16DaysAgo.getResolutionNote(), "Closed ticket older than 15 days must have resolutionNote cleared to null");
+        assertNotNull(closed5DaysAgo.getResolutionNote(), "Closed ticket under 15 days must retain its resolutionNote");
+        assertNotNull(stillInProgress.getResolutionNote(), "Open/In-progress ticket must retain its resolutionNote");
+    }
+
+    @Test
+    @DisplayName("updateTicket - Seam 1b: When a company has tickets across 3 dates (2/11, 3/11, 4/11), updating 4/11 automatically clears 2/11 chat history and leaves other companies untouched")
+    void updateTicket_whenCompanyHasTicketsAcrossThreeActiveDates_automaticallyClearsOldestTicketChatHistoryAndKeepsOtherCompanyIntact() {
+        SupportTicket ticketNov2 = SupportTicket.builder()
+                .id(3L)
+                .ticketCode("TCK-20261102-6183")
+                .requester(companyAdmin)
+                .status(TicketStatus.IN_PROGRESS)
+                .resolutionNote("[{\"authorId\":\"4\",\"authorName\":\"Supporter\",\"authorRole\":\"systemSupporter\",\"text\":\"oke tui sẽ giúp\",\"at\":\"2026-11-02 20:26:00\"}]")
+                .build();
+
+        SupportTicket ticketNov3 = SupportTicket.builder()
+                .id(4L)
+                .ticketCode("TCK-20261103-6868")
+                .requester(companyAdmin)
+                .status(TicketStatus.IN_PROGRESS)
+                .resolutionNote("[{\"authorId\":\"8\",\"authorName\":\"Kho\",\"authorRole\":\"warehouse\",\"text\":\"Chat ngày 3/11\",\"at\":\"2026-11-03 09:15:00\"}]")
+                .build();
+
+        SupportTicket ticketNov4 = SupportTicket.builder()
+                .id(5L)
+                .ticketCode("TCK-20261104-9999")
+                .requester(companyAdmin)
+                .status(TicketStatus.OPEN)
+                .build();
+
+        Company otherCompany = Company.builder().id(2L).companyName("Beta Logistics").build();
+        User otherCompanyUser = User.builder().id(99L).fullName("Beta Admin").company(otherCompany).build();
+        SupportTicket otherCompanyTicketNov2 = SupportTicket.builder()
+                .id(6L)
+                .ticketCode("TCK-20261102-BETA")
+                .requester(otherCompanyUser)
+                .status(TicketStatus.IN_PROGRESS)
+                .resolutionNote("[{\"authorId\":\"99\",\"authorName\":\"Beta Admin\",\"authorRole\":\"companyAdmin\",\"text\":\"Chat công ty Beta ngày 2/11\",\"at\":\"2026-11-02 10:00:00\"}]")
+                .build();
+
+        when(supportTicketRepository.findById(5L)).thenReturn(Optional.of(ticketNov4));
+        when(supportTicketRepository.save(any(SupportTicket.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(supportTicketRepository.findAll()).thenReturn(List.of(ticketNov2, ticketNov3, ticketNov4, otherCompanyTicketNov2));
+
+        UpdateSupportTicketRequest request = new UpdateSupportTicketRequest(
+                TicketStatus.IN_PROGRESS,
+                null,
+                "[{\"authorId\":\"4\",\"authorName\":\"Supporter\",\"authorRole\":\"systemSupporter\",\"text\":\"Phản hồi ngày 4/11\",\"at\":\"2026-11-04 10:30:00\"}]"
+        );
+
+        supportTicketService.updateTicket(5L, request);
+
+        org.junit.jupiter.api.Assertions.assertNull(
+                ticketNov2.getResolutionNote(),
+                "Company 1 ticket on 2/11 must have its resolutionNote automatically cleared when Company 1 has newer chats on 3/11 and 4/11"
+        );
+        assertNotNull(ticketNov3.getResolutionNote(), "Company 1 ticket on 3/11 must retain its resolutionNote");
+        assertNotNull(ticketNov4.getResolutionNote(), "Company 1 ticket on 4/11 must retain its resolutionNote");
+        assertNotNull(otherCompanyTicketNov2.getResolutionNote(), "Company 2 ticket on 2/11 must NOT be affected by Company 1 pruning");
+    }
 }
