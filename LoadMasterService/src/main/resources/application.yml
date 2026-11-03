@@ -31,6 +31,12 @@ spring:
     url: ${DATABASE_URL:jdbc:postgresql://localhost:5432/loadmaster}
     username: ${POSTGRES_USER}
     password: ${POSTGRES_PASSWORD}
+    hikari:
+      maximum-pool-size: ${DB_MAX_POOL_SIZE}
+      minimum-idle: ${DB_MIN_IDLE}
+      idle-timeout: 30000
+      max-lifetime: 600000
+      connection-timeout: 20000
 
   data:
     redis:
