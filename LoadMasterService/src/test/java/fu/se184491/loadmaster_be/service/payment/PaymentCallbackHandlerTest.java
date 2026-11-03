@@ -176,4 +176,47 @@ public class PaymentCallbackHandlerTest {
         verify(vnPayClient, never()).verifyCallback(anyMap());
         verify(subscriptionService).activateSubscription(1L, 2L);
     }
+
+    @Test
+    @DisplayName("PaymentTransaction - createdAt & updatedAt format yyyy-MM-dd HH:mm:ss, NOT NULL, updatedAt >= createdAt, and DB CHECK annotations")
+    void testPaymentTransactionTimestampFormatAndConstraints() throws Exception {
+        PaymentTransaction txn = PaymentTransaction.builder()
+                .gateway(PaymentGateway.VNPAY)
+                .gatewayTransactionId("VNP_TEST_TIME_01")
+                .amountVnd(new BigDecimal("500000"))
+                .status(PaymentStatus.PENDING)
+                .build();
+
+        txn.prePersist();
+
+        assertNotNull(txn.getCreatedAt(), "createdAt must not be null on creation");
+        assertNotNull(txn.getUpdatedAt(), "updatedAt must not be null on creation");
+        assertEquals(0, txn.getCreatedAt().getNano(), "createdAt must be truncated to seconds");
+        assertEquals(0, txn.getUpdatedAt().getNano(), "updatedAt must be truncated to seconds");
+        assertEquals(txn.getCreatedAt(), txn.getUpdatedAt(), "updatedAt must equal createdAt on creation");
+
+        var converter = new fu.se184491.loadmaster_be.entity.support.SupportTicket.LocalDateTimeSecondsConverter();
+        String createdStr = converter.convertToDatabaseColumn(txn.getCreatedAt());
+        String updatedStr = converter.convertToDatabaseColumn(txn.getUpdatedAt());
+        assertTrue(createdStr.matches("^\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}$"));
+        assertTrue(updatedStr.matches("^\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}$"));
+
+        txn.preUpdate();
+        assertEquals(0, txn.getUpdatedAt().getNano(), "updatedAt must be truncated to seconds after update");
+        assertFalse(txn.getUpdatedAt().isBefore(txn.getCreatedAt()), "updatedAt must be >= createdAt");
+
+        var createdField = PaymentTransaction.class.getDeclaredField("createdAt");
+        var updatedField = PaymentTransaction.class.getDeclaredField("updatedAt");
+        var createdCol = createdField.getAnnotation(jakarta.persistence.Column.class);
+        var updatedCol = updatedField.getAnnotation(jakarta.persistence.Column.class);
+        assertEquals("varchar(19)", createdCol.columnDefinition());
+        assertFalse(createdCol.nullable());
+        assertFalse(createdCol.updatable());
+        assertEquals("varchar(19)", updatedCol.columnDefinition());
+        assertFalse(updatedCol.nullable());
+
+        assertNotNull(createdField.getAnnotation(org.hibernate.annotations.Check.class));
+        assertNotNull(updatedField.getAnnotation(org.hibernate.annotations.Check.class));
+        assertNotNull(PaymentTransaction.class.getAnnotation(org.hibernate.annotations.Check.class));
+    }
 }

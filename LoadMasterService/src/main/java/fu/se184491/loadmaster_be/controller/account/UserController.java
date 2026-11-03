@@ -113,9 +113,9 @@ public class UserController {
     public ApiResponse<Void> deleteUser(
             @PathVariable Long id
     ) {
-        userService.deleteUser(id);
+        String message = userService.deleteUser(id);
         return ApiResponse.success(
-                "User deleted successfully",
+                message,
                 null
         );
     }

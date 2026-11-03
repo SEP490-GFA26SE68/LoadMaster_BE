@@ -1,9 +1,9 @@
 package fu.se184491.loadmaster_be.dto.response.account;
 
+import com.fasterxml.jackson.annotation.JsonFormat;
 import fu.se184491.loadmaster_be.constant.account.UserRole;
 import fu.se184491.loadmaster_be.constant.account.UserStatus;
 
-import java.time.Instant;
 import java.time.LocalDateTime;
 
 public record UserListItemResponse(
@@ -22,9 +22,11 @@ public record UserListItemResponse(
         String planTier,
         String planCode,
         String subscriptionStatus,
+        @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
         LocalDateTime subscriptionExpiresAt,
         Integer creditBalance,
-        Instant createdAt
+        @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
+        LocalDateTime createdAt
 ) {
     public UserListItemResponse(
             Long id,

@@ -1,5 +1,6 @@
 package fu.se184491.loadmaster_be.service.subscription;
 
+import com.fasterxml.jackson.annotation.JsonFormat;
 import fu.se184491.loadmaster_be.constant.billing.AlgorithmTier;
 import fu.se184491.loadmaster_be.constant.billing.BillingCycle;
 import fu.se184491.loadmaster_be.constant.billing.PaymentGateway;
@@ -13,6 +14,7 @@ import fu.se184491.loadmaster_be.entity.billing.CompanySubscription;
 import fu.se184491.loadmaster_be.entity.billing.Invoice;
 import fu.se184491.loadmaster_be.entity.billing.SubscriptionPlan;
 import fu.se184491.loadmaster_be.entity.company.Company;
+import fu.se184491.loadmaster_be.entity.support.SupportTicket;
 import fu.se184491.loadmaster_be.exception.AppException;
 import fu.se184491.loadmaster_be.repository.billing.CompanySubscriptionRepository;
 import fu.se184491.loadmaster_be.repository.billing.SubscriptionPlanRepository;
@@ -20,6 +22,8 @@ import fu.se184491.loadmaster_be.repository.company.CompanyRepository;
 import fu.se184491.loadmaster_be.service.credit.CreditService;
 import fu.se184491.loadmaster_be.service.payment.PaymentGatewayService;
 import fu.se184491.loadmaster_be.service.subscription.Impl.SubscriptionServiceImpl;
+import jakarta.persistence.Convert;
+import org.hibernate.annotations.Check;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -29,6 +33,7 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.lang.reflect.Field;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.Optional;
@@ -96,6 +101,46 @@ public class SubscriptionServiceTest {
                 .algorithmTier(AlgorithmTier.EP_DBLF_GA_AI)
                 .active(true)
                 .build();
+    }
+
+    @Test
+    @DisplayName("CompanySubscription & SubscriptionCurrentResponse - startedAt and expiresAt use yyyy-MM-dd HH:mm:ss format, DB Check constraints, and truncate to seconds")
+    void testCompanySubscriptionTimestampsFormattedAsSeconds() throws Exception {
+        Field startedAtField = CompanySubscription.class.getDeclaredField("startedAt");
+        Field expiresAtField = CompanySubscription.class.getDeclaredField("expiresAt");
+
+        Convert startedConvert = startedAtField.getAnnotation(Convert.class);
+        Convert expiresConvert = expiresAtField.getAnnotation(Convert.class);
+        assertNotNull(startedConvert, "CompanySubscription.startedAt must have @Convert");
+        assertNotNull(expiresConvert, "CompanySubscription.expiresAt must have @Convert");
+        assertEquals(SupportTicket.LocalDateTimeSecondsConverter.class, startedConvert.converter());
+        assertEquals(SupportTicket.LocalDateTimeSecondsConverter.class, expiresConvert.converter());
+
+        assertNotNull(startedAtField.getAnnotation(Check.class), "startedAt must have @Check constraint");
+        assertNotNull(expiresAtField.getAnnotation(Check.class), "expiresAt must have @Check constraint");
+        assertNotNull(CompanySubscription.class.getAnnotation(Check.class), "CompanySubscription class must have expires_at >= started_at @Check");
+
+        Field dtoStartedAt = SubscriptionCurrentResponse.class.getDeclaredField("startedAt");
+        Field dtoExpiresAt = SubscriptionCurrentResponse.class.getDeclaredField("expiresAt");
+        JsonFormat startedJson = dtoStartedAt.getAnnotation(JsonFormat.class);
+        JsonFormat expiresJson = dtoExpiresAt.getAnnotation(JsonFormat.class);
+        assertNotNull(startedJson, "SubscriptionCurrentResponse.startedAt must have @JsonFormat");
+        assertNotNull(expiresJson, "SubscriptionCurrentResponse.expiresAt must have @JsonFormat");
+        assertEquals("yyyy-MM-dd HH:mm:ss", startedJson.pattern());
+        assertEquals("yyyy-MM-dd HH:mm:ss", expiresJson.pattern());
+
+        proPlan.setBillingCycle(BillingCycle.MONTHLY);
+        when(companyRepository.findById(1L)).thenReturn(Optional.of(company));
+        when(subscriptionPlanRepository.findById(2L)).thenReturn(Optional.of(proPlan));
+        when(companySubscriptionRepository.findByCompanyId(1L)).thenReturn(Optional.empty());
+
+        ArgumentCaptor<CompanySubscription> captor = ArgumentCaptor.forClass(CompanySubscription.class);
+        subscriptionService.activateSubscription(1L, 2L);
+
+        verify(companySubscriptionRepository).save(captor.capture());
+        CompanySubscription saved = captor.getValue();
+        assertEquals(0, saved.getStartedAt().getNano(), "startedAt must be truncated to seconds");
+        assertEquals(0, saved.getExpiresAt().getNano(), "expiresAt must be truncated to seconds");
     }
 
     @Test
@@ -337,8 +382,8 @@ public class SubscriptionServiceTest {
     @DisplayName("activateSubscription - Renewing same active plan extends existing expiresAt and grants additional credits")
     void testActivateSubscriptionExtendsExpiresAtForSamePlan() {
         proPlan.setBillingCycle(BillingCycle.MONTHLY);
-        LocalDateTime originalStart = LocalDateTime.now().minusDays(10);
-        LocalDateTime existingExpiry = LocalDateTime.now().plusDays(20);
+        LocalDateTime originalStart = LocalDateTime.now().minusDays(10).withNano(0);
+        LocalDateTime existingExpiry = LocalDateTime.now().plusDays(20).withNano(0);
         CompanySubscription existingSub = CompanySubscription.builder()
                 .id(10L)
                 .company(company)
