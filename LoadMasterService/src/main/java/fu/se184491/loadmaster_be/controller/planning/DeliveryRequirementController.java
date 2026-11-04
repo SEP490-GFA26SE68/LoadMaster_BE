@@ -75,7 +75,7 @@ public class DeliveryRequirementController {
     }
 
     @PatchMapping("/{id}")
-    @PreAuthorize("hasAuthority('DELIVERY_DEMAND_MANAGE')")
+    @PreAuthorize("hasRole('DISPATCHER')")
     public ApiResponse<DeliveryRequirementResponse> update(
             @PathVariable Long id,
             @Valid @RequestBody UpdateDeliveryRequirementRequest request

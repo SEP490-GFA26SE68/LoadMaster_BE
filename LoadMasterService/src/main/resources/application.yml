@@ -37,6 +37,8 @@ spring:
       url: ${REDIS_URL:redis://localhost:6379}
 
   flyway:
+    enabled: false
+    locations: classpath:db/migration
     baseline-on-migrate: true
     baseline-version: 0
 
@@ -70,3 +72,5 @@ springdoc:
 app:
   security:
     qr-aes-secret: ${QR_AES_SECRET}
+    qr-migration:
+      enabled: ${QR_MIGRATION_ENABLED:false}
