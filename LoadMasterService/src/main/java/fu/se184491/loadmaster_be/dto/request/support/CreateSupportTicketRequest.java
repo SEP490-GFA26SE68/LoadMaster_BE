@@ -11,6 +11,15 @@ public record CreateSupportTicketRequest(
         String description,
         @NotNull
         TicketCategory category,
-        TicketPriority priority
+        TicketPriority priority,
+        String resolutionNote
 ) {
+    public CreateSupportTicketRequest(
+            String subject,
+            String description,
+            TicketCategory category,
+            TicketPriority priority
+    ) {
+        this(subject, description, category, priority, null);
+    }
 }

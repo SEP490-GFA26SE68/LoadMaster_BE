@@ -33,7 +33,9 @@ public interface UserService {
 
     UserListItemResponse updateUserStatus(Long id, UpdateUserStatusRequest request);
 
-    void deleteUser(Long id);
+    String deleteUser(Long id);
+
+    default void purgeInactiveUsersAfterThreeMonths() {}
 
     ResetPasswordResponse resetPassword(Long id);
 }

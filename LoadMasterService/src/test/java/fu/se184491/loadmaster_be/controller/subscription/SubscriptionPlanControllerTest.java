@@ -126,6 +126,19 @@ public class SubscriptionPlanControllerTest {
     }
 
     @Test
+    @DisplayName("POST /api/subscription/plans should return 403 Forbidden for ROLE_SYSTEM_ADMIN (only SYSTEM_MANAGER manages plans)")
+    @WithMockUser(roles = "SYSTEM_ADMIN")
+    void createPlan_withRoleSystemAdmin_forbidden() throws Exception {
+        mockMvc.perform(post("/api/subscription/plans")
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isForbidden());
+
+        verify(planService, never()).createPlan(any());
+    }
+
+    @Test
     @DisplayName("POST /api/subscription/plans should return 403 Forbidden for unauthorized role DRIVER")
     @WithMockUser(roles = "DRIVER")
     void createPlan_withRoleDriver_forbidden() throws Exception {
@@ -153,8 +166,8 @@ public class SubscriptionPlanControllerTest {
     }
 
     @Test
-    @DisplayName("DELETE /api/subscription/plans/{id} should return 204 No Content with ROLE_SYSTEM_ADMIN")
-    @WithMockUser(roles = "SYSTEM_ADMIN")
+    @DisplayName("DELETE /api/subscription/plans/{id} should return 204 No Content with ROLE_SYSTEM_MANAGER")
+    @WithMockUser(roles = "SYSTEM_MANAGER")
     void deletePlan_success() throws Exception {
         doNothing().when(planService).deletePlan(1L);
 
@@ -163,5 +176,16 @@ public class SubscriptionPlanControllerTest {
                 .andExpect(status().isNoContent());
 
         verify(planService).deletePlan(1L);
+    }
+
+    @Test
+    @DisplayName("DELETE /api/subscription/plans/{id} should return 403 Forbidden for ROLE_SYSTEM_ADMIN")
+    @WithMockUser(roles = "SYSTEM_ADMIN")
+    void deletePlan_withRoleSystemAdmin_forbidden() throws Exception {
+        mockMvc.perform(delete("/api/subscription/plans/1")
+                        .with(csrf()))
+                .andExpect(status().isForbidden());
+
+        verify(planService, never()).deletePlan(any());
     }
 }

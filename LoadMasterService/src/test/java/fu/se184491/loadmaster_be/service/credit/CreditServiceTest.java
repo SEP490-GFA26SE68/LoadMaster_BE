@@ -1,27 +1,34 @@
 package fu.se184491.loadmaster_be.service.credit;
 
+import com.fasterxml.jackson.annotation.JsonFormat;
 import fu.se184491.loadmaster_be.constant.billing.CreditTransactionType;
 import fu.se184491.loadmaster_be.constant.billing.SubscriptionStatus;
 import fu.se184491.loadmaster_be.constant.billing.SubscriptionTier;
 import fu.se184491.loadmaster_be.dto.response.credit.CreditBalanceResponse;
+import fu.se184491.loadmaster_be.dto.response.credit.CreditTransactionResponse;
 import fu.se184491.loadmaster_be.entity.billing.CompanySubscription;
 import fu.se184491.loadmaster_be.entity.billing.CreditAccount;
 import fu.se184491.loadmaster_be.entity.billing.CreditTransaction;
 import fu.se184491.loadmaster_be.entity.billing.SubscriptionPlan;
 import fu.se184491.loadmaster_be.entity.company.Company;
+import fu.se184491.loadmaster_be.entity.support.SupportTicket;
 import fu.se184491.loadmaster_be.exception.InsufficientCreditsException;
 import fu.se184491.loadmaster_be.repository.billing.CompanySubscriptionRepository;
 import fu.se184491.loadmaster_be.repository.billing.CreditAccountRepository;
 import fu.se184491.loadmaster_be.repository.billing.CreditTransactionRepository;
 import fu.se184491.loadmaster_be.service.credit.Impl.CreditServiceImpl;
+import jakarta.persistence.Convert;
+import org.hibernate.annotations.Check;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.lang.reflect.Field;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -63,6 +70,32 @@ public class CreditServiceTest {
                 .plan(proPlan)
                 .status(SubscriptionStatus.ACTIVE)
                 .build();
+    }
+
+    @Test
+    @DisplayName("CreditTransaction & CreditTransactionResponse - createdAt uses yyyy-MM-dd HH:mm:ss format, DB Check constraint, and truncates to seconds")
+    void creditTransactionCreatedAtFormattedAsSeconds() throws Exception {
+        Field createdAtField = CreditTransaction.class.getDeclaredField("createdAt");
+        Convert convert = createdAtField.getAnnotation(Convert.class);
+        assertNotNull(convert, "CreditTransaction.createdAt must have @Convert");
+        assertEquals(SupportTicket.LocalDateTimeSecondsConverter.class, convert.converter());
+        assertNotNull(createdAtField.getAnnotation(Check.class), "CreditTransaction.createdAt must have @Check constraint");
+
+        Field dtoCreatedAt = CreditTransactionResponse.class.getDeclaredField("createdAt");
+        JsonFormat jsonFormat = dtoCreatedAt.getAnnotation(JsonFormat.class);
+        assertNotNull(jsonFormat, "CreditTransactionResponse.createdAt must have @JsonFormat");
+        assertEquals("yyyy-MM-dd HH:mm:ss", jsonFormat.pattern());
+
+        when(creditAccountRepository.findByCompanyIdForUpdate(1L)).thenReturn(Optional.of(creditAccount));
+        when(creditAccountRepository.save(any(CreditAccount.class))).thenReturn(creditAccount);
+
+        ArgumentCaptor<CreditTransaction> captor = ArgumentCaptor.forClass(CreditTransaction.class);
+        creditService.deductCredit(1L, "job-fmt-test");
+
+        verify(creditTransactionRepository).save(captor.capture());
+        CreditTransaction savedTx = captor.getValue();
+        assertNotNull(savedTx.getCreatedAt());
+        assertEquals(0, savedTx.getCreatedAt().getNano(), "CreditTransaction.createdAt must be truncated to seconds");
     }
 
     @Test

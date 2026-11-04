@@ -1,5 +1,6 @@
 package fu.se184491.loadmaster_be.service.company;
 
+import fu.se184491.loadmaster_be.client.KeycloakAdminClient;
 import fu.se184491.loadmaster_be.constant.account.UserRole;
 import fu.se184491.loadmaster_be.constant.account.UserStatus;
 import fu.se184491.loadmaster_be.constant.company.AgreementStatus;
@@ -26,11 +27,13 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.time.Instant;
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
@@ -41,6 +44,9 @@ class CompanyAgreementServiceTest {
 
     @Mock
     private UserRepository userRepository;
+
+    @Mock
+    private KeycloakAdminClient keycloakAdminClient;
 
     @InjectMocks
     private CompanyAgreementServiceImpl agreementService;
@@ -70,6 +76,8 @@ class CompanyAgreementServiceTest {
                 .phoneNumber("0912345678")
                 .userRoleType(UserRole.ADMIN)
                 .status(UserStatus.ACTIVE)
+                .createdAt(LocalDateTime.of(2026, 10, 1, 8, 0, 0))
+                .updatedAt(LocalDateTime.of(2026, 10, 1, 8, 0, 0))
                 .build();
 
         testAgreement = CompanyAgreement.builder()
@@ -150,6 +158,7 @@ class CompanyAgreementServiceTest {
                 .confirmTerms(true)
                 .signerName("Nguyen Van A - Dai dien")
                 .signerPhone("0988888888")
+                .signerEmail("custom-signer@gmail.com")
                 .build();
 
         CompanyAgreementResponse response = agreementService.signAgreement(testAdminUser, request, "192.168.1.1");
@@ -159,6 +168,7 @@ class CompanyAgreementServiceTest {
         assertThat(response.signedAt()).isNotNull();
         assertThat(response.signerName()).isEqualTo("Nguyen Van A - Dai dien");
         assertThat(response.signerPhone()).isEqualTo("0988888888");
+        assertThat(response.signerEmail()).isEqualTo("custom-signer@gmail.com");
         assertThat(response.ipAddress()).isEqualTo("192.168.1.1");
 
         ArgumentCaptor<CompanyAgreement> captor = ArgumentCaptor.forClass(CompanyAgreement.class);
@@ -207,5 +217,71 @@ class CompanyAgreementServiceTest {
         assertThat(testAdminUser.getStatus()).isEqualTo(UserStatus.LOCKED);
         verify(agreementRepository).save(testAgreement);
         assertThat(testAgreement.getStatus()).isEqualTo(AgreementStatus.EXPIRED);
+    }
+
+    @Test
+    @DisplayName("Seam 3 - Quá 3 ngày chưa ký: xóa mềm (INACTIVE) tài khoản dùng thử và chuyển thỏa thuận sang EXPIRED; sau 3 tháng xóa vĩnh viễn khỏi Keycloak và DB")
+    void processExpiredTrialAgreements_softDeletesAfter3DaysAndHardDeletesAfter3Months() {
+        // 1. Thỏa thuận PENDING đã quá hạn 3 ngày (nhưng chưa tới 3 tháng) -> Xóa mềm (INACTIVE)
+        User softDeleteUser = User.builder()
+                .id(301L)
+                .keycloakId("kc-soft-301")
+                .company(testCompany)
+                .email("trial-3days@test.vn")
+                .userRoleType(UserRole.ADMIN)
+                .status(UserStatus.ACTIVE)
+                .createdAt(LocalDateTime.now().minusDays(4).withNano(0))
+                .updatedAt(LocalDateTime.now().minusDays(4).withNano(0))
+                .build();
+
+        CompanyAgreement pendingPast3Days = CompanyAgreement.builder()
+                .id(601L)
+                .company(testCompany)
+                .user(softDeleteUser)
+                .status(AgreementStatus.PENDING)
+                .deadlineAt(LocalDateTime.now().minusHours(5))
+                .build();
+
+        // 2. Thỏa thuận EXPIRED đã quá 3 tháng kể từ hạn 3 ngày -> Xóa vĩnh viễn (Hard Delete)
+        User hardDeleteUser = User.builder()
+                .id(302L)
+                .keycloakId("kc-hard-302")
+                .company(testCompany)
+                .email("trial-3months@test.vn")
+                .userRoleType(UserRole.ADMIN)
+                .status(UserStatus.INACTIVE)
+                .createdAt(LocalDateTime.now().minusMonths(4).withNano(0))
+                .updatedAt(LocalDateTime.now().minusMonths(3).withNano(0))
+                .build();
+
+        CompanyAgreement expiredPast3Months = CompanyAgreement.builder()
+                .id(602L)
+                .company(testCompany)
+                .user(hardDeleteUser)
+                .status(AgreementStatus.EXPIRED)
+                .deadlineAt(LocalDateTime.now().minusMonths(3).minusDays(1))
+                .build();
+
+        when(agreementRepository.findByStatusAndDeadlineAtBefore(eq(AgreementStatus.PENDING), any(LocalDateTime.class)))
+                .thenReturn(List.of(pendingPast3Days));
+        when(agreementRepository.findByStatusAndDeadlineAtBefore(eq(AgreementStatus.EXPIRED), any(LocalDateTime.class)))
+                .thenReturn(List.of(expiredPast3Months));
+
+        agreementService.processExpiredTrialAgreements();
+
+        // Kiểm tra bước 1: Xóa mềm sau 3 ngày không ký
+        assertThat(pendingPast3Days.getStatus()).isEqualTo(AgreementStatus.EXPIRED);
+        assertThat(softDeleteUser.getStatus()).isEqualTo(UserStatus.INACTIVE);
+        assertThat(softDeleteUser.getUpdatedAt()).isAfterOrEqualTo(softDeleteUser.getCreatedAt());
+        verify(userRepository).save(softDeleteUser);
+        verify(agreementRepository).save(pendingPast3Days);
+        verify(keycloakAdminClient, never()).deleteUser("kc-soft-301");
+        verify(userRepository, never()).delete(softDeleteUser);
+
+        // Kiểm tra bước 2: Xóa vĩnh viễn sau 3 tháng
+        verify(keycloakAdminClient).deleteUser("kc-hard-302");
+        assertThat(expiredPast3Months.getUser()).isNull();
+        verify(agreementRepository).save(expiredPast3Months);
+        verify(userRepository).delete(hardDeleteUser);
     }
 }

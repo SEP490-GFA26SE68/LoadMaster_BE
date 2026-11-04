@@ -24,6 +24,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
+import java.time.temporal.ChronoUnit;
 import java.util.Optional;
 
 @Service
@@ -55,9 +56,10 @@ public class CreditServiceImpl implements CreditService {
     @Override
     @Transactional(readOnly = true)
     public Page<CreditTransactionResponse> getTransactions(Long companyId, Pageable pageable) {
-        CreditAccount account = getOrCreateAccount(companyId);
-        return creditTransactionRepository.findByCreditAccountIdOrderByCreatedAtDesc(account.getId(), pageable)
-                .map(this::toResponse);
+        return creditAccountRepository.findByCompanyId(companyId)
+                .map(account -> creditTransactionRepository.findByCreditAccountIdOrderByCreatedAtDesc(account.getId(), pageable)
+                        .map(this::toResponse))
+                .orElseGet(() -> Page.empty(pageable));
     }
 
     @Override
@@ -70,14 +72,13 @@ public class CreditServiceImpl implements CreditService {
     @Transactional
     public void deductCredit(Long companyId, String reference, int amount) {
 
-
         if (reference == null || reference.isBlank()) {
             throw new IllegalArgumentException(
                     "Credit transaction reference must not be blank"
             );
         }
 
-// Không trừ credit lần thứ hai cho cùng một Optimization Job.
+        // Không trừ credit lần thứ hai cho cùng một Optimization Job.
         Optional<CreditTransaction> existingUsage =
                 creditTransactionRepository.findByReferenceAndType(
                         reference,
@@ -117,8 +118,6 @@ public class CreditServiceImpl implements CreditService {
             throw new InsufficientCreditsException();
         }
 
-
-
         account.setBalance(account.getBalance() - creditsToDeduct);
         creditAccountRepository.save(account);
 
@@ -128,12 +127,12 @@ public class CreditServiceImpl implements CreditService {
                 .type(CreditTransactionType.USAGE)
                 .reference(reference)
                 .refunded(false)
-                .createdAt(LocalDateTime.now())
+                .createdAt(LocalDateTime.now().truncatedTo(ChronoUnit.SECONDS))
                 .build();
+        tx.prePersist();
         creditTransactionRepository.save(tx);
         log.info("Deducted {} credit(s) for company {}. New balance: {}", creditsToDeduct, companyId, account.getBalance());
     }
-
 
     @Override
     @Transactional
@@ -157,6 +156,14 @@ public class CreditServiceImpl implements CreditService {
         if (originalUsage == null) {
             log.warn(
                     "No USAGE transaction found for reference {}. Skipping refund.",
+                    reference
+            );
+            return;
+        }
+
+        if (Boolean.TRUE.equals(originalUsage.getRefunded())) {
+            log.info(
+                    "Reference {} already refunded. Skipping duplicate refund.",
                     reference
             );
             return;
@@ -223,8 +230,9 @@ public class CreditServiceImpl implements CreditService {
                 .type(CreditTransactionType.REFUND)
                 .reference(reference)
                 .refunded(false)
-                .createdAt(LocalDateTime.now())
+                .createdAt(LocalDateTime.now().truncatedTo(ChronoUnit.SECONDS))
                 .build();
+        refundTx.prePersist();
 
         creditTransactionRepository.save(refundTx);
 
@@ -236,7 +244,6 @@ public class CreditServiceImpl implements CreditService {
                 account.getBalance()
         );
     }
-
 
     @Override
     @Transactional
@@ -250,8 +257,9 @@ public class CreditServiceImpl implements CreditService {
                 .creditAccount(account)
                 .amount(amount)
                 .type(CreditTransactionType.MONTHLY_GRANT)
-                .createdAt(LocalDateTime.now())
+                .createdAt(LocalDateTime.now().truncatedTo(ChronoUnit.SECONDS))
                 .build();
+        tx.prePersist();
         creditTransactionRepository.save(tx);
         log.info("Granted {} monthly credits to company {}. New balance: {}", amount, companyId, account.getBalance());
     }
@@ -269,8 +277,9 @@ public class CreditServiceImpl implements CreditService {
                 .amount(amount)
                 .type(CreditTransactionType.PURCHASE)
                 .reference(reference)
-                .createdAt(LocalDateTime.now())
+                .createdAt(LocalDateTime.now().truncatedTo(ChronoUnit.SECONDS))
                 .build();
+        tx.prePersist();
         creditTransactionRepository.save(tx);
         log.info("Purchased/Added {} credits to company {}. New balance: {}", amount, companyId, account.getBalance());
     }

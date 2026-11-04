@@ -1,6 +1,7 @@
 package fu.se184491.loadmaster_be.dto.request.company;
 
 import jakarta.validation.constraints.AssertTrue;
+import jakarta.validation.constraints.Email;
 import lombok.Builder;
 
 @Builder
@@ -9,6 +10,9 @@ public record SignAgreementRequest(
         Boolean confirmTerms,
 
         String signerName,
-        String signerPhone
+        String signerPhone,
+
+        @Email(message = "Email người ký không hợp lệ")
+        String signerEmail
 ) {
 }

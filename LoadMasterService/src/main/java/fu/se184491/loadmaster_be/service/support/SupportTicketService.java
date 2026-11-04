@@ -14,4 +14,6 @@ public interface SupportTicketService {
     List<SupportTicketResponse> getTickets(TicketStatus status, TicketCategory category);
 
     SupportTicketResponse updateTicket(Long id, UpdateSupportTicketRequest request);
+
+    int cleanupClosedTicketChatHistory();
 }

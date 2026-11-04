@@ -126,6 +126,36 @@ class UserControllerTest {
     }
 
     @Test
+    @DisplayName("PUT /api/users/{id} & PATCH /api/users/{id}/status - Denies ROLE_SYSTEM_MANAGER with 403 Forbidden")
+    @WithMockUser(roles = "SYSTEM_MANAGER")
+    void updateUser_and_updateUserStatus_whenSystemManager_returnsForbidden() throws Exception {
+        String updateBody = """
+                {
+                  "fullName": "Updated Name",
+                  "phoneNumber": "0912345678",
+                  "role": "ADMIN"
+                }
+                """;
+        mockMvc.perform(put("/api/users/100")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(updateBody))
+                .andExpect(status().isForbidden());
+
+        String statusBody = """
+                {
+                  "status": "LOCKED"
+                }
+                """;
+        mockMvc.perform(patch("/api/users/100/status")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(statusBody))
+                .andExpect(status().isForbidden());
+
+        verify(userService, never()).updateUser(any(), any());
+        verify(userService, never()).updateUserStatus(any(), any());
+    }
+
+    @Test
     @DisplayName("PATCH /api/users/{id}/status - Allows caller with USERS_LOCK authority")
     @WithMockUser(authorities = "USERS_LOCK")
     void updateUserStatus_withUsersLockAuthority_returnsOk() throws Exception {
@@ -250,5 +280,3 @@ class UserControllerTest {
                 .andExpect(jsonPath("$.message", not(containsString("SYSTEM_ADMIN"))));
     }
 }
-
-

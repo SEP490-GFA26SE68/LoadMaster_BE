@@ -3,10 +3,13 @@ package fu.se184491.loadmaster_be.entity.account;
 import fu.se184491.loadmaster_be.constant.account.UserRole;
 import fu.se184491.loadmaster_be.constant.account.UserStatus;
 import fu.se184491.loadmaster_be.entity.company.Company;
+import fu.se184491.loadmaster_be.entity.support.SupportTicket;
 import jakarta.persistence.*;
 import lombok.*;
+import org.hibernate.annotations.Check;
 
-import java.time.Instant;
+import java.time.LocalDateTime;
+import java.time.temporal.ChronoUnit;
 
 @Entity
 @Table(
@@ -32,6 +35,7 @@ import java.time.Instant;
                 )
         }
 )
+@Check(name = "chk_users_updated_after_created", constraints = "updated_at >= created_at")
 @Getter
 @Setter
 @NoArgsConstructor
@@ -91,29 +95,47 @@ public class User {
     )
     private UserStatus status;
 
+    @Convert(converter = SupportTicket.LocalDateTimeSecondsConverter.class)
     @Column(
             name = "created_at",
             nullable = false,
-            updatable = false
+            updatable = false,
+            length = 19,
+            columnDefinition = "varchar(19)"
     )
-    private Instant createdAt;
+    @Check(name = "users_created_at_check", constraints = "created_at ~ '^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01]) ([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]$'")
+    private LocalDateTime createdAt;
 
-    @Column(name = "updated_at")
-    private Instant updatedAt;
+    @Convert(converter = SupportTicket.LocalDateTimeSecondsConverter.class)
+    @Column(
+            name = "updated_at",
+            nullable = false,
+            length = 19,
+            columnDefinition = "varchar(19)"
+    )
+    @Check(name = "users_updated_at_check", constraints = "updated_at ~ '^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01]) ([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]$'")
+    private LocalDateTime updatedAt;
 
     @PrePersist
     public void prePersist() {
-        Instant now = Instant.now();
+        LocalDateTime now = LocalDateTime.now().truncatedTo(ChronoUnit.SECONDS);
 
         if (createdAt == null) {
             createdAt = now;
+        } else {
+            createdAt = createdAt.truncatedTo(ChronoUnit.SECONDS);
         }
 
-        updatedAt = now;
+        updatedAt = createdAt;
     }
 
     @PreUpdate
     public void preUpdate() {
-        updatedAt = Instant.now();
+        LocalDateTime now = LocalDateTime.now().truncatedTo(ChronoUnit.SECONDS);
+        if (createdAt != null && now.isBefore(createdAt)) {
+            updatedAt = createdAt;
+        } else {
+            updatedAt = now;
+        }
     }
 }

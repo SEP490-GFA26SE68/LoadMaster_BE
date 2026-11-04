@@ -84,6 +84,7 @@ public class PaymentCallbackHandler {
 
         if ("00".equals(responseCode)) {
             txn.setStatus(PaymentStatus.SUCCESS);
+            txn.preUpdate();
             paymentTransactionRepository.save(txn);
             log.info("Payment SUCCESS for txnRef: {} (type: {}, targetId: {})",
                     txnRef, txn.getOrderType(), txn.getTargetId());
@@ -95,6 +96,7 @@ public class PaymentCallbackHandler {
             }
         } else {
             txn.setStatus(PaymentStatus.FAILED);
+            txn.preUpdate();
             paymentTransactionRepository.save(txn);
             log.warn("Payment FAILED for txnRef: {} with vnp_ResponseCode: {}", txnRef, responseCode);
         }

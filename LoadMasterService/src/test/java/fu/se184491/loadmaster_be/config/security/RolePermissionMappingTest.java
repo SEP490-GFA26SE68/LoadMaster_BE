@@ -22,18 +22,17 @@ class RolePermissionMappingTest {
     private final KeycloakRealmRoleConverter converter = new KeycloakRealmRoleConverter(rolePermissionMapping);
 
     @Test
-    @DisplayName("SYSTEM_MANAGER should have USERS_READ and USERS_CREATE permissions")
-    void systemManager_hasUsersReadAndCreatePermissions() {
+    @DisplayName("Seam 2 - SYSTEM_MANAGER should only have USERS_READ (no USERS_CREATE permission)")
+    void systemManager_hasOnlyUsersReadPermission() {
         Set<Permission> permissions = rolePermissionMapping.getPermissions(UserRole.SYSTEM_MANAGER);
 
-        assertThat(permissions).containsExactlyInAnyOrder(
-                Permission.USERS_READ,
-                Permission.USERS_CREATE
+        assertThat(permissions).containsExactly(
+                Permission.USERS_READ
         );
     }
 
     @Test
-    @DisplayName("KeycloakRealmRoleConverter should emit ROLE_SYSTEM_MANAGER, USERS_READ, and USERS_CREATE for SYSTEM_MANAGER JWT")
+    @DisplayName("KeycloakRealmRoleConverter should emit ROLE_SYSTEM_MANAGER and USERS_READ for SYSTEM_MANAGER JWT")
     void converter_emitsRoleAndPermissionsForSystemManager() {
         Jwt jwt = new Jwt(
                 "mock-token",
@@ -50,8 +49,7 @@ class RolePermissionMappingTest {
 
         assertThat(authorityNames).containsExactlyInAnyOrder(
                 "ROLE_SYSTEM_MANAGER",
-                "USERS_READ",
-                "USERS_CREATE"
+                "USERS_READ"
         );
     }
 
@@ -69,4 +67,3 @@ class RolePermissionMappingTest {
         );
     }
 }
-

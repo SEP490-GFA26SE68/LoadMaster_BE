@@ -2,7 +2,6 @@ package fu.se184491.loadmaster_be.config.security;
 
 import fu.se184491.loadmaster_be.constant.account.Permission;
 import fu.se184491.loadmaster_be.constant.account.UserRole;
-import org.springframework.security.core.parameters.P;
 import org.springframework.stereotype.Component;
 
 import java.util.Collections;
@@ -34,8 +33,7 @@ public class RolePermissionMapping {
         map.put(
                 UserRole.SYSTEM_MANAGER,
                 Set.of(
-                        Permission.USERS_READ,
-                        Permission.USERS_CREATE
+                        Permission.USERS_READ
                 )
         );
 
