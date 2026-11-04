@@ -470,12 +470,31 @@ public class UserServiceImpl implements UserService {
     public UserListItemResponse updateUser(Long id, UpdateUserRequest request) {
         User currentUser = currentUserService.getCurrentUser();
         User targetUser = getScopedTargetUser(currentUser, id);
+        UserRole callerRole = currentUser.getUserRoleType();
+        UserRole targetRole = targetUser.getUserRoleType();
+
+        if (callerRole == UserRole.SYSTEM_ADMIN) {
+            if (!isPlatformRole(targetRole) && targetRole != UserRole.ADMIN) {
+                throw new AppException(
+                        ErrorCode.UNAUTHORIZED,
+                        "Tài khoản quản trị hệ thống không được phép chỉnh sửa các vai trò nội bộ của công ty: [MANAGER, DISPATCHER, WAREHOUSE_WORKER, DRIVER]"
+                );
+            }
+        } else if (callerRole == UserRole.ADMIN) {
+            if (isPlatformRole(targetRole) || targetRole == UserRole.ADMIN) {
+                throw new AppException(
+                        ErrorCode.UNAUTHORIZED,
+                        "Tài khoản ADMIN công ty chỉ được phép chỉnh sửa các vai trò nội bộ trong cùng công ty: [MANAGER, DISPATCHER, WAREHOUSE_WORKER, DRIVER]"
+                );
+            }
+        } else {
+            throw new AppException(ErrorCode.UNAUTHORIZED);
+        }
 
         targetUser.setFullName(request.fullName());
         targetUser.setPhoneNumber(request.phoneNumber());
 
         if (request.role() != null) {
-            UserRole callerRole = currentUser.getUserRoleType();
             if (callerRole == UserRole.ADMIN
                     && (isPlatformRole(request.role()) || request.role() == UserRole.ADMIN)) {
                 throw new AppException(
@@ -483,21 +502,22 @@ public class UserServiceImpl implements UserService {
                         "Tài khoản ADMIN công ty chỉ được phép gán các vai trò nội bộ: [MANAGER, DISPATCHER, WAREHOUSE_WORKER, DRIVER]"
                 );
             }
-            if (callerRole == UserRole.SYSTEM_MANAGER && isPlatformRole(request.role())) {
+            if (callerRole == UserRole.SYSTEM_ADMIN
+                    && !isPlatformRole(request.role())
+                    && request.role() != UserRole.ADMIN) {
                 throw new AppException(
                         ErrorCode.UNAUTHORIZED,
-                        "Tài khoản SYSTEM_MANAGER chỉ được phép gán các vai trò cấp công ty: [ADMIN, MANAGER, DISPATCHER, WAREHOUSE_WORKER, DRIVER]"
+                        "Tài khoản quản trị hệ thống không được phép gán các vai trò nội bộ của công ty: [MANAGER, DISPATCHER, WAREHOUSE_WORKER, DRIVER]"
                 );
             }
             targetUser.setUserRoleType(request.role());
         }
 
         if (request.companyId() != null) {
-            UserRole callerRole = currentUser.getUserRoleType();
-            if (callerRole != UserRole.SYSTEM_MANAGER && callerRole != UserRole.SYSTEM_ADMIN) {
+            if (callerRole != UserRole.SYSTEM_ADMIN) {
                 throw new AppException(
                         ErrorCode.UNAUTHORIZED,
-                        "Chỉ tài khoản quản lý hệ thống / quản lý nền tảng mới được phép thay đổi công ty của người dùng"
+                        "Chỉ tài khoản quản trị hệ thống mới được phép thay đổi công ty của người dùng"
                 );
             }
             fu.se184491.loadmaster_be.entity.company.Company targetCompany = companyRepository.findById(request.companyId())
@@ -519,6 +539,27 @@ public class UserServiceImpl implements UserService {
         }
 
         User targetUser = getScopedTargetUser(currentUser, id);
+        UserRole callerRole = currentUser.getUserRoleType();
+        UserRole targetRole = targetUser.getUserRoleType();
+
+        if (callerRole == UserRole.SYSTEM_ADMIN) {
+            if (!isPlatformRole(targetRole) && targetRole != UserRole.ADMIN) {
+                throw new AppException(
+                        ErrorCode.UNAUTHORIZED,
+                        "Tài khoản quản trị hệ thống không được phép khóa/mở khóa các vai trò nội bộ của công ty: [MANAGER, DISPATCHER, WAREHOUSE_WORKER, DRIVER]"
+                );
+            }
+        } else if (callerRole == UserRole.ADMIN) {
+            if (isPlatformRole(targetRole) || targetRole == UserRole.ADMIN) {
+                throw new AppException(
+                        ErrorCode.UNAUTHORIZED,
+                        "Tài khoản ADMIN công ty chỉ được phép khóa/mở khóa các vai trò nội bộ trong cùng công ty: [MANAGER, DISPATCHER, WAREHOUSE_WORKER, DRIVER]"
+                );
+            }
+        } else {
+            throw new AppException(ErrorCode.UNAUTHORIZED);
+        }
+
         targetUser.setStatus(request.status());
         targetUser.preUpdate();
 

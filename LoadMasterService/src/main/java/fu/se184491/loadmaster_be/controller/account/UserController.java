@@ -85,7 +85,7 @@ public class UserController {
     }
 
     @PutMapping("/{id}")
-    @PreAuthorize("hasAuthority('USERS_UPDATE') or hasAnyRole('SYSTEM_MANAGER', 'SYSTEM_ADMIN')")
+    @PreAuthorize("hasAuthority('USERS_UPDATE') or hasRole('SYSTEM_ADMIN')")
     public ApiResponse<UserListItemResponse> updateUser(
             @PathVariable Long id,
             @Valid @RequestBody UpdateUserRequest request
@@ -97,7 +97,7 @@ public class UserController {
     }
 
     @PatchMapping("/{id}/status")
-    @PreAuthorize("hasAuthority('USERS_LOCK') or hasAnyRole('SYSTEM_MANAGER', 'SYSTEM_ADMIN')")
+    @PreAuthorize("hasAuthority('USERS_LOCK') or hasRole('SYSTEM_ADMIN')")
     public ApiResponse<UserListItemResponse> updateUserStatus(
             @PathVariable Long id,
             @Valid @RequestBody UpdateUserStatusRequest request

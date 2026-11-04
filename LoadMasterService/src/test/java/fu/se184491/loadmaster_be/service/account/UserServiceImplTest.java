@@ -432,7 +432,32 @@ class UserServiceImplTest {
     }
 
     @Test
-    @DisplayName("updateUserStatus - Toggles user status and prevents locking oneself")
+    @DisplayName("updateUser - SYSTEM_ADMIN can update Company ADMIN, but is forbidden from updating internal company staff or assigning internal roles")
+    void updateUser_whenSystemAdmin_allowsCompanyAdminAndRejectsInternalStaff() {
+        when(currentUserService.getCurrentUser()).thenReturn(systemAdminCaller);
+
+        // 1. Forbidden from updating internal company staff (DRIVER)
+        when(userRepository.findById(100L)).thenReturn(Optional.of(targetEmployeeInCompany10));
+        UpdateUserRequest staffReq = new UpdateUserRequest("New Name", "0912345678", UserRole.DRIVER);
+        AppException staffEx = assertThrows(AppException.class, () -> userService.updateUser(100L, staffReq));
+        assertEquals(ErrorCode.UNAUTHORIZED, staffEx.getErrorCode());
+
+        // 2. Forbidden from demoting Company ADMIN to internal staff role (DISPATCHER)
+        when(userRepository.findById(2L)).thenReturn(Optional.of(companyAdminCaller));
+        UpdateUserRequest demoteReq = new UpdateUserRequest("Admin Name", "0912345678", UserRole.DISPATCHER);
+        AppException demoteEx = assertThrows(AppException.class, () -> userService.updateUser(2L, demoteReq));
+        assertEquals(ErrorCode.UNAUTHORIZED, demoteEx.getErrorCode());
+
+        // 3. Allowed to update Company ADMIN keeping role ADMIN
+        when(userRepository.save(any(User.class))).thenAnswer(inv -> inv.getArgument(0));
+        UpdateUserRequest validAdminReq = new UpdateUserRequest("Updated Company Admin", "0912345678", UserRole.ADMIN);
+        UserListItemResponse res = userService.updateUser(2L, validAdminReq);
+        assertEquals("Updated Company Admin", res.fullName());
+        assertEquals(UserRole.ADMIN, res.userRoleType());
+    }
+
+    @Test
+    @DisplayName("updateUserStatus - Toggles user status, prevents locking oneself, and enforces SYSTEM_ADMIN vs Company ADMIN role boundaries")
     void updateUserStatus_preventsSelfLockAndUpdatesTargetStatus() {
         when(currentUserService.getCurrentUser()).thenReturn(companyAdminCaller);
 
@@ -450,6 +475,14 @@ class UserServiceImplTest {
                 new UpdateUserStatusRequest(UserStatus.LOCKED)
         );
         assertEquals(UserStatus.LOCKED, result.status());
+
+        // SYSTEM_ADMIN cannot lock internal company staff (DRIVER)
+        when(currentUserService.getCurrentUser()).thenReturn(systemAdminCaller);
+        AppException sysAdminStaffLockEx = assertThrows(
+                AppException.class,
+                () -> userService.updateUserStatus(100L, new UpdateUserStatusRequest(UserStatus.LOCKED))
+        );
+        assertEquals(ErrorCode.UNAUTHORIZED, sysAdminStaffLockEx.getErrorCode());
     }
 
     @Test
@@ -466,7 +499,7 @@ class UserServiceImplTest {
 
         String msg = userService.deleteUser(100L);
 
-        assertEquals("User deactivated successfully", msg);
+        assertEquals("User đã được xóa thành công", msg);
         assertEquals(UserStatus.INACTIVE, targetEmployeeInCompany10.getStatus());
         assertNotNull(targetEmployeeInCompany10.getUpdatedAt());
         verify(userRepository).save(targetEmployeeInCompany10);
