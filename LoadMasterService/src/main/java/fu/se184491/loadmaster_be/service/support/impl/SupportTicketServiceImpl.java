@@ -47,6 +47,7 @@ public class SupportTicketServiceImpl implements SupportTicketService {
     private static final DateTimeFormatter CHAT_TIME_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
     private static final int MAX_ACTIVE_CHAT_DAYS = 2;
     private static final int CLOSED_CHAT_RETENTION_DAYS = 15;
+    private static final int MAX_IMAGES_PER_MESSAGE = 5;
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
     private final SupportTicketRepository supportTicketRepository;
@@ -58,6 +59,11 @@ public class SupportTicketServiceImpl implements SupportTicketService {
     public SupportTicketResponse createTicket(CreateSupportTicketRequest request) {
         User currentUser = currentUserService.getCurrentUser();
 
+        String normalizedNote = null;
+        if (request.resolutionNote() != null && !request.resolutionNote().isBlank()) {
+            normalizedNote = normalizeAndPruneResolutionNote(request.resolutionNote());
+        }
+
         SupportTicket ticket = SupportTicket.builder()
                 .requester(currentUser)
                 .ticketCode(generateTicketCode())
@@ -66,10 +72,14 @@ public class SupportTicketServiceImpl implements SupportTicketService {
                 .category(request.category())
                 .priority(resolvePriority(request.category()))
                 .status(TicketStatus.OPEN)
+                .resolutionNote(normalizedNote)
                 .createdAt(LocalDateTime.now().truncatedTo(ChronoUnit.SECONDS))
                 .build();
 
         SupportTicket saved = supportTicketRepository.save(ticket);
+        if (normalizedNote != null) {
+            pruneCompanyChatHistoryToRecentDays(saved);
+        }
         return toResponse(saved);
     }
 
@@ -193,6 +203,10 @@ public class SupportTicketServiceImpl implements SupportTicketService {
                     new TypeReference<List<Map<String, Object>>>() {}
             );
             for (Map<String, Object> reply : replies) {
+                Object imagesObj = reply.get("images");
+                if (imagesObj instanceof List<?> imagesList && imagesList.size() > MAX_IMAGES_PER_MESSAGE) {
+                    throw new AppException(ErrorCode.INVALID_INPUT, "Mỗi tin nhắn chỉ được đính kèm tối đa 5 ảnh");
+                }
                 Object atObj = reply.get("at");
                 if (atObj != null) {
                     reply.put("at", formatChatTimestamp(atObj.toString()));
@@ -220,6 +234,8 @@ public class SupportTicketServiceImpl implements SupportTicketService {
                     .map(LinkedHashMap::new)
                     .collect(Collectors.toList());
             return OBJECT_MAPPER.writeValueAsString(pruned);
+        } catch (AppException e) {
+            throw e;
         } catch (Exception ignored) {
             return rawNote;
         }

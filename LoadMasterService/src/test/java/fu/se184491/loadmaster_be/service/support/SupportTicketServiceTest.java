@@ -11,6 +11,7 @@ import fu.se184491.loadmaster_be.dto.response.support.SupportTicketResponse;
 import fu.se184491.loadmaster_be.entity.account.User;
 import fu.se184491.loadmaster_be.entity.company.Company;
 import fu.se184491.loadmaster_be.entity.support.SupportTicket;
+import fu.se184491.loadmaster_be.exception.AppException;
 import fu.se184491.loadmaster_be.helpers.CurrentUserService;
 import fu.se184491.loadmaster_be.repository.account.UserRepository;
 import fu.se184491.loadmaster_be.repository.support.SupportTicketRepository;
@@ -31,6 +32,7 @@ import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
@@ -248,7 +250,7 @@ class SupportTicketServiceTest {
     @Test
     @DisplayName("cleanupClosedTicketChatHistory - Seam 2: Clears resolutionNote for CLOSED/RESOLVED tickets older than 15 days while keeping recent or open tickets")
     void cleanupClosedTicketChatHistory_clearsOnlyClosedTicketsOlderThan15Days() {
-        LocalDateTime now = LocalDateTime.now().truncatedTo( java.time.temporal.ChronoUnit.SECONDS);
+        LocalDateTime now = LocalDateTime.now().truncatedTo(java.time.temporal.ChronoUnit.SECONDS);
 
         SupportTicket closed16DaysAgo = SupportTicket.builder()
                 .id(201L)
@@ -342,5 +344,54 @@ class SupportTicketServiceTest {
         assertNotNull(ticketNov3.getResolutionNote(), "Company 1 ticket on 3/11 must retain its resolutionNote");
         assertNotNull(ticketNov4.getResolutionNote(), "Company 1 ticket on 4/11 must retain its resolutionNote");
         assertNotNull(otherCompanyTicketNov2.getResolutionNote(), "Company 2 ticket on 2/11 must NOT be affected by Company 1 pruning");
+    }
+
+    @Test
+    @DisplayName("createTicket & updateTicket - Saves up to 5 images inside resolutionNote JSON and rejects more than 5 images per message")
+    void createAndUpdateTicket_preservesUpToFiveImagesInResolutionNoteAndRejectsMoreThanFive() {
+        when(currentUserService.getCurrentUser()).thenReturn(companyAdmin);
+        when(supportTicketRepository.save(any(SupportTicket.class))).thenAnswer(inv -> {
+            SupportTicket t = inv.getArgument(0);
+            if (t.getId() == null) {
+                t.setId(301L);
+            }
+            return t;
+        });
+
+        String initialResolutionNote = "[{\"authorId\":\"2\",\"authorName\":\"Acme Admin\",\"authorRole\":\"companyAdmin\",\"text\":\"Đính kèm 2 ảnh lỗi\",\"images\":[\"data:image/jpeg;base64,img1\",\"data:image/jpeg;base64,img2\"],\"at\":\"2026-11-04T20:00:00Z\"}]";
+        CreateSupportTicketRequest createReq = new CreateSupportTicketRequest(
+                "Hư máy tính",
+                "Không mở được màn hình điều phối",
+                TicketCategory.SYSTEM_BUG,
+                TicketPriority.HIGH,
+                initialResolutionNote
+        );
+
+        SupportTicketResponse created = supportTicketService.createTicket(createReq);
+        assertNotNull(created.getResolutionNote(), "resolutionNote should be saved when creating ticket with images");
+        assertTrue(created.getResolutionNote().contains("\"images\":[\"data:image/jpeg;base64,img1\",\"data:image/jpeg;base64,img2\"]"));
+        assertTrue(created.getResolutionNote().contains("\"at\":\"2026-11-04 20:00:00\""));
+
+        SupportTicket existingTicket = SupportTicket.builder()
+                .id(301L)
+                .ticketCode(created.getTicketCode())
+                .requester(companyAdmin)
+                .status(TicketStatus.OPEN)
+                .resolutionNote(created.getResolutionNote())
+                .build();
+        when(supportTicketRepository.findById(301L)).thenReturn(Optional.of(existingTicket));
+
+        String sixImagesNote = "[{\"authorId\":\"2\",\"authorName\":\"Acme Admin\",\"authorRole\":\"companyAdmin\",\"text\":\"Gửi 6 ảnh\",\"images\":[\"img1\",\"img2\",\"img3\",\"img4\",\"img5\",\"img6\"],\"at\":\"2026-11-04 20:05:00\"}]";
+        UpdateSupportTicketRequest invalidUpdate = new UpdateSupportTicketRequest(
+                TicketStatus.IN_PROGRESS,
+                null,
+                sixImagesNote
+        );
+
+        assertThrows(
+                AppException.class,
+                () -> supportTicketService.updateTicket(301L, invalidUpdate),
+                "Should reject when a message contains more than 5 images"
+        );
     }
 }

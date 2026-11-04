@@ -85,8 +85,8 @@ public class CompanyControllerTest {
     }
 
     @Test
-    @DisplayName("POST /api/companies should return 201 Created when request is valid")
-    @WithMockUser(authorities = "SYSTEM_MANAGER")
+    @DisplayName("POST /api/companies should return 201 Created with authority SYSTEM_ADMIN")
+    @WithMockUser(authorities = "SYSTEM_ADMIN")
     void createCompany_success() throws Exception {
         when(companyService.createCompany(any(CompanyRequest.class))).thenReturn(response);
 
@@ -101,17 +101,16 @@ public class CompanyControllerTest {
     }
 
     @Test
-    @DisplayName("POST /api/companies should allow Keycloak role ROLE_SYSTEM_MANAGER")
+    @DisplayName("POST /api/companies should return 403 Forbidden for ROLE_SYSTEM_MANAGER")
     @WithMockUser(roles = "SYSTEM_MANAGER")
-    void createCompany_withRoleSystemManager_success() throws Exception {
-        when(companyService.createCompany(any(CompanyRequest.class))).thenReturn(response);
-
+    void createCompany_withRoleSystemManager_forbidden() throws Exception {
         mockMvc.perform(post("/api/companies")
                         .with(csrf())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
-                .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.id").value(1L));
+                .andExpect(status().isForbidden());
+
+        verify(companyService, never()).createCompany(any());
     }
 
     @Test
@@ -143,7 +142,7 @@ public class CompanyControllerTest {
 
     @Test
     @DisplayName("POST /api/companies should return 400 Bad Request when validation fails")
-    @WithMockUser(authorities = "SYSTEM_MANAGER")
+    @WithMockUser(roles = "SYSTEM_ADMIN")
     void createCompany_validationError() throws Exception {
         CompanyRequest invalidRequest = CompanyRequest.builder()
                 .companyCode("") // blank code
@@ -162,8 +161,8 @@ public class CompanyControllerTest {
     }
 
     @Test
-    @DisplayName("PUT /api/companies/{id} should return 200 OK with ROLE_SYSTEM_MANAGER")
-    @WithMockUser(roles = "SYSTEM_MANAGER")
+    @DisplayName("PUT /api/companies/{id} should return 200 OK with ROLE_SYSTEM_ADMIN and 403 for ROLE_SYSTEM_MANAGER")
+    @WithMockUser(roles = "SYSTEM_ADMIN")
     void updateCompany_success() throws Exception {
         when(companyService.updateCompany(eq(1L), any(CompanyRequest.class))).thenReturn(response);
 
@@ -174,6 +173,19 @@ public class CompanyControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.id").value(1L))
                 .andExpect(jsonPath("$.companyName").value("LoadMaster Logistics"));
+    }
+
+    @Test
+    @DisplayName("PUT /api/companies/{id} should return 403 Forbidden for ROLE_SYSTEM_MANAGER")
+    @WithMockUser(roles = "SYSTEM_MANAGER")
+    void updateCompany_withRoleSystemManager_forbidden() throws Exception {
+        mockMvc.perform(put("/api/companies/1")
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isForbidden());
+
+        verify(companyService, never()).updateCompany(any(), any());
     }
 
     @Test
@@ -189,8 +201,8 @@ public class CompanyControllerTest {
     }
 
     @Test
-    @DisplayName("GET /api/companies should return 200 OK with ROLE_SYSTEM_ADMIN")
-    @WithMockUser(roles = "SYSTEM_ADMIN")
+    @DisplayName("GET /api/companies should return 200 OK with ROLE_SYSTEM_MANAGER")
+    @WithMockUser(roles = "SYSTEM_MANAGER")
     void getAllCompanies_success() throws Exception {
         Page<CompanyResponse> page = new PageImpl<>(Collections.singletonList(response));
         when(companyService.getAllCompanies(any(), any(Pageable.class))).thenReturn(page);
@@ -202,8 +214,8 @@ public class CompanyControllerTest {
     }
 
     @Test
-    @DisplayName("PATCH /api/companies/{id}/status should return 200 OK with ROLE_SYSTEM_MANAGER")
-    @WithMockUser(roles = "SYSTEM_MANAGER")
+    @DisplayName("PATCH /api/companies/{id}/status should return 200 OK with ROLE_SYSTEM_ADMIN")
+    @WithMockUser(roles = "SYSTEM_ADMIN")
     void changeCompanyStatus_success() throws Exception {
         response.setStatus(CompanyStatus.SUSPENDED);
         when(companyService.changeCompanyStatus(1L, CompanyStatus.SUSPENDED)).thenReturn(response);
@@ -216,8 +228,20 @@ public class CompanyControllerTest {
     }
 
     @Test
-    @DisplayName("PATCH /api/companies/{id}/status should return 400 Bad Request with valid enum values when status is invalid")
+    @DisplayName("PATCH /api/companies/{id}/status should return 403 Forbidden for ROLE_SYSTEM_MANAGER")
     @WithMockUser(roles = "SYSTEM_MANAGER")
+    void changeCompanyStatus_withRoleSystemManager_forbidden() throws Exception {
+        mockMvc.perform(patch("/api/companies/1/status")
+                        .with(csrf())
+                        .param("status", "SUSPENDED"))
+                .andExpect(status().isForbidden());
+
+        verify(companyService, never()).changeCompanyStatus(any(), any());
+    }
+
+    @Test
+    @DisplayName("PATCH /api/companies/{id}/status should return 400 Bad Request with valid enum values when status is invalid")
+    @WithMockUser(roles = "SYSTEM_ADMIN")
     void changeCompanyStatus_invalidStatusEnum_returnsBadRequest() throws Exception {
         mockMvc.perform(patch("/api/companies/1/status")
                         .with(csrf())
