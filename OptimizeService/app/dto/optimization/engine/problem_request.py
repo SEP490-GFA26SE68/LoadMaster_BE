@@ -44,7 +44,7 @@ class PackageData(BaseModel):
     h: float
     weight: float
     allowed_rotations: List[Union[int, str]] = Field(default_factory=list)
-    stop_index: int = 0
+    stop_index: int = Field(default=1, ge=1)
     max_stack_weight_kg: Optional[float] = None
     fragile: bool = False
     rotation_allowed: bool = True

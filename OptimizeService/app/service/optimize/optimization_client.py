@@ -80,8 +80,8 @@ class OptimizationClient:
                     json=problem.model_dump(mode="json"),
                     headers=headers,
                 )
-                resp.raise_for_status()
-                return EngineOptimizationResponse.model_validate(resp.json())
+            resp.raise_for_status()
+            return EngineOptimizationResponse.model_validate(resp.json())
 
     def solve_in_process(self, problem: ProblemRequest) -> EngineOptimizationResponse:
         """
@@ -101,32 +101,137 @@ class OptimizationClient:
         # Map packages by ID
         packages_map = {str(p.id): p for p in problem.packages}
 
+
+        def reject_current_placements(
+            violation_codes: list[str],
+        ) -> None:
+            nonlocal placements
+            nonlocal unplaced
+            nonlocal total_placed_weight
+            nonlocal total_placed_volume
+            nonlocal rehandling_count
+
+            existing_unplaced = {
+                str(item.package_id): item
+                for item in unplaced
+            }
+
+            for placement in placements:
+                package_id = str(placement.package_id)
+
+                if package_id not in existing_unplaced:
+                    existing_unplaced[package_id] = UnplacedData(
+                        package_id=placement.package_id,
+                        reason="CONSTRAINT_VIOLATED",
+                        violated_constraints=violation_codes,
+                    )
+
+            unplaced = list(existing_unplaced.values())
+            placements = []
+
+            total_placed_weight = 0.0
+            total_placed_volume = 0.0
+            rehandling_count = 0
+
+
+        unload_checks = 0
+        unload_rejections = 0
+        def is_unload_feasible(candidate: PlacementData) -> bool:
+            nonlocal unload_checks, unload_rejections
+
+            unload_checks += 1
+
+            trial_placements = [*placements, candidate]
+
+            result = UnloadFeasibilityValidator.validate(
+                placements=trial_placements,
+                packages_map=packages_map,
+                vehicle=vt,
+            )
+
+            if not result.passed:
+                unload_rejections += 1
+
+                # Chỉ in vài lỗi đầu tiên để tránh quá nhiều log
+                if unload_rejections <= 10:
+                    print(
+                        f"[UNLOAD REJECTED] "
+                        f"Package={candidate.package_id}, "
+                        f"Position=({candidate.x}, "
+                        f"{candidate.y}, {candidate.z}), "
+                        f"Reason={result.violation_code}, "
+                        f"Detail={result.detail}"
+                    )
+
+            return result.passed
+
+
+
+
+
         # 1. Phân nhóm packages theo stop & tính toán stop zones
-        stops_dict: dict[Any, list[PackageData]] = {}
+        stops_dict: dict[Any, list] = {}
         stop_seq_map: dict[Any, int] = {}
+
         if problem.stops:
-            for s in problem.stops:
-                stops_dict[s.id] = []
-                stop_seq_map[s.id] = s.sequence
+            for stop in problem.stops:
+                stops_dict[stop.id] = []
+                stop_seq_map[stop.id] = stop.sequence
 
         for pkg in problem.packages:
-            # Map by stop_index or stop ID if available
-            matched_stop_id = None
             if problem.stops:
-                for s in problem.stops:
-                    if str(s.id) == str(pkg.stop_index) or s.sequence == pkg.stop_index:
-                        matched_stop_id = s.id
-                        break
-                if matched_stop_id is None and problem.stops:
-                    matched_stop_id = problem.stops[0].id
+                matched_stop = next(
+                    (
+                        stop
+                        for stop in problem.stops
+                        if stop.sequence == pkg.stop_index
+                    ),
+                    None,
+                )
+
+                if matched_stop is None:
+                    raise ValueError(
+                        f"Package {pkg.id} has stop_index={pkg.stop_index}, "
+                        f"but no matching StopData.sequence exists"
+                    )
+
+                matched_stop_id = matched_stop.id
             else:
+                if pkg.stop_index != 1:
+                    raise ValueError(
+                        f"Package {pkg.id} has invalid stop_index "
+                        f"{pkg.stop_index} for a single-stop trip"
+                    )
+
                 matched_stop_id = "default-stop"
 
             if matched_stop_id not in stops_dict:
                 stops_dict[matched_stop_id] = []
+                stop_seq_map[matched_stop_id] = 1
+
+            # Mỗi kiện được thêm đúng một lần
             stops_dict[matched_stop_id].append(pkg)
 
-        # Build stops input for StopZoneCalculator
+        grouped_ids = [
+            str(pkg.id)
+            for group in stops_dict.values()
+            for pkg in group
+        ]
+
+        input_ids = [str(pkg.id) for pkg in problem.packages]
+
+        if (
+            len(grouped_ids) != len(input_ids)
+            or len(set(grouped_ids)) != len(grouped_ids)
+            or set(grouped_ids) != set(input_ids)
+        ):
+            raise ValueError(
+                "Package grouping contains duplicate or missing packages"
+            )
+
+
+
+    # Build stops input for StopZoneCalculator
         stops_input = []
         for stop_id, pkgs in stops_dict.items():
             stops_input.append({
@@ -229,26 +334,34 @@ class OptimizationClient:
 
 
             # HC-11: Sinh thêm Extreme Points gần cuối Stop Zone.
-# Candidate chỉ được sử dụng sau khi qua bounds,
-# overlap và ConstraintEngine như các EP khác.
-#
-# Không thay đổi giới hạn zone hoặc các Hard Constraints.
 
-            for orientation_l in {float(pkg.l), float(pkg.w)}:
-                right_aligned_x = zone_end - orientation_l
 
-                if right_aligned_x >= zone_start:
-                    for candidate_y in (door_y_min, vehicle_mid_y):
-                        candidate_pt = (
-                            right_aligned_x,
-                            candidate_y,
-                            0.0,
-                        )
-
-                        if candidate_pt not in ep_list:
-                            ep_list.append(candidate_pt)
 
             for pkg in sorted_pkgs:
+
+                # Sinh EP căn phải theo kích thước kiện hiện tại.
+                # Với 6 hướng xoay, trục X có thể là L, W hoặc H.
+                for orientation_l in {
+                    float(pkg.l),
+                    float(pkg.w),
+                    float(pkg.h),
+                }:
+                    right_aligned_x = zone_end - orientation_l
+
+                    if right_aligned_x >= zone_start:
+                        for candidate_y in (
+                                door_y_min,
+                                vehicle_mid_y,
+                        ):
+                            candidate_pt = (
+                                right_aligned_x,
+                                candidate_y,
+                                0.0,
+                            )
+
+                            if candidate_pt not in ep_list:
+                                ep_list.append(candidate_pt)
+
                 if vt.max_payload_kg > 0 and (total_placed_weight + pkg.weight > vt.max_payload_kg):
                     unplaced.append(UnplacedData(
                         package_id=pkg.id,
@@ -258,25 +371,32 @@ class OptimizationClient:
                     continue
 
 
-                # HC-03: Chỉ sinh orientation được PackageData cho phép.
+
+                # HC-03: Xác định 6 hướng xoay được phép
+                # HC-03: Quy ước 6 hướng xoay kiện hàng
+                # 0 = LWH
+                # 1 = WLH
+                # 2 = LHW
+                # 3 = WHL
+                # 4 = HLW
+                # 5 = HWL
                 #
-                # Quy ước hiện tại:
-                # 0 = (length, width, height)
-                # 1 = (width, length, height)
-                #
-                # Chưa mở rộng 2-5 cho đến khi thống nhất
-                # quy ước xoay với 3D Viewer.
-
-                rotation_enabled = pkg.rotation_allowed is True
-
-                allowed_rotations = {
-                    int(rotation)
-                    for rotation in (pkg.allowed_rotations or [])
-                }
-
-                # Công tắc tổng luôn có độ ưu tiên cao nhất.
-                if not rotation_enabled:
+                # Quy ước này phải đồng bộ với 3D Viewer.
+                if pkg.rotation_allowed is False:
+                    # Không cho phép xoay: chỉ hướng 0
                     allowed_rotations = {0}
+
+                elif pkg.allowed_rotations:
+                    # Có danh sách cụ thể: chỉ cho phép các hướng này
+                    allowed_rotations = {
+                        int(rotation)
+                        for rotation in pkg.allowed_rotations
+                    }
+
+                else:
+                    # Không giới hạn: cho phép cả 6 hướng
+                    allowed_rotations = set(range(6))
+
 
                 orientation_candidates = [
                     (float(pkg.l), float(pkg.w), float(pkg.h), 0),  # LWH
@@ -291,11 +411,9 @@ class OptimizationClient:
                     orientation
                     for orientation in orientation_candidates
                     if orientation[3] in allowed_rotations
-                       and (
-                               orientation[0] <= vt.inner_l
-                               and orientation[1] <= vt.inner_w
-                               and orientation[2] <= vt.inner_h
-                       )
+                    and orientation[0] <= vt.inner_l
+                    and orientation[1] <= vt.inner_w
+                    and orientation[2] <= vt.inner_h
                 ]
 
                 if not orientations:
@@ -318,8 +436,8 @@ class OptimizationClient:
 
                 # Sắp xếp EP theo DBLF: x tăng dần (sâu), z tăng dần (dưới đáy), y tăng dần (trái)
                 # Ưu tiên Extreme Points gần tâm xe.
-# Giữ Z thấp để ưu tiên xếp hàng trên sàn.
-# HC-11 vẫn được kiểm tra trên LoadPlan hoàn chỉnh.
+                # Giữ Z thấp để ưu tiên xếp hàng trên sàn.
+                # HC-11 vẫn được kiểm tra trên LoadPlan hoàn chỉnh.
 
                 vehicle_center_x = float(vt.inner_l) / 2.0
                 vehicle_center_y = float(vt.inner_w) / 2.0
@@ -366,7 +484,7 @@ class OptimizationClient:
                         # 3. ConstraintEngine check
                         violations = ConstraintEngine.check_all(candidate, context)
 
-                        if not violations:
+                        if not violations and is_unload_feasible(candidate):
                             score = candidate_cog_score(candidate)
 
                         # Ưu tiên placement trên sàn trước,
@@ -410,7 +528,8 @@ class OptimizationClient:
                                 stop_zone_id=zone.stop_id,
                             )
                             violations = ConstraintEngine.check_all(candidate, context)
-                            if not violations:
+
+                            if not violations and is_unload_feasible(candidate):
                                 chosen_placement = candidate
                                 is_rehandling = True
                                 break
@@ -492,19 +611,22 @@ class OptimizationClient:
                     round(weighted_z / total_weight, 2),
                 )
 
+                cog_ratio = float(vt.max_cog_offset_ratio)
+
             print(
                 "Allowed COG X:",
-                round(float(vt.inner_l) * 0.35, 2),
+                round(float(vt.inner_l) * (0.5 - cog_ratio), 2),
                 "-",
-                round(float(vt.inner_l) * 0.65, 2),
+                round(float(vt.inner_l) * (0.5 + cog_ratio), 2),
             )
 
             print(
                 "Allowed COG Y:",
-                round(float(vt.inner_w) * 0.35, 2),
+                round(float(vt.inner_w) * (0.5 - cog_ratio), 2),
                 "-",
-                round(float(vt.inner_w) * 0.65, 2),
+                round(float(vt.inner_w) * (0.5 + cog_ratio), 2),
             )
+
 
             final_checks = [
                 ConstraintEngine.check_cog(
@@ -526,21 +648,7 @@ class OptimizationClient:
             ]
 
             if violations:
-                # Fail-safe: Không trả về LoadPlan vi phạm
-                # HC-11 hoặc HC-12.
-                for placement in placements:
-                    unplaced.append(
-                        UnplacedData(
-                            package_id=placement.package_id,
-                            reason="CONSTRAINT_VIOLATED",
-                            violated_constraints=violations,
-                        )
-                    )
-
-                placements = []
-                total_placed_weight = 0.0
-                total_placed_volume = 0.0
-                rehandling_count = 0
+                reject_current_placements(violations)
 
 
         # 3. Tính COG tổng và Axle Load
@@ -617,35 +725,15 @@ class OptimizationClient:
             vehicle=vt,
         )
 
+
         if not unload_result.passed:
-            # Không trả về một phương án xếp hàng
-            # có trình tự dỡ không hợp lệ.
-            #
-            # Đây là cơ chế fail-safe tạm thời:
-            # từ chối toàn bộ phương án,
-            # chưa thực hiện tìm lại phương án khác.
+            reject_current_placements(
+                [
+                    unload_result.violation_code
+                    or "MULTI_DROP_LIFO_VIOLATION"
+                ]
+            )
 
-            rejected_ids = {
-                str(p.package_id)
-                for p in placements
-            }
-
-            for package_id in rejected_ids:
-                unplaced.append(
-                    UnplacedData(
-                        package_id=package_id,
-                        reason="CONSTRAINT_VIOLATED",
-                        violated_constraints=[
-                            unload_result.violation_code
-                            or "MULTI_DROP_LIFO_VIOLATION"
-                        ],
-                    )
-                )
-
-            # Xóa placements đã bị từ chối.
-            placements = []
-
-            # Đồng bộ lại metrics với kết quả thực tế.
             metrics = MetricsData(
                 volume_utilization=0.0,
                 weight_utilization=0.0,
@@ -660,6 +748,48 @@ class OptimizationClient:
                 rear_axle_load=None,
                 rehandling_count=0,
             )
+
+
+        packed_ids = [
+            str(p.package_id)
+            for p in placements
+        ]
+
+        unplaced_ids = [
+            str(p.package_id)
+            for p in unplaced
+        ]
+
+        assert len(packed_ids) == len(set(packed_ids)), (
+            "Duplicate package_id in placements"
+        )
+
+        assert len(unplaced_ids) == len(set(unplaced_ids)), (
+            "Duplicate package_id in unplaced"
+        )
+
+        assert not (set(packed_ids) & set(unplaced_ids)), (
+            "Package appears in both placements and unplaced"
+        )
+
+        input_ids = {
+            str(p.id)
+            for p in problem.packages
+        }
+
+        assert set(packed_ids) | set(unplaced_ids) == input_ids, (
+            "Optimization result does not match input packages"
+        )
+
+        print(
+            f"[OPTIMIZATION SUMMARY] "
+            f"Packed={len(placements)}/{len(problem.packages)}, "
+            f"Unplaced={len(unplaced)}, "
+            f"UnloadChecks={unload_checks}, "
+            f"UnloadRejections={unload_rejections}, "
+            f"TimeMs={int((time.time() - start_time) * 1000)}"
+
+        )
 
         return EngineOptimizationResponse(
             placements=placements,

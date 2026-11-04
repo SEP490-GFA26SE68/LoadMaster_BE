@@ -643,61 +643,60 @@ class ConstraintEngine:
         return ConstraintResult.success()
 
 
+
     @classmethod
     def check_rotation_allowed(
-            cls,
-            package: PackageData,
-            placement: Optional[PlacementData] = None,
+        cls,
+        package: PackageData,
+        placement: Optional[PlacementData] = None,
     ) -> ConstraintResult:
-        """
-        HC-03: Orientation Constraint.
 
-        Hướng xoay của placement phải thuộc danh sách
-        allowed_rotations của kiện.
-
-        Quy ước mã orientation phải thống nhất giữa
-        Backend, Optimizer và 3D Viewer.
-        """
         if placement is None:
             return ConstraintResult.fail(
                 violation_code="ORIENTATION_NOT_ALLOWED",
-                detail="Placement is required to validate orientation",
+                detail="Placement is required",
             )
 
-        rotation_type = str(placement.rotation_type)
+        rotation_type = int(placement.rotation_type)
 
-        # Không cho phép xoay nếu kiện bị khóa xoay.
+        if rotation_type not in range(6):
+            return ConstraintResult.fail(
+                violation_code="ORIENTATION_NOT_ALLOWED",
+                detail=f"Invalid orientation: {rotation_type}",
+            )
+
+    # Công tắc tổng: không cho xoay thì chỉ hướng 0.
         if package.rotation_allowed is False:
-            if rotation_type != "0":
-                return ConstraintResult.fail(
-                    violation_code="ORIENTATION_NOT_ALLOWED",
-                    detail=(
-                        f"Package {package.id} does not allow "
-                        f"rotation {rotation_type}"
-                    ),
-                )
+            if rotation_type == 0:
+                return ConstraintResult.success()
 
-        allowed_rotations = package.allowed_rotations
+            return ConstraintResult.fail(
+                violation_code="ORIENTATION_NOT_ALLOWED",
+                detail=(
+                    f"Package {package.id} cannot rotate"
+                ),
+            )
 
-        # Nếu có danh sách hướng xoay cụ thể,
-        # hướng được chọn bắt buộc nằm trong danh sách.
-        if allowed_rotations:
-            allowed = {
-                str(rotation)
-                for rotation in allowed_rotations
-            }
+        allowed = {
+            int(rotation)
+            for rotation in (package.allowed_rotations or [])
+        }
 
-            if rotation_type not in allowed:
-                return ConstraintResult.fail(
-                    violation_code="ORIENTATION_NOT_ALLOWED",
-                    detail=(
-                        f"Package {package.id}: orientation "
-                        f"{rotation_type} is not permitted. "
-                        f"Allowed orientations: {sorted(allowed)}"
-                    ),
-                )
+
+        if not allowed:
+            allowed = {6}
+
+        if rotation_type not in allowed:
+            return ConstraintResult.fail(
+                violation_code="ORIENTATION_NOT_ALLOWED",
+                detail=(
+                    f"Package {package.id}: rotation "
+                    f"{rotation_type} is not allowed"
+                ),
+            )
 
         return ConstraintResult.success()
+
 
 
 
@@ -1434,17 +1433,18 @@ class ConstraintEngine:
 
 
 
-        # HC-09: Multi-drop LIFO
-        # Chỉ cần kiểm tra thứ tự dỡ khi có từ hai stop.
-        if packages_map:
-            res_lifo = cls.check_multi_drop_lifo(
-                placement,
-                existing_placements,
-                packages_map,
-            )
 
-            if not res_lifo.passed:
-                violations.append(res_lifo)
+
+
+        # HC-09: Flexible Unloading
+        # Không kiểm tra chặn đường Straight-X tại đây.
+        #
+        # UnloadFeasibilityValidator sẽ kiểm tra
+        # thứ tự giao hàng và đường dỡ thực tế
+        # trên toàn bộ LoadPlan.
+
+
+
 
 
         # HC-10: Door Clearance

@@ -105,51 +105,108 @@ class LoadMasterCreditClient:
 
         return True
 
+
     async def refund_credit_async(
         self,
         job_uuid: str,
         company_id: Optional[Union[str, int]] = None,
     ) -> bool:
-        """
-        Gọi POST /api/internal/credits/refund với retry tối đa max_retries lần (S8-08).
-        """
         url = f"{self.base_url}/api/internal/credits/refund"
+
         payload = {"reference": str(job_uuid)}
+
         if company_id is not None:
             payload["companyId"] = company_id
 
-        headers = await self._get_headers()
+        attempts_made = 0
 
         for attempt in range(1, self.max_retries + 1):
+            attempts_made = attempt
+
             try:
+                # Lấy lại token trước mỗi lần thử.
+                headers = await self._get_headers()
+
                 if self.http_client is not None:
-                    resp = await self.http_client.post(url, json=payload, headers=headers)
+                    resp = await self.http_client.post(
+                        url,
+                        json=payload,
+                        headers=headers,
+                    )
                 else:
-                    async with httpx.AsyncClient(timeout=float(self.timeout_sec)) as client:
-                        resp = await client.post(url, json=payload, headers=headers)
+                    async with httpx.AsyncClient(
+                        timeout=float(self.timeout_sec)
+                    ) as client:
+                        resp = await client.post(
+                            url,
+                            json=payload,
+                            headers=headers,
+                        )
 
                 if resp.status_code in (200, 201, 204):
-                    logger.info(f"Successfully refunded credit for job {job_uuid}")
-                    return True
-                elif resp.status_code < 500 and resp.status_code != 404:
-                    logger.error(f"Credit refund rejected with status {resp.status_code}: {resp.text}")
-                    break
-                else:
-                    logger.warning(
-                        f"Attempt {attempt}/{self.max_retries} to refund credit for job {job_uuid} failed with status {resp.status_code}"
+                    logger.info(
+                        "Credit refund successful. job=%s",
+                        job_uuid,
                     )
-            except Exception as exc:
+                    return True
+
+                if resp.status_code == 401:
+                    logger.error(
+                        "Credit refund authentication failed. "
+                        "job=%s, status=401, response=%s",
+                        job_uuid,
+                        resp.text[:500],
+                    )
+                    break
+
+                if 400 <= resp.status_code < 500:
+                    logger.error(
+                        "Credit refund rejected. "
+                        "job=%s, status=%s, response=%s",
+                        job_uuid,
+                        resp.status_code,
+                        resp.text[:500],
+                    )
+                    break
+
                 logger.warning(
-                    f"Attempt {attempt}/{self.max_retries} to refund credit for job {job_uuid} encountered error: {exc}"
+                    "Credit refund retryable error. "
+                    "job=%s, attempt=%s/%s, status=%s",
+                    job_uuid,
+                    attempt,
+                    self.max_retries,
+                    resp.status_code,
                 )
+
+            except (httpx.TimeoutException, httpx.TransportError):
+                logger.warning(
+                    "Credit refund network error. "
+                    "job=%s, attempt=%s/%s",
+                    job_uuid,
+                    attempt,
+                    self.max_retries,
+                    exc_info=True,
+                )
+
+            except Exception:
+                logger.exception(
+                    "Unexpected credit refund error. job=%s",
+                    job_uuid,
+                )
+                break
 
             if attempt < self.max_retries:
                 await asyncio.sleep(self.retry_delay)
 
         logger.error(
-            f"Credit refund failed after {self.max_retries} attempts for job {job_uuid}. Requires manual review."
+            "Credit refund unresolved. job=%s, attempts=%s. "
+            "Manual review required.",
+            job_uuid,
+            attempts_made,
         )
+
         return False
+
 
     async def refund_credit(
         self,

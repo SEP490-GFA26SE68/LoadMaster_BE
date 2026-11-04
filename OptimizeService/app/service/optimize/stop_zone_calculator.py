@@ -66,9 +66,24 @@ class StopZoneCalculator:
         num_stops = len(stops)
         num_buffers = max(0, num_stops - 1)
         total_buffer = num_buffers * buffer
-        usable_length = max(0.0, inner_l - total_buffer)
 
-        # 3. Parse stops & calculate volume per stop
+        if not math.isfinite(inner_l) or inner_l <= 0:
+            raise ValueError(
+                "Vehicle inner_l must be positive and finite"
+            )
+
+        if total_buffer >= inner_l:
+            raise ValueError(
+                f"Insufficient vehicle length for stop zones: "
+                f"inner_l={inner_l} cm, "
+                f"total_buffer={total_buffer} cm, "
+                f"stops={num_stops}"
+            )
+
+        usable_length = inner_l - total_buffer
+
+
+# 3. Parse stops & calculate volume per stop
         parsed_stops = []
         for idx, stop in enumerate(stops):
             if isinstance(stop, dict):
