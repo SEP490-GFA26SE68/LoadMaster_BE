@@ -20,6 +20,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -123,5 +124,7 @@ class DevAdminInitializerTest {
         verify(userRepository).save(saved.capture());
         assertEquals("kc-moi", saved.getValue().getKeycloakId());
         assertEquals(UserRole.SYSTEM_ADMIN, saved.getValue().getUserRoleType());
+        // Mật khẩu của DEV_ADMIN_PASSWORD không phải mật khẩu tạm: đăng nhập bằng form của app được ngay
+        verify(keycloakAdminClient).setPassword(eq("kc-moi"), anyString(), eq(false));
     }
 }

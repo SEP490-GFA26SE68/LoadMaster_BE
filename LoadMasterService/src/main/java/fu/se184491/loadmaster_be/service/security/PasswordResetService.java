@@ -196,9 +196,11 @@ public class PasswordResetService {
                 );
 
         try {
+            // Mật khẩu người dùng vừa tự đặt: không phải mật khẩu tạm, đăng nhập được ngay
             keycloakAdminClient.setPassword(
                     user.getKeycloakId(),
-                    newPassword
+                    newPassword,
+                    false
             );
         } catch (Exception ex) {
 

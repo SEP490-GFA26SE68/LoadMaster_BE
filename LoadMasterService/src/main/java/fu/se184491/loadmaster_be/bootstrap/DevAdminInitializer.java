@@ -114,9 +114,11 @@ public class DevAdminInitializer implements ApplicationRunner {
                             adminFullName
                     );
 
+            // Mật khẩu lấy từ DEV_ADMIN_PASSWORD: không bắt đổi, để đăng nhập ngay trên màn của app được
             keycloakAdminClient.setPassword(
                     createdKeycloakUserId,
-                    adminPassword
+                    adminPassword,
+                    false
             );
 
             keycloakAdminClient.assignRealmRole(

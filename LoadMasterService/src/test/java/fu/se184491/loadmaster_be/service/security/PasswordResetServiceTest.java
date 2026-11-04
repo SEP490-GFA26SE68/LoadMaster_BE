@@ -2,6 +2,7 @@ package fu.se184491.loadmaster_be.service.security;
 
 import fu.se184491.loadmaster_be.client.BrevoClient;
 import fu.se184491.loadmaster_be.client.KeycloakAdminClient;
+import fu.se184491.loadmaster_be.entity.account.User;
 import fu.se184491.loadmaster_be.exception.AppException;
 import fu.se184491.loadmaster_be.exception.ErrorCode;
 import fu.se184491.loadmaster_be.repository.account.UserRepository;
@@ -16,8 +17,11 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.ValueOperations;
 
+import java.util.Optional;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
@@ -115,6 +119,17 @@ class PasswordResetServiceTest {
         when(values.getAndDelete("password-reset:token:het-han")).thenReturn(null);
 
         assertCode(ErrorCode.RESET_TOKEN_INVALID, () -> service.resetPassword("het-han", "MatKhauMoi#1"));
-        verify(keycloakAdminClient, never()).setPassword(anyString(), anyString());
+        verify(keycloakAdminClient, never()).setPassword(anyString(), anyString(), anyBoolean());
+    }
+
+    @Test
+    @DisplayName("Đặt mật khẩu mới qua OTP: mật khẩu thật (temporary = false), đăng nhập được ngay")
+    void resetSetsPermanentPassword() {
+        when(values.getAndDelete("password-reset:token:ve-hop-le")).thenReturn(EMAIL);
+        when(userRepository.findByEmail(EMAIL)).thenReturn(Optional.of(User.builder().email(EMAIL).keycloakId("kc-an").build()));
+
+        service.resetPassword("ve-hop-le", "MatKhauMoi#1");
+
+        verify(keycloakAdminClient).setPassword("kc-an", "MatKhauMoi#1", false);
     }
 }

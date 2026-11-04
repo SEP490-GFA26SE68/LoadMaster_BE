@@ -312,6 +312,6 @@ class UserServiceImplTest {
 
         assertEquals(100L, response.userId());
         assertEquals("NewTmp#999", response.temporaryPassword());
-        verify(keycloakAdminClient).setPassword("kc-100", "NewTmp#999");
+        verify(keycloakAdminClient).setPassword("kc-100", "NewTmp#999", true);
     }
 }
