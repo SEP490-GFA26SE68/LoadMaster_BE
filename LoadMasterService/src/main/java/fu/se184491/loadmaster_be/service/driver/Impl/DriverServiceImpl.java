@@ -6,6 +6,7 @@ import fu.se184491.loadmaster_be.constant.optimization.LoadingExecutionStatus;
 import fu.se184491.loadmaster_be.constant.planning.DeliveryRequirementStatus;
 import fu.se184491.loadmaster_be.constant.trip.DeliveryStopStatus;
 import fu.se184491.loadmaster_be.constant.trip.TripStatus;
+import fu.se184491.loadmaster_be.dto.response.driver.ArriveStopResponse;
 import fu.se184491.loadmaster_be.dto.response.driver.CompleteStopResponse;
 import fu.se184491.loadmaster_be.dto.response.driver.ConfirmUnloadResponse;
 import fu.se184491.loadmaster_be.dto.response.driver.CurrentStopResponse;
@@ -361,6 +362,64 @@ public class DriverServiceImpl implements DriverService {
     }
 
     @Override
+    @Transactional
+    public ArriveStopResponse arriveAtStop(Long stopId) {
+        User driver = currentDriver(null);
+        DeliveryStop stop = deliveryStopRepository.findById(stopId)
+                .orElseThrow(() -> new AppException(ErrorCode.DELIVERY_STOP_NOT_FOUND));
+        Trip trip = stop.getTrip();
+        if (trip == null) {
+            throw new AppException(ErrorCode.TRIP_NOT_FOUND);
+        }
+        requireDriverOf(trip, driver);
+        if (trip.getStatus() != TripStatus.IN_TRANSIT) {
+            throw new AppException(ErrorCode.GPS_TRIP_NOT_IN_TRANSIT);
+        }
+        if (stop.getStatus() == DeliveryStopStatus.COMPLETED) {
+            throw new AppException(ErrorCode.DELIVERY_STOP_ALREADY_COMPLETED);
+        }
+        if (stop.getActualArrival() != null) {
+            throw new AppException(ErrorCode.DELIVERY_STOP_ALREADY_ARRIVED);
+        }
+        // Chỉ báo đến được điểm đang tới lượt (điểm chưa hoàn tất đầu tiên theo thứ tự).
+        DeliveryStop currentStop = deliveryStopRepository
+                .findFirstByTripIdAndStatusNotOrderByStopSequenceAsc(trip.getId(), DeliveryStopStatus.COMPLETED)
+                .orElseThrow(() -> new AppException(ErrorCode.NO_PENDING_DELIVERY_STOP));
+        if (!currentStop.getId().equals(stop.getId())) {
+            throw new AppException(ErrorCode.DELIVERY_STOP_NOT_CURRENT);
+        }
+
+        stop.setActualArrival(LocalDateTime.now());
+        stop.setStatus(DeliveryStopStatus.ARRIVED);
+        deliveryStopRepository.save(stop);
+
+        auditLogRepository.save(AuditLog.builder()
+                .companyId(AuditCompany.ofTrip(trip))
+                .actionType("STOP_ARRIVED")
+                .entityName("DeliveryStop")
+                .entityId(stop.getId().toString())
+                .user(driver)
+                .newValues(Map.of(
+                        "stopId", stop.getId(),
+                        "tripId", trip.getId(),
+                        "stopSequence", stop.getStopSequence() != null ? stop.getStopSequence() : 0,
+                        "actualArrival", stop.getActualArrival().toString()
+                ))
+                .createdAt(Instant.now())
+                .build());
+
+        log.info("Driver {} arrived at stop {} of trip {}", driver.getId(), stop.getId(), trip.getId());
+        return ArriveStopResponse.builder()
+                .stopId(stop.getId())
+                .tripId(trip.getId())
+                .stopSequence(stop.getStopSequence())
+                .stopName(stop.getStopName())
+                .status(stop.getStatus().name())
+                .actualArrival(stop.getActualArrival())
+                .build();
+    }
+
+    @Override
     @Transactional(readOnly = true)
     public Trip requireOwnTrip(String tripIdOrCode) {
         User driver = currentDriver(null);
@@ -395,6 +454,8 @@ public class DriverServiceImpl implements DriverService {
                 .stopCount((int) deliveryStopRepository.countByTripId(trip.getId()))
                 .departureTime(trip.getDepartureTime())
                 .status(trip.getStatus() != null ? trip.getStatus().name() : null)
+                .loadingCompleted(loadingExecutionRepository
+                        .existsByLoadPlanJobTripIdAndStatus(trip.getId(), LoadingExecutionStatus.COMPLETED))
                 .build();
     }
 

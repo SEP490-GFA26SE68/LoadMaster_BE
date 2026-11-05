@@ -221,6 +221,7 @@ public enum ErrorCode {
     DEVIATION_ALREADY_RECORDED("Sai lệch cho vị trí kiện hàng này đã được ghi nhận", HttpStatus.BAD_REQUEST),
     INVALID_SEQUENCE_ORDER("Thứ tự bốc xếp không hợp lệ, vui lòng xử lý các kiện hàng trước", HttpStatus.BAD_REQUEST),
     INCOMPLETE_LOADING("Quá trình bốc xếp chưa hoàn tất", HttpStatus.BAD_REQUEST),
+    TRIP_NOT_LOADING("Chuyến không ở trạng thái Đang xếp hàng", HttpStatus.CONFLICT),
 
     // -------------------------------------------------------------------------
     // Driver & Unloading errors
@@ -230,6 +231,9 @@ public enum ErrorCode {
     DUPLICATE_UNLOAD("Kiện hàng này đã được dỡ trước đó", HttpStatus.CONFLICT),
     WRONG_DELIVERY_STOP("Kiện hàng không thuộc điểm dừng hiện tại", HttpStatus.BAD_REQUEST),
     INCOMPLETE_STOP_UNLOAD("Điểm dừng chưa hoàn tất dỡ hàng", HttpStatus.BAD_REQUEST),
+    DELIVERY_STOP_ALREADY_COMPLETED("Điểm giao đã hoàn tất", HttpStatus.CONFLICT),
+    DELIVERY_STOP_ALREADY_ARRIVED("Đã báo đến điểm giao này trước đó", HttpStatus.CONFLICT),
+    DELIVERY_STOP_NOT_CURRENT("Chưa tới lượt điểm giao này: còn điểm giao trước chưa hoàn tất", HttpStatus.CONFLICT),
 
     // -------------------------------------------------------------------------
     // Subscription & Payment errors (Sprint 8)

@@ -3,6 +3,7 @@ package fu.se184491.loadmaster_be.controller.driver;
 import fu.se184491.loadmaster_be.dto.ApiResponse;
 import fu.se184491.loadmaster_be.dto.request.monitoring.DriverLocationRequest;
 import fu.se184491.loadmaster_be.dto.request.monitoring.ReportExceptionRequest;
+import fu.se184491.loadmaster_be.dto.response.driver.ArriveStopResponse;
 import fu.se184491.loadmaster_be.dto.response.driver.CompleteStopResponse;
 import fu.se184491.loadmaster_be.dto.response.driver.ConfirmUnloadResponse;
 import fu.se184491.loadmaster_be.dto.response.driver.CurrentStopResponse;
@@ -64,6 +65,14 @@ public class DriverController {
             @RequestParam(value = "driverId", required = false) Long driverId) {
         ConfirmUnloadResponse response = driverService.confirmUnload(id, driverId);
         return ResponseEntity.ok(ApiResponse.success("Xác nhận dỡ kiện hàng thành công", response));
+    }
+
+    @PostMapping("/stops/{id}/arrive")
+    @Operation(summary = "Arrive at delivery stop", description = "Driver reports arrival at the current stop of an IN_TRANSIT trip; records the actual arrival time")
+    public ResponseEntity<ApiResponse<ArriveStopResponse>> arriveAtStop(
+            @PathVariable("id") Long id) {
+        ArriveStopResponse response = driverService.arriveAtStop(id);
+        return ResponseEntity.ok(ApiResponse.success("Đã ghi nhận đến điểm giao", response));
     }
 
     @PostMapping("/stops/{id}/complete")
