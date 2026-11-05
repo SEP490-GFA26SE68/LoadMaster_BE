@@ -98,7 +98,9 @@ class LoadPlanService:
             new_values={"approved": True, "approved_by": user_id_int},
         )
         db.add(audit)
-        db.flush()
+        # get_db() chỉ đóng phiên, không tự commit: thiếu commit thì lần duyệt bị huỷ khi phiên đóng.
+        db.commit()
+        db.refresh(plan)
 
         return plan
 
