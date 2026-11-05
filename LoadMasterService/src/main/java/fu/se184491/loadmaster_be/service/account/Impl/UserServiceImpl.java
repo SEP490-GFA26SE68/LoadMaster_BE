@@ -285,7 +285,8 @@ public class UserServiceImpl implements UserService {
 
             keycloakAdminClient.setPassword(
                     keycloakUserId,
-                    temporaryPassword
+                    temporaryPassword,
+                    true
             );
 
             keycloakAdminClient.assignRealmRole(
@@ -637,7 +638,7 @@ public class UserServiceImpl implements UserService {
         User targetUser = getScopedTargetUser(currentUser, id);
 
         String temporaryPassword = temporaryPasswordGenerator.generate();
-        keycloakAdminClient.setPassword(targetUser.getKeycloakId(), temporaryPassword);
+        keycloakAdminClient.setPassword(targetUser.getKeycloakId(), temporaryPassword, true);
 
         return new ResetPasswordResponse(
                 targetUser.getId(),

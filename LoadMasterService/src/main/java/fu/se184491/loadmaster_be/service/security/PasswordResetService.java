@@ -3,6 +3,8 @@ package fu.se184491.loadmaster_be.service.security;
 import fu.se184491.loadmaster_be.client.BrevoClient;
 import fu.se184491.loadmaster_be.client.KeycloakAdminClient;
 import fu.se184491.loadmaster_be.entity.account.User;
+import fu.se184491.loadmaster_be.exception.AppException;
+import fu.se184491.loadmaster_be.exception.ErrorCode;
 import fu.se184491.loadmaster_be.repository.account.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.redis.core.StringRedisTemplate;
@@ -53,9 +55,7 @@ public class PasswordResetService {
 
         // 1. Không cho resend liên tục trong 60 giây
         if (Boolean.TRUE.equals(redisTemplate.hasKey(cooldownKey))) {
-            throw new IllegalStateException(
-                    "Vui lòng chờ trước khi yêu cầu mã OTP mới"
-            );
+            throw new AppException(ErrorCode.OTP_RESEND_COOLDOWN);
         }
 
         // 2. Rate limit: tối đa 3 request / 15 phút / email
@@ -70,9 +70,7 @@ public class PasswordResetService {
         }
 
         if (requestCount != null && requestCount > MAX_REQUESTS) {
-            throw new IllegalStateException(
-                    "Bạn đã yêu cầu OTP quá nhiều lần. Vui lòng thử lại sau"
-            );
+            throw new AppException(ErrorCode.OTP_REQUEST_LIMIT_EXCEEDED);
         }
 
         // 3. Generate OTP 6 số
@@ -124,9 +122,7 @@ public class PasswordResetService {
         String storedOtp = redisTemplate.opsForValue().get(otpKey);
 
         if (storedOtp == null) {
-            throw new IllegalStateException(
-                    "OTP đã hết hạn hoặc không hợp lệ"
-            );
+            throw new AppException(ErrorCode.OTP_EXPIRED);
         }
         String attemptsValue =
                 redisTemplate.opsForValue().get(attemptsKey);
@@ -139,9 +135,7 @@ public class PasswordResetService {
         if (attempts >= MAX_VERIFY_ATTEMPTS) {
             invalidateOtp(email);
 
-            throw new IllegalStateException(
-                    "Bạn đã nhập sai OTP quá nhiều lần"
-            );
+            throw new AppException(ErrorCode.OTP_ATTEMPTS_EXCEEDED);
         }
 
         //otp sai
@@ -159,14 +153,10 @@ public class PasswordResetService {
 
                 invalidateOtp(email);
 
-                throw new IllegalStateException(
-                        "Bạn đã nhập sai OTP quá nhiều lần"
-                );
+                throw new AppException(ErrorCode.OTP_ATTEMPTS_EXCEEDED);
             }
 
-            throw new IllegalStateException(
-                    "OTP không chính xác"
-            );
+            throw new AppException(ErrorCode.OTP_INCORRECT);
         }
 
         // OTP đúng => OTP chỉ dùng một lần
@@ -196,23 +186,21 @@ public class PasswordResetService {
                         );
 
         if (email == null) {
-            throw new IllegalStateException(
-                    "Reset token đã hết hạn hoặc không hợp lệ"
-            );
+            throw new AppException(ErrorCode.RESET_TOKEN_INVALID);
         }
 
         User user = userRepository
                 .findByEmail(email)
                 .orElseThrow(() ->
-                        new IllegalStateException(
-                                "Không tìm thấy người dùng"
-                        )
+                        new AppException(ErrorCode.USER_NOT_FOUND)
                 );
 
         try {
+            // Mật khẩu người dùng vừa tự đặt: không phải mật khẩu tạm, đăng nhập được ngay
             keycloakAdminClient.setPassword(
                     user.getKeycloakId(),
-                    newPassword
+                    newPassword,
+                    false
             );
         } catch (Exception ex) {
 

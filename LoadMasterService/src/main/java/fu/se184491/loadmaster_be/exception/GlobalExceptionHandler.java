@@ -63,6 +63,7 @@ public class GlobalExceptionHandler {
                 .status(errorCode.getHttpStatus())
                 .body(ApiResponse.<Void>builder()
                         .success(false)
+                        .code(errorCode.name())
                         .message(ex.getMessage())
                         .data(null)
                         .build());

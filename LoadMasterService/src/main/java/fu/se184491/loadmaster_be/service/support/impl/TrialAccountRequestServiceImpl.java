@@ -221,7 +221,7 @@ public class TrialAccountRequestServiceImpl implements TrialAccountRequestServic
                 newlyCreatedInKeycloak = true;
             }
 
-            keycloakAdminClient.setPassword(keycloakUserId, temporaryPassword);
+            keycloakAdminClient.setPassword(keycloakUserId, temporaryPassword, true);
             keycloakAdminClient.assignRealmRole(keycloakUserId, UserRole.ADMIN.name());
 
             User user = User.builder()
