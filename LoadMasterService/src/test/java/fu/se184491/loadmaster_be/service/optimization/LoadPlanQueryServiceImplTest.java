@@ -7,6 +7,7 @@ import fu.se184491.loadmaster_be.dto.response.optimization.TripLoadPlansResponse
 import fu.se184491.loadmaster_be.dto.response.optimization.UnplacedPackageResponse;
 import fu.se184491.loadmaster_be.entity.account.User;
 import fu.se184491.loadmaster_be.entity.trip.Trip;
+import fu.se184491.loadmaster_be.constant.trip.TripStatus;
 import fu.se184491.loadmaster_be.exception.AppException;
 import fu.se184491.loadmaster_be.exception.ErrorCode;
 import fu.se184491.loadmaster_be.helpers.CurrentUserService;
@@ -134,6 +135,7 @@ class LoadPlanQueryServiceImplTest {
         User dispatcher = new User();
         dispatcher.setId(42L);
         when(currentUserService.getCurrentUser()).thenReturn(dispatcher);
+        when(tripRepository.findById(10L)).thenReturn(Optional.of(tripIn(TripStatus.PLANNED)));
 
         LoadPlanDetailResponse result = service.approvePlan(5L);
 
@@ -151,5 +153,24 @@ class LoadPlanQueryServiceImplTest {
                 .extracting(LoadPlanQueryServiceImplTest::codeOf)
                 .isEqualTo(ErrorCode.PLAN_ALREADY_APPROVED);
         verify(optimizationClient, never()).approvePlan(anyLong(), anyLong());
+    }
+
+    @Test
+    void planOfATripPastPlanningCannotBeApproved() {
+        when(readRepository.findPlan(5L))
+                .thenReturn(Optional.of(new PlanWithCompany(plan(5L, false), COMPANY)));
+        when(tripRepository.findById(10L)).thenReturn(Optional.of(tripIn(TripStatus.LOADING)));
+
+        assertThatThrownBy(() -> service.approvePlan(5L))
+                .isInstanceOf(AppException.class)
+                .extracting(LoadPlanQueryServiceImplTest::codeOf)
+                .isEqualTo(ErrorCode.PLAN_TRIP_NOT_PLANNED);
+        verify(optimizationClient, never()).approvePlan(anyLong(), anyLong());
+    }
+
+    private static Trip tripIn(TripStatus status) {
+        Trip trip = new Trip();
+        trip.setStatus(status);
+        return trip;
     }
 }
