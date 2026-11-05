@@ -74,3 +74,5 @@ class ProblemRequest(BaseModel):
     objective: str = "MAX_VOLUME_UTIL"  # "MAX_VOLUME_UTIL" | "AXLE_BALANCE" | "MIN_HEIGHT"
     time_limit_sec: int = 60
     seed: Optional[int] = None
+    # EP_DBLF | EP_DBLF_GA | EP_DBLF_GA_AI — ULTIMATE dùng Lumo khi có trọng số
+    algorithm_name: Optional[str] = None

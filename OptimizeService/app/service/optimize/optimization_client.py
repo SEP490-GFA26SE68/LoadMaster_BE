@@ -15,6 +15,7 @@ from app.dto.optimization.engine.engine_response import (
 from app.service.auth.keycloak_token_provider import KeycloakTokenProvider
 
 
+from app.ml.lumo_scorer import get_lumo_scorer, uses_lumo
 from app.service.optimize.stop_zone_calculator import StopZoneCalculator
 from app.service.optimize.constraint_engine import ConstraintEngine
 from app.service.optimize.unload_feasibility_validator import (
@@ -87,8 +88,12 @@ class OptimizationClient:
         """
         Nâng cấp S5b-04: Zone-aware 3D Packing Heuristic với Extreme Points (EP)
         và ConstraintEngine (Fragility, Stacking, Support Area, Rotation, COG, Axle Load).
+        Gói ULTIMATE (EP_DBLF_GA_AI): Lumo-R1.1 chọn ứng viên nếu load được trọng số; không thì heuristic.
         """
         start_time = time.time()
+        lumo = None
+        if uses_lumo(problem.algorithm_name):
+            lumo = get_lumo_scorer()
         vt = problem.vehicle
         placements: list[PlacementData] = []
         unplaced: list[UnplacedData] = []
@@ -212,8 +217,9 @@ class OptimizationClient:
 
 # HC-09: Khẩu độ cửa sau theo trục Y.
 # Cửa nằm giữa chiều rộng thùng xe.
+            door_w = float(vt.door_w) if vt.door_w else float(vt.inner_w)
             door_y_min = (
-                float(vt.inner_w) - float(vt.door_w)
+                float(vt.inner_w) - door_w
              ) / 2.0
 
             ep_list = [
@@ -315,6 +321,7 @@ class OptimizationClient:
                 chosen_placement = None
                 last_violations: list[str] = []
                 best_candidate_score = float("inf")
+                valid_candidates: list[PlacementData] = []
 
                 # Sắp xếp EP theo DBLF: x tăng dần (sâu), z tăng dần (dưới đáy), y tăng dần (trái)
                 # Ưu tiên Extreme Points gần tâm xe.
@@ -367,6 +374,7 @@ class OptimizationClient:
                         violations = ConstraintEngine.check_all(candidate, context)
 
                         if not violations:
+                            valid_candidates.append(candidate)
                             score = candidate_cog_score(candidate)
 
                         # Ưu tiên placement trên sàn trước,
@@ -380,6 +388,21 @@ class OptimizationClient:
                             last_violations = [
                                 v.violation_code for v in violations
                             ]
+
+                if lumo is not None and valid_candidates:
+                    remaining = sum(1 for zone_pkgs in stops_dict.values() for _ in zone_pkgs) - len(placements)
+                    picked = lumo.pick(
+                        vt,
+                        packages_map,
+                        placements,
+                        valid_candidates,
+                        max(remaining - 1, 0),
+                        len(problem.packages),
+                        zone_start,
+                        zone_end,
+                    )
+                    if picked is not None:
+                        chosen_placement = valid_candidates[picked]
 
                 # Nếu không đặt được trong zone (zone đầy), thử fallback xếp ở vị trí khác trong xe
                 is_rehandling = False

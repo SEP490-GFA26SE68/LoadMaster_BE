@@ -28,6 +28,9 @@ class Settings(BaseSettings):
     OPTIMIZATION_ENGINE_URL: Optional[str] = None
     OPTIMIZATION_ENGINE_TIMEOUT_SEC: int = 60
 
+    # Trọng số Lumo-R1.1 (PCTPolicy) cho gói ULTIMATE / EP_DBLF_GA_AI. Thiếu file hoặc thiếu torch thì solver dùng heuristic.
+    LUMO_MODEL_PATH: str = "app/ml/models/Lumo-R1.1.pt"
+
     LOADMASTER_SERVICE_URL: str = "http://localhost:8080"
     REDIS_URL: str = "redis://localhost:6379"
 

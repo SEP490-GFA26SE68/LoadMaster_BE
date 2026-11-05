@@ -1,5 +1,6 @@
 fastapi
 uvicorn[standard]
+# PyTorch: gói ULTIMATE / EP_DBLF_GA_AI load Lumo-R1.1; không có thì solver dùng heuristic.
 sqlalchemy
 psycopg2-binary
 pydantic-settings
