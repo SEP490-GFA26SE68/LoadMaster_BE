@@ -44,6 +44,7 @@ public class PaymentGatewayService {
                 .status(PaymentStatus.PENDING)
                 .payload("{\"orderInfo\":\"" + (orderInfo != null ? orderInfo : "") + "\"}")
                 .build();
+        txn.prePersist();
 
         txn = paymentTransactionRepository.save(txn);
         log.info("Created pending PaymentTransaction id={} gatewayTxnId={} for company={}",

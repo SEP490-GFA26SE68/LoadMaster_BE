@@ -1,0 +1,612 @@
+{
+  "info": {
+    "_postman_id": "8e44c2d0-1122-4f99-9a88-loadmaster2026",
+    "name": "LoadMaster - Test User Timestamp, RBAC & Company Agreement Flow",
+    "description": "Bộ Postman test đầy đủ:\n0. Lấy Token Keycloak (client_id: loadmaster-web)\n1. Đăng ký & Duyệt Dùng Thử 3 Ngày (/api/trial-requests) -> Tạo Company, User ADMIN, CompanyAgreement hạn 3 ngày & Bắn Email qua Brevo\n2. Ký Thỏa Thuận Dùng Thử 3 Ngày (/api/agreements) & Phân quyền Tạo Account (/api/users)\n3. Kiểm tra Format createdAt & updatedAt (yyyy-MM-dd HH:mm:ss)",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8080",
+      "type": "string"
+    },
+    {
+      "key": "keycloakUrl",
+      "value": "http://localhost:8180",
+      "type": "string"
+    },
+    {
+      "key": "sysAdminToken",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "sysManagerToken",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "companyAdminToken",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "trialRequestId",
+      "value": "1",
+      "type": "string"
+    },
+    {
+      "key": "companyId",
+      "value": "1",
+      "type": "string"
+    },
+    {
+      "key": "createdUserId",
+      "value": "13",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "0. Auth (Lấy Token từ Keycloak)",
+      "item": [
+        {
+          "name": "0.1 Login SYSTEM_ADMIN (admin@loadmaster.local)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const res = pm.response.json();",
+                  "if (res.access_token) {",
+                  "    pm.collectionVariables.set('sysAdminToken', res.access_token);",
+                  "    pm.environment.set('sys_admin_token', res.access_token);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/x-www-form-urlencoded"
+              }
+            ],
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                { "key": "grant_type", "value": "password", "type": "text" },
+                { "key": "client_id", "value": "loadmaster-web", "type": "text" },
+                { "key": "username", "value": "admin@loadmaster.local", "type": "text" },
+                { "key": "password", "value": "Admin@12345", "type": "text" }
+              ]
+            },
+            "url": {
+              "raw": "{{keycloakUrl}}/realms/loadmaster/protocol/openid-connect/token",
+              "host": ["{{keycloakUrl}}"],
+              "path": ["realms", "loadmaster", "protocol", "openid-connect", "token"]
+            }
+          }
+        },
+        {
+          "name": "0.2 Login SYSTEM_MANAGER (sysmanager@loadmaster.vn)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const res = pm.response.json();",
+                  "if (res.access_token) {",
+                  "    pm.collectionVariables.set('sysManagerToken', res.access_token);",
+                  "    pm.environment.set('sys_manager_token', res.access_token);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/x-www-form-urlencoded"
+              }
+            ],
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                { "key": "grant_type", "value": "password", "type": "text" },
+                { "key": "client_id", "value": "loadmaster-web", "type": "text" },
+                { "key": "username", "value": "sysmanager@loadmaster.vn", "type": "text" },
+                { "key": "password", "value": "Admin@12345", "type": "text" }
+              ]
+            },
+            "url": {
+              "raw": "{{keycloakUrl}}/realms/loadmaster/protocol/openid-connect/token",
+              "host": ["{{keycloakUrl}}"],
+              "path": ["realms", "loadmaster", "protocol", "openid-connect", "token"]
+            }
+          }
+        },
+        {
+          "name": "0.3 Login COMPANY_ADMIN (companyadmin@loadmaster.vn)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const res = pm.response.json();",
+                  "if (res.access_token) {",
+                  "    pm.collectionVariables.set('companyAdminToken', res.access_token);",
+                  "    pm.environment.set('company_admin_token', res.access_token);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/x-www-form-urlencoded"
+              }
+            ],
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                { "key": "grant_type", "value": "password", "type": "text" },
+                { "key": "client_id", "value": "loadmaster-web", "type": "text" },
+                { "key": "username", "value": "companyadmin@loadmaster.vn", "type": "text" },
+                { "key": "password", "value": "Admin@12345", "type": "text" }
+              ]
+            },
+            "url": {
+              "raw": "{{keycloakUrl}}/realms/loadmaster/protocol/openid-connect/token",
+              "host": ["{{keycloakUrl}}"],
+              "path": ["realms", "loadmaster", "protocol", "openid-connect", "token"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "1. Đăng ký & Duyệt Dùng Thử 3 Ngày (/api/trial-requests)",
+      "item": [
+        {
+          "name": "1.1 Tạo yêu cầu đăng ký dùng thử (Điền email thật của bạn vào đây)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const res = pm.response.json();",
+                  "if (res && res.id) {",
+                  "    pm.collectionVariables.set('trialRequestId', res.id);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{sysAdminToken}}", "type": "string" }]
+            },
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"fullName\": \"Nguyễn Văn Dùng Thử\",\n  \"email\": \"nhap_email_that_cua_ban@gmail.com\",\n  \"phoneNumber\": \"0912345678\",\n  \"companyName\": \"Công ty Vận Tải Trial 3 Ngày\",\n  \"companyCode\": \"COMP-TRIAL3D\",\n  \"taxCode\": \"0108889991\",\n  \"interestedPlanId\": 1,\n  \"note\": \"Đăng ký dùng thử 3 ngày\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/trial-requests",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "trial-requests"]
+            }
+          }
+        },
+        {
+          "name": "1.2 Xem danh sách yêu cầu dùng thử",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{sysAdminToken}}", "type": "string" }]
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/trial-requests?page=0&size=10",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "trial-requests"],
+              "query": [
+                { "key": "page", "value": "0" },
+                { "key": "size", "value": "10" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "1.3 [SYSTEM_ADMIN] Duyệt yêu cầu dùng thử -> Tạo Company + Account ADMIN + Thỏa thuận 3 ngày + Bắn Email Brevo",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const res = pm.response.json();",
+                  "if (res && res.createdCompanyId) {",
+                  "    pm.collectionVariables.set('companyId', res.createdCompanyId);",
+                  "    pm.environment.set('companyId', res.createdCompanyId);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{sysAdminToken}}", "type": "string" }]
+            },
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"trialDays\": 3,\n  \"trialCredits\": 1000,\n  \"note\": \"Duyệt cấp tài khoản dùng thử và yêu cầu ký thỏa thuận trong 3 ngày\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/trial-requests/{{trialRequestId}}/approve",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "trial-requests", "{{trialRequestId}}", "approve"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "2. Ký Thỏa Thuận Dùng Thử 3 Ngày (/api/agreements) & Phân quyền Tạo Account (/api/users)",
+      "item": [
+        {
+          "name": "2.1 [Company Admin] Xem thỏa thuận dùng thử 3 ngày của công ty",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{companyAdminToken}}", "type": "string" }]
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/agreements/my-agreement",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "agreements", "my-agreement"]
+            }
+          }
+        },
+        {
+          "name": "2.2 [Company Admin] Ký xác nhận thỏa thuận điện tử (Click nút Ký)",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{companyAdminToken}}", "type": "string" }]
+            },
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"confirmTerms\": true,\n  \"signerName\": \"Nguyễn Văn Đại Diện\",\n  \"signerPhone\": \"0912345678\",\n  \"signerEmail\": \"nhap_email_cua_ban@gmail.com\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/agreements/sign",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "agreements", "sign"]
+            }
+          }
+        },
+        {
+          "name": "2.3 [SYSTEM_ADMIN] Kiểm tra trạng thái thỏa thuận của công ty (SIGNED)",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{sysAdminToken}}", "type": "string" }]
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/agreements/company/{{companyId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "agreements", "company", "{{companyId}}"]
+            }
+          }
+        },
+        {
+          "name": "2.4 [SYSTEM_ADMIN] Cấp tài khoản ADMIN cho công ty + Bắn Email qua Brevo (201 Created)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const res = pm.response.json();",
+                  "if (res.data && res.data.user && res.data.user.id) {",
+                  "    pm.collectionVariables.set('createdUserId', res.data.user.id);",
+                  "    pm.environment.set('createdUserId', res.data.user.id);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{sysAdminToken}}", "type": "string" }]
+            },
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"company-admin-new@loadmaster.vn\",\n  \"fullName\": \"Nguyễn Văn Đại Diện\",\n  \"phoneNumber\": \"0912345678\",\n  \"companyId\": {{companyId}},\n  \"role\": \"ADMIN\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/users",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "users"]
+            }
+          }
+        },
+        {
+          "name": "2.5 [TEST CHẶN] SYSTEM_ADMIN cố tình tạo role nhỏ trong công ty (DISPATCHER -> 403/401 UNAUTHORIZED)",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{sysAdminToken}}", "type": "string" }]
+            },
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"dispatcher-blocked@loadmaster.vn\",\n  \"fullName\": \"Nhân viên Điều phối\",\n  \"phoneNumber\": \"0909999999\",\n  \"companyId\": {{companyId}},\n  \"role\": \"DISPATCHER\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/users",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "users"]
+            }
+          }
+        },
+        {
+          "name": "2.6 [TEST CHẶN] SYSTEM_MANAGER cố tình tạo tài khoản ADMIN công ty (-> 403 Forbidden)",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{sysManagerToken}}", "type": "string" }]
+            },
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"manager-try-create@loadmaster.vn\",\n  \"fullName\": \"Admin Bị Chặn\",\n  \"phoneNumber\": \"0908888888\",\n  \"companyId\": {{companyId}},\n  \"role\": \"ADMIN\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/users",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "users"]
+            }
+          }
+        },
+        {
+          "name": "2.7 [COMPANY_ADMIN] Tự tạo các role nhỏ nội bộ công ty (DISPATCHER -> 201 Created)",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{companyAdminToken}}", "type": "string" }]
+            },
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"dispatcher-internal@loadmaster.vn\",\n  \"fullName\": \"Điều Phối Viên Nội Bộ\",\n  \"phoneNumber\": \"0907777777\",\n  \"companyId\": {{companyId}},\n  \"role\": \"DISPATCHER\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/users",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "users"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "3. Seam 1 - Kiểm tra Format createdAt & updatedAt (yyyy-MM-dd HH:mm:ss)",
+      "item": [
+        {
+          "name": "3.1 Danh sách Users (Kiểm tra createdAt format yyyy-MM-dd HH:mm:ss)",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{sysAdminToken}}", "type": "string" }]
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/users?page=0&size=20",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "users"],
+              "query": [
+                { "key": "page", "value": "0" },
+                { "key": "size", "value": "20" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "3.2 Cập nhật User (Kiểm tra updatedAt thay đổi >= createdAt)",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{sysAdminToken}}", "type": "string" }]
+            },
+            "method": "PUT",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"fullName\": \"Updated Full Name\",\n  \"phoneNumber\": \"0901234567\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/users/{{createdUserId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "users", "{{createdUserId}}"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "4. Xóa mềm (Soft Delete -> INACTIVE) & Phân quyền DELETE /api/users/{id}",
+      "item": [
+        {
+          "name": "4.1 [TEST CHẶN] SYSTEM_ADMIN cố tình xóa nhân viên cấp dưới công ty (id=15 -> UNAUTHORIZED)",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{sysAdminToken}}", "type": "string" }]
+            },
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/users/15",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "users", "15"]
+            }
+          }
+        },
+        {
+          "name": "4.2 [COMPANY_ADMIN] Xóa mềm nhân viên cấp dưới cùng công ty (id=15 -> 200 OK, status=INACTIVE)",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{companyAdminToken}}", "type": "string" }]
+            },
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/users/15",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "users", "15"]
+            }
+          }
+        },
+        {
+          "name": "4.3 [COMPANY_ADMIN] Kiểm tra lại nhân viên id=15 (Vẫn còn trong DB với status=INACTIVE)",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{companyAdminToken}}", "type": "string" }]
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/users?page=0&size=20&status=INACTIVE",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "users"],
+              "query": [
+                { "key": "page", "value": "0" },
+                { "key": "size", "value": "20" },
+                { "key": "status", "value": "INACTIVE" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "4.4 [COMPANY_ADMIN] Cập nhật thông tin & đổi Role nhân viên cùng công ty (id=15: DISPATCHER -> MANAGER)",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{companyAdminToken}}", "type": "string" }]
+            },
+            "method": "PUT",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"fullName\": \"Nguyễn Văn Quản Lý (Đã thăng chức)\",\n  \"phoneNumber\": \"0988777999\",\n  \"role\": \"MANAGER\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/users/15",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "users", "15"]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

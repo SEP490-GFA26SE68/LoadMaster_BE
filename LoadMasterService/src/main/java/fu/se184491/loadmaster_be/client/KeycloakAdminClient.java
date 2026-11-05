@@ -3,12 +3,10 @@ package fu.se184491.loadmaster_be.client;
 import fu.se184491.loadmaster_be.dto.request.account.KeycloakRoleRepresentation;
 import fu.se184491.loadmaster_be.dto.request.account.KeycloakUserRepresentation;
 import fu.se184491.loadmaster_be.service.security.ServiceTokenProvider;
-import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
-
 
 import java.net.URI;
 import java.util.List;
@@ -42,7 +40,6 @@ public class KeycloakAdminClient {
         body.put("email", email);
         body.put("emailVerified", true);
         body.put("enabled", true);
-        body.put("firstName", (fullName != null && !fullName.trim().isEmpty()) ? fullName.trim() : email);
 
         ResponseEntity<Void> response =
                 keycloakAdminRestClient
