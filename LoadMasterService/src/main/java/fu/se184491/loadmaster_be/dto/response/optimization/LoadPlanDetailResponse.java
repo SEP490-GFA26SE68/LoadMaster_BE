@@ -24,7 +24,10 @@ public class LoadPlanDetailResponse {
     private Long jobId;
     private String jobUuid;
     private String jobStatus;
+    /** Mục tiêu của phương án (MAX_VOLUME | AXLE_BALANCE | MIN_REHANDLING); phương án cũ: mục tiêu của job. */
     private String objective;
+    /** Nhãn phương án ứng viên của lần chạy ("A" | "B" | "C"); phương án cũ và bản chạy lại: null. */
+    private String candidateLabel;
     private String algorithmName;
     private Long computationMs;
     private String planName;

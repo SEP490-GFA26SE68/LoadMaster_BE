@@ -43,28 +43,80 @@ class OptimizationResultPersistenceService:
         plan_name: Optional[str] = None,
     ) -> LoadPlan:
         """
-        Lưu kết quả xếp hàng từ EngineOptimizationResponse:
-          1. Tìm OptimizationJob tương ứng
-          2. Thực hiện trong transaction / savepoint
-          3. Insert LoadPlan
-          4. Insert danh sách PackagePlacement
-          5. Insert danh sách UnplacedPackage
+        Lưu kết quả xếp hàng từ EngineOptimizationResponse trong một savepoint:
+          - Kết quả có phương án ứng viên (A · B · C) và ít nhất một phương án xếp được kiện:
+            lưu mỗi phương án một LoadPlan cùng job, theo thứ tự A, B, C, kèm mục tiêu và nhãn.
+          - Ngược lại (engine ngoài, hoặc cả ba không xếp được kiện nào): một LoadPlan như cũ,
+            không nhãn, giữ lý do của các kiện không xếp được.
+        Trả LoadPlan đầu tiên đã lưu.
         """
         job = self.job_service.get_job(str(job_uuid), db)
+        base_name = plan_name or f"Plan_{str(job.job_uuid)[:8]}"
+
+        candidates = list(result.candidates or [])
+        if candidates and any(c.result.placements for c in candidates):
+            entries = [
+                (c.result, f"{base_name}_{c.label}", c.objective, c.label)
+                for c in candidates
+            ]
+        else:
+            entries = [(result, base_name, None, None)]
+
+        savepoint = db.begin_nested()
+        try:
+            plans: List[LoadPlan] = []
+            for index, (plan_result, name, objective, label) in enumerate(entries):
+                plans.append(
+                    self._write_plan(
+                        job,
+                        plan_result,
+                        db,
+                        plan_name=name,
+                        objective=objective,
+                        candidate_label=label,
+                        reuse_empty=index == 0,
+                    )
+                )
+            savepoint.commit()
+            logger.info(
+                "Successfully persisted %d LoadPlan(s) %s for job %s",
+                len(plans),
+                [p.id for p in plans],
+                job_uuid,
+            )
+            return plans[0]
+
+        except Exception as exc:
+            savepoint.rollback()
+            logger.error(f"Failed to persist optimization result for job {job_uuid}: {exc}")
+            raise exc
+
+    def _write_plan(
+        self,
+        job,
+        result: EngineOptimizationResponse,
+        db: Session,
+        plan_name: str,
+        objective: Optional[str],
+        candidate_label: Optional[str],
+        reuse_empty: bool,
+    ) -> LoadPlan:
+        """Ghi một LoadPlan kèm kiện đã xếp và kiện không xếp được (trong savepoint của save)."""
         logger.info(
-            "Optimization persistence: job=%s, placements=%d, unplaced=%d",
-            job_uuid,
+            "Optimization persistence: job=%s, plan=%s, placements=%d, unplaced=%d",
+            job.job_uuid,
+            candidate_label or "-",
             len(result.placements or []),
             len(result.unplaced or []),
         )
 
         for item in result.unplaced or []:
             logger.info(
-            "Unplaced package: package_id=%s, reason=%s, violations=%s",
-            item.package_id,
-            item.reason,
-            item.violated_constraints,
-        )
+                "Unplaced package: package_id=%s, reason=%s, violations=%s",
+                item.package_id,
+                item.reason,
+                item.violated_constraints,
+            )
 
         vol_util = 0.0
         wt_util = 0.0
@@ -93,33 +145,15 @@ class OptimizationResultPersistenceService:
             if result.metrics.rehandling_count is not None:
                 rehandling_count = int(result.metrics.rehandling_count)
 
-        resolved_plan_name = plan_name or f"Plan_{str(job.job_uuid)[:8]}"
+        plan = None
 
-        savepoint = db.begin_nested()
-        try:
-    # Tìm các LoadPlan hiện có của Job.
-            existing_plans = self.load_plan_repository.find_by_job_id(
-                job.id, db
-            )
-
-            plan = None
-
-# Chỉ tái sử dụng khi Job có đúng một LoadPlan.
+        # Chỉ tái sử dụng khi Job có đúng một LoadPlan rỗng, và chỉ cho plan đầu tiên.
+        if reuse_empty:
+            existing_plans = self.load_plan_repository.find_by_job_id(job.id, db)
             if len(existing_plans) == 1:
                 existing = existing_plans[0]
-
-                existing_placements = (
-                    self.package_placement_repository.find_by_plan_id(
-                        existing.id, db
-                    )           
-                )
-
-                existing_unplaced = (
-                    self.unplaced_package_repository.find_by_plan_id(
-                        existing.id, db
-                    )
-                )
-
+                existing_placements = self.package_placement_repository.find_by_plan_id(existing.id, db)
+                existing_unplaced = self.unplaced_package_repository.find_by_plan_id(existing.id, db)
                 if (
                     existing.approved is False
                     and existing.packed_items_count == 0
@@ -128,88 +162,83 @@ class OptimizationResultPersistenceService:
                 ):
                     plan = existing
 
-            if plan is None:
-                plan = LoadPlan(
-                    job_id=job.id,
-                    approved=False,
+        if plan is None:
+            plan = LoadPlan(
+                job_id=job.id,
+                approved=False,
+            )
+            self.load_plan_repository.create(plan, db)
+
+        # Đồng bộ thông tin với kết quả solver.
+        plan.plan_name = plan_name
+        plan.objective = objective
+        plan.candidate_label = candidate_label
+        plan.packed_items_count = packed_count
+        plan.volume_utilization = vol_util
+        plan.weight_utilization = wt_util
+        plan.cog_x = cog_x
+        plan.cog_y = cog_y
+        plan.cog_z = cog_z
+        plan.front_axle_load = front_axle_load
+        plan.rear_axle_load = rear_axle_load
+        plan.rehandling_count = rehandling_count
+
+        self.load_plan_repository.update(plan, db)
+
+        # Placements
+        placement_entities: List[PackagePlacement] = []
+        if result.placements:
+            for p in result.placements:
+                pkg_id_val = None
+                if p.package_id is not None:
+                    if isinstance(p.package_id, int):
+                        pkg_id_val = p.package_id
+                    elif isinstance(p.package_id, str) and p.package_id.isdigit():
+                        pkg_id_val = int(p.package_id)
+
+                zone_id_val = None
+                if p.stop_zone_id is not None:
+                    if isinstance(p.stop_zone_id, int):
+                        zone_id_val = p.stop_zone_id
+                    elif isinstance(p.stop_zone_id, str) and p.stop_zone_id.isdigit():
+                        zone_id_val = int(p.stop_zone_id)
+
+                placement_entities.append(
+                    PackagePlacement(
+                        load_plan_id=plan.id,
+                        package_id=pkg_id_val,
+                        pos_x=p.x,
+                        pos_y=p.y,
+                        pos_z=p.z,
+                        packed_length=p.packed_l,
+                        packed_width=p.packed_w,
+                        packed_height=p.packed_h,
+                        rotation_type=p.rotation_type or 0,
+                        step_sequence=p.step_sequence or 1,
+                        pinned=False,
+                        stop_zone_id=zone_id_val,
+                    )
                 )
-                self.load_plan_repository.create(plan, db)
+            self.package_placement_repository.create_all(placement_entities, db)
 
-# Đồng bộ thông tin với kết quả solver.
-            plan.plan_name = resolved_plan_name
-            plan.packed_items_count = packed_count
-            plan.volume_utilization = vol_util
-            plan.weight_utilization = wt_util
-            plan.cog_x = cog_x
-            plan.cog_y = cog_y
-            plan.cog_z = cog_z
-            plan.front_axle_load = front_axle_load
-            plan.rear_axle_load = rear_axle_load
-            plan.rehandling_count = rehandling_count
+        # Unplaced
+        unplaced_entities: List[UnplacedPackage] = []
+        if result.unplaced:
+            for u in result.unplaced:
+                pkg_id_val = None
+                if u.package_id is not None:
+                    if isinstance(u.package_id, int):
+                        pkg_id_val = u.package_id
+                    elif isinstance(u.package_id, str) and u.package_id.isdigit():
+                        pkg_id_val = int(u.package_id)
 
-            self.load_plan_repository.update(plan, db)
-
-            # Placements
-            placement_entities: List[PackagePlacement] = []
-            if result.placements:
-                for p in result.placements:
-                    pkg_id_val = None
-                    if p.package_id is not None:
-                        if isinstance(p.package_id, int):
-                            pkg_id_val = p.package_id
-                        elif isinstance(p.package_id, str) and p.package_id.isdigit():
-                            pkg_id_val = int(p.package_id)
-
-                    zone_id_val = None
-                    if p.stop_zone_id is not None:
-                        if isinstance(p.stop_zone_id, int):
-                            zone_id_val = p.stop_zone_id
-                        elif isinstance(p.stop_zone_id, str) and p.stop_zone_id.isdigit():
-                            zone_id_val = int(p.stop_zone_id)
-
-                    placement_entities.append(
-                        PackagePlacement(
-                            load_plan_id=plan.id,
-                            package_id=pkg_id_val,
-                            pos_x=p.x,
-                            pos_y=p.y,
-                            pos_z=p.z,
-                            packed_length=p.packed_l,
-                            packed_width=p.packed_w,
-                            packed_height=p.packed_h,
-                            rotation_type=p.rotation_type or 0,
-                            step_sequence=p.step_sequence or 1,
-                            pinned=False,
-                            stop_zone_id=zone_id_val,
-                        )
+                unplaced_entities.append(
+                    UnplacedPackage(
+                        load_plan_id=plan.id,
+                        package_id=pkg_id_val,
+                        rejection_reason=u.reason or "OUT_OF_SPACE",
                     )
-                self.package_placement_repository.create_all(placement_entities, db)
+                )
+            self.unplaced_package_repository.create_all(unplaced_entities, db)
 
-            # Unplaced
-            unplaced_entities: List[UnplacedPackage] = []
-            if result.unplaced:
-                for u in result.unplaced:
-                    pkg_id_val = None
-                    if u.package_id is not None:
-                        if isinstance(u.package_id, int):
-                            pkg_id_val = u.package_id
-                        elif isinstance(u.package_id, str) and u.package_id.isdigit():
-                            pkg_id_val = int(u.package_id)
-
-                    unplaced_entities.append(
-                        UnplacedPackage(
-                            load_plan_id=plan.id,
-                            package_id=pkg_id_val,
-                            rejection_reason=u.reason or "OUT_OF_SPACE",
-                        )
-                    )
-                self.unplaced_package_repository.create_all(unplaced_entities, db)
-
-            savepoint.commit()
-            logger.info(f"Successfully persisted LoadPlan {plan.id} for job {job_uuid}")
-            return plan
-
-        except Exception as exc:
-            savepoint.rollback()
-            logger.error(f"Failed to persist optimization result for job {job_uuid}: {exc}")
-            raise exc
+        return plan

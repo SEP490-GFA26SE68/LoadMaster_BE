@@ -15,6 +15,12 @@ from app.dto.optimization.engine.engine_response import (
 from app.service.auth.keycloak_token_provider import KeycloakTokenProvider
 
 
+from app.service.optimize.candidate_plans import (
+    LayoutStrategy,
+    axle_balance_target_x,
+    layout_strategies_for,
+    pick_candidates,
+)
 from app.service.optimize.stop_zone_calculator import StopZoneCalculator
 from app.service.optimize.constraint_engine import ConstraintEngine
 from app.service.optimize.unload_feasibility_validator import (
@@ -51,7 +57,31 @@ class OptimizationClient:
         """
         if self.http_client is not None or self.engine_url:
             return await self._solve_http(problem)
-        return self.solve_in_process(problem)
+        return self.solve_candidates(problem)
+
+    def solve_candidates(self, problem: ProblemRequest) -> EngineOptimizationResponse:
+        """
+        Một job ra ba phương án ứng viên A · B · C (MAX_VOLUME, AXLE_BALANCE, MIN_REHANDLING).
+        Xếp thử vài cách (chiến lược khác nhau của cùng bộ giải, mỗi cách vẫn qua HC-01 → HC-12),
+        rồi mỗi mục tiêu chọn cách tốt nhất theo chỉ số của chính nó. Giới hạn thời gian của
+        job áp cho cả lượt: hết giờ thì dừng thử cách mới, cách đầu luôn được chạy.
+        Kết quả trả về là phương án A, kèm cả ba ở `candidates`.
+        """
+        start = time.monotonic()
+        deadline = start + max(int(problem.time_limit_sec or 60), 1)
+        layouts: list[EngineOptimizationResponse] = []
+        for strategy in layout_strategies_for(problem.vehicle):
+            if layouts and time.monotonic() >= deadline:
+                break
+            layouts.append(self.solve_in_process(problem, strategy=strategy))
+
+        candidates = pick_candidates(layouts, problem.vehicle)
+        head = candidates[0].result
+        total_ms = int((time.monotonic() - start) * 1000)
+        return head.model_copy(update={
+            "metrics": head.metrics.model_copy(update={"computation_ms": total_ms}),
+            "candidates": candidates,
+        })
 
     async def _solve_http(self, problem: ProblemRequest) -> EngineOptimizationResponse:
         headers = {}
@@ -83,10 +113,16 @@ class OptimizationClient:
                 resp.raise_for_status()
                 return EngineOptimizationResponse.model_validate(resp.json())
 
-    def solve_in_process(self, problem: ProblemRequest) -> EngineOptimizationResponse:
+    def solve_in_process(
+        self,
+        problem: ProblemRequest,
+        strategy: str = LayoutStrategy.CENTER_FIRST,
+    ) -> EngineOptimizationResponse:
         """
         Nâng cấp S5b-04: Zone-aware 3D Packing Heuristic với Extreme Points (EP)
         và ConstraintEngine (Fragility, Stacking, Support Area, Rotation, COG, Axle Load).
+        `strategy` chỉ đổi thứ tự xét kiện và cách chấm điểm chỗ đặt (xem LayoutStrategy);
+        mọi ràng buộc cứng giữ nguyên.
         """
         start_time = time.time()
         vt = problem.vehicle
@@ -183,6 +219,15 @@ class OptimizationClient:
         # Heuristic scoring: đánh giá COG tạm thời của các kiện đã xếp
         # cộng với candidate hiện tại.
         # Không thay thế final validation HC-11/HC-12.
+        # Đích trọng tâm theo X: giữa thùng, hoặc điểm chia đều mức dùng hai nhóm trục (AXLE_TARGET).
+        target_x = float(vt.inner_l) / 2.0
+        if strategy == LayoutStrategy.AXLE_TARGET:
+            axle_x = axle_balance_target_x(
+                vt, sum(float(p.weight) for p in problem.packages)
+            )
+            if axle_x is not None:
+                target_x = axle_x
+
         def candidate_cog_score(candidate: PlacementData) -> float:
             total_weight = 0.0
             weighted_x = 0.0
@@ -207,7 +252,7 @@ class OptimizationClient:
             cog_x = weighted_x / total_weight
             cog_y = weighted_y / total_weight
 
-            center_x = float(vt.inner_l) / 2.0
+            center_x = target_x
             center_y = float(vt.inner_w) / 2.0
 
             # Chuẩn hóa hai trục để X không áp đảo Y.
@@ -224,7 +269,10 @@ class OptimizationClient:
                 if str(p.id) not in pinned_ids
             ]
             # Sắp xếp kiện hàng trong zone: giảm dần theo thể tích
-            sorted_pkgs = sorted(zone_pkgs, key=lambda p: (p.l * p.w * p.h, p.weight), reverse=True)
+            if strategy == LayoutStrategy.HEAVY_FIRST:
+                sorted_pkgs = sorted(zone_pkgs, key=lambda p: (p.weight, p.l * p.w * p.h), reverse=True)
+            else:
+                sorted_pkgs = sorted(zone_pkgs, key=lambda p: (p.l * p.w * p.h, p.weight), reverse=True)
 
 
             # Các vị trí ứng viên ban đầu trong stop zone.
@@ -357,7 +405,7 @@ class OptimizationClient:
                 # Thử tìm vị trí trong zone hiện tại
                 chosen_placement = None
                 last_violations: list[str] = []
-                best_candidate_score = float("inf")
+                best_candidate_score: Optional[tuple] = None
 
                 # Sắp xếp EP theo DBLF: x tăng dần (sâu), z tăng dần (dưới đáy), y tăng dần (trái)
                 # Ưu tiên Extreme Points gần tâm xe.
@@ -410,13 +458,18 @@ class OptimizationClient:
                         violations = ConstraintEngine.check_all(candidate, context)
 
                         if not violations:
-                            score = candidate_cog_score(candidate)
+                            if strategy == LayoutStrategy.DEEP_FIRST:
+                                # DBLF: thấp nhất, sâu nhất, sát vách trái.
+                                score = (float(pz), float(px), float(py))
+                            else:
+                                # Ưu tiên placement trên sàn trước,
+                                # sau đó mới tối ưu COG.
+                                score = (
+                                    candidate_cog_score(candidate)
+                                    + (float(pz) / float(vt.inner_h)) * 0.1,
+                                )
 
-                        # Ưu tiên placement trên sàn trước,
-                        # sau đó mới tối ưu COG.
-                            score += (float(pz) / float(vt.inner_h)) * 0.1
-
-                            if score < best_candidate_score:
+                            if best_candidate_score is None or score < best_candidate_score:
                                 best_candidate_score = score
                                 chosen_placement = candidate
                         else:

@@ -139,7 +139,15 @@ class EngineExceptionHandler:
           - 0 placements -> NO_SOLUTION
           - len(unplaced) > 0 -> PARTIAL
           - Ngược lại -> COMPLETED
+        Kết quả có ba phương án ứng viên: NO_SOLUTION khi cả ba 0 kiện,
+        COMPLETED khi có phương án xếp hết, còn lại PARTIAL.
         """
+        if result.candidates:
+            from app.service.optimize.candidate_plans import job_status_of
+            status = OptimizationJobStatus(job_status_of(result.candidates))
+            logger.info(f"Optimization result: {len(result.candidates)} candidates -> {status.value}")
+            return status
+
         if not result.placements or len(result.placements) == 0:
             logger.warning("Optimization result: 0 placements -> NO_SOLUTION")
             return OptimizationJobStatus.NO_SOLUTION

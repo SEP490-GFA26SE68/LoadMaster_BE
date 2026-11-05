@@ -47,6 +47,19 @@ class EngineOptimizationResponse(BaseModel):
     placements: List[PlacementData] = Field(default_factory=list)
     unplaced: List[UnplacedData] = Field(default_factory=list)
     metrics: MetricsData = Field(default_factory=MetricsData)
+    # Ba phương án ứng viên của một job (A · B · C), chỉ bộ giải nội bộ điền.
+    # Không đưa ra JSON: lần chạy lại và engine ngoài vẫn là một kết quả.
+    candidates: List["CandidatePlanData"] = Field(default_factory=list, exclude=True)
+
+
+class CandidatePlanData(BaseModel):
+    """Một phương án ứng viên: nhãn (A | B | C), mục tiêu và kết quả xếp."""
+    label: str
+    objective: str
+    result: EngineOptimizationResponse
+
+
+EngineOptimizationResponse.model_rebuild()
 
 
 # Alias cho phép sử dụng cả 2 tên gọi OptimizationResult và EngineOptimizationResponse
