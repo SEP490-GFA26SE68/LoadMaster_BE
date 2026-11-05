@@ -14,6 +14,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -28,6 +29,7 @@ import java.util.List;
 @RequestMapping("/api/warehouse")
 @RequiredArgsConstructor
 @Tag(name = "Warehouse", description = "APIs for warehouse loading tasks and execution")
+@PreAuthorize("hasRole('WAREHOUSE_WORKER')")
 public class WarehouseController {
 
     private final WarehouseService warehouseService;
