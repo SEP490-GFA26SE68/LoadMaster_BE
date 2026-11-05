@@ -1,5 +1,6 @@
 package fu.se184491.loadmaster_be.service.driver.Impl;
 
+import fu.se184491.loadmaster_be.service.audit.AuditCompany;
 import fu.se184491.loadmaster_be.constant.cargo.PackageStatus;
 import fu.se184491.loadmaster_be.constant.optimization.LoadingExecutionStatus;
 import fu.se184491.loadmaster_be.constant.planning.DeliveryRequirementStatus;
@@ -233,6 +234,7 @@ public class DriverServiceImpl implements DriverService {
         cargoPackageRepository.save(pkg);
 
         AuditLog auditLog = AuditLog.builder()
+                .companyId(AuditCompany.of(pkg.getCompany()))
                 .actionType("DRIVER_UNLOAD")
                 .entityName("UnloadConfirmation")
                 .entityId(savedConfirmation.getId().toString())
@@ -299,6 +301,7 @@ public class DriverServiceImpl implements DriverService {
         deliveryStopRepository.save(stop);
 
         AuditLog stopAuditLog = AuditLog.builder()
+                .companyId(AuditCompany.ofTrip(trip))
                 .actionType("STOP_COMPLETED")
                 .entityName("DeliveryStop")
                 .entityId(stop.getId().toString())
@@ -329,6 +332,7 @@ public class DriverServiceImpl implements DriverService {
             tripCompleted = true;
 
             AuditLog tripAuditLog = AuditLog.builder()
+                    .companyId(AuditCompany.ofTrip(trip))
                     .actionType("TRIP_COMPLETED")
                     .entityName("Trip")
                     .entityId(trip.getId().toString())

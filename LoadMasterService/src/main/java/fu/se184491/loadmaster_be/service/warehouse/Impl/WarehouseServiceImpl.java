@@ -1,5 +1,6 @@
 package fu.se184491.loadmaster_be.service.warehouse.Impl;
 
+import fu.se184491.loadmaster_be.service.audit.AuditCompany;
 import fu.se184491.loadmaster_be.constant.optimization.LoadingExecutionStatus;
 import fu.se184491.loadmaster_be.constant.cargo.PackageStatus;
 import fu.se184491.loadmaster_be.constant.trip.TripStatus;
@@ -215,6 +216,7 @@ public class WarehouseServiceImpl implements WarehouseService {
         newValues.put("confirmedAt", confirmation.getConfirmedAt().toString());
 
         AuditLog auditLog = AuditLog.builder()
+                .companyId(AuditCompany.ofPlan(placement.getLoadPlan()))
                 .actionType("WAREHOUSE_CONFIRM")
                 .entityName("PlacementConfirmation")
                 .entityId(String.valueOf(confirmation.getId()))
@@ -284,6 +286,7 @@ public class WarehouseServiceImpl implements WarehouseService {
         newValues.put("reason", request.getReason());
 
         AuditLog auditLog = AuditLog.builder()
+                .companyId(AuditCompany.ofPlan(placement.getLoadPlan()))
                 .actionType("DEVIATION_RECORDED")
                 .entityName("Deviation")
                 .entityId(String.valueOf(deviation.getId()))
@@ -361,6 +364,7 @@ public class WarehouseServiceImpl implements WarehouseService {
         newValues.put("completedAt", execution.getCompletedAt().toString());
 
         AuditLog auditLog = AuditLog.builder()
+                .companyId(AuditCompany.ofTrip(trip))
                 .actionType("LOADING_COMPLETED")
                 .entityName("LoadingExecution")
                 .entityId(String.valueOf(execution.getId()))

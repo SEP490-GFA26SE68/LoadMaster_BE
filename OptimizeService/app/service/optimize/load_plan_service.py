@@ -99,6 +99,7 @@ class LoadPlanService:
             entity_name="LOAD_PLAN",
             entity_id=str(plan.id),
             user_id=user_id_int,
+            company_id=self._company_of_plan(plan, db),
             new_values={"approved": True, "approved_by": user_id_int},
         )
         db.add(audit)
@@ -107,6 +108,22 @@ class LoadPlanService:
         db.refresh(plan)
 
         return plan
+
+    @staticmethod
+    def _company_of_plan(plan: LoadPlan, db: Session) -> Optional[int]:
+        """Công ty của phương án cho nhật ký: công ty ghi trên job, job không có thì của chuyến."""
+        from app.entity.optimization.optimization_job import OptimizationJob
+        from app.entity.trip_model import Trip
+
+        job = db.query(OptimizationJob).filter(OptimizationJob.id == plan.job_id).first()
+        if job is None:
+            return None
+        if job.company_id is not None and str(job.company_id).isdigit():
+            return int(job.company_id)
+        if job.trip_id is None:
+            return None
+        company_id = db.query(Trip.company_id).filter(Trip.id == job.trip_id).scalar()
+        return int(company_id) if company_id is not None else None
 
     @staticmethod
     def _unapprove_other_plans_of_trip(plan: LoadPlan, db: Session) -> None:

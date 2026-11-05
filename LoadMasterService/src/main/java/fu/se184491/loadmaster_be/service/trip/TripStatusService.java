@@ -1,5 +1,6 @@
 package fu.se184491.loadmaster_be.service.trip;
 
+import fu.se184491.loadmaster_be.service.audit.AuditCompany;
 import fu.se184491.loadmaster_be.constant.optimization.LoadingExecutionStatus;
 import fu.se184491.loadmaster_be.constant.trip.DeliveryStopStatus;
 import fu.se184491.loadmaster_be.constant.trip.TripStatus;
@@ -65,6 +66,7 @@ public class TripStatusService {
         trip.setStatus(newStatus);
         Trip savedTrip = tripRepository.save(trip);
         auditLogRepository.save(AuditLog.builder()
+                .companyId(AuditCompany.ofTrip(trip))
                 .actionType("TRIP_STATUS_TRANSITION")
                 .entityName("Trip")
                 .entityId(tripId.toString())

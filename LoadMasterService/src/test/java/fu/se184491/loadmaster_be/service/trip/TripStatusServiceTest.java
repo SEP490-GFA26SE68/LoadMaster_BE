@@ -68,6 +68,20 @@ class TripStatusServiceTest {
     }
 
     @Test
+    void transitionLogBelongsToCompanyOfTheTrip() {
+        Trip trip = stubTrip(TripStatus.LOADING);
+        trip.setCompany(fu.se184491.loadmaster_be.entity.company.Company.builder().id(4L).build());
+        when(tripRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+
+        service.transitionTo(10L, TripStatus.CANCELLED, null);
+
+        org.mockito.ArgumentCaptor<fu.se184491.loadmaster_be.entity.common.AuditLog> log =
+                org.mockito.ArgumentCaptor.forClass(fu.se184491.loadmaster_be.entity.common.AuditLog.class);
+        verify(auditLogRepository).save(log.capture());
+        assertEquals(4L, log.getValue().getCompanyId());
+    }
+
+    @Test
     void invalidatingRouteSendsPlannedTripBackToDraft() {
         Trip trip = stubTrip(TripStatus.PLANNED);
         Map<String, Object> route = new HashMap<>();

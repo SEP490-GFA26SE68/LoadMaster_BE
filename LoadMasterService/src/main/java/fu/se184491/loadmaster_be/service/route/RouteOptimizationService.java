@@ -1,5 +1,6 @@
 package fu.se184491.loadmaster_be.service.route;
 
+import fu.se184491.loadmaster_be.service.audit.AuditCompany;
 import fu.se184491.loadmaster_be.client.GoongMapsClient;
 import fu.se184491.loadmaster_be.constant.trip.TripStatus;
 import fu.se184491.loadmaster_be.dto.goong.DirectionsResponse;
@@ -213,6 +214,7 @@ public class RouteOptimizationService {
         trip.setRoutePlan(routePlanCache);
         tripRepository.save(trip);
         auditLogRepository.save(AuditLog.builder()
+                .companyId(AuditCompany.ofTrip(trip))
                 .actionType("ROUTE_OPTIMIZED")
                 .entityName("Trip")
                 .entityId(tripId.toString())

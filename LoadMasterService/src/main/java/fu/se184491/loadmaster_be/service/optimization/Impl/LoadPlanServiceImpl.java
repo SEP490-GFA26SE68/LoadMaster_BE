@@ -1,5 +1,6 @@
 package fu.se184491.loadmaster_be.service.optimization.Impl;
 
+import fu.se184491.loadmaster_be.service.audit.AuditCompany;
 import fu.se184491.loadmaster_be.constant.optimization.OptimizationAlgorithm;
 import fu.se184491.loadmaster_be.constant.optimization.OptimizationJobStatus;
 import fu.se184491.loadmaster_be.constant.optimization.OptimizationObjective;
@@ -69,7 +70,7 @@ public class LoadPlanServiceImpl implements LoadPlanService {
         placement.setPinned(true);
         PackagePlacement savedPlacement = packagePlacementRepository.save(placement);
 
-        saveAuditLog("PIN_PLACEMENT", savedPlacement.getId(), oldPinned, true);
+        saveAuditLog("PIN_PLACEMENT", loadPlan, savedPlacement.getId(), oldPinned, true);
         log.info("Pinned placement {} in load plan {}", savedPlacement.getId(), loadPlan.getId());
 
         return mapToResponse(savedPlacement);
@@ -90,7 +91,7 @@ public class LoadPlanServiceImpl implements LoadPlanService {
         placement.setPinned(false);
         PackagePlacement savedPlacement = packagePlacementRepository.save(placement);
 
-        saveAuditLog("UNPIN_PLACEMENT", savedPlacement.getId(), oldPinned, false);
+        saveAuditLog("UNPIN_PLACEMENT", loadPlan, savedPlacement.getId(), oldPinned, false);
         log.info("Unpinned placement {} in load plan {}", savedPlacement.getId(), loadPlan.getId());
 
         return mapToResponse(savedPlacement);
@@ -244,6 +245,7 @@ public class LoadPlanServiceImpl implements LoadPlanService {
 
         AuditLog auditLog = AuditLog.builder()
                 .actionType("RERUN_OPTIMIZATION")
+                .companyId(AuditCompany.ofJob(newJob))
                 .entityName("LoadPlan")
                 .entityId(String.valueOf(newPlan.getId()))
                 .oldValues(oldValues)
@@ -282,7 +284,7 @@ public class LoadPlanServiceImpl implements LoadPlanService {
         }
     }
 
-    private void saveAuditLog(String actionType, Long placementId, boolean oldPinned, boolean newPinned) {
+    private void saveAuditLog(String actionType, LoadPlan loadPlan, Long placementId, boolean oldPinned, boolean newPinned) {
         Map<String, Object> oldValues = new HashMap<>();
         oldValues.put("pinned", oldPinned);
 
@@ -291,6 +293,7 @@ public class LoadPlanServiceImpl implements LoadPlanService {
 
         AuditLog auditLog = AuditLog.builder()
                 .actionType(actionType)
+                .companyId(AuditCompany.ofPlan(loadPlan))
                 .entityName("PackagePlacement")
                 .entityId(String.valueOf(placementId))
                 .oldValues(oldValues)

@@ -219,3 +219,26 @@ class TestLoadPlanApproveApi:
         assert len(plan_data["placements"]) == 2
 
         app.dependency_overrides.clear()
+
+
+class TestApprovalAuditCompany:
+    """Nhật ký PLAN_APPROVED mang công ty của job, job thiếu thì của chuyến."""
+
+    def _approve_and_read_log(self, db_session, plan):
+        LoadPlanService().approve_plan(plan.id, current_user_id=7, db=db_session)
+        return db_session.query(AuditLog).filter(AuditLog.action_type == "PLAN_APPROVED").one()
+
+    def test_company_of_the_job(self, db_session, plan_with_placements):
+        job = db_session.query(OptimizationJob).first()
+        job.company_id = "12"
+        db_session.commit()
+        assert self._approve_and_read_log(db_session, plan_with_placements).company_id == 12
+
+    def test_falls_back_to_company_of_the_trip(self, db_session, plan_with_placements):
+        trip = db_session.query(Trip).first()
+        trip.company_id = 34
+        db_session.commit()
+        assert self._approve_and_read_log(db_session, plan_with_placements).company_id == 34
+
+    def test_no_company_known_stays_null(self, db_session, plan_with_placements):
+        assert self._approve_and_read_log(db_session, plan_with_placements).company_id is None

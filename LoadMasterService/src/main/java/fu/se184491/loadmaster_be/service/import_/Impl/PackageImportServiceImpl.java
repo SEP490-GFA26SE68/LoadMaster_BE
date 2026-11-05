@@ -286,6 +286,7 @@ public class PackageImportServiceImpl implements PackageImportService {
         auditValues.put("deliveryRequirementId", deliveryRequirementId);
 
         AuditLog auditLog = AuditLog.builder()
+                .companyId(companyId)
                 .actionType("PACKAGE_IMPORT_CONFIRMED")
                 .entityName("PACKAGE")
                 .entityId("batch")

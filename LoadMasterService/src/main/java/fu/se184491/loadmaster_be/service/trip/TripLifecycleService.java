@@ -1,5 +1,6 @@
 package fu.se184491.loadmaster_be.service.trip;
 
+import fu.se184491.loadmaster_be.service.audit.AuditCompany;
 import fu.se184491.loadmaster_be.constant.account.UserRole;
 import fu.se184491.loadmaster_be.constant.account.UserStatus;
 import fu.se184491.loadmaster_be.constant.cargo.PackageStatus;
@@ -392,6 +393,7 @@ public class TripLifecycleService {
             Map<String, Object> after
     ) {
         auditLogRepository.save(AuditLog.builder()
+                .companyId(AuditCompany.ofTrip(trip))
                 .actionType(action)
                 .entityName("Trip")
                 .entityId(trip.getId().toString())
