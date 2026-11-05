@@ -76,6 +76,7 @@ public enum ErrorCode {
             "Tài xế không thuộc công ty hiện tại",
             HttpStatus.BAD_REQUEST
     ),
+    VEHICLE_CANNOT_CARRY_CARGO("Xe không chở được hàng của chuyến", HttpStatus.CONFLICT),
     VEHICLE_NOT_FOUND("Không tìm thấy phương tiện vận tải", HttpStatus.NOT_FOUND),
     VEHICLE_TYPE_NOT_FOUND("Không tìm thấy loại phương tiện", HttpStatus.NOT_FOUND),
     TRIP_NOT_FOUND("Không tìm thấy chuyến đi", HttpStatus.NOT_FOUND),

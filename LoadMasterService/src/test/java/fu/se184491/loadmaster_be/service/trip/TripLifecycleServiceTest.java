@@ -13,6 +13,10 @@ import fu.se184491.loadmaster_be.entity.planning.DeliveryRequirement;
 import fu.se184491.loadmaster_be.entity.trip.DeliveryStop;
 import fu.se184491.loadmaster_be.entity.trip.Trip;
 import fu.se184491.loadmaster_be.entity.vehicle.Vehicle;
+import fu.se184491.loadmaster_be.entity.vehicle.VehicleType;
+import fu.se184491.loadmaster_be.constant.vehicle.VehicleStatus;
+import fu.se184491.loadmaster_be.repository.optimization.LoadPlanRepository;
+import java.math.BigDecimal;
 import fu.se184491.loadmaster_be.exception.AppException;
 import fu.se184491.loadmaster_be.exception.ErrorCode;
 import fu.se184491.loadmaster_be.helpers.CurrentUserService;
@@ -57,6 +61,8 @@ class TripLifecycleServiceTest {
     @Mock private AuditLogRepository auditLogRepository;
     @Mock private CurrentUserService currentUserService;
     @Mock private TripStatusService tripStatusService;
+    @Mock private LoadPlanRepository loadPlanRepository;
+    @Mock private TripPackageResolver tripPackageResolver;
 
     @InjectMocks
     private TripLifecycleService service;
@@ -163,6 +169,57 @@ class TripLifecycleServiceTest {
 
         assertEquals("Chuyến chiều", trip.getTripName());
         verify(tripStatusService, never()).invalidateRoute(any(), any());
+    }
+
+    @Test
+    void changingVehicleUnapprovesPlansButKeepsRoute() {
+        Vehicle bigger = vehicle(4L, 1000, 600, 240, 240);
+        when(vehicleRepository.findById(4L)).thenReturn(Optional.of(bigger));
+        when(tripPackageResolver.packagesOfTrip(10L)).thenReturn(List.of(box("PK-1", 120, 80, 60, 300)));
+
+        service.updateTrip(10L, new TripUpdateRequest(null, null, 4L, null, null, null));
+
+        assertEquals(bigger, trip.getVehicle());
+        verify(loadPlanRepository).unapproveAllByTripId(10L);
+        verify(tripStatusService, never()).invalidateRoute(any(), any());
+    }
+
+    @Test
+    void vehicleTooWeakForCargoIsRejected() {
+        when(vehicleRepository.findById(4L)).thenReturn(Optional.of(vehicle(4L, 500, 600, 240, 240)));
+        when(tripPackageResolver.packagesOfTrip(10L)).thenReturn(List.of(box("PK-1", 120, 80, 60, 300), box("PK-2", 120, 80, 60, 300)));
+
+        AppException error = assertThrows(AppException.class,
+                () -> service.updateTrip(10L, new TripUpdateRequest(null, null, 4L, null, null, null)));
+
+        assertEquals(ErrorCode.VEHICLE_CANNOT_CARRY_CARGO, error.getErrorCode());
+        verify(loadPlanRepository, never()).unapproveAllByTripId(any());
+    }
+
+    @Test
+    void packageThatFitsNoOrientationIsRejected() {
+        when(vehicleRepository.findById(4L)).thenReturn(Optional.of(vehicle(4L, 5000, 400, 200, 200)));
+        when(tripPackageResolver.packagesOfTrip(10L)).thenReturn(List.of(box("PK-LONG", 450, 50, 50, 20)));
+
+        AppException error = assertThrows(AppException.class,
+                () -> service.updateTrip(10L, new TripUpdateRequest(null, null, 4L, null, null, null)));
+
+        assertEquals(ErrorCode.VEHICLE_CANNOT_CARRY_CARGO, error.getErrorCode());
+    }
+
+    private Vehicle vehicle(Long id, int payloadKg, int length, int width, int height) {
+        VehicleType type = VehicleType.builder()
+                .maxPayloadKg(BigDecimal.valueOf(payloadKg))
+                .innerLength(length).innerWidth(width).innerHeight(height)
+                .build();
+        return Vehicle.builder().id(id).company(trip.getCompany()).status(VehicleStatus.AVAILABLE).vehicleType(type).build();
+    }
+
+    private static CargoPackage box(String barcode, double length, double width, double height, double kg) {
+        return CargoPackage.builder().trackingBarcode(barcode)
+                .actualLength(BigDecimal.valueOf(length)).actualWidth(BigDecimal.valueOf(width))
+                .actualHeight(BigDecimal.valueOf(height)).actualWeightKg(BigDecimal.valueOf(kg))
+                .build();
     }
 
     @Test
