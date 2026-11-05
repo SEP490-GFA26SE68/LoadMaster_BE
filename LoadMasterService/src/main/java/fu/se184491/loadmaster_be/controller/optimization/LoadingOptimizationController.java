@@ -3,12 +3,12 @@ package fu.se184491.loadmaster_be.controller.optimization;
 import fu.se184491.loadmaster_be.dto.ApiResponse;
 import fu.se184491.loadmaster_be.dto.response.optimization.LoadPlanDetailResponse;
 import fu.se184491.loadmaster_be.dto.response.optimization.OptimizationJobStartResponse;
+import fu.se184491.loadmaster_be.dto.response.optimization.OptimizationJobStatusResponse;
 import fu.se184491.loadmaster_be.dto.response.optimization.TripLoadPlansResponse;
 import fu.se184491.loadmaster_be.service.optimization.LoadPlanQueryService;
 import fu.se184491.loadmaster_be.service.optimization.LoadingOptimizationService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
-import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -43,15 +43,14 @@ public class LoadingOptimizationController {
                 .body(ApiResponse.success("Tác vụ tối ưu đã được khởi tạo", response));
     }
 
-    /** Phong bì trạng thái job của dịch vụ tối ưu, giữ nguyên (trường snake_case). */
+    /** Trạng thái job: status, thời gian chạy và số phương án đã lưu có kiện ({@code packedPlanCount}). */
     @GetMapping("/optimization-jobs/{jobId}")
     @PreAuthorize("hasAnyRole('DISPATCHER', 'MANAGER')")
-    public ResponseEntity<String> getOptimizationJobStatus(
+    public ResponseEntity<ApiResponse<OptimizationJobStatusResponse>> getOptimizationJobStatus(
             @PathVariable String jobId
     ) {
-        return ResponseEntity.ok()
-                .contentType(MediaType.APPLICATION_JSON)
-                .body(loadingOptimizationService.getJobStatus(jobId));
+        return ResponseEntity.ok(ApiResponse.success(
+                "Trạng thái tác vụ tối ưu", loadingOptimizationService.getJobStatus(jobId)));
     }
 
     @GetMapping("/optimization-jobs/{jobId}/plans")

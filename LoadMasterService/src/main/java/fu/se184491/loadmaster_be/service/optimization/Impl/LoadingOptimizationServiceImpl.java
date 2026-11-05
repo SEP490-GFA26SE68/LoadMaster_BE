@@ -5,6 +5,7 @@ import fu.se184491.loadmaster_be.constant.billing.SubscriptionStatus;
 import fu.se184491.loadmaster_be.constant.billing.SubscriptionTier;
 import fu.se184491.loadmaster_be.dto.response.credit.CreditBalanceResponse;
 import fu.se184491.loadmaster_be.dto.response.optimization.OptimizationJobStartResponse;
+import fu.se184491.loadmaster_be.dto.response.optimization.OptimizationJobStatusResponse;
 import fu.se184491.loadmaster_be.exception.AppException;
 import fu.se184491.loadmaster_be.exception.ErrorCode;
 import fu.se184491.loadmaster_be.helpers.CurrentUserService;
@@ -23,7 +24,10 @@ import java.util.Map;
 @RequiredArgsConstructor
 public class LoadingOptimizationServiceImpl implements LoadingOptimizationService {
 
-    /** Một lần chạy tối ưu 3D dùng 1 credit; dịch vụ tối ưu trừ thật khi chạy. */
+    /**
+     * Một lần chạy tối ưu 3D (ba phương án) dùng 1 credit. Dịch vụ tối ưu giữ credit khi bắt đầu chạy
+     * và hoàn lại khi không ra phương án nào (NO_SOLUTION) hoặc lỗi.
+     */
     private static final int CREDIT_PER_RUN = 1;
 
     private final TripRepository tripRepository;
@@ -66,9 +70,8 @@ public class LoadingOptimizationServiceImpl implements LoadingOptimizationServic
     }
 
     @Override
-    public String getJobStatus(String jobUuid) {
-        loadPlanQueryService.requireOwnedJob(jobUuid);
-        return optimizationClient.getJobStatus(jobUuid);
+    public OptimizationJobStatusResponse getJobStatus(String jobUuid) {
+        return loadPlanQueryService.getJobStatus(jobUuid);
     }
 
     /** Hạng của gói đang hiệu lực (ACTIVE hoặc TRIAL); không có gói hiệu lực thì BASIC. */

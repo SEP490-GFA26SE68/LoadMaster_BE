@@ -1,6 +1,7 @@
 package fu.se184491.loadmaster_be.service.optimization;
 
 import fu.se184491.loadmaster_be.dto.response.optimization.LoadPlanDetailResponse;
+import fu.se184491.loadmaster_be.dto.response.optimization.OptimizationJobStatusResponse;
 import fu.se184491.loadmaster_be.dto.response.optimization.TripLoadPlansResponse;
 import fu.se184491.loadmaster_be.repository.optimization.LoadPlanReadRepository.JobOwner;
 
@@ -17,6 +18,9 @@ public interface LoadPlanQueryService {
     LoadPlanDetailResponse getPlan(Long planId);
 
     List<LoadPlanDetailResponse> getJobPlans(String jobUuid);
+
+    /** Trạng thái job thuộc công ty của phiên, không thì {@code OPTIMIZATION_JOB_NOT_FOUND}. */
+    OptimizationJobStatusResponse getJobStatus(String jobUuid);
 
     /** Job thuộc công ty của phiên, không thì {@code OPTIMIZATION_JOB_NOT_FOUND}. */
     JobOwner requireOwnedJob(String jobUuid);

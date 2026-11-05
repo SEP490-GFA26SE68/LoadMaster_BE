@@ -2,6 +2,7 @@ package fu.se184491.loadmaster_be.service.optimization;
 
 import fu.se184491.loadmaster_be.client.OptimizationClient;
 import fu.se184491.loadmaster_be.dto.response.optimization.LoadPlanDetailResponse;
+import fu.se184491.loadmaster_be.dto.response.optimization.OptimizationJobStatusResponse;
 import fu.se184491.loadmaster_be.dto.response.optimization.PlacementDetailResponse;
 import fu.se184491.loadmaster_be.dto.response.optimization.TripLoadPlansResponse;
 import fu.se184491.loadmaster_be.dto.response.optimization.UnplacedPackageResponse;
@@ -172,5 +173,27 @@ class LoadPlanQueryServiceImplTest {
         Trip trip = new Trip();
         trip.setStatus(status);
         return trip;
+    }
+
+    @Test
+    void jobStatusOfOwnJobIsReadFromTheDatabase() {
+        when(readRepository.findJobOwner("job-1")).thenReturn(Optional.of(new JobOwner(7L, "job-1", 10L, COMPANY)));
+        OptimizationJobStatusResponse row = OptimizationJobStatusResponse.builder()
+                .id(7L).jobId("job-1").status("COMPLETED").packedPlanCount(3).build();
+        when(readRepository.findJobStatus(7L)).thenReturn(Optional.of(row));
+
+        assertThat(service.getJobStatus("job-1")).isSameAs(row);
+    }
+
+    @Test
+    void jobStatusOfAnotherCompanyIsNotFound() {
+        when(readRepository.findJobOwner("job-1"))
+                .thenReturn(Optional.of(new JobOwner(7L, "job-1", 10L, OTHER_COMPANY)));
+
+        assertThatThrownBy(() -> service.getJobStatus("job-1"))
+                .isInstanceOf(AppException.class)
+                .extracting(LoadPlanQueryServiceImplTest::codeOf)
+                .isEqualTo(ErrorCode.OPTIMIZATION_JOB_NOT_FOUND);
+        verify(readRepository, never()).findJobStatus(anyLong());
     }
 }

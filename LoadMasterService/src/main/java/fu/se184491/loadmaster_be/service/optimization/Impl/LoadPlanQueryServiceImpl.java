@@ -3,6 +3,7 @@ package fu.se184491.loadmaster_be.service.optimization.Impl;
 import fu.se184491.loadmaster_be.client.OptimizationClient;
 import fu.se184491.loadmaster_be.constant.trip.TripStatus;
 import fu.se184491.loadmaster_be.dto.response.optimization.LoadPlanDetailResponse;
+import fu.se184491.loadmaster_be.dto.response.optimization.OptimizationJobStatusResponse;
 import fu.se184491.loadmaster_be.dto.response.optimization.PlacementDetailResponse;
 import fu.se184491.loadmaster_be.dto.response.optimization.TripLoadPlansResponse;
 import fu.se184491.loadmaster_be.dto.response.optimization.UnplacedPackageResponse;
@@ -63,6 +64,13 @@ public class LoadPlanQueryServiceImpl implements LoadPlanQueryService {
     public List<LoadPlanDetailResponse> getJobPlans(String jobUuid) {
         JobOwner owner = requireOwnedJob(jobUuid);
         return withItems(readRepository.findPlansByJob(owner.jobId()));
+    }
+
+    @Override
+    public OptimizationJobStatusResponse getJobStatus(String jobUuid) {
+        JobOwner owner = requireOwnedJob(jobUuid);
+        return readRepository.findJobStatus(owner.jobId())
+                .orElseThrow(() -> new AppException(ErrorCode.OPTIMIZATION_JOB_NOT_FOUND));
     }
 
     @Override
