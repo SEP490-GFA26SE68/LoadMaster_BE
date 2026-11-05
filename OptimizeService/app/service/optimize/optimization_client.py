@@ -113,10 +113,17 @@ class OptimizationClient:
             # Map by stop_index or stop ID if available
             matched_stop_id = None
             if problem.stops:
-                for s in problem.stops:
-                    if str(s.id) == str(pkg.stop_index) or s.sequence == pkg.stop_index:
-                        matched_stop_id = s.id
-                        break
+                # stop_index là thứ tự điểm (stop_sequence). Khớp theo thứ tự trước:
+                # so với id trước thì kiện của điểm thứ tự 2 rơi vào điểm có id 2.
+                matched_stop_id = next(
+                    (s.id for s in problem.stops if s.sequence == pkg.stop_index),
+                    None,
+                )
+                if matched_stop_id is None:
+                    matched_stop_id = next(
+                        (s.id for s in problem.stops if str(s.id) == str(pkg.stop_index)),
+                        None,
+                    )
                 if matched_stop_id is None and problem.stops:
                     matched_stop_id = problem.stops[0].id
             else:
@@ -233,9 +240,13 @@ class OptimizationClient:
 
 # HC-09: Khẩu độ cửa sau theo trục Y.
 # Cửa nằm giữa chiều rộng thùng xe.
+            # Xe chưa khai cửa: không có điểm mép cửa; ConstraintEngine (HC-10) trả
+            # PACKAGE_CANNOT_PASS_DOOR cho từng kiện thay vì solver gãy ở float(None).
             door_y_min = (
-                float(vt.inner_w) - float(vt.door_w)
-             ) / 2.0
+                (float(vt.inner_w) - float(vt.door_w)) / 2.0
+                if vt.door_w is not None and vt.door_w > 0
+                else 0.0
+            )
 
             ep_list = [
                 (zone_start, 0.0, 0.0),

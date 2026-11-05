@@ -398,11 +398,13 @@ public class DriverServiceImpl implements DriverService {
         if (placement == null) {
             return false;
         }
-        if (placement.getStopZone() != null) {
-            return stopId.equals(placement.getStopZone().getId());
-        }
+        // Điểm giao thật của kiện (qua yêu cầu giao) là nguồn chuẩn: dỡ và hoàn tất điểm đều xét theo nó.
+        // Vùng của phương án (stop_zone) chỉ dùng khi placement không gắn kiện.
         CargoPackage pkg = placement.getCargoPackage();
-        return pkg != null && stopPackageIds.contains(pkg.getId());
+        if (pkg != null) {
+            return stopPackageIds.contains(pkg.getId());
+        }
+        return placement.getStopZone() != null && stopId.equals(placement.getStopZone().getId());
     }
 
     private String getPackageDisplayName(CargoPackage cargoPackage) {
