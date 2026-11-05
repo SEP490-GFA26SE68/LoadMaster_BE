@@ -1,5 +1,6 @@
 package fu.se184491.loadmaster_be.service.company.Impl;
 
+import fu.se184491.loadmaster_be.client.KeycloakAdminClient;
 import fu.se184491.loadmaster_be.constant.account.UserStatus;
 import fu.se184491.loadmaster_be.constant.company.AgreementStatus;
 import fu.se184491.loadmaster_be.constant.company.AgreementType;
@@ -15,11 +16,13 @@ import fu.se184491.loadmaster_be.repository.company.CompanyAgreementRepository;
 import fu.se184491.loadmaster_be.service.company.CompanyAgreementService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Duration;
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.UUID;
 
 @Service
@@ -30,6 +33,7 @@ public class CompanyAgreementServiceImpl implements CompanyAgreementService {
 
     private final CompanyAgreementRepository agreementRepository;
     private final UserRepository userRepository;
+    private final KeycloakAdminClient keycloakAdminClient;
 
     public static final String STANDARD_TRIAL_TERMS = """
             # THỎA THUẬN SỬ DỤNG DỊCH VỤ THỬ NGHIỆM NỀN TẢNG LOADMASTER
@@ -114,6 +118,7 @@ public class CompanyAgreementServiceImpl implements CompanyAgreementService {
             agreementRepository.save(agreement);
 
             currentUser.setStatus(UserStatus.LOCKED);
+            currentUser.preUpdate();
             userRepository.save(currentUser);
 
             throw new AppException(ErrorCode.AGREEMENT_DEADLINE_EXPIRED);
@@ -132,7 +137,11 @@ public class CompanyAgreementServiceImpl implements CompanyAgreementService {
         } else if (currentUser.getPhoneNumber() != null) {
             agreement.setSignerPhone(currentUser.getPhoneNumber());
         }
-        agreement.setSignerEmail(currentUser.getEmail());
+        if (request != null && request.signerEmail() != null && !request.signerEmail().isBlank()) {
+            agreement.setSignerEmail(request.signerEmail().trim());
+        } else {
+            agreement.setSignerEmail(currentUser.getEmail());
+        }
         agreement.setIpAddress(clientIp);
 
         CompanyAgreement saved = agreementRepository.save(agreement);
@@ -149,6 +158,48 @@ public class CompanyAgreementServiceImpl implements CompanyAgreementService {
                 .orElseThrow(() -> new AppException(ErrorCode.AGREEMENT_NOT_FOUND));
 
         return toResponse(agreement);
+    }
+
+    @Override
+    @Scheduled(cron = "0 0 * * * *")
+    public void processExpiredTrialAgreements() {
+        LocalDateTime now = LocalDateTime.now();
+
+        // 1. Quá 3 ngày chưa ký thỏa thuận: chuyển thỏa thuận sang EXPIRED và xóa mềm (INACTIVE) tài khoản dùng thử
+        List<CompanyAgreement> pendingPastDeadline =
+                agreementRepository.findByStatusAndDeadlineAtBefore(AgreementStatus.PENDING, now);
+        for (CompanyAgreement agreement : pendingPastDeadline) {
+            agreement.setStatus(AgreementStatus.EXPIRED);
+            User trialUser = agreement.getUser();
+            if (trialUser != null) {
+                trialUser.setStatus(UserStatus.INACTIVE);
+                trialUser.preUpdate();
+                userRepository.save(trialUser);
+            }
+            agreementRepository.save(agreement);
+        }
+
+        // 2. Sau 3 tháng kể từ hạn hết 3 ngày dùng thử: xóa vĩnh viễn tài khoản khỏi Keycloak và DB
+        LocalDateTime hardDeleteCutoff = now.minusMonths(3);
+        List<CompanyAgreement> expiredPastThreeMonths =
+                agreementRepository.findByStatusAndDeadlineAtBefore(AgreementStatus.EXPIRED, hardDeleteCutoff);
+        for (CompanyAgreement agreement : expiredPastThreeMonths) {
+            User expiredTrialUser = agreement.getUser();
+            if (expiredTrialUser != null) {
+                if (keycloakAdminClient != null
+                        && expiredTrialUser.getKeycloakId() != null
+                        && !expiredTrialUser.getKeycloakId().isBlank()) {
+                    try {
+                        keycloakAdminClient.deleteUser(expiredTrialUser.getKeycloakId());
+                    } catch (Exception ex) {
+                        log.warn("Keycloak user {} already absent during 3-month trial cleanup", expiredTrialUser.getKeycloakId());
+                    }
+                }
+                agreement.setUser(null);
+                agreementRepository.save(agreement);
+                userRepository.delete(expiredTrialUser);
+            }
+        }
     }
 
     private CompanyAgreementResponse toResponse(CompanyAgreement a) {

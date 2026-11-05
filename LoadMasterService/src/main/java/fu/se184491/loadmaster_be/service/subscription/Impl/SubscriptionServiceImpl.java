@@ -25,6 +25,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Optional;
 
@@ -171,7 +172,7 @@ public class SubscriptionServiceImpl implements SubscriptionService {
                         .company(company)
                         .build());
 
-        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime now = LocalDateTime.now().truncatedTo(ChronoUnit.SECONDS);
         boolean isExtendingSameActivePlan = sub.getStatus() == SubscriptionStatus.ACTIVE
                 && sub.getPlan() != null
                 && sub.getPlan().getId() != null
@@ -188,9 +189,12 @@ public class SubscriptionServiceImpl implements SubscriptionService {
         if (!isExtendingSameActivePlan || sub.getStartedAt() == null) {
             sub.setStartedAt(now);
         }
-        LocalDateTime baseExpiry = isExtendingSameActivePlan ? sub.getExpiresAt() : now;
-        sub.setExpiresAt(calculateExpiresAt(baseExpiry, plan));
+        LocalDateTime baseExpiry = isExtendingSameActivePlan
+                ? sub.getExpiresAt().truncatedTo(ChronoUnit.SECONDS)
+                : now;
+        sub.setExpiresAt(calculateExpiresAt(baseExpiry, plan).truncatedTo(ChronoUnit.SECONDS));
         sub.setAutoRenew(true);
+        sub.normalizeTimestamps();
 
         companySubscriptionRepository.save(sub);
         log.info("Activated subscription id={} for company={} plan={}", sub.getId(), companyId, plan.getName());
@@ -217,7 +221,7 @@ public class SubscriptionServiceImpl implements SubscriptionService {
     @Override
     @Transactional
     public void autoRenewExpiringSubscriptions() {
-        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime now = LocalDateTime.now().truncatedTo(ChronoUnit.SECONDS);
         List<CompanySubscription> expiredSubs = companySubscriptionRepository
                 .findByStatusAndExpiresAtBefore(SubscriptionStatus.ACTIVE, now);
 
@@ -227,7 +231,8 @@ public class SubscriptionServiceImpl implements SubscriptionService {
                 SubscriptionPlan plan = sub.getPlan();
                 if (plan != null && (plan.getPriceVnd() == null || plan.getPriceVnd().compareTo(BigDecimal.ZERO) == 0)) {
                     sub.setStartedAt(now);
-                    sub.setExpiresAt(calculateExpiresAt(now, plan));
+                    sub.setExpiresAt(calculateExpiresAt(now, plan).truncatedTo(ChronoUnit.SECONDS));
+                    sub.normalizeTimestamps();
                     companySubscriptionRepository.save(sub);
                     if (plan.getMonthlyCredits() != null && plan.getMonthlyCredits() > 0) {
                         creditService.grantMonthlyCredits(sub.getCompany().getId(), plan.getMonthlyCredits());

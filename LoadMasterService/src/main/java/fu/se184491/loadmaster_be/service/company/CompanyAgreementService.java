@@ -17,4 +17,6 @@ public interface CompanyAgreementService {
     CompanyAgreementResponse signAgreement(User currentUser, SignAgreementRequest request, String clientIp);
 
     CompanyAgreementResponse getCompanyAgreement(Long companyId);
+
+    void processExpiredTrialAgreements();
 }

@@ -3,12 +3,10 @@ package fu.se184491.loadmaster_be.client;
 import fu.se184491.loadmaster_be.dto.request.account.KeycloakRoleRepresentation;
 import fu.se184491.loadmaster_be.dto.request.account.KeycloakUserRepresentation;
 import fu.se184491.loadmaster_be.service.security.ServiceTokenProvider;
-import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
-
 
 import java.net.URI;
 import java.util.List;
@@ -42,7 +40,6 @@ public class KeycloakAdminClient {
         body.put("email", email);
         body.put("emailVerified", true);
         body.put("enabled", true);
-        body.put("firstName", (fullName != null && !fullName.trim().isEmpty()) ? fullName.trim() : email);
 
         ResponseEntity<Void> response =
                 keycloakAdminRestClient
@@ -66,16 +63,24 @@ public class KeycloakAdminClient {
         return path.substring(path.lastIndexOf("/") + 1);
     }
 
+    /**
+     * Đặt mật khẩu cho user Keycloak.
+     *
+     * @param temporary {@code true}: mật khẩu tạm (tạo tài khoản, quản trị viên đặt lại) — Keycloak bắt đổi mật khẩu ở lần đăng nhập
+     *                  sau, và password grant của app từ chối ("Account is not fully set up") tới khi đổi. {@code false}: mật khẩu chính
+     *                  người dùng vừa đặt (đặt lại qua OTP), dùng đăng nhập được ngay.
+     */
     public void setPassword(
             String keycloakUserId,
-            String password
+            String password,
+            boolean temporary
     ) {
         String token = serviceTokenProvider.getKeycloakAdminToken();
 
         Map<String, Object> body = Map.of(
                 "type", "password",
                 "value", password,
-                "temporary", true
+                "temporary", temporary
         );
 
         keycloakAdminRestClient

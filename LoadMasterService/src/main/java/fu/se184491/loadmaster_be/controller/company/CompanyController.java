@@ -25,13 +25,13 @@ public class CompanyController {
     private final CompanyService companyService;
 
     @PostMapping
-    @PreAuthorize("hasAnyRole('SYSTEM_MANAGER', 'SYSTEM_ADMIN') or hasAuthority('SYSTEM_MANAGER')")
+    @PreAuthorize("hasRole('SYSTEM_ADMIN') or hasAuthority('SYSTEM_ADMIN')")
     public ResponseEntity<CompanyResponse> createCompany(@Valid @RequestBody CompanyRequest request) {
         return new ResponseEntity<>(companyService.createCompany(request), HttpStatus.CREATED);
     }
 
     @PutMapping("/{id}")
-    @PreAuthorize("hasAnyRole('SYSTEM_MANAGER', 'SYSTEM_ADMIN') or hasAuthority('SYSTEM_MANAGER')")
+    @PreAuthorize("hasRole('SYSTEM_ADMIN') or hasAuthority('SYSTEM_ADMIN')")
     public ResponseEntity<CompanyResponse> updateCompany(
             @PathVariable Long id,
             @Valid @RequestBody CompanyRequest request) {
@@ -54,7 +54,7 @@ public class CompanyController {
     }
 
     @PatchMapping("/{id}/status")
-    @PreAuthorize("hasAnyRole('SYSTEM_MANAGER', 'SYSTEM_ADMIN') or hasAuthority('SYSTEM_MANAGER')")
+    @PreAuthorize("hasRole('SYSTEM_ADMIN') or hasAuthority('SYSTEM_ADMIN')")
     public ResponseEntity<CompanyResponse> changeCompanyStatus(
             @PathVariable Long id,
             @RequestParam CompanyStatus status) {

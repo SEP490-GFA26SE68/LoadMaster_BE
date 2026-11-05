@@ -14,8 +14,6 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
-import java.util.List;
-
 @RestController
 @RequestMapping("/api/subscription/plans")
 @RequiredArgsConstructor
@@ -46,13 +44,13 @@ public class SubscriptionPlanController {
     }
 
     @PostMapping
-    @PreAuthorize("hasAnyRole('SYSTEM_MANAGER', 'SYSTEM_ADMIN') or hasAuthority('SYSTEM_MANAGER')")
+    @PreAuthorize("hasRole('SYSTEM_MANAGER') or hasAuthority('SYSTEM_MANAGER')")
     public ResponseEntity<SubscriptionPlanResponse> createPlan(@Valid @RequestBody SubscriptionPlanRequest request) {
         return new ResponseEntity<>(planService.createPlan(request), HttpStatus.CREATED);
     }
 
     @PutMapping("/{id}")
-    @PreAuthorize("hasAnyRole('SYSTEM_MANAGER', 'SYSTEM_ADMIN') or hasAuthority('SYSTEM_MANAGER')")
+    @PreAuthorize("hasRole('SYSTEM_MANAGER') or hasAuthority('SYSTEM_MANAGER')")
     public ResponseEntity<SubscriptionPlanResponse> updatePlan(
             @PathVariable Long id,
             @Valid @RequestBody SubscriptionPlanRequest request) {
@@ -60,7 +58,7 @@ public class SubscriptionPlanController {
     }
 
     @DeleteMapping("/{id}")
-    @PreAuthorize("hasAnyRole('SYSTEM_MANAGER', 'SYSTEM_ADMIN') or hasAuthority('SYSTEM_MANAGER')")
+    @PreAuthorize("hasRole('SYSTEM_MANAGER') or hasAuthority('SYSTEM_MANAGER')")
     public ResponseEntity<Void> deletePlan(@PathVariable Long id) {
         planService.deletePlan(id);
         return ResponseEntity.noContent().build();

@@ -6,6 +6,7 @@ import fu.se184491.loadmaster_be.constant.support.TicketStatus;
 import fu.se184491.loadmaster_be.entity.account.User;
 import fu.se184491.loadmaster_be.entity.optimization.OptimizationJob;
 import jakarta.persistence.*;
+import org.hibernate.annotations.Check;
 import lombok.*;
 
 import java.time.LocalDateTime;
@@ -50,11 +51,13 @@ public class SupportTicket {
     private TicketStatus status;
 
     @Convert(converter = LocalDateTimeSecondsConverter.class)
-    @Column(name = "created_at", length = 19)
+    @Column(name = "created_at", length = 19, columnDefinition = "varchar(19)")
+    @Check(name = "support_tickets_created_at_check", constraints = "created_at IS NULL OR created_at ~ '^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01]) ([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]$'")
     private LocalDateTime createdAt;
 
     @Convert(converter = LocalDateTimeSecondsConverter.class)
-    @Column(name = "resolved_at", length = 19)
+    @Column(name = "resolved_at", length = 19, columnDefinition = "varchar(19)")
+    @Check(name = "support_tickets_resolved_at_check", constraints = "resolved_at IS NULL OR resolved_at ~ '^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01]) ([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]$'")
     private LocalDateTime resolvedAt;
 
     @Converter

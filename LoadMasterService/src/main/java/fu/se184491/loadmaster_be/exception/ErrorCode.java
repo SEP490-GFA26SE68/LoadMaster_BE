@@ -24,6 +24,14 @@ public enum ErrorCode {
     UNAUTHORIZED("Bạn không có quyền thực hiện hành động này", HttpStatus.FORBIDDEN),
     INVALID_CREDENTIALS("Email hoặc mật khẩu không chính xác", HttpStatus.BAD_REQUEST),
 
+    // Đặt lại mật khẩu qua OTP (/api/auth/password-reset/*). Giữ 400 như trước để client cũ vẫn chạy; client đọc `code`.
+    OTP_RESEND_COOLDOWN("Vui lòng chờ trước khi yêu cầu mã OTP mới", HttpStatus.BAD_REQUEST),
+    OTP_REQUEST_LIMIT_EXCEEDED("Bạn đã yêu cầu OTP quá nhiều lần. Vui lòng thử lại sau", HttpStatus.BAD_REQUEST),
+    OTP_EXPIRED("OTP đã hết hạn hoặc không hợp lệ", HttpStatus.BAD_REQUEST),
+    OTP_INCORRECT("OTP không chính xác", HttpStatus.BAD_REQUEST),
+    OTP_ATTEMPTS_EXCEEDED("Bạn đã nhập sai OTP quá nhiều lần", HttpStatus.BAD_REQUEST),
+    RESET_TOKEN_INVALID("Reset token đã hết hạn hoặc không hợp lệ", HttpStatus.BAD_REQUEST),
+
     // -------------------------------------------------------------------------
     // User, Company & Role errors
     // -------------------------------------------------------------------------

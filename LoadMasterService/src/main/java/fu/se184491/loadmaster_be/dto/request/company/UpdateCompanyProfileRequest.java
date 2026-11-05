@@ -14,6 +14,8 @@ public class UpdateCompanyProfileRequest {
     @NotBlank(message = "Tên công ty không được để trống")
     private String companyName;
 
+    private String taxCode;
+
     private String address;
 
     @Email(message = "Email liên hệ không đúng định dạng")

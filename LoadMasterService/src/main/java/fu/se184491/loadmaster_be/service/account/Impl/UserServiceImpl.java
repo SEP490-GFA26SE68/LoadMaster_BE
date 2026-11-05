@@ -1,8 +1,10 @@
 package fu.se184491.loadmaster_be.service.account.Impl;
 
+import fu.se184491.loadmaster_be.client.BrevoClient;
 import fu.se184491.loadmaster_be.client.KeycloakAdminClient;
 import fu.se184491.loadmaster_be.constant.account.UserRole;
 import fu.se184491.loadmaster_be.constant.account.UserStatus;
+import fu.se184491.loadmaster_be.constant.company.AgreementStatus;
 import fu.se184491.loadmaster_be.dto.PageResponse;
 import fu.se184491.loadmaster_be.dto.request.account.CreateUserRequest;
 import fu.se184491.loadmaster_be.dto.request.account.UpdateUserRequest;
@@ -14,11 +16,13 @@ import fu.se184491.loadmaster_be.dto.response.account.UserProfileResponse;
 import fu.se184491.loadmaster_be.dto.response.account.UserStatsResponse;
 import fu.se184491.loadmaster_be.entity.account.User;
 import fu.se184491.loadmaster_be.entity.company.Company;
+import fu.se184491.loadmaster_be.entity.company.CompanyAgreement;
 import fu.se184491.loadmaster_be.exception.AppException;
 import fu.se184491.loadmaster_be.exception.ErrorCode;
 import fu.se184491.loadmaster_be.helpers.CurrentUserService;
 import fu.se184491.loadmaster_be.helpers.TemporaryPasswordGenerator;
 import fu.se184491.loadmaster_be.repository.account.UserRepository;
+import fu.se184491.loadmaster_be.repository.company.CompanyAgreementRepository;
 import fu.se184491.loadmaster_be.repository.company.CompanyRepository;
 import fu.se184491.loadmaster_be.service.account.UserService;
 import lombok.RequiredArgsConstructor;
@@ -33,6 +37,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.client.HttpClientErrorException;
 
+import java.util.Optional;
+
 @Service
 @RequiredArgsConstructor
 @Slf4j
@@ -42,6 +48,8 @@ public class UserServiceImpl implements UserService {
     private final KeycloakAdminClient keycloakAdminClient;
     private final CurrentUserService currentUserService;
     private final TemporaryPasswordGenerator temporaryPasswordGenerator;
+    private final CompanyAgreementRepository companyAgreementRepository;
+    private final BrevoClient brevoClient;
 
     @org.springframework.beans.factory.annotation.Autowired(required = false)
     private fu.se184491.loadmaster_be.repository.billing.CompanySubscriptionRepository companySubscriptionRepository;
@@ -208,12 +216,6 @@ public class UserServiceImpl implements UserService {
         User currentUser = currentUserService.getCurrentUser();
         Long targetCompanyId = resolveAndValidateTargetCompanyId(currentUser, request);
 
-        if (userRepository.existsByEmail(request.email())) {
-            throw new AppException(
-                    ErrorCode.EMAIL_ALREADY_EXISTS
-            );
-        }
-
         Company company = null;
 
         if (!isPlatformRole(request.role())) {
@@ -233,6 +235,42 @@ public class UserServiceImpl implements UserService {
                     );
         }
 
+        String targetEmail = request.email();
+        String targetFullName = request.fullName();
+        String targetPhone = request.phoneNumber();
+
+        if (currentUser.getUserRoleType() == UserRole.SYSTEM_ADMIN
+                && request.role() == UserRole.ADMIN
+                && company != null
+                && companyAgreementRepository != null) {
+            Optional<CompanyAgreement> agreementOpt =
+                    companyAgreementRepository.findFirstByCompanyIdOrderByCreatedAtDesc(company.getId());
+            if (agreementOpt.isPresent()) {
+                CompanyAgreement agreement = agreementOpt.get();
+                if (agreement.getStatus() != AgreementStatus.SIGNED) {
+                    throw new AppException(
+                            ErrorCode.INVALID_INPUT,
+                            "Doanh nghiệp chưa ký thỏa thuận dịch vụ. Không thể cấp tài khoản ADMIN công ty."
+                    );
+                }
+                if (agreement.getSignerEmail() != null && !agreement.getSignerEmail().isBlank()) {
+                    targetEmail = agreement.getSignerEmail().trim();
+                }
+                if (agreement.getSignerName() != null && !agreement.getSignerName().isBlank()) {
+                    targetFullName = agreement.getSignerName().trim();
+                }
+                if (agreement.getSignerPhone() != null && !agreement.getSignerPhone().isBlank()) {
+                    targetPhone = agreement.getSignerPhone().trim();
+                }
+            }
+        }
+
+        if (userRepository.existsByEmail(targetEmail)) {
+            throw new AppException(
+                    ErrorCode.EMAIL_ALREADY_EXISTS
+            );
+        }
+
         String temporaryPassword =
                 temporaryPasswordGenerator.generate();
 
@@ -241,13 +279,14 @@ public class UserServiceImpl implements UserService {
         try {
             keycloakUserId =
                     keycloakAdminClient.createUser(
-                            request.email(),
-                            request.fullName()
+                            targetEmail,
+                            targetFullName
                     );
 
             keycloakAdminClient.setPassword(
                     keycloakUserId,
-                    temporaryPassword
+                    temporaryPassword,
+                    true
             );
 
             keycloakAdminClient.assignRealmRole(
@@ -258,14 +297,24 @@ public class UserServiceImpl implements UserService {
             User user = User.builder()
                     .keycloakId(keycloakUserId)
                     .company(company)
-                    .email(request.email())
-                    .fullName(request.fullName())
-                    .phoneNumber(request.phoneNumber())
+                    .email(targetEmail)
+                    .fullName(targetFullName)
+                    .phoneNumber(targetPhone)
                     .userRoleType(request.role())
                     .status(UserStatus.ACTIVE)
                     .build();
+            user.prePersist();
 
             user = userRepository.save(user);
+
+            if (currentUser.getUserRoleType() == UserRole.SYSTEM_ADMIN
+                    && user.getUserRoleType() == UserRole.ADMIN
+                    && company != null
+                    && brevoClient != null) {
+                String subject = "LoadMaster - Thông tin tài khoản Quản trị viên Doanh nghiệp (Company Admin)";
+                String htmlContent = buildCompanyAdminProvisionEmailHtml(company, user, temporaryPassword);
+                brevoClient.sendEmail(user.getEmail(), subject, htmlContent);
+            }
 
             return new CreateUserResponse(
                     toUserListItemResponse(user),
@@ -285,6 +334,27 @@ public class UserServiceImpl implements UserService {
 
             throw ex;
         }
+    }
+
+    private String buildCompanyAdminProvisionEmailHtml(Company company, User adminUser, String temporaryPassword) {
+        return """
+                <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #1e293b;">
+                    <h2>Chào mừng Doanh nghiệp %s đến với LoadMaster!</h2>
+                    <p>Xin chào <strong>%s</strong>,</p>
+                    <p>Sau khi hoàn tất ký thỏa thuận dịch vụ, Quản trị viên Hệ thống (System Admin) đã khởi tạo tài khoản <strong>Quản trị viên Doanh nghiệp (ADMIN)</strong> cho công ty của bạn:</p>
+                    <ul>
+                        <li><strong>Email đăng nhập:</strong> %s</li>
+                        <li><strong>Mật khẩu tạm thời:</strong> <code>%s</code></li>
+                        <li><strong>Vai trò:</strong> ADMIN (Quản trị viên Công ty)</li>
+                    </ul>
+                    <p>Vui lòng đăng nhập và đổi mật khẩu ngay trong lần sử dụng đầu tiên. Các tài khoản nhân sự nội bộ trong công ty (MANAGER, DISPATCHER, WAREHOUSE_WORKER, DRIVER) sẽ do chính tài khoản ADMIN công ty của bạn khởi tạo và quản lý.</p>
+                </div>
+                """.formatted(
+                company.getCompanyName() != null ? company.getCompanyName() : "",
+                adminUser.getFullName() != null ? adminUser.getFullName() : adminUser.getEmail(),
+                adminUser.getEmail(),
+                temporaryPassword
+        );
     }
 
     private Long resolveAndValidateTargetCompanyId(User currentUser, CreateUserRequest request) {
@@ -311,16 +381,19 @@ public class UserServiceImpl implements UserService {
         }
 
         if (callerRole == UserRole.SYSTEM_MANAGER) {
-            if (isPlatformRole(request.role())) {
-                throw new AppException(
-                        ErrorCode.UNAUTHORIZED,
-                        "Tài khoản SYSTEM_MANAGER chỉ được phép tạo các vai trò cấp công ty: [ADMIN, MANAGER, DISPATCHER, WAREHOUSE_WORKER, DRIVER]"
-                );
-            }
-            return request.companyId();
+            throw new AppException(
+                    ErrorCode.UNAUTHORIZED,
+                    "Chỉ tài khoản SYSTEM_ADMIN mới được phép tạo tài khoản quản trị doanh nghiệp (ADMIN)"
+            );
         }
 
         if (callerRole == UserRole.SYSTEM_ADMIN) {
+            if (!isPlatformRole(request.role()) && request.role() != UserRole.ADMIN) {
+                throw new AppException(
+                        ErrorCode.UNAUTHORIZED,
+                        "Tài khoản SYSTEM_ADMIN chỉ được phép tạo vai trò ADMIN cho công ty khách hàng (các vai trò nhỏ trong công ty do ADMIN công ty tự tạo)"
+                );
+            }
             return request.companyId();
         }
 
@@ -398,12 +471,31 @@ public class UserServiceImpl implements UserService {
     public UserListItemResponse updateUser(Long id, UpdateUserRequest request) {
         User currentUser = currentUserService.getCurrentUser();
         User targetUser = getScopedTargetUser(currentUser, id);
+        UserRole callerRole = currentUser.getUserRoleType();
+        UserRole targetRole = targetUser.getUserRoleType();
+
+        if (callerRole == UserRole.SYSTEM_ADMIN) {
+            if (!isPlatformRole(targetRole) && targetRole != UserRole.ADMIN) {
+                throw new AppException(
+                        ErrorCode.UNAUTHORIZED,
+                        "Tài khoản quản trị hệ thống không được phép chỉnh sửa các vai trò nội bộ của công ty: [MANAGER, DISPATCHER, WAREHOUSE_WORKER, DRIVER]"
+                );
+            }
+        } else if (callerRole == UserRole.ADMIN) {
+            if (isPlatformRole(targetRole) || targetRole == UserRole.ADMIN) {
+                throw new AppException(
+                        ErrorCode.UNAUTHORIZED,
+                        "Tài khoản ADMIN công ty chỉ được phép chỉnh sửa các vai trò nội bộ trong cùng công ty: [MANAGER, DISPATCHER, WAREHOUSE_WORKER, DRIVER]"
+                );
+            }
+        } else {
+            throw new AppException(ErrorCode.UNAUTHORIZED);
+        }
 
         targetUser.setFullName(request.fullName());
         targetUser.setPhoneNumber(request.phoneNumber());
 
         if (request.role() != null) {
-            UserRole callerRole = currentUser.getUserRoleType();
             if (callerRole == UserRole.ADMIN
                     && (isPlatformRole(request.role()) || request.role() == UserRole.ADMIN)) {
                 throw new AppException(
@@ -411,21 +503,22 @@ public class UserServiceImpl implements UserService {
                         "Tài khoản ADMIN công ty chỉ được phép gán các vai trò nội bộ: [MANAGER, DISPATCHER, WAREHOUSE_WORKER, DRIVER]"
                 );
             }
-            if (callerRole == UserRole.SYSTEM_MANAGER && isPlatformRole(request.role())) {
+            if (callerRole == UserRole.SYSTEM_ADMIN
+                    && !isPlatformRole(request.role())
+                    && request.role() != UserRole.ADMIN) {
                 throw new AppException(
                         ErrorCode.UNAUTHORIZED,
-                        "Tài khoản SYSTEM_MANAGER chỉ được phép gán các vai trò cấp công ty: [ADMIN, MANAGER, DISPATCHER, WAREHOUSE_WORKER, DRIVER]"
+                        "Tài khoản quản trị hệ thống không được phép gán các vai trò nội bộ của công ty: [MANAGER, DISPATCHER, WAREHOUSE_WORKER, DRIVER]"
                 );
             }
             targetUser.setUserRoleType(request.role());
         }
 
         if (request.companyId() != null) {
-            UserRole callerRole = currentUser.getUserRoleType();
-            if (callerRole != UserRole.SYSTEM_MANAGER && callerRole != UserRole.SYSTEM_ADMIN) {
+            if (callerRole != UserRole.SYSTEM_ADMIN) {
                 throw new AppException(
                         ErrorCode.UNAUTHORIZED,
-                        "Chỉ tài khoản quản lý hệ thống / quản lý nền tảng mới được phép thay đổi công ty của người dùng"
+                        "Chỉ tài khoản quản trị hệ thống mới được phép thay đổi công ty của người dùng"
                 );
             }
             fu.se184491.loadmaster_be.entity.company.Company targetCompany = companyRepository.findById(request.companyId())
@@ -433,6 +526,7 @@ public class UserServiceImpl implements UserService {
             targetUser.setCompany(targetCompany);
         }
 
+        targetUser.preUpdate();
         User saved = userRepository.save(targetUser);
         return toUserListItemResponse(saved);
     }
@@ -446,7 +540,29 @@ public class UserServiceImpl implements UserService {
         }
 
         User targetUser = getScopedTargetUser(currentUser, id);
+        UserRole callerRole = currentUser.getUserRoleType();
+        UserRole targetRole = targetUser.getUserRoleType();
+
+        if (callerRole == UserRole.SYSTEM_ADMIN) {
+            if (!isPlatformRole(targetRole) && targetRole != UserRole.ADMIN) {
+                throw new AppException(
+                        ErrorCode.UNAUTHORIZED,
+                        "Tài khoản quản trị hệ thống không được phép khóa/mở khóa các vai trò nội bộ của công ty: [MANAGER, DISPATCHER, WAREHOUSE_WORKER, DRIVER]"
+                );
+            }
+        } else if (callerRole == UserRole.ADMIN) {
+            if (isPlatformRole(targetRole) || targetRole == UserRole.ADMIN) {
+                throw new AppException(
+                        ErrorCode.UNAUTHORIZED,
+                        "Tài khoản ADMIN công ty chỉ được phép khóa/mở khóa các vai trò nội bộ trong cùng công ty: [MANAGER, DISPATCHER, WAREHOUSE_WORKER, DRIVER]"
+                );
+            }
+        } else {
+            throw new AppException(ErrorCode.UNAUTHORIZED);
+        }
+
         targetUser.setStatus(request.status());
+        targetUser.preUpdate();
 
         User saved = userRepository.save(targetUser);
         return toUserListItemResponse(saved);
@@ -454,21 +570,65 @@ public class UserServiceImpl implements UserService {
 
     @Override
     @Transactional
-    public void deleteUser(Long id) {
+    public String deleteUser(Long id) {
         User currentUser = currentUserService.getCurrentUser();
         if (currentUser.getId() != null && currentUser.getId().equals(id)) {
             throw new AppException(ErrorCode.INVALID_INPUT);
         }
 
         User targetUser = getScopedTargetUser(currentUser, id);
-        if (targetUser.getKeycloakId() != null && !targetUser.getKeycloakId().isBlank()) {
-            try {
-                keycloakAdminClient.deleteUser(targetUser.getKeycloakId());
-            } catch (HttpClientErrorException.NotFound ex) {
-                log.warn("Keycloak user {} already absent when deleting user id={}", targetUser.getKeycloakId(), id);
+        UserRole callerRole = currentUser.getUserRoleType();
+        UserRole targetRole = targetUser.getUserRoleType();
+
+        if (callerRole == UserRole.SYSTEM_ADMIN) {
+            if (!isPlatformRole(targetRole) && targetRole != UserRole.ADMIN) {
+                throw new AppException(
+                        ErrorCode.UNAUTHORIZED,
+                        "Tài khoản quản trị hệ thống không được phép xóa các vai trò nội bộ của công ty: [MANAGER, DISPATCHER, WAREHOUSE_WORKER, DRIVER]"
+                );
             }
+        } else if (callerRole == UserRole.ADMIN) {
+            if (isPlatformRole(targetRole) || targetRole == UserRole.ADMIN) {
+                throw new AppException(
+                        ErrorCode.UNAUTHORIZED,
+                        "Tài khoản ADMIN công ty chỉ được phép xóa các vai trò nội bộ trong cùng công ty: [MANAGER, DISPATCHER, WAREHOUSE_WORKER, DRIVER]"
+                );
+            }
+        } else {
+            throw new AppException(ErrorCode.UNAUTHORIZED);
         }
-        userRepository.delete(targetUser);
+
+        targetUser.setStatus(UserStatus.INACTIVE);
+        targetUser.preUpdate();
+        userRepository.save(targetUser);
+
+        if (callerRole == UserRole.SYSTEM_ADMIN) {
+            return "User deactivated successfully (will be permanently deleted after 3 months)";
+        }
+        return "User đã được xóa thành công";
+    }
+
+    @Override
+    @Transactional
+    @org.springframework.scheduling.annotation.Scheduled(cron = "0 0 * * * *")
+    public void purgeInactiveUsersAfterThreeMonths() {
+        java.time.LocalDateTime cutoff = java.time.LocalDateTime.now()
+                .minusMonths(3)
+                .truncatedTo(java.time.temporal.ChronoUnit.SECONDS);
+
+        java.util.List<User> expiredUsers =
+                userRepository.findByStatusAndUpdatedAtBefore(UserStatus.INACTIVE, cutoff);
+
+        for (User expiredUser : expiredUsers) {
+            if (expiredUser.getKeycloakId() != null && !expiredUser.getKeycloakId().isBlank()) {
+                try {
+                    keycloakAdminClient.deleteUser(expiredUser.getKeycloakId());
+                } catch (Exception ex) {
+                    log.warn("Keycloak user {} already absent during 3-month inactive user purge", expiredUser.getKeycloakId());
+                }
+            }
+            userRepository.delete(expiredUser);
+        }
     }
 
     @Override
@@ -478,7 +638,7 @@ public class UserServiceImpl implements UserService {
         User targetUser = getScopedTargetUser(currentUser, id);
 
         String temporaryPassword = temporaryPasswordGenerator.generate();
-        keycloakAdminClient.setPassword(targetUser.getKeycloakId(), temporaryPassword);
+        keycloakAdminClient.setPassword(targetUser.getKeycloakId(), temporaryPassword, true);
 
         return new ResetPasswordResponse(
                 targetUser.getId(),
