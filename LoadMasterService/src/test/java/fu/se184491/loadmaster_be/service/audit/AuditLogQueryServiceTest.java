@@ -14,6 +14,16 @@ import fu.se184491.loadmaster_be.repository.company.CompanyRepository;
 import fu.se184491.loadmaster_be.repository.optimization.LoadPlanRepository;
 import fu.se184491.loadmaster_be.repository.trip.DeliveryStopRepository;
 import fu.se184491.loadmaster_be.repository.trip.TripRepository;
+import fu.se184491.loadmaster_be.repository.optimization.PackagePlacementRepository;
+import fu.se184491.loadmaster_be.repository.warehouse.PlacementConfirmationRepository;
+import fu.se184491.loadmaster_be.repository.warehouse.DeviationRepository;
+import fu.se184491.loadmaster_be.repository.warehouse.LoadingExecutionRepository;
+import fu.se184491.loadmaster_be.repository.driver.UnloadConfirmationRepository;
+import fu.se184491.loadmaster_be.entity.optimization.PackagePlacement;
+import fu.se184491.loadmaster_be.entity.optimization.LoadingExecution;
+import fu.se184491.loadmaster_be.entity.warehouse.PlacementConfirmation;
+import fu.se184491.loadmaster_be.entity.warehouse.Deviation;
+import fu.se184491.loadmaster_be.entity.driver.UnloadConfirmation;
 import fu.se184491.loadmaster_be.entity.optimization.LoadPlan;
 import fu.se184491.loadmaster_be.entity.optimization.OptimizationJob;
 import fu.se184491.loadmaster_be.entity.trip.DeliveryStop;
@@ -54,6 +64,11 @@ class AuditLogQueryServiceTest {
     @Mock TripRepository tripRepository;
     @Mock DeliveryStopRepository deliveryStopRepository;
     @Mock LoadPlanRepository loadPlanRepository;
+    @Mock PackagePlacementRepository packagePlacementRepository;
+    @Mock PlacementConfirmationRepository placementConfirmationRepository;
+    @Mock DeviationRepository deviationRepository;
+    @Mock LoadingExecutionRepository loadingExecutionRepository;
+    @Mock UnloadConfirmationRepository unloadConfirmationRepository;
 
     @InjectMocks AuditLogQueryService service;
 
@@ -125,6 +140,53 @@ class AuditLogQueryServiceTest {
 
         assertThat(rows).extracting(AuditLogResponse::getEntityCode).containsExactly(
                 "TRIP-2026-0009", "TRIP-2026-0009", "TRIP-2026-0012", "TRIP-2026-0012", null);
+    }
+
+    @Test
+    void entityCodeOfWarehouseAndDriverLogsFollowsPlacementPlanExecutionAndStop() {
+        when(currentUserService.getCurrentUser()).thenReturn(user(100, UserRole.SYSTEM_ADMIN, null));
+        Trip trip = Trip.builder().id(9L).tripCode("TRIP-2026-0009").build();
+        LoadPlan plan = LoadPlan.builder().id(70L)
+                .job(OptimizationJob.builder().id(3L).trip(trip).build()).build();
+        PackagePlacement placement = PackagePlacement.builder().id(500L).loadPlan(plan).build();
+        DeliveryStop stop = DeliveryStop.builder().id(40L).trip(trip).build();
+        returns(
+                // WAREHOUSE_CONFIRM: giá trị mới có placementId
+                AuditLog.builder().id(1L).actionType("WAREHOUSE_CONFIRM").entityName("PlacementConfirmation")
+                        .entityId("11").newValues(Map.of("placementId", 500L, "confirmed", true)).build(),
+                // DEVIATION_RECORDED cũ không có placementId: lần qua bản ghi sai lệch
+                AuditLog.builder().id(2L).actionType("DEVIATION_RECORDED").entityName("Deviation")
+                        .entityId("12").build(),
+                // phiên xếp không ghi tripId: lần qua phương án
+                AuditLog.builder().id(3L).actionType("LOADING_COMPLETED").entityName("LoadingExecution")
+                        .entityId("13").build(),
+                // DRIVER_UNLOAD: stopId trong giá trị mới
+                AuditLog.builder().id(4L).actionType("DRIVER_UNLOAD").entityName("UnloadConfirmation")
+                        .entityId("14").newValues(Map.of("packageId", 1L, "stopId", 40L)).build(),
+                AuditLog.builder().id(5L).actionType("PLACEMENT_PINNED").entityName("PackagePlacement")
+                        .entityId("500").build(),
+                // trỏ tới sai lệch không còn: không có mã
+                AuditLog.builder().id(6L).actionType("DEVIATION_RECORDED").entityName("Deviation")
+                        .entityId("99").build());
+        when(deviationRepository.findAllById(anyIterable()))
+                .thenReturn(List.of(Deviation.builder().id(12L).placement(placement).build()));
+        when(loadingExecutionRepository.findAllById(anyIterable()))
+                .thenReturn(List.of(LoadingExecution.builder().id(13L).loadPlan(plan).build()));
+        when(packagePlacementRepository.findAllById(anyIterable())).thenReturn(List.of(placement));
+        when(loadPlanRepository.findAllById(anyIterable())).thenReturn(List.of(plan));
+        when(deliveryStopRepository.findAllById(anyIterable())).thenReturn(List.of(stop));
+        when(tripRepository.findAllById(anyIterable())).thenReturn(List.of(trip));
+
+        List<AuditLogResponse> rows = service.search(NO_FILTER, null, 0, 20).getData();
+
+        assertThat(rows).extracting(AuditLogResponse::getEntityCode).containsExactly(
+                "TRIP-2026-0009", "TRIP-2026-0009", "TRIP-2026-0009", "TRIP-2026-0009", "TRIP-2026-0009", null);
+        // một truy vấn mỗi bảng cho cả trang; xác nhận xếp có placementId nên không đọc bảng xác nhận
+        verify(packagePlacementRepository).findAllById(anyIterable());
+        verify(loadPlanRepository).findAllById(anyIterable());
+        verify(tripRepository).findAllById(anyIterable());
+        verify(placementConfirmationRepository, never()).findAllById(anyIterable());
+        verify(unloadConfirmationRepository, never()).findAllById(anyIterable());
     }
 
     @Test
