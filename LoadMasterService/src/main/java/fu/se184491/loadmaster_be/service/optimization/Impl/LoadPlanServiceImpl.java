@@ -19,6 +19,9 @@ import fu.se184491.loadmaster_be.entity.common.AuditLog;
 import fu.se184491.loadmaster_be.entity.optimization.LoadPlan;
 import fu.se184491.loadmaster_be.entity.optimization.OptimizationJob;
 import fu.se184491.loadmaster_be.entity.optimization.PackagePlacement;
+import fu.se184491.loadmaster_be.entity.trip.Trip;
+import fu.se184491.loadmaster_be.constant.trip.TripStatus;
+import fu.se184491.loadmaster_be.helpers.CurrentUserService;
 import fu.se184491.loadmaster_be.exception.AppException;
 import fu.se184491.loadmaster_be.exception.ErrorCode;
 import fu.se184491.loadmaster_be.repository.cargo.CargoPackageRepository;
@@ -54,12 +57,30 @@ public class LoadPlanServiceImpl implements LoadPlanService {
     private final OptimizationEngineClient optimizationEngineClient;
     private final fu.se184491.loadmaster_be.service.credit.CreditService creditService;
     private final fu.se184491.loadmaster_be.repository.trip.DeliveryStopRepository deliveryStopRepository;
+    private final CurrentUserService currentUserService;
+
+    /**
+     * Phương án chỉ được ghim, bỏ ghim hay chạy lại khi nó thuộc công ty của người gọi và chuyến của
+     * nó còn Đã lập kế hoạch: từ lúc kho bắt đầu xếp, phương án đã chốt không đổi được nữa.
+     */
+    private LoadPlan editablePlan(Long loadPlanId) {
+        LoadPlan loadPlan = loadPlanRepository.findById(loadPlanId)
+                .orElseThrow(() -> new AppException(ErrorCode.LOAD_PLAN_NOT_FOUND));
+        Trip trip = loadPlan.getJob() != null ? loadPlan.getJob().getTrip() : null;
+        Long companyId = currentUserService.getCurrentCompanyId();
+        if (trip == null || trip.getCompany() == null || !Objects.equals(trip.getCompany().getId(), companyId)) {
+            throw new AppException(ErrorCode.LOAD_PLAN_NOT_FOUND);
+        }
+        if (trip.getStatus() != TripStatus.PLANNED) {
+            throw new AppException(ErrorCode.TRIP_LOCKED);
+        }
+        return loadPlan;
+    }
 
     @Override
     @Transactional
     public PackagePlacementResponse pinPlacement(Long loadPlanId, PinPlacementRequest request) {
-        LoadPlan loadPlan = loadPlanRepository.findById(loadPlanId)
-                .orElseThrow(() -> new AppException(ErrorCode.LOAD_PLAN_NOT_FOUND));
+        LoadPlan loadPlan = editablePlan(loadPlanId);
 
         PackagePlacement placement = packagePlacementRepository.findById(request.getPlacementId())
                 .orElseThrow(() -> new AppException(ErrorCode.PLACEMENT_NOT_FOUND));
@@ -79,8 +100,7 @@ public class LoadPlanServiceImpl implements LoadPlanService {
     @Override
     @Transactional
     public PackagePlacementResponse unpinPlacement(Long loadPlanId, Long placementId) {
-        LoadPlan loadPlan = loadPlanRepository.findById(loadPlanId)
-                .orElseThrow(() -> new AppException(ErrorCode.LOAD_PLAN_NOT_FOUND));
+        LoadPlan loadPlan = editablePlan(loadPlanId);
 
         PackagePlacement placement = packagePlacementRepository.findById(placementId)
                 .orElseThrow(() -> new AppException(ErrorCode.PLACEMENT_NOT_FOUND));
@@ -100,8 +120,7 @@ public class LoadPlanServiceImpl implements LoadPlanService {
     @Override
     @Transactional
     public LoadPlanResponse rerunOptimization(Long loadPlanId, RerunOptimizationRequest request) {
-        LoadPlan currentPlan = loadPlanRepository.findById(loadPlanId)
-                .orElseThrow(() -> new AppException(ErrorCode.LOAD_PLAN_NOT_FOUND));
+        LoadPlan currentPlan = editablePlan(loadPlanId);
 
         // 1. Load pinned placements from current plan
         List<PackagePlacement> pinnedPlacements = packagePlacementRepository.findByLoadPlanIdAndPinnedTrue(loadPlanId);

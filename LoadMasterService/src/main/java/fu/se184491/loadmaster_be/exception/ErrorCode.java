@@ -205,6 +205,7 @@ public enum ErrorCode {
     PLACEMENT_NOT_IN_PLAN("Vị trí kiện hàng không thuộc về kế hoạch xếp hàng này", HttpStatus.BAD_REQUEST),
     PLAN_ALREADY_APPROVED("Kế hoạch xếp hàng này đã được phê duyệt", HttpStatus.BAD_REQUEST),
     PLAN_TRIP_NOT_PLANNED("Chỉ duyệt được phương án khi chuyến ở trạng thái Đã lập kế hoạch", HttpStatus.CONFLICT),
+    TRIP_LOCKED("Chuyến không ở trạng thái Đã lập kế hoạch nên không sửa được phương án", HttpStatus.CONFLICT),
     PLAN_HAS_NO_PLACEMENTS("Kế hoạch xếp hàng không có kiện hàng nào", HttpStatus.BAD_REQUEST),
     PLAN_LIFO_INVALID("Thứ tự dỡ hàng LIFO không hợp lệ", HttpStatus.BAD_REQUEST),
     OPTIMIZATION_JOB_NOT_FOUND("Không tìm thấy yêu cầu tối ưu", HttpStatus.NOT_FOUND),
@@ -250,6 +251,8 @@ public enum ErrorCode {
     GPS_TRIP_NOT_IN_TRANSIT("Chuyến đi không ở trạng thái đang vận chuyển", HttpStatus.BAD_REQUEST),
     TRIP_EXCEPTION_NOT_FOUND("Không tìm thấy sự cố chuyến đi", HttpStatus.NOT_FOUND),
     EXCEPTION_STATUS_INVALID("Sự cố chuyến đi không ở trạng thái cho phép thao tác này", HttpStatus.CONFLICT),
+    CONTACT_NOTE_REQUIRED("Phải ghi lại nội dung đã liên hệ khách trước khi gia hạn", HttpStatus.BAD_REQUEST),
+    REQUIREMENT_DEADLINE_PAST("Hạn giao mới phải ở tương lai", HttpStatus.BAD_REQUEST),
     INVALID_REROUTE_INDEX("Chỉ số tuyến thay thế không hợp lệ", HttpStatus.BAD_REQUEST),
     NO_GPS_LOCATION("Chuyến đi chưa có vị trí GPS", HttpStatus.BAD_REQUEST),
 

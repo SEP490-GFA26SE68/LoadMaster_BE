@@ -1,6 +1,7 @@
 package fu.se184491.loadmaster_be.controller.monitoring;
 
 import fu.se184491.loadmaster_be.dto.ApiResponse;
+import fu.se184491.loadmaster_be.dto.request.monitoring.RenegotiateDeadlineRequest;
 import fu.se184491.loadmaster_be.dto.request.monitoring.ReportExceptionRequest;
 import fu.se184491.loadmaster_be.dto.request.monitoring.ResolveExceptionRequest;
 import fu.se184491.loadmaster_be.dto.response.monitoring.LocationPointResponse;
@@ -125,6 +126,20 @@ public class MonitoringController {
         TripExceptionResponse response = tripExceptionService.escalate(
                 id, exceptionId, currentUserService.getCurrentCompanyId(), userId, "NO_ROUTE");
         return ResponseEntity.ok(ApiResponse.success("Chuyển sự cố cho quản lý thành công", response));
+    }
+
+    @PostMapping("/api/trips/{tripId}/exceptions/{exceptionId}/renegotiate")
+    @PreAuthorize("hasRole('MANAGER')")
+    @Operation(summary = "Renegotiate the deadline of a delivery requirement for an escalated exception")
+    public ResponseEntity<ApiResponse<TripExceptionResponse>> renegotiateDeadline(
+            @PathVariable("tripId") String tripId,
+            @PathVariable("exceptionId") String exceptionId,
+            @Valid @RequestBody RenegotiateDeadlineRequest request
+    ) {
+        Long userId = currentUserService.getCurrentUser().getId();
+        TripExceptionResponse response = tripExceptionService.renegotiateDeadline(
+                tripId, exceptionId, currentUserService.getCurrentCompanyId(), request, userId);
+        return ResponseEntity.ok(ApiResponse.success("Gia hạn giao thành công", response));
     }
 
     @PostMapping("/api/trips/{id}/reroute")
