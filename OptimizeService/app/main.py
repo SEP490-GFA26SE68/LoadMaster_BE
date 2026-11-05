@@ -5,6 +5,7 @@ from app.config.settings import settings
 from app.controller.optimization.trip_validation_router import router as trip_validation_router
 from app.controller.optimization.optimization_router import router as optimization_router
 from app.controller.optimization.load_plan_router import router as load_plan_router
+from app.controller.optimization.rerun_router import router as rerun_router
 from app.exception.global_exception_handler import register_exception_handlers
 
 app = FastAPI(
@@ -30,6 +31,7 @@ register_exception_handlers(app)
 app.include_router(trip_validation_router)
 app.include_router(optimization_router)
 app.include_router(load_plan_router)
+app.include_router(rerun_router)
 
 
 @app.get("/health")

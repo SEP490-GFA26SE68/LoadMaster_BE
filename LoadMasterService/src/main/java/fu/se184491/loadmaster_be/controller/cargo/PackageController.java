@@ -34,7 +34,7 @@ public class PackageController {
     // ==================== CREATE ====================
 
     @PostMapping
-    @PreAuthorize("hasAnyAuthority('PACKAGE_MANAGE', 'DISPATCHER')")
+    @PreAuthorize("hasAnyAuthority('PACKAGE_MANAGE', 'ROLE_DISPATCHER')")
     public ResponseEntity<ApiResponse<PackageResponse>> createPackage(
             @Valid @RequestBody PackageRequest request
     ) {
@@ -53,7 +53,7 @@ public class PackageController {
 
 
     @PostMapping("/batch")
-    @PreAuthorize("hasAnyAuthority('PACKAGE_MANAGE', 'DISPATCHER')")
+    @PreAuthorize("hasAnyAuthority('PACKAGE_MANAGE', 'ROLE_DISPATCHER')")
     public ResponseEntity<ApiResponse<List<PackageResponse>>> createPackages(
             @Valid @RequestBody PackageRequest request
     ) {
@@ -74,7 +74,7 @@ public class PackageController {
     // ==================== UPDATE ====================
 
     @PutMapping("/{id}")
-    @PreAuthorize("hasAnyAuthority('PACKAGE_MANAGE', 'DISPATCHER')")
+    @PreAuthorize("hasAnyAuthority('PACKAGE_MANAGE', 'ROLE_DISPATCHER')")
     public ResponseEntity<ApiResponse<PackageResponse>> updatePackage(
             @PathVariable Long id,
             @Valid @RequestBody PackageRequest request
@@ -96,7 +96,7 @@ public class PackageController {
     // ==================== DELETE ====================
 
     @DeleteMapping("/{id}")
-    @PreAuthorize("hasAnyAuthority('PACKAGE_MANAGE', 'DISPATCHER')")
+    @PreAuthorize("hasAnyAuthority('PACKAGE_MANAGE', 'ROLE_DISPATCHER')")
     public ResponseEntity<ApiResponse<Void>> deletePackage(
             @PathVariable Long id
     ) {
@@ -116,7 +116,7 @@ public class PackageController {
     // ==================== GET BY ID ====================
 
     @GetMapping("/{id}")
-    @PreAuthorize("hasAnyAuthority('PACKAGE_MANAGE', 'ROLE_DISPATCHER')")
+    @PreAuthorize("hasAnyAuthority('PACKAGE_MANAGE', 'ROLE_DISPATCHER', 'ROLE_MANAGER')")
     public ResponseEntity<ApiResponse<PackageResponse>> getPackageById(
             @PathVariable Long id
     ) {

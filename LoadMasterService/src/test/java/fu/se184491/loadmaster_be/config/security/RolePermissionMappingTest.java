@@ -54,6 +54,30 @@ class RolePermissionMappingTest {
     }
 
     @Test
+    @DisplayName("DISPATCHER lập yêu cầu giao: có DELIVERY_DEMAND_MANAGE")
+    void dispatcher_managesDeliveryRequirements() {
+        assertThat(rolePermissionMapping.getPermissions(UserRole.DISPATCHER))
+                .contains(Permission.DELIVERY_DEMAND_MANAGE);
+    }
+
+    @Test
+    @DisplayName("MANAGER chỉ đọc: xe, loại xe, yêu cầu giao")
+    void manager_hasReadOnlyPermissions() {
+        assertThat(rolePermissionMapping.getPermissions(UserRole.MANAGER)).containsExactlyInAnyOrder(
+                Permission.VEHICLES_READ,
+                Permission.VEHICLE_TYPES_READ,
+                Permission.DELIVERY_READ
+        );
+    }
+
+    @Test
+    @DisplayName("ADMIN của công ty không lập chuyến")
+    void admin_cannotManageTrips() {
+        assertThat(rolePermissionMapping.getPermissions(UserRole.ADMIN))
+                .doesNotContain(Permission.TRIP_MANAGE);
+    }
+
+    @Test
     @DisplayName("ADMIN should include USERS_DELETE permission to manage company users")
     void admin_hasUsersDeletePermission() {
         Set<Permission> permissions = rolePermissionMapping.getPermissions(UserRole.ADMIN);

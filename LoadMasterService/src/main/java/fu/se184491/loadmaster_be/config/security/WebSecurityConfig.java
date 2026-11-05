@@ -48,7 +48,6 @@ public class WebSecurityConfig {
                                 "/swagger-ui.html",
                                 "/api/vehicle-types",
                                 "/api/auth/password-reset/**",
-                                "/api/load-plans/**",
                                 "/api/warehouse/**",
                                 "/api/driver/**",
                                 "/webhook/**",

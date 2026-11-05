@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from types import SimpleNamespace
 from typing import Optional, Union, Any, Callable
 from uuid import UUID
 from sqlalchemy.orm import Session
@@ -53,6 +54,25 @@ class AsyncOptimizationRunner:
         """
         Xây dựng ProblemRequest từ Trip, Vehicle, Package lưu trong DB (S5b-04).
         """
+        job = self.job_service.get_job(str(job_uuid), db)
+        return self.build_problem_request_for_trip(
+            job.trip_id,
+            job.objective,
+            job.time_limit_sec,
+            db,
+        )
+
+    def build_problem_request_for_trip(
+        self,
+        trip_id: int,
+        objective: Optional[str],
+        time_limit_sec: Optional[int],
+        db: Session,
+    ) -> ProblemRequest:
+        """
+        Xây dựng ProblemRequest từ chuyến, không cần job trong DB.
+        Lần chạy lại giữ kiện đã ghim dùng lối này: job của Java chưa được commit khi gọi sang.
+        """
         from app.entity.trip_model import (
             Trip,
             CargoPackage,
@@ -61,7 +81,11 @@ class AsyncOptimizationRunner:
             DeliveryRequirementPackage,
         )
 
-        job = self.job_service.get_job(str(job_uuid), db)
+        job = SimpleNamespace(
+            trip_id=trip_id,
+            objective=objective,
+            time_limit_sec=time_limit_sec,
+        )
         trip = db.query(Trip).filter(Trip.id == job.trip_id).first()
         if not trip:
             raise AppException(ErrorCode.TRIP_NOT_FOUND)

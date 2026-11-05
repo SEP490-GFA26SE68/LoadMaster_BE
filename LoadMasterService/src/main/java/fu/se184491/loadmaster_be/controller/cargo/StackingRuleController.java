@@ -35,38 +35,38 @@ public class StackingRuleController {
 
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
-    @PreAuthorize("hasAnyAuthority('PACKAGE_TYPE_MANAGE', 'DISPATCHER')")
+    @PreAuthorize("hasAnyAuthority('PACKAGE_TYPE_MANAGE', 'ROLE_DISPATCHER')")
     public StackingRuleResponse createStackingRule(@Valid @RequestBody StackingRuleRequest request) {
         return stackingRuleService.createStackingRule(getCurrentCompanyId(), request);
     }
 
     @PutMapping("/{id}")
-    @PreAuthorize("hasAnyAuthority('PACKAGE_TYPE_MANAGE', 'DISPATCHER')")
+    @PreAuthorize("hasAnyAuthority('PACKAGE_TYPE_MANAGE', 'ROLE_DISPATCHER')")
     public StackingRuleResponse updateStackingRule(@PathVariable Long id, @Valid @RequestBody StackingRuleRequest request) {
         return stackingRuleService.updateStackingRule(getCurrentCompanyId(), id, request);
     }
 
     @GetMapping("/{id}")
-    @PreAuthorize("hasAnyAuthority('PACKAGE_TYPE_MANAGE', 'DISPATCHER')")
+    @PreAuthorize("hasAnyAuthority('PACKAGE_TYPE_MANAGE', 'ROLE_DISPATCHER')")
     public StackingRuleResponse getStackingRuleById(@PathVariable Long id) {
         return stackingRuleService.getStackingRuleById(getCurrentCompanyId(), id);
     }
 
     @DeleteMapping("/{id}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
-    @PreAuthorize("hasAnyAuthority('PACKAGE_TYPE_MANAGE', 'DISPATCHER')")
+    @PreAuthorize("hasAnyAuthority('PACKAGE_TYPE_MANAGE', 'ROLE_DISPATCHER')")
     public void deleteStackingRule(@PathVariable Long id) {
         stackingRuleService.deleteStackingRule(getCurrentCompanyId(), id);
     }
 
     @GetMapping
-    @PreAuthorize("hasAnyAuthority('PACKAGE_TYPE_MANAGE', 'DISPATCHER')")
+    @PreAuthorize("hasAnyAuthority('PACKAGE_TYPE_MANAGE', 'ROLE_DISPATCHER')")
     public Page<StackingRuleResponse> getAllStackingRules(Pageable pageable) {
         return stackingRuleService.getAllStackingRules(getCurrentCompanyId(), pageable);
     }
 
     @GetMapping("/check")
-    @PreAuthorize("hasAnyAuthority('PACKAGE_TYPE_MANAGE', 'DISPATCHER')")
+    @PreAuthorize("hasAnyAuthority('PACKAGE_TYPE_MANAGE', 'ROLE_DISPATCHER')")
     public Boolean checkStackingAllowed(
             @RequestParam Long bottomPackageTypeId,
             @RequestParam Long topPackageTypeId) {

@@ -45,7 +45,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @WebMvcTest(RoutePlanController.class)
 @Import(WebSecurityConfig.class)
 @AutoConfigureMockMvc(addFilters = false)
-@WithMockUser(authorities = "DISPATCHER")
+@WithMockUser(roles = "DISPATCHER")
 public class RoutePlanControllerTest {
 
     @Autowired
