@@ -1,6 +1,9 @@
 package fu.se184491.loadmaster_be.service.driver.Impl;
 
+import fu.se184491.loadmaster_be.service.audit.AuditCompany;
 import fu.se184491.loadmaster_be.constant.cargo.PackageStatus;
+import fu.se184491.loadmaster_be.constant.optimization.LoadingExecutionStatus;
+import fu.se184491.loadmaster_be.constant.planning.DeliveryRequirementStatus;
 import fu.se184491.loadmaster_be.constant.trip.DeliveryStopStatus;
 import fu.se184491.loadmaster_be.constant.trip.TripStatus;
 import fu.se184491.loadmaster_be.dto.response.driver.CompleteStopResponse;
@@ -14,6 +17,7 @@ import fu.se184491.loadmaster_be.entity.common.AuditLog;
 import fu.se184491.loadmaster_be.entity.driver.UnloadConfirmation;
 import fu.se184491.loadmaster_be.entity.optimization.LoadPlan;
 import fu.se184491.loadmaster_be.entity.optimization.PackagePlacement;
+import fu.se184491.loadmaster_be.entity.planning.DeliveryRequirement;
 import fu.se184491.loadmaster_be.entity.trip.DeliveryStop;
 import fu.se184491.loadmaster_be.entity.trip.Trip;
 import fu.se184491.loadmaster_be.exception.AppException;
@@ -21,15 +25,20 @@ import fu.se184491.loadmaster_be.exception.DuplicateUnloadException;
 import fu.se184491.loadmaster_be.exception.ErrorCode;
 import fu.se184491.loadmaster_be.exception.IncompleteStopException;
 import fu.se184491.loadmaster_be.exception.WrongStopException;
-import fu.se184491.loadmaster_be.repository.account.UserRepository;
+import fu.se184491.loadmaster_be.helpers.CurrentUserService;
 import fu.se184491.loadmaster_be.repository.cargo.CargoPackageRepository;
 import fu.se184491.loadmaster_be.repository.common.AuditLogRepository;
 import fu.se184491.loadmaster_be.repository.driver.UnloadConfirmationRepository;
 import fu.se184491.loadmaster_be.repository.optimization.LoadPlanRepository;
 import fu.se184491.loadmaster_be.repository.optimization.PackagePlacementRepository;
+import fu.se184491.loadmaster_be.repository.planning.DeliveryRequirementRepository;
 import fu.se184491.loadmaster_be.repository.trip.DeliveryStopRepository;
 import fu.se184491.loadmaster_be.repository.trip.TripRepository;
+import fu.se184491.loadmaster_be.repository.warehouse.LoadingExecutionRepository;
 import fu.se184491.loadmaster_be.service.driver.DriverService;
+import fu.se184491.loadmaster_be.service.monitoring.TripLookupHelper;
+import fu.se184491.loadmaster_be.service.trip.TripPackageResolver;
+import fu.se184491.loadmaster_be.service.trip.TripStatusService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -42,7 +51,15 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
+import java.util.stream.Collectors;
 
+/**
+ * Việc của tài xế trên chuyến được giao cho chính mình.
+ *
+ * <p>Kiện của một điểm giao đọc qua yêu cầu giao của điểm đó ({@link TripPackageResolver}); đường
+ * cũ qua đơn vận chuyển vẫn được đọc thêm cho dữ liệu cũ.</p>
+ */
 @Service
 @RequiredArgsConstructor
 @Slf4j
@@ -54,59 +71,74 @@ public class DriverServiceImpl implements DriverService {
     private final PackagePlacementRepository packagePlacementRepository;
     private final CargoPackageRepository cargoPackageRepository;
     private final UnloadConfirmationRepository unloadConfirmationRepository;
-    private final UserRepository userRepository;
     private final AuditLogRepository auditLogRepository;
-
-
+    private final DeliveryRequirementRepository deliveryRequirementRepository;
+    private final LoadingExecutionRepository loadingExecutionRepository;
+    private final CurrentUserService currentUserService;
+    private final TripStatusService tripStatusService;
+    private final TripPackageResolver tripPackageResolver;
+    private final TripLookupHelper tripLookupHelper;
 
     @Override
     @Transactional(readOnly = true)
     public List<DriverTripResponse> listTrips(Long driverId) {
-        if (driverId == null) {
-            throw new AppException(ErrorCode.USER_NOT_FOUND);
-        }
-        userRepository.findById(driverId).orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
-
+        User driver = currentDriver(driverId);
         List<DriverTripResponse> trips = new ArrayList<>();
-        for (Trip trip : tripRepository.findByDriver_IdOrderByDepartureTimeDesc(driverId)) {
-            trips.add(DriverTripResponse.builder()
-                    .tripId(trip.getId())
-                    .tripCode(trip.getTripCode())
-                    .vehicleLicensePlate(trip.getVehicle() != null ? trip.getVehicle().getLicensePlate() : null)
-                    .stopCount((int) deliveryStopRepository.countByTripId(trip.getId()))
-                    .departureTime(trip.getDepartureTime())
-                    .status(trip.getStatus() != null ? trip.getStatus().name() : null)
-                    .build());
+        for (Trip trip : tripRepository.findByDriver_IdOrderByDepartureTimeDesc(driver.getId())) {
+            trips.add(toTripResponse(trip));
         }
         return trips;
     }
 
     @Override
+    @Transactional
+    public DriverTripResponse startTrip(Long tripId) {
+        User driver = currentDriver(null);
+        Trip trip = requireOwnTrip(String.valueOf(tripId));
+        if (trip.getStatus() != TripStatus.LOADING) {
+            throw new AppException(ErrorCode.LOADING_NOT_COMPLETED);
+        }
+        boolean loaded = loadingExecutionRepository
+                .existsByLoadPlanJobTripIdAndStatus(trip.getId(), LoadingExecutionStatus.COMPLETED);
+        if (!loaded) {
+            throw new AppException(ErrorCode.LOADING_NOT_COMPLETED);
+        }
+
+        for (DeliveryRequirement requirement : deliveryRequirementRepository.findByTripId(trip.getId())) {
+            if (requirement.getStatus() == DeliveryRequirementStatus.ASSIGNED) {
+                requirement.setStatus(DeliveryRequirementStatus.IN_TRIP);
+            }
+        }
+        Trip started = tripStatusService.transitionTo(trip.getId(), TripStatus.IN_TRANSIT, driver.getId());
+        log.info("Driver {} started trip {}", driver.getId(), started.getTripCode());
+        return toTripResponse(started);
+    }
+
+    @Override
     @Transactional(readOnly = true)
     public CurrentStopResponse getCurrentStop(Long tripId) {
-        Trip trip = tripRepository.findById(tripId)
-                .orElseThrow(() -> new AppException(ErrorCode.TRIP_NOT_FOUND));
+        Trip trip = requireOwnTrip(String.valueOf(tripId));
 
         DeliveryStop currentStop = deliveryStopRepository
-                .findFirstByTripIdAndStatusNotOrderByStopSequenceAsc(tripId, DeliveryStopStatus.COMPLETED)
+                .findFirstByTripIdAndStatusNotOrderByStopSequenceAsc(trip.getId(), DeliveryStopStatus.COMPLETED)
                 .orElseThrow(() -> new AppException(ErrorCode.NO_PENDING_DELIVERY_STOP));
 
+        List<CargoPackage> stopPackages = tripPackageResolver.packagesOfStop(currentStop.getId());
+        Set<Long> stopPackageIds = stopPackages.stream().map(CargoPackage::getId).collect(Collectors.toSet());
         List<StopPackageResponse> packageResponses = new ArrayList<>();
 
         Optional<LoadPlan> approvedPlanOpt = loadPlanRepository
-                .findFirstByJobTripIdAndApprovedTrueOrderByVersionDesc(tripId);
+                .findFirstByJobTripIdAndApprovedTrueOrderByIdDesc(trip.getId());
 
         if (approvedPlanOpt.isPresent()) {
-            List<PackagePlacement> placements = packagePlacementRepository.findByLoadPlanId(approvedPlanOpt.get().getId());
-
             List<PackagePlacement> stopPlacements = new ArrayList<>();
-            for (PackagePlacement placement : placements) {
-                if (isPlacementForStop(placement, currentStop.getId())) {
+            for (PackagePlacement placement : packagePlacementRepository.findByLoadPlanId(approvedPlanOpt.get().getId())) {
+                if (isPlacementForStop(placement, currentStop.getId(), stopPackageIds)) {
                     stopPlacements.add(placement);
                 }
             }
 
-            // LIFO unloading order: reverse stepSequence (highest stepSequence unloaded first)
+            // Dỡ theo LIFO: kiện xếp sau cùng ra trước.
             stopPlacements.sort(Comparator.comparing(
                     PackagePlacement::getStepSequence,
                     Comparator.nullsLast(Comparator.reverseOrder())
@@ -126,11 +158,10 @@ public class DriverServiceImpl implements DriverService {
             }
         }
 
-        // Fallback if no placements were linked to the stop
+        // Chưa có phương án nào gắn với điểm: liệt kê kiện của điểm theo yêu cầu giao.
         if (packageResponses.isEmpty()) {
-            List<CargoPackage> directPackages = cargoPackageRepository.findByOrderDeliveryStopId(currentStop.getId());
             int order = 1;
-            for (CargoPackage pkg : directPackages) {
+            for (CargoPackage pkg : stopPackages) {
                 packageResponses.add(StopPackageResponse.builder()
                         .packageId(pkg.getId())
                         .packageName(getPackageDisplayName(pkg))
@@ -143,7 +174,7 @@ public class DriverServiceImpl implements DriverService {
         }
 
         log.info("Current stop for tripId {}: stopId {} ({}), with {} packages to unload",
-                tripId, currentStop.getId(), currentStop.getStopName(), packageResponses.size());
+                trip.getId(), currentStop.getId(), currentStop.getStopName(), packageResponses.size());
 
         return CurrentStopResponse.builder()
                 .stopId(currentStop.getId())
@@ -159,16 +190,19 @@ public class DriverServiceImpl implements DriverService {
     @Override
     @Transactional
     public ConfirmUnloadResponse confirmUnload(Long packageId, Long driverId) {
+        User driver = currentDriver(driverId);
         CargoPackage pkg = cargoPackageRepository.findById(packageId)
                 .orElseThrow(() -> new AppException(ErrorCode.PACKAGE_NOT_FOUND));
 
-        if (pkg.getOrder() == null || pkg.getOrder().getDeliveryStop() == null) {
-            throw new AppException(ErrorCode.DELIVERY_STOP_NOT_FOUND);
-        }
-        DeliveryStop packageStop = pkg.getOrder().getDeliveryStop();
+        DeliveryStop packageStop = tripPackageResolver.stopOfPackage(pkg)
+                .orElseThrow(() -> new AppException(ErrorCode.DELIVERY_STOP_NOT_FOUND));
         Trip trip = packageStop.getTrip();
         if (trip == null) {
             throw new AppException(ErrorCode.TRIP_NOT_FOUND);
+        }
+        requireDriverOf(trip, driver);
+        if (trip.getStatus() != TripStatus.IN_TRANSIT) {
+            throw new AppException(ErrorCode.GPS_TRIP_NOT_IN_TRANSIT);
         }
 
         DeliveryStop currentStop = deliveryStopRepository
@@ -188,8 +222,6 @@ public class DriverServiceImpl implements DriverService {
             }
         }
 
-        User driver = (driverId != null) ? userRepository.findById(driverId).orElse(null) : null;
-
         UnloadConfirmation confirmation = UnloadConfirmation.builder()
                 .cargoPackage(pkg)
                 .deliveryStop(packageStop)
@@ -202,6 +234,7 @@ public class DriverServiceImpl implements DriverService {
         cargoPackageRepository.save(pkg);
 
         AuditLog auditLog = AuditLog.builder()
+                .companyId(AuditCompany.of(pkg.getCompany()))
                 .actionType("DRIVER_UNLOAD")
                 .entityName("UnloadConfirmation")
                 .entityId(savedConfirmation.getId().toString())
@@ -215,9 +248,9 @@ public class DriverServiceImpl implements DriverService {
                 .build();
         auditLogRepository.save(auditLog);
 
-        List<CargoPackage> packagesAtStop = cargoPackageRepository.findByOrderDeliveryStopId(packageStop.getId());
+        int packagesAtStop = tripPackageResolver.packagesOfStop(packageStop.getId()).size();
         long unloadedCount = unloadConfirmationRepository.countByDeliveryStopId(packageStop.getId());
-        int remainingPackagesCount = Math.max(0, packagesAtStop.size() - (int) unloadedCount);
+        int remainingPackagesCount = Math.max(0, packagesAtStop - (int) unloadedCount);
 
         log.info("Driver confirmed unload for package {} at stop {}. Remaining: {}",
                 pkg.getId(), packageStop.getId(), remainingPackagesCount);
@@ -234,6 +267,7 @@ public class DriverServiceImpl implements DriverService {
     @Override
     @Transactional
     public CompleteStopResponse completeStop(Long stopId, Long driverId) {
+        User driver = currentDriver(driverId);
         DeliveryStop stop = deliveryStopRepository.findById(stopId)
                 .orElseThrow(() -> new AppException(ErrorCode.DELIVERY_STOP_NOT_FOUND));
 
@@ -241,10 +275,16 @@ public class DriverServiceImpl implements DriverService {
         if (trip == null) {
             throw new AppException(ErrorCode.TRIP_NOT_FOUND);
         }
+        requireDriverOf(trip, driver);
+        if (trip.getStatus() != TripStatus.IN_TRANSIT) {
+            throw new AppException(ErrorCode.GPS_TRIP_NOT_IN_TRANSIT);
+        }
+        if (stop.getStatus() == DeliveryStopStatus.COMPLETED) {
+            throw new AppException(ErrorCode.NO_PENDING_DELIVERY_STOP);
+        }
 
-        List<CargoPackage> packagesAtStop = cargoPackageRepository.findByOrderDeliveryStopId(stopId);
         int unconfirmedCount = 0;
-        for (CargoPackage pkg : packagesAtStop) {
+        for (CargoPackage pkg : tripPackageResolver.packagesOfStop(stopId)) {
             if (!unloadConfirmationRepository.existsByCargoPackageId(pkg.getId())) {
                 unconfirmedCount++;
             }
@@ -254,12 +294,14 @@ public class DriverServiceImpl implements DriverService {
             throw new IncompleteStopException("Điểm dừng chưa hoàn tất: còn " + unconfirmedCount + " kiện hàng chưa được dỡ");
         }
 
+        if (stop.getActualArrival() == null) {
+            stop.setActualArrival(LocalDateTime.now());
+        }
         stop.setStatus(DeliveryStopStatus.COMPLETED);
         deliveryStopRepository.save(stop);
 
-        User driver = (driverId != null) ? userRepository.findById(driverId).orElse(null) : null;
-
         AuditLog stopAuditLog = AuditLog.builder()
+                .companyId(AuditCompany.ofTrip(trip))
                 .actionType("STOP_COMPLETED")
                 .entityName("DeliveryStop")
                 .entityId(stop.getId().toString())
@@ -277,6 +319,7 @@ public class DriverServiceImpl implements DriverService {
 
         Long nextStopId = null;
         boolean tripCompleted = false;
+        TripStatus tripStatus = trip.getStatus();
 
         if (nextStopOpt.isPresent()) {
             DeliveryStop nextStop = nextStopOpt.get();
@@ -285,11 +328,11 @@ public class DriverServiceImpl implements DriverService {
             nextStopId = nextStop.getId();
             log.info("Activated next stop {} ({}) for trip {}", nextStop.getId(), nextStop.getStopName(), trip.getId());
         } else {
-            trip.setStatus(TripStatus.DELIVERED);
-            tripRepository.save(trip);
+            tripStatus = tripStatusService.transitionTo(trip.getId(), TripStatus.DELIVERED, driver.getId()).getStatus();
             tripCompleted = true;
 
             AuditLog tripAuditLog = AuditLog.builder()
+                    .companyId(AuditCompany.ofTrip(trip))
                     .actionType("TRIP_COMPLETED")
                     .entityName("Trip")
                     .entityId(trip.getId().toString())
@@ -309,7 +352,7 @@ public class DriverServiceImpl implements DriverService {
                 .stopId(stop.getId())
                 .stopStatus(stop.getStatus().name())
                 .nextStopId(nextStopId)
-                .tripStatus(trip.getStatus() != null ? trip.getStatus().name() : null)
+                .tripStatus(tripStatus != null ? tripStatus.name() : null)
                 .tripCompleted(tripCompleted)
                 .message(tripCompleted
                         ? "Điểm giao cuối cùng đã hoàn tất, chuyến đi đã giao thành công (DELIVERED)"
@@ -317,15 +360,55 @@ public class DriverServiceImpl implements DriverService {
                 .build();
     }
 
-    private boolean isPlacementForStop(PackagePlacement placement, Long stopId) {
-        if (placement == null || placement.getCargoPackage() == null) {
+    @Override
+    @Transactional(readOnly = true)
+    public Trip requireOwnTrip(String tripIdOrCode) {
+        User driver = currentDriver(null);
+        if (driver.getCompany() == null) {
+            throw new AppException(ErrorCode.USER_COMPANY_NOT_FOUND);
+        }
+        Trip trip = tripLookupHelper.requireTrip(tripIdOrCode, driver.getCompany().getId());
+        requireDriverOf(trip, driver);
+        return trip;
+    }
+
+    /** Người đăng nhập; {@code driverId} gửi kèm (client cũ) phải đúng là người đó. */
+    private User currentDriver(Long driverId) {
+        User current = currentUserService.getCurrentUser();
+        if (driverId != null && !driverId.equals(current.getId())) {
+            throw new AppException(ErrorCode.UNAUTHORIZED);
+        }
+        return current;
+    }
+
+    private static void requireDriverOf(Trip trip, User driver) {
+        if (trip.getDriver() == null || !driver.getId().equals(trip.getDriver().getId())) {
+            throw new AppException(ErrorCode.TRIP_NOT_ASSIGNED_TO_DRIVER);
+        }
+    }
+
+    private DriverTripResponse toTripResponse(Trip trip) {
+        return DriverTripResponse.builder()
+                .tripId(trip.getId())
+                .tripCode(trip.getTripCode())
+                .vehicleLicensePlate(trip.getVehicle() != null ? trip.getVehicle().getLicensePlate() : null)
+                .stopCount((int) deliveryStopRepository.countByTripId(trip.getId()))
+                .departureTime(trip.getDepartureTime())
+                .status(trip.getStatus() != null ? trip.getStatus().name() : null)
+                .build();
+    }
+
+    private static boolean isPlacementForStop(PackagePlacement placement, Long stopId, Set<Long> stopPackageIds) {
+        if (placement == null) {
             return false;
         }
+        // Điểm giao thật của kiện (qua yêu cầu giao) là nguồn chuẩn: dỡ và hoàn tất điểm đều xét theo nó.
+        // Vùng của phương án (stop_zone) chỉ dùng khi placement không gắn kiện.
         CargoPackage pkg = placement.getCargoPackage();
-        if (pkg.getOrder() == null || pkg.getOrder().getDeliveryStop() == null) {
-            return false;
+        if (pkg != null) {
+            return stopPackageIds.contains(pkg.getId());
         }
-        return stopId.equals(pkg.getOrder().getDeliveryStop().getId());
+        return placement.getStopZone() != null && stopId.equals(placement.getStopZone().getId());
     }
 
     private String getPackageDisplayName(CargoPackage cargoPackage) {

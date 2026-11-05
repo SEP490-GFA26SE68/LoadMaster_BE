@@ -47,6 +47,9 @@ public interface DeliveryRequirementRepository extends JpaRepository<DeliveryReq
             DeliveryRequirementStatus status
     );
 
+    /** Các yêu cầu giao đang gán vào một chuyến (kèm kiện). */
+    @EntityGraph(attributePaths = "packages")
+    List<DeliveryRequirement> findByTripId(Long tripId);
 
     /**
      * Đếm số kiện thực tế được gán vào các yêu cầu giao

@@ -15,6 +15,12 @@ from app.dto.optimization.engine.engine_response import (
 from app.service.auth.keycloak_token_provider import KeycloakTokenProvider
 
 
+from app.service.optimize.candidate_plans import (
+    LayoutStrategy,
+    axle_balance_target_x,
+    layout_strategies_for,
+    pick_candidates,
+)
 from app.service.optimize.stop_zone_calculator import StopZoneCalculator
 from app.service.optimize.constraint_engine import ConstraintEngine
 from app.service.optimize.unload_feasibility_validator import (
@@ -51,7 +57,31 @@ class OptimizationClient:
         """
         if self.http_client is not None or self.engine_url:
             return await self._solve_http(problem)
-        return self.solve_in_process(problem)
+        return self.solve_candidates(problem)
+
+    def solve_candidates(self, problem: ProblemRequest) -> EngineOptimizationResponse:
+        """
+        Một job ra ba phương án ứng viên A · B · C (MAX_VOLUME, AXLE_BALANCE, MIN_REHANDLING).
+        Xếp thử vài cách (chiến lược khác nhau của cùng bộ giải, mỗi cách vẫn qua HC-01 → HC-12),
+        rồi mỗi mục tiêu chọn cách tốt nhất theo chỉ số của chính nó. Giới hạn thời gian của
+        job áp cho cả lượt: hết giờ thì dừng thử cách mới, cách đầu luôn được chạy.
+        Kết quả trả về là phương án A, kèm cả ba ở `candidates`.
+        """
+        start = time.monotonic()
+        deadline = start + max(int(problem.time_limit_sec or 60), 1)
+        layouts: list[EngineOptimizationResponse] = []
+        for strategy in layout_strategies_for(problem.vehicle):
+            if layouts and time.monotonic() >= deadline:
+                break
+            layouts.append(self.solve_in_process(problem, strategy=strategy))
+
+        candidates = pick_candidates(layouts, problem.vehicle)
+        head = candidates[0].result
+        total_ms = int((time.monotonic() - start) * 1000)
+        return head.model_copy(update={
+            "metrics": head.metrics.model_copy(update={"computation_ms": total_ms}),
+            "candidates": candidates,
+        })
 
     async def _solve_http(self, problem: ProblemRequest) -> EngineOptimizationResponse:
         headers = {}
@@ -83,10 +113,16 @@ class OptimizationClient:
                 resp.raise_for_status()
                 return EngineOptimizationResponse.model_validate(resp.json())
 
-    def solve_in_process(self, problem: ProblemRequest) -> EngineOptimizationResponse:
+    def solve_in_process(
+        self,
+        problem: ProblemRequest,
+        strategy: str = LayoutStrategy.CENTER_FIRST,
+    ) -> EngineOptimizationResponse:
         """
         Nâng cấp S5b-04: Zone-aware 3D Packing Heuristic với Extreme Points (EP)
         và ConstraintEngine (Fragility, Stacking, Support Area, Rotation, COG, Axle Load).
+        `strategy` chỉ đổi thứ tự xét kiện và cách chấm điểm chỗ đặt (xem LayoutStrategy);
+        mọi ràng buộc cứng giữ nguyên.
         """
         start_time = time.time()
         vt = problem.vehicle
@@ -113,10 +149,17 @@ class OptimizationClient:
             # Map by stop_index or stop ID if available
             matched_stop_id = None
             if problem.stops:
-                for s in problem.stops:
-                    if str(s.id) == str(pkg.stop_index) or s.sequence == pkg.stop_index:
-                        matched_stop_id = s.id
-                        break
+                # stop_index là thứ tự điểm (stop_sequence). Khớp theo thứ tự trước:
+                # so với id trước thì kiện của điểm thứ tự 2 rơi vào điểm có id 2.
+                matched_stop_id = next(
+                    (s.id for s in problem.stops if s.sequence == pkg.stop_index),
+                    None,
+                )
+                if matched_stop_id is None:
+                    matched_stop_id = next(
+                        (s.id for s in problem.stops if str(s.id) == str(pkg.stop_index)),
+                        None,
+                    )
                 if matched_stop_id is None and problem.stops:
                     matched_stop_id = problem.stops[0].id
             else:
@@ -143,6 +186,24 @@ class OptimizationClient:
         # AC: Xếp hàng của stop cuối cùng trước (sâu nhất), stop đầu tiên sau (gần cửa)
         sorted_zones = sorted(zone_calc_res.zones, key=lambda z: z.zone_start_x)
 
+        # Kiện đã ghim (chạy lại giữ ghim): đặt trước đúng vị trí và hướng cũ,
+        # là vật cản cho các kiện còn lại; không xếp lại chúng.
+        package_stop = {
+            str(p.id): stop_id
+            for stop_id, pkgs in stops_dict.items()
+            for p in pkgs
+        }
+        pinned_placements = self._pinned_placements(problem, packages_map, package_stop)
+        pinned_ids = {str(p.package_id) for p in pinned_placements}
+        for pinned_placement in pinned_placements:
+            placements.append(pinned_placement)
+            total_placed_weight += float(packages_map[str(pinned_placement.package_id)].weight)
+            total_placed_volume += (
+                pinned_placement.packed_l
+                * pinned_placement.packed_w
+                * pinned_placement.packed_h
+            )
+
         # Context cho ConstraintEngine
 
         context = {
@@ -158,6 +219,15 @@ class OptimizationClient:
         # Heuristic scoring: đánh giá COG tạm thời của các kiện đã xếp
         # cộng với candidate hiện tại.
         # Không thay thế final validation HC-11/HC-12.
+        # Đích trọng tâm theo X: giữa thùng, hoặc điểm chia đều mức dùng hai nhóm trục (AXLE_TARGET).
+        target_x = float(vt.inner_l) / 2.0
+        if strategy == LayoutStrategy.AXLE_TARGET:
+            axle_x = axle_balance_target_x(
+                vt, sum(float(p.weight) for p in problem.packages)
+            )
+            if axle_x is not None:
+                target_x = axle_x
+
         def candidate_cog_score(candidate: PlacementData) -> float:
             total_weight = 0.0
             weighted_x = 0.0
@@ -182,7 +252,7 @@ class OptimizationClient:
             cog_x = weighted_x / total_weight
             cog_y = weighted_y / total_weight
 
-            center_x = float(vt.inner_l) / 2.0
+            center_x = target_x
             center_y = float(vt.inner_w) / 2.0
 
             # Chuẩn hóa hai trục để X không áp đảo Y.
@@ -194,9 +264,15 @@ class OptimizationClient:
 
 # 2. Xếp hàng theo từng zone
         for zone in sorted_zones:
-            zone_pkgs = stops_dict.get(zone.stop_id, [])
+            zone_pkgs = [
+                p for p in stops_dict.get(zone.stop_id, [])
+                if str(p.id) not in pinned_ids
+            ]
             # Sắp xếp kiện hàng trong zone: giảm dần theo thể tích
-            sorted_pkgs = sorted(zone_pkgs, key=lambda p: (p.l * p.w * p.h, p.weight), reverse=True)
+            if strategy == LayoutStrategy.HEAVY_FIRST:
+                sorted_pkgs = sorted(zone_pkgs, key=lambda p: (p.weight, p.l * p.w * p.h), reverse=True)
+            else:
+                sorted_pkgs = sorted(zone_pkgs, key=lambda p: (p.l * p.w * p.h, p.weight), reverse=True)
 
 
             # Các vị trí ứng viên ban đầu trong stop zone.
@@ -212,9 +288,13 @@ class OptimizationClient:
 
 # HC-09: Khẩu độ cửa sau theo trục Y.
 # Cửa nằm giữa chiều rộng thùng xe.
+            # Xe chưa khai cửa: không có điểm mép cửa; ConstraintEngine (HC-10) trả
+            # PACKAGE_CANNOT_PASS_DOOR cho từng kiện thay vì solver gãy ở float(None).
             door_y_min = (
-                float(vt.inner_w) - float(vt.door_w)
-             ) / 2.0
+                (float(vt.inner_w) - float(vt.door_w)) / 2.0
+                if vt.door_w is not None and vt.door_w > 0
+                else 0.0
+            )
 
             ep_list = [
                 (zone_start, 0.0, 0.0),
@@ -226,6 +306,17 @@ class OptimizationClient:
                 (zone_start, door_y_min, 0.0),
                 (zone_mid_x, door_y_min, 0.0),
             ]
+
+            # Điểm ứng viên sát các kiện đã ghim (mặt sau, mặt bên, mặt trên).
+            for pinned_placement in pinned_placements:
+                for npt in self._extreme_points_of(pinned_placement):
+                    if (
+                        npt[0] < vt.inner_l
+                        and npt[1] < vt.inner_w
+                        and npt[2] < vt.inner_h
+                        and npt not in ep_list
+                    ):
+                        ep_list.append(npt)
 
 
             # HC-11: Sinh thêm Extreme Points gần cuối Stop Zone.
@@ -314,7 +405,7 @@ class OptimizationClient:
                 # Thử tìm vị trí trong zone hiện tại
                 chosen_placement = None
                 last_violations: list[str] = []
-                best_candidate_score = float("inf")
+                best_candidate_score: Optional[tuple] = None
 
                 # Sắp xếp EP theo DBLF: x tăng dần (sâu), z tăng dần (dưới đáy), y tăng dần (trái)
                 # Ưu tiên Extreme Points gần tâm xe.
@@ -367,13 +458,18 @@ class OptimizationClient:
                         violations = ConstraintEngine.check_all(candidate, context)
 
                         if not violations:
-                            score = candidate_cog_score(candidate)
+                            if strategy == LayoutStrategy.DEEP_FIRST:
+                                # DBLF: thấp nhất, sâu nhất, sát vách trái.
+                                score = (float(pz), float(px), float(py))
+                            else:
+                                # Ưu tiên placement trên sàn trước,
+                                # sau đó mới tối ưu COG.
+                                score = (
+                                    candidate_cog_score(candidate)
+                                    + (float(pz) / float(vt.inner_h)) * 0.1,
+                                )
 
-                        # Ưu tiên placement trên sàn trước,
-                        # sau đó mới tối ưu COG.
-                            score += (float(pz) / float(vt.inner_h)) * 0.1
-
-                            if score < best_candidate_score:
+                            if best_candidate_score is None or score < best_candidate_score:
                                 best_candidate_score = score
                                 chosen_placement = candidate
                         else:
@@ -525,6 +621,20 @@ class OptimizationClient:
                 if not result.passed
             ]
 
+            # HC-11 hỏng vì cả khối hàng dồn về một đầu (vùng chia theo thể tích trên cả chiều dài thùng,
+            # hàng nhẹ thì rải ra tới cửa): dồn các khối điểm giao sát nhau theo đúng thứ tự LIFO rồi dời
+            # cả khối cho trọng tâm về giữa thùng. Chỉ nhận khi mọi kiện vẫn qua ConstraintEngine và HC-11/HC-12.
+            if "CENTER_OF_GRAVITY_OUT_OF_RANGE" in violations:
+                rebalanced = self._rebalance_along_x(placements, packages_map, vt)
+                if rebalanced is not None:
+                    rebalanced_checks = [
+                        ConstraintEngine.check_cog(all_placements=rebalanced, vehicle=vt, packages_map=packages_map),
+                        ConstraintEngine.check_axle_load(all_placements=rebalanced, vehicle=vt, packages_map=packages_map),
+                    ]
+                    if all(result.passed for result in rebalanced_checks):
+                        placements = rebalanced
+                        violations = []
+
             if violations:
                 # Fail-safe: Không trả về LoadPlan vi phạm
                 # HC-11 hoặc HC-12.
@@ -669,6 +779,64 @@ class OptimizationClient:
 
 
     @staticmethod
+    def _rebalance_along_x(
+        placements: list[PlacementData],
+        packages_map: dict[str, PackageData],
+        vt,
+    ) -> Optional[list[PlacementData]]:
+        """Dời theo trục X, không xoay, không đổi Y/Z: khối kiện của từng điểm giao đi nguyên khối,
+        điểm giao muộn nhất sát vách trước, các khối nối liền nhau về phía cửa (giữ LIFO); rồi dời cả
+        hàng cho trọng tâm X gần giữa thùng nhất trong lòng thùng. Trả None khi có kiện ghim, khi các
+        khối chồng lên nhau theo X, hoặc khi một kiện sau khi dời không qua ConstraintEngine."""
+        if not placements or any(p.pinned for p in placements):
+            return None
+        groups: dict[int, list[PlacementData]] = {}
+        for p in placements:
+            pkg = packages_map.get(str(p.package_id))
+            if pkg is None:
+                return None
+            groups.setdefault(int(pkg.stop_index), []).append(p)
+
+        moved: list[PlacementData] = []
+        cursor = 0.0
+        previous_end = None
+        for stop_index in sorted(groups, reverse=True):
+            group = groups[stop_index]
+            start = min(p.x for p in group)
+            end = max(p.x + p.packed_l for p in group)
+            if previous_end is not None and start < previous_end - 1e-6:
+                return None
+            previous_end = end
+            shift = cursor - start
+            moved.extend(p.model_copy(update={"x": p.x + shift}) for p in group)
+            cursor += end - start
+
+        total_weight = sum(float(packages_map[str(p.package_id)].weight) for p in moved)
+        if total_weight <= 0:
+            return None
+        cog_x = sum(
+            float(packages_map[str(p.package_id)].weight) * (p.x + p.packed_l / 2.0) for p in moved
+        ) / total_weight
+        min_x = min(p.x for p in moved)
+        max_end = max(p.x + p.packed_l for p in moved)
+        dx = float(vt.inner_l) / 2.0 - cog_x
+        dx = max(-min_x, min(dx, float(vt.inner_l) - max_end))
+        moved = [p.model_copy(update={"x": round(p.x + dx, 4)}) for p in moved]
+
+        for p in moved:
+            others = [o for o in moved if o is not p]
+            context = {
+                "vehicle": vt,
+                "existing_placements": others,
+                "packages_map": packages_map,
+                "check_cog": False,
+                "check_axle": False,
+            }
+            if ConstraintEngine.check_all(p, context):
+                return None
+        return moved
+
+    @staticmethod
     def _check_overlap(
         x: float, y: float, z: float, l: float, w: float, h: float,
         placements: list[PlacementData]
@@ -686,4 +854,63 @@ class OptimizationClient:
             ):
                 return True
         return False
+
+    @staticmethod
+    def _oriented_size(pkg: PackageData, rotation_type: int) -> tuple[float, float, float]:
+        """Kích thước (dài, rộng, cao) theo mã hướng 0..5, cùng quy ước với vòng xếp."""
+        l, w, h = float(pkg.l), float(pkg.w), float(pkg.h)
+        by_rotation = {
+            0: (l, w, h),  # LWH
+            1: (w, l, h),  # WLH
+            2: (l, h, w),  # LHW
+            3: (w, h, l),  # WHL
+            4: (h, l, w),  # HLW
+            5: (h, w, l),  # HWL
+        }
+        return by_rotation.get(rotation_type, (l, w, h))
+
+    @classmethod
+    def _pinned_placements(
+        cls,
+        problem: ProblemRequest,
+        packages_map: dict[str, PackageData],
+        package_stop: dict[str, Any],
+    ) -> list[PlacementData]:
+        """Placement cố định của các kiện đã ghim. Kiện không thuộc chuyến bị bỏ qua."""
+        result: list[PlacementData] = []
+        seen: set[str] = set()
+        for pin in problem.pinned or []:
+            key = str(pin.package_id)
+            pkg = packages_map.get(key)
+            if pkg is None or key in seen:
+                continue
+            seen.add(key)
+            try:
+                rotation = int(pin.rotation_type)
+            except (TypeError, ValueError):
+                rotation = 0
+            size = cls._oriented_size(pkg, rotation)
+            result.append(PlacementData(
+                package_id=pkg.id,
+                x=float(pin.pos_x),
+                y=float(pin.pos_y),
+                z=float(pin.pos_z),
+                packed_l=float(pin.packed_l) if pin.packed_l is not None else size[0],
+                packed_w=float(pin.packed_w) if pin.packed_w is not None else size[1],
+                packed_h=float(pin.packed_h) if pin.packed_h is not None else size[2],
+                rotation_type=rotation,
+                step_sequence=len(result) + 1,
+                stop_zone_id=package_stop.get(key),
+                pinned=True,
+            ))
+        return result
+
+    @staticmethod
+    def _extreme_points_of(p: PlacementData) -> list[tuple[float, float, float]]:
+        return [
+            (p.x + p.packed_l, p.y, p.z),
+            (p.x, p.y + p.packed_w, p.z),
+            (p.x, p.y, p.z + p.packed_h),
+            (p.x + p.packed_l, p.y + p.packed_w, p.z),
+        ]
 

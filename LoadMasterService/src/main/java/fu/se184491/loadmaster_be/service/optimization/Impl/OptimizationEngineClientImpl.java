@@ -1,80 +1,43 @@
 package fu.se184491.loadmaster_be.service.optimization.Impl;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.DeserializationFeature;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import fu.se184491.loadmaster_be.client.OptimizationClient;
 import fu.se184491.loadmaster_be.dto.request.optimization.RerunEngineRequest;
 import fu.se184491.loadmaster_be.dto.response.optimization.OptimizationResultDto;
-import fu.se184491.loadmaster_be.dto.response.optimization.PlacementResultDto;
 import fu.se184491.loadmaster_be.exception.AppException;
 import fu.se184491.loadmaster_be.exception.ErrorCode;
 import fu.se184491.loadmaster_be.service.optimization.OptimizationEngineClient;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
-import org.springframework.web.client.RestClient;
 
-import java.math.BigDecimal;
-import java.util.ArrayList;
-import java.util.List;
-
+/**
+ * Chạy lại tối ưu giữ kiện đã ghim qua dịch vụ tối ưu ({@code POST /api/v1/optimize/rerun}),
+ * bằng service token của backend. Dịch vụ lỗi thì ném lỗi, không trả kết quả thay thế.
+ */
 @Slf4j
 @Component
 public class OptimizationEngineClientImpl implements OptimizationEngineClient {
 
-    private final RestClient restClient;
-    private final String engineBaseUrl;
+    private final OptimizationClient optimizationClient;
+    private final ObjectMapper objectMapper = new ObjectMapper()
+            .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
 
-    public OptimizationEngineClientImpl(
-            @Value("${optimization.engine.url:http://localhost:8000}") String engineBaseUrl) {
-        this.engineBaseUrl = engineBaseUrl;
-        this.restClient = RestClient.builder()
-                .baseUrl(engineBaseUrl)
-                .build();
+    public OptimizationEngineClientImpl(OptimizationClient optimizationClient) {
+        this.optimizationClient = optimizationClient;
     }
 
     @Override
     public OptimizationResultDto rerunOptimization(RerunEngineRequest request) {
-        log.info("Sending rerun request to Optimization Engine at {} for job {}", engineBaseUrl, request.getJobUuid());
-
+        log.info("Sending rerun request to Optimization Engine for job {}", request.getJobUuid());
+        JsonNode data = optimizationClient.rerun(request);
         try {
-            OptimizationResultDto response = restClient.post()
-                    .uri("/api/v1/optimize/rerun")
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .body(request)
-                    .retrieve()
-                    .body(OptimizationResultDto.class);
-
-            if (response != null) {
-                return response;
-            }
-        } catch (Exception ex) {
-            log.warn("Optimization engine call failed: {}. Falling back to default pinned placement calculation.", ex.getMessage());
+            return objectMapper.treeToValue(data, OptimizationResultDto.class);
+        } catch (JsonProcessingException | IllegalArgumentException e) {
+            log.warn("Rerun response cannot be read: {}", e.getMessage());
+            throw new AppException(ErrorCode.OPTIMIZATION_SERVICE_UNAVAILABLE);
         }
-
-        // Fallback result preserving pinned placements if external engine is unreachable
-        List<PlacementResultDto> placements = new ArrayList<>();
-        if (request.getPinnedPlacements() != null) {
-            request.getPinnedPlacements().forEach(p -> placements.add(
-                    PlacementResultDto.builder()
-                            .packageId(p.getPackageId())
-                            .posX(p.getPosX())
-                            .posY(p.getPosY())
-                            .posZ(p.getPosZ())
-                            .packedLength(p.getPackedLength())
-                            .packedWidth(p.getPackedWidth())
-                            .packedHeight(p.getPackedHeight())
-                            .rotationType(p.getRotationType())
-                            .stepSequence(p.getStepSequence())
-                            .pinned(true)
-                            .build()
-            ));
-        }
-
-        return OptimizationResultDto.builder()
-                .packedItemsCount(placements.size())
-                .volumeUtilization(new BigDecimal("0.00"))
-                .weightUtilization(new BigDecimal("0.00"))
-                .computationMs(0L)
-                .placements(placements)
-                .build();
     }
 }

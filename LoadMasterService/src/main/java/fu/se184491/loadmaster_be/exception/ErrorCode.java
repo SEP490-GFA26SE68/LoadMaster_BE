@@ -76,6 +76,7 @@ public enum ErrorCode {
             "Tài xế không thuộc công ty hiện tại",
             HttpStatus.BAD_REQUEST
     ),
+    VEHICLE_CANNOT_CARRY_CARGO("Xe không chở được hàng của chuyến", HttpStatus.CONFLICT),
     VEHICLE_NOT_FOUND("Không tìm thấy phương tiện vận tải", HttpStatus.NOT_FOUND),
     VEHICLE_TYPE_NOT_FOUND("Không tìm thấy loại phương tiện", HttpStatus.NOT_FOUND),
     TRIP_NOT_FOUND("Không tìm thấy chuyến đi", HttpStatus.NOT_FOUND),
@@ -83,6 +84,15 @@ public enum ErrorCode {
     DELIVERY_REQUIREMENT_NOT_PENDING("Chỉ có thể xóa nhu cầu giao hàng đang chờ xử lý", HttpStatus.BAD_REQUEST),
     INVALID_DELIVERY_REQUIREMENT_TRANSITION("Chuyển trạng thái nhu cầu giao hàng không hợp lệ", HttpStatus.BAD_REQUEST),
     CARGO_SEGREGATION_CONFLICT("Kiện hàng xung đột quy tắc phân tách hàng hóa", HttpStatus.CONFLICT),
+    // Vòng đời chuyến
+    INVALID_TRIP_STATUS_TRANSITION("Chuyển trạng thái chuyến không hợp lệ", HttpStatus.CONFLICT),
+    TRIP_NOT_EDITABLE("Chỉ sửa được chuyến ở trạng thái Nháp hoặc Đã lập kế hoạch", HttpStatus.CONFLICT),
+    TRIP_NOT_CANCELLABLE("Chỉ huỷ được chuyến ở trạng thái Nháp, Đã lập kế hoạch hoặc Đang xếp hàng", HttpStatus.CONFLICT),
+    TRIP_HAS_NO_STOPS("Chuyến chưa có điểm giao nào", HttpStatus.BAD_REQUEST),
+    DELIVERY_REQUIREMENT_NOT_IN_TRIP("Yêu cầu giao không thuộc chuyến này", HttpStatus.BAD_REQUEST),
+    TRIP_NOT_READY_FOR_LOADING("Chỉ bắt đầu xếp được chuyến ở trạng thái Đã lập kế hoạch", HttpStatus.CONFLICT),
+    LOADING_NOT_COMPLETED("Kho chưa xếp xong hàng cho chuyến", HttpStatus.CONFLICT),
+    TRIP_NOT_ASSIGNED_TO_DRIVER("Chuyến không được giao cho tài xế đang đăng nhập", HttpStatus.FORBIDDEN),
     LICENSE_PLATE_ALREADY_EXISTS("Biển số phương tiện đã tồn tại trong hệ thống", HttpStatus.CONFLICT),
 
     VEHICLE_WIDTH_HIGH("Phải nhập cả chiều rộng và chiều cao cửa xe", HttpStatus.BAD_REQUEST),
@@ -193,6 +203,13 @@ public enum ErrorCode {
     LOAD_PLAN_NOT_FOUND("Không tìm thấy kế hoạch xếp hàng", HttpStatus.NOT_FOUND),
     PLACEMENT_NOT_FOUND("Không tìm thấy vị trí kiện hàng", HttpStatus.NOT_FOUND),
     PLACEMENT_NOT_IN_PLAN("Vị trí kiện hàng không thuộc về kế hoạch xếp hàng này", HttpStatus.BAD_REQUEST),
+    PLAN_ALREADY_APPROVED("Kế hoạch xếp hàng này đã được phê duyệt", HttpStatus.BAD_REQUEST),
+    PLAN_TRIP_NOT_PLANNED("Chỉ duyệt được phương án khi chuyến ở trạng thái Đã lập kế hoạch", HttpStatus.CONFLICT),
+    PLAN_HAS_NO_PLACEMENTS("Kế hoạch xếp hàng không có kiện hàng nào", HttpStatus.BAD_REQUEST),
+    PLAN_LIFO_INVALID("Thứ tự dỡ hàng LIFO không hợp lệ", HttpStatus.BAD_REQUEST),
+    OPTIMIZATION_JOB_NOT_FOUND("Không tìm thấy yêu cầu tối ưu", HttpStatus.NOT_FOUND),
+    OPTIMIZATION_SERVICE_UNAVAILABLE("Dịch vụ tối ưu xếp hàng không khả dụng", HttpStatus.SERVICE_UNAVAILABLE),
+    INSUFFICIENT_CREDITS("Công ty không đủ credit để chạy tối ưu xếp hàng", HttpStatus.PAYMENT_REQUIRED),
 
     // -------------------------------------------------------------------------
     // Warehouse & Loading errors

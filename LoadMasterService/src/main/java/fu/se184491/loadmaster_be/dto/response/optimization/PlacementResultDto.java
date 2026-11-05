@@ -23,4 +23,6 @@ public class PlacementResultDto {
     private Integer rotationType;
     private Integer stepSequence;
     private Boolean pinned;
+    /** Mã điểm giao (delivery_stops.id) của vùng chứa kiện. */
+    private Long stopZoneId;
 }

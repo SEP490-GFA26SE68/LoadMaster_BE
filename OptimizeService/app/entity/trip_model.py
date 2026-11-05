@@ -88,6 +88,7 @@ class Trip(Base):
     trip_code = Column(String(50), nullable=True)
     status = Column(String(50), nullable=True)
     override_reason = Column(String(255), nullable=True)
+    company_id = Column(BigInteger, nullable=True)
 
     vehicle = relationship("Vehicle", back_populates="trips")
     delivery_stops = relationship("DeliveryStop", back_populates="trip")

@@ -62,4 +62,14 @@ public class LoadPlan {
     @Builder.Default
     @Column(name = "rehandling_count")
     private Integer rehandlingCount = 0;
+
+    /**
+     * Mục tiêu của phương án ứng viên (MAX_VOLUME | AXLE_BALANCE | MIN_REHANDLING) và nhãn (A | B | C).
+     * Dịch vụ tối ưu ghi; phương án cũ và phương án của lần chạy lại để trống. Java khai để ddl-auto tạo cột.
+     */
+    @Column(name = "objective", length = 30)
+    private String objective;
+
+    @Column(name = "candidate_label", length = 1)
+    private String candidateLabel;
 }

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from types import SimpleNamespace
 from typing import Optional, Union, Any, Callable
 from uuid import UUID
 from sqlalchemy.orm import Session
@@ -53,6 +54,25 @@ class AsyncOptimizationRunner:
         """
         Xây dựng ProblemRequest từ Trip, Vehicle, Package lưu trong DB (S5b-04).
         """
+        job = self.job_service.get_job(str(job_uuid), db)
+        return self.build_problem_request_for_trip(
+            job.trip_id,
+            job.objective,
+            job.time_limit_sec,
+            db,
+        )
+
+    def build_problem_request_for_trip(
+        self,
+        trip_id: int,
+        objective: Optional[str],
+        time_limit_sec: Optional[int],
+        db: Session,
+    ) -> ProblemRequest:
+        """
+        Xây dựng ProblemRequest từ chuyến, không cần job trong DB.
+        Lần chạy lại giữ kiện đã ghim dùng lối này: job của Java chưa được commit khi gọi sang.
+        """
         from app.entity.trip_model import (
             Trip,
             CargoPackage,
@@ -61,7 +81,11 @@ class AsyncOptimizationRunner:
             DeliveryRequirementPackage,
         )
 
-        job = self.job_service.get_job(str(job_uuid), db)
+        job = SimpleNamespace(
+            trip_id=trip_id,
+            objective=objective,
+            time_limit_sec=time_limit_sec,
+        )
         trip = db.query(Trip).filter(Trip.id == job.trip_id).first()
         if not trip:
             raise AppException(ErrorCode.TRIP_NOT_FOUND)
@@ -394,6 +418,9 @@ class AsyncOptimizationRunner:
           4. Lưu kết quả qua persistence_service (nếu có - S3-09)
           5. handle_result qua engine_exception_handler (COMPLETED / PARTIAL / NO_SOLUTION)
           6. Nếu có exception -> engine_exception_handler.handle(exc)
+        Credit: giữ 1 credit trước khi chạy (hết credit thì job FAILED, không chạy);
+        lần chạy không ra phương án nào (NO_SOLUTION) hoặc lỗi thì hoàn đúng một lần.
+        Chỉ lần chạy lưu được phương án (COMPLETED / PARTIAL) giữ lượt trừ.
         """
         job_uuid_str = str(job_uuid)
         session = db
@@ -435,7 +462,10 @@ class AsyncOptimizationRunner:
             if self.persistence_service is not None and hasattr(self.persistence_service, "save"):
                 self.persistence_service.save(job_uuid_str, result, session)
 
-            self.engine_exception_handler.handle_result(result, job_uuid_str, session)
+            status = self.engine_exception_handler.handle_result(result, job_uuid_str, session)
+            if _status_value(status) == OptimizationJobStatus.NO_SOLUTION.value and is_credit_deducted:
+                await self._refund(job.company_id, job_uuid_str)
+                is_credit_deducted = False
             logger.info(f"Finished async optimization job: {job_uuid_str}")
 
         except Exception as exc:
@@ -444,13 +474,24 @@ class AsyncOptimizationRunner:
             # Bắt buộc trước khi truy vấn hoặc cập nhật Job tiếp theo.
             session.rollback()
             # Hoàn trả credit nếu job bị FAILED (fix B4 PRD)
-            if is_credit_deducted and job and job.company_id and self.credit_client is not None:
-                try:
-                    await self.credit_client.refund_credit(job.company_id, job_uuid_str)
-                except Exception as ref_err:
-                    logger.error(f"Error refunding credit for failed job {job_uuid_str}: {ref_err}")
+            if is_credit_deducted and job and job.company_id:
+                await self._refund(job.company_id, job_uuid_str)
+                is_credit_deducted = False
 
             self.engine_exception_handler.handle(exc, job_uuid_str, session)
         finally:
             if should_close and session is not None:
                 session.close()
+
+    async def _refund(self, company_id, job_uuid_str: str) -> None:
+        """Hoàn credit đã giữ của job (Java bỏ qua lượt hoàn thứ hai cùng mã job)."""
+        if self.credit_client is None:
+            return
+        try:
+            await self.credit_client.refund_credit(company_id, job_uuid_str)
+        except Exception as ref_err:
+            logger.error(f"Error refunding credit for job {job_uuid_str}: {ref_err}")
+
+
+def _status_value(status) -> Optional[str]:
+    return getattr(status, "value", status)
