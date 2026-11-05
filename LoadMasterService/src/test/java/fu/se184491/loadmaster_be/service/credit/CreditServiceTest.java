@@ -124,17 +124,17 @@ public class CreditServiceTest {
     }
 
     @Test
-    @DisplayName("Deduct credit (initial run) should decrease balance by 2 and create USAGE transaction with -2")
+    @DisplayName("Deduct credit (initial run) should decrease balance by 1 and create USAGE transaction with -1")
     void deductCredit_success() {
         when(creditAccountRepository.findByCompanyIdForUpdate(1L)).thenReturn(Optional.of(creditAccount));
         when(creditAccountRepository.save(any(CreditAccount.class))).thenReturn(creditAccount);
 
         creditService.deductCredit(1L, "job-uuid-123");
 
-        assertEquals(3, creditAccount.getBalance());
+        assertEquals(4, creditAccount.getBalance());
         verify(creditAccountRepository).save(creditAccount);
         verify(creditTransactionRepository).save(argThat(tx ->
-                tx.getAmount() == -2 &&
+                tx.getAmount() == -1 &&
                 tx.getType() == CreditTransactionType.USAGE &&
                 "job-uuid-123".equals(tx.getReference())
         ));
@@ -160,7 +160,7 @@ public class CreditServiceTest {
     @Test
     @DisplayName("Deduct credit should throw InsufficientCreditsException when balance is less than required amount")
     void deductCredit_insufficientCredits() {
-        creditAccount.setBalance(1);
+        creditAccount.setBalance(0);
         when(creditAccountRepository.findByCompanyIdForUpdate(1L)).thenReturn(Optional.of(creditAccount));
 
         assertThrows(InsufficientCreditsException.class, () ->
@@ -180,16 +180,16 @@ public class CreditServiceTest {
 
         creditService.deductCredit(1L, "job-uuid-123");
 
-        assertEquals(3, creditAccount.getBalance());
+        assertEquals(4, creditAccount.getBalance());
         verify(creditAccountRepository).save(creditAccount);
         verify(creditTransactionRepository).save(argThat(tx ->
-                tx.getAmount() == -2 &&
+                tx.getAmount() == -1 &&
                 tx.getType() == CreditTransactionType.USAGE
         ));
     }
 
     @Test
-    @DisplayName("Refund credit should refund exact deducted amount (2 credits for initial run) if not already refunded")
+    @DisplayName("Refund credit should refund exact deducted amount of the original USAGE if not already refunded")
     void refundCredit_success() {
         CreditTransaction originalUsage = CreditTransaction.builder()
                 .id(99L)

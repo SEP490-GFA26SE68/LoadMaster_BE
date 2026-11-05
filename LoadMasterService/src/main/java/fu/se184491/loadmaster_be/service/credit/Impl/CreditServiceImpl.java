@@ -32,7 +32,8 @@ import java.util.Optional;
 @Slf4j
 public class CreditServiceImpl implements CreditService {
 
-    public static final int INITIAL_OPTIMIZATION_CREDIT_COST = 2;
+    /** Một lần chạy tối ưu 3D (ba phương án ứng viên) dùng đúng 1 credit, như lần chạy lại. */
+    public static final int INITIAL_OPTIMIZATION_CREDIT_COST = 1;
     public static final int RERUN_OPTIMIZATION_CREDIT_COST = 1;
 
     private final CreditAccountRepository creditAccountRepository;
