@@ -73,7 +73,7 @@ class WarehouseServiceImplTest {
 
     @Test
     void startMovesPlannedTripToLoading() {
-        when(loadPlanRepository.findFirstByJobTripIdAndApprovedTrueOrderByVersionDesc(10L)).thenReturn(Optional.of(plan));
+        when(loadPlanRepository.findFirstByJobTripIdAndApprovedTrueOrderByIdDesc(10L)).thenReturn(Optional.of(plan));
         when(loadingExecutionRepository.findByLoadPlanId(50L)).thenReturn(Optional.empty());
         when(loadingExecutionRepository.save(any())).thenAnswer(invocation -> {
             LoadingExecution saved = invocation.getArgument(0);
@@ -104,7 +104,7 @@ class WarehouseServiceImplTest {
         PackagePlacement placement = PackagePlacement.builder().id(70L).loadPlan(plan).cargoPackage(pkg).build();
         LoadingExecution execution = LoadingExecution.builder()
                 .id(60L).loadPlan(plan).status(LoadingExecutionStatus.IN_PROGRESS).build();
-        when(loadPlanRepository.findFirstByJobTripIdAndApprovedTrueOrderByVersionDesc(10L)).thenReturn(Optional.of(plan));
+        when(loadPlanRepository.findFirstByJobTripIdAndApprovedTrueOrderByIdDesc(10L)).thenReturn(Optional.of(plan));
         when(loadingExecutionRepository.findByLoadPlanId(50L)).thenReturn(Optional.of(execution));
         when(packagePlacementRepository.findByLoadPlanId(50L)).thenReturn(List.of(placement));
         when(placementConfirmationRepository.existsByPlacementId(70L)).thenReturn(true);

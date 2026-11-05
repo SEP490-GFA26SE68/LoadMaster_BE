@@ -10,7 +10,7 @@ import java.util.Optional;
 @Repository
 public interface LoadPlanRepository extends JpaRepository<LoadPlan, Long> {
 
-    Optional<LoadPlan> findFirstByJobTripIdAndApprovedTrueOrderByVersionDesc(Long tripId);
+    Optional<LoadPlan> findFirstByJobTripIdAndApprovedTrueOrderByIdDesc(Long tripId);
 
     List<LoadPlan> findByJobTripCompanyIdAndApprovedTrue(Long companyId);
 }

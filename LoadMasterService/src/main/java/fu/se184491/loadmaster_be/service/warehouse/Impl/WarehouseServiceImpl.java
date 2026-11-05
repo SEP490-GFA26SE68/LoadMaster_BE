@@ -84,7 +84,7 @@ public class WarehouseServiceImpl implements WarehouseService {
 
         for (Trip trip : trips) {
             Optional<LoadPlan> approvedPlanOpt = loadPlanRepository
-                    .findFirstByJobTripIdAndApprovedTrueOrderByVersionDesc(trip.getId());
+                    .findFirstByJobTripIdAndApprovedTrueOrderByIdDesc(trip.getId());
 
             if (approvedPlanOpt.isEmpty()) {
                 continue;
@@ -131,7 +131,7 @@ public class WarehouseServiceImpl implements WarehouseService {
         }
 
         LoadPlan approvedPlan = loadPlanRepository
-                .findFirstByJobTripIdAndApprovedTrueOrderByVersionDesc(tripId)
+                .findFirstByJobTripIdAndApprovedTrueOrderByIdDesc(tripId)
                 .orElseThrow(() -> new AppException(ErrorCode.NO_APPROVED_LOAD_PLAN));
 
         // Mỗi phương án chỉ có một phiên xếp (load_plan_id là duy nhất).
@@ -322,7 +322,7 @@ public class WarehouseServiceImpl implements WarehouseService {
         }
 
         LoadPlan approvedPlan = loadPlanRepository
-                .findFirstByJobTripIdAndApprovedTrueOrderByVersionDesc(tripId)
+                .findFirstByJobTripIdAndApprovedTrueOrderByIdDesc(tripId)
                 .orElseThrow(() -> new AppException(ErrorCode.NO_APPROVED_LOAD_PLAN));
 
         LoadingExecution execution = loadingExecutionRepository.findByLoadPlanId(approvedPlan.getId())

@@ -127,7 +127,7 @@ public class DriverServiceImpl implements DriverService {
         List<StopPackageResponse> packageResponses = new ArrayList<>();
 
         Optional<LoadPlan> approvedPlanOpt = loadPlanRepository
-                .findFirstByJobTripIdAndApprovedTrueOrderByVersionDesc(trip.getId());
+                .findFirstByJobTripIdAndApprovedTrueOrderByIdDesc(trip.getId());
 
         if (approvedPlanOpt.isPresent()) {
             List<PackagePlacement> stopPlacements = new ArrayList<>();

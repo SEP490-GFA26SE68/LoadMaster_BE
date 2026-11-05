@@ -48,11 +48,8 @@ public class WebSecurityConfig {
                                 "/swagger-ui.html",
                                 "/api/vehicle-types",
                                 "/api/auth/password-reset/**",
-                                "/api/warehouse/**",
-                                "/api/driver/**",
                                 "/webhook/**",
-                                "/api/payment/**",
-                                "/api/internal/**"
+                                "/api/payment/**"
                         )
                         .permitAll()
 
