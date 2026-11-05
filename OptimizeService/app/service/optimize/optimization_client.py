@@ -568,6 +568,20 @@ class OptimizationClient:
                 if not result.passed
             ]
 
+            # HC-11 hỏng vì cả khối hàng dồn về một đầu (vùng chia theo thể tích trên cả chiều dài thùng,
+            # hàng nhẹ thì rải ra tới cửa): dồn các khối điểm giao sát nhau theo đúng thứ tự LIFO rồi dời
+            # cả khối cho trọng tâm về giữa thùng. Chỉ nhận khi mọi kiện vẫn qua ConstraintEngine và HC-11/HC-12.
+            if "CENTER_OF_GRAVITY_OUT_OF_RANGE" in violations:
+                rebalanced = self._rebalance_along_x(placements, packages_map, vt)
+                if rebalanced is not None:
+                    rebalanced_checks = [
+                        ConstraintEngine.check_cog(all_placements=rebalanced, vehicle=vt, packages_map=packages_map),
+                        ConstraintEngine.check_axle_load(all_placements=rebalanced, vehicle=vt, packages_map=packages_map),
+                    ]
+                    if all(result.passed for result in rebalanced_checks):
+                        placements = rebalanced
+                        violations = []
+
             if violations:
                 # Fail-safe: Không trả về LoadPlan vi phạm
                 # HC-11 hoặc HC-12.
@@ -710,6 +724,64 @@ class OptimizationClient:
             metrics=metrics,
         )
 
+
+    @staticmethod
+    def _rebalance_along_x(
+        placements: list[PlacementData],
+        packages_map: dict[str, PackageData],
+        vt,
+    ) -> Optional[list[PlacementData]]:
+        """Dời theo trục X, không xoay, không đổi Y/Z: khối kiện của từng điểm giao đi nguyên khối,
+        điểm giao muộn nhất sát vách trước, các khối nối liền nhau về phía cửa (giữ LIFO); rồi dời cả
+        hàng cho trọng tâm X gần giữa thùng nhất trong lòng thùng. Trả None khi có kiện ghim, khi các
+        khối chồng lên nhau theo X, hoặc khi một kiện sau khi dời không qua ConstraintEngine."""
+        if not placements or any(p.pinned for p in placements):
+            return None
+        groups: dict[int, list[PlacementData]] = {}
+        for p in placements:
+            pkg = packages_map.get(str(p.package_id))
+            if pkg is None:
+                return None
+            groups.setdefault(int(pkg.stop_index), []).append(p)
+
+        moved: list[PlacementData] = []
+        cursor = 0.0
+        previous_end = None
+        for stop_index in sorted(groups, reverse=True):
+            group = groups[stop_index]
+            start = min(p.x for p in group)
+            end = max(p.x + p.packed_l for p in group)
+            if previous_end is not None and start < previous_end - 1e-6:
+                return None
+            previous_end = end
+            shift = cursor - start
+            moved.extend(p.model_copy(update={"x": p.x + shift}) for p in group)
+            cursor += end - start
+
+        total_weight = sum(float(packages_map[str(p.package_id)].weight) for p in moved)
+        if total_weight <= 0:
+            return None
+        cog_x = sum(
+            float(packages_map[str(p.package_id)].weight) * (p.x + p.packed_l / 2.0) for p in moved
+        ) / total_weight
+        min_x = min(p.x for p in moved)
+        max_end = max(p.x + p.packed_l for p in moved)
+        dx = float(vt.inner_l) / 2.0 - cog_x
+        dx = max(-min_x, min(dx, float(vt.inner_l) - max_end))
+        moved = [p.model_copy(update={"x": round(p.x + dx, 4)}) for p in moved]
+
+        for p in moved:
+            others = [o for o in moved if o is not p]
+            context = {
+                "vehicle": vt,
+                "existing_placements": others,
+                "packages_map": packages_map,
+                "check_cog": False,
+                "check_axle": False,
+            }
+            if ConstraintEngine.check_all(p, context):
+                return None
+        return moved
 
     @staticmethod
     def _check_overlap(

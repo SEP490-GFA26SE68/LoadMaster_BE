@@ -142,6 +142,13 @@ def test_solver_rejects_hc11_violation(monkeypatch):
     Solver phải từ chối phương án.
     """
 
+    # Bước dời hàng theo X (_rebalance_along_x) sẽ đưa một kiện về giữa thùng;
+    # ở đây giả định không dời được để kiểm đúng lối từ chối của HC-11.
+    monkeypatch.setattr(
+        OptimizationClient,
+        "_rebalance_along_x",
+        staticmethod(lambda *args, **kwargs: None),
+    )
     problem = make_problem()
 
     result = run_solver(
@@ -159,6 +166,20 @@ def test_solver_rejects_hc11_violation(monkeypatch):
     )
 
     assert result.metrics.packed_count == 0
+
+def test_solver_moves_cargo_to_fix_hc11(monkeypatch):
+    """Kiện bị dồn sát cửa (COG_X = 525): dời theo X về giữa thùng thì HC-11 đạt, phương án được nhận."""
+
+    problem = make_problem()
+
+    result = run_solver(
+        monkeypatch,
+        problem,
+        zone_x=500,
+    )
+
+    assert len(result.placements) == 1
+    assert result.metrics.cog_x == 300
 
 
 def test_solver_rejects_hc12_violation(monkeypatch):
