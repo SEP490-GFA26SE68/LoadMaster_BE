@@ -19,6 +19,7 @@ import fu.se184491.loadmaster_be.repository.company.CompanyRepository;
 import fu.se184491.loadmaster_be.repository.order.OrderRepository;
 import fu.se184491.loadmaster_be.repository.planning.DeliveryRequirementRepository;
 import fu.se184491.loadmaster_be.service.cargo.PackageService;
+import fu.se184491.loadmaster_be.service.cargo.TrackingBarcodeAllocator;
 
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.criteria.Predicate;
@@ -326,9 +327,11 @@ public class PackageServiceImpl implements PackageService {
         );
 
         // qrToken được sinh ở @PrePersist của CargoPackage.
-        // trackingBarcode tạm để null vì form mới không yêu cầu.
+        // Mã vạch là mã kiện khi có mã; kiện không mã thì chưa có mã vạch.
+        cargoPackage.setTrackingBarcode(
+                new TrackingBarcodeAllocator(packageRepository::existsByTrackingBarcode)
+                        .allocate(cargoPackage.getPackageCode()));
 
-        // QR token được sinh tại @PrePersist của CargoPackage.
         cargoPackage = packageRepository.save(cargoPackage);
 
         // Lưu thông số xếp hàng riêng của kiện.
@@ -457,6 +460,9 @@ public class PackageServiceImpl implements PackageService {
 
         List<CargoPackage> createdPackages = new ArrayList<>();
         List<PackageResponse> results = new ArrayList<>();
+        // Mỗi kiện vật lý một mã vạch duy nhất để kho, tài xế gõ / quét được.
+        TrackingBarcodeAllocator barcodes =
+                new TrackingBarcodeAllocator(packageRepository::existsByTrackingBarcode);
 
         for (int i = 1; i <= quantity; i++) {
             String packageCode = buildManualPackageCode(
@@ -470,6 +476,7 @@ public class PackageServiceImpl implements PackageService {
                     .order(order)
                     .packageType(packageType)
                     .packageCode(packageCode)
+                    .trackingBarcode(barcodes.allocate(packageCode))
                     .packageName(request.getPackageName())
                     .note(request.getNote())
                     .actualWeightKg(request.getActualWeightKg())
