@@ -20,6 +20,8 @@ public class AuditLogResponse {
     private String actionType;
     private String entityName;
     private String entityId;
+    /** Mã chuyến (TRIP-…) khi bản ghi nói về một chuyến, điểm giao hay phương án của chuyến; còn lại null. */
+    private String entityCode;
     private Long userId;
     private String userName;
     private String userRole;

@@ -47,6 +47,12 @@ public class ManagerDashboardService {
     /** @param from, to ngày theo giờ Việt Nam, khoảng đóng. */
     @Transactional(readOnly = true)
     public ManagerDashboardResponse get(Long companyId, LocalDate from, LocalDate to) {
+        return get(companyId, from, to, ManagerDashboardCalculator.RECENT_TRIPS);
+    }
+
+    /** @param recentLimit số chuyến gần đây, kẹp về 1 → {@link ManagerDashboardCalculator#MAX_RECENT_TRIPS}. */
+    @Transactional(readOnly = true)
+    public ManagerDashboardResponse get(Long companyId, LocalDate from, LocalDate to, int recentLimit) {
         if (from == null || to == null || from.isAfter(to)
                 || ChronoUnit.DAYS.between(from, to) >= MAX_PERIOD_DAYS) {
             throw new AppException(ErrorCode.INVALID_INPUT,
@@ -60,7 +66,7 @@ public class ManagerDashboardService {
                 .getContent().stream()
                 .map(Vehicle::getStatus)
                 .toList();
-        return ManagerDashboardCalculator.compute(from, to, facts, vehicles);
+        return ManagerDashboardCalculator.compute(from, to, facts, vehicles, recentLimit);
     }
 
     private TripFacts factsOf(Trip trip) {

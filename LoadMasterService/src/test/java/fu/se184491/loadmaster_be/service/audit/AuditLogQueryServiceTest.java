@@ -11,6 +11,13 @@ import fu.se184491.loadmaster_be.exception.ErrorCode;
 import fu.se184491.loadmaster_be.helpers.CurrentUserService;
 import fu.se184491.loadmaster_be.repository.common.AuditLogRepository;
 import fu.se184491.loadmaster_be.repository.company.CompanyRepository;
+import fu.se184491.loadmaster_be.repository.optimization.LoadPlanRepository;
+import fu.se184491.loadmaster_be.repository.trip.DeliveryStopRepository;
+import fu.se184491.loadmaster_be.repository.trip.TripRepository;
+import fu.se184491.loadmaster_be.entity.optimization.LoadPlan;
+import fu.se184491.loadmaster_be.entity.optimization.OptimizationJob;
+import fu.se184491.loadmaster_be.entity.trip.DeliveryStop;
+import fu.se184491.loadmaster_be.entity.trip.Trip;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
@@ -44,6 +51,9 @@ class AuditLogQueryServiceTest {
     @Mock AuditLogRepository auditLogRepository;
     @Mock CompanyRepository companyRepository;
     @Mock CurrentUserService currentUserService;
+    @Mock TripRepository tripRepository;
+    @Mock DeliveryStopRepository deliveryStopRepository;
+    @Mock LoadPlanRepository loadPlanRepository;
 
     @InjectMocks AuditLogQueryService service;
 
@@ -90,6 +100,31 @@ class AuditLogQueryServiceTest {
         assertThat(row.getNewValues()).containsEntry("status", "PLANNED");
         assertThat(row.getCreatedAt()).isEqualTo(Instant.parse("2026-11-05T03:15:00Z"));
         assertThat(page.getTotalElements()).isEqualTo(1);
+    }
+
+    @Test
+    void entityCodeIsTripCodeOfTripStopPlanOrTripIdInValues() {
+        when(currentUserService.getCurrentUser()).thenReturn(user(100, UserRole.SYSTEM_ADMIN, null));
+        Trip trip = Trip.builder().id(9L).tripCode("TRIP-2026-0009").build();
+        Trip other = Trip.builder().id(12L).tripCode("TRIP-2026-0012").build();
+        DeliveryStop stop = DeliveryStop.builder().id(40L).trip(trip).build();
+        LoadPlan plan = LoadPlan.builder().id(70L)
+                .job(OptimizationJob.builder().id(3L).trip(other).build()).build();
+        returns(
+                AuditLog.builder().id(1L).entityName("Trip").entityId("9").build(),
+                AuditLog.builder().id(2L).entityName("DeliveryStop").entityId("40").build(),
+                AuditLog.builder().id(3L).entityName("LoadPlan").entityId("70").build(),
+                AuditLog.builder().id(4L).entityName("LoadingExecution").entityId("5")
+                        .newValues(Map.of("tripId", 12L)).build(),
+                AuditLog.builder().id(5L).entityName("User").entityId("8").build());
+        when(deliveryStopRepository.findAllById(anyIterable())).thenReturn(List.of(stop));
+        when(loadPlanRepository.findAllById(anyIterable())).thenReturn(List.of(plan));
+        when(tripRepository.findAllById(anyIterable())).thenReturn(List.of(trip, other));
+
+        List<AuditLogResponse> rows = service.search(NO_FILTER, null, 0, 20).getData();
+
+        assertThat(rows).extracting(AuditLogResponse::getEntityCode).containsExactly(
+                "TRIP-2026-0009", "TRIP-2026-0009", "TRIP-2026-0012", "TRIP-2026-0012", null);
     }
 
     @Test

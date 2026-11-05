@@ -21,7 +21,10 @@ import fu.se184491.loadmaster_be.exception.AppException;
 import fu.se184491.loadmaster_be.exception.ErrorCode;
 import fu.se184491.loadmaster_be.helpers.CurrentUserService;
 import fu.se184491.loadmaster_be.helpers.TemporaryPasswordGenerator;
+import fu.se184491.loadmaster_be.entity.common.AuditLog;
 import fu.se184491.loadmaster_be.repository.account.UserRepository;
+import fu.se184491.loadmaster_be.repository.common.AuditLogRepository;
+import fu.se184491.loadmaster_be.service.audit.AuditCompany;
 import fu.se184491.loadmaster_be.repository.company.CompanyAgreementRepository;
 import fu.se184491.loadmaster_be.repository.company.CompanyRepository;
 import fu.se184491.loadmaster_be.service.account.UserService;
@@ -37,6 +40,10 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.client.HttpClientErrorException;
 
+import java.time.Instant;
+import java.util.LinkedHashMap;
+import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 
 @Service
@@ -50,6 +57,7 @@ public class UserServiceImpl implements UserService {
     private final TemporaryPasswordGenerator temporaryPasswordGenerator;
     private final CompanyAgreementRepository companyAgreementRepository;
     private final BrevoClient brevoClient;
+    private final AuditLogRepository auditLogRepository;
 
     @org.springframework.beans.factory.annotation.Autowired(required = false)
     private fu.se184491.loadmaster_be.repository.billing.CompanySubscriptionRepository companySubscriptionRepository;
@@ -316,6 +324,8 @@ public class UserServiceImpl implements UserService {
                 brevoClient.sendEmail(user.getEmail(), subject, htmlContent);
             }
 
+            logAccount(ACTION_USER_CREATED, currentUser, user, null, accountSnapshot(user));
+
             return new CreateUserResponse(
                     toUserListItemResponse(user),
                     temporaryPassword
@@ -492,6 +502,7 @@ public class UserServiceImpl implements UserService {
             throw new AppException(ErrorCode.UNAUTHORIZED);
         }
 
+        Map<String, Object> before = accountSnapshot(targetUser);
         targetUser.setFullName(request.fullName());
         targetUser.setPhoneNumber(request.phoneNumber());
 
@@ -528,6 +539,7 @@ public class UserServiceImpl implements UserService {
 
         targetUser.preUpdate();
         User saved = userRepository.save(targetUser);
+        logChanges(ACTION_USER_UPDATED, currentUser, saved, before, accountSnapshot(saved));
         return toUserListItemResponse(saved);
     }
 
@@ -561,10 +573,15 @@ public class UserServiceImpl implements UserService {
             throw new AppException(ErrorCode.UNAUTHORIZED);
         }
 
+        UserStatus previousStatus = targetUser.getStatus();
         targetUser.setStatus(request.status());
         targetUser.preUpdate();
 
         User saved = userRepository.save(targetUser);
+        if (previousStatus != saved.getStatus()) {
+            logAccount(statusAction(saved.getStatus()), currentUser, saved,
+                    statusValues(previousStatus), statusValues(saved.getStatus()));
+        }
         return toUserListItemResponse(saved);
     }
 
@@ -598,9 +615,12 @@ public class UserServiceImpl implements UserService {
             throw new AppException(ErrorCode.UNAUTHORIZED);
         }
 
+        UserStatus previousStatus = targetUser.getStatus();
         targetUser.setStatus(UserStatus.INACTIVE);
         targetUser.preUpdate();
         userRepository.save(targetUser);
+        logAccount(ACTION_USER_DELETED, currentUser, targetUser,
+                statusValues(previousStatus), statusValues(UserStatus.INACTIVE));
 
         if (callerRole == UserRole.SYSTEM_ADMIN) {
             return "User deactivated successfully (will be permanently deleted after 3 months)";
@@ -639,6 +659,8 @@ public class UserServiceImpl implements UserService {
 
         String temporaryPassword = temporaryPasswordGenerator.generate();
         keycloakAdminClient.setPassword(targetUser.getKeycloakId(), temporaryPassword, true);
+        // Không ghi mật khẩu vào nhật ký.
+        logAccount(ACTION_USER_PASSWORD_RESET, currentUser, targetUser, null, null);
 
         return new ResetPasswordResponse(
                 targetUser.getId(),
@@ -666,6 +688,74 @@ public class UserServiceImpl implements UserService {
         }
 
         throw new AppException(ErrorCode.UNAUTHORIZED);
+    }
+
+    static final String ENTITY_USER = "User";
+    static final String ACTION_USER_CREATED = "USER_CREATED";
+    static final String ACTION_USER_UPDATED = "USER_UPDATED";
+    static final String ACTION_USER_LOCKED = "USER_LOCKED";
+    static final String ACTION_USER_UNLOCKED = "USER_UNLOCKED";
+    static final String ACTION_USER_STATUS_CHANGED = "USER_STATUS_CHANGED";
+    static final String ACTION_USER_PASSWORD_RESET = "USER_PASSWORD_RESET";
+    static final String ACTION_USER_DELETED = "USER_DELETED";
+
+    private static String statusAction(UserStatus status) {
+        if (status == UserStatus.LOCKED) {
+            return ACTION_USER_LOCKED;
+        }
+        if (status == UserStatus.ACTIVE) {
+            return ACTION_USER_UNLOCKED;
+        }
+        return ACTION_USER_STATUS_CHANGED;
+    }
+
+    private static Map<String, Object> statusValues(UserStatus status) {
+        Map<String, Object> values = new LinkedHashMap<>();
+        values.put("status", status == null ? null : status.name());
+        return values;
+    }
+
+    /** Các trường của tài khoản ghi vào nhật ký. Không bao giờ có mật khẩu. */
+    private static Map<String, Object> accountSnapshot(User user) {
+        Map<String, Object> values = new LinkedHashMap<>();
+        values.put("email", user.getEmail());
+        values.put("fullName", user.getFullName());
+        values.put("phoneNumber", user.getPhoneNumber());
+        values.put("role", user.getUserRoleType() == null ? null : user.getUserRoleType().name());
+        values.put("status", user.getStatus() == null ? null : user.getStatus().name());
+        values.put("companyId", user.getCompany() == null ? null : user.getCompany().getId());
+        return values;
+    }
+
+    /** Ghi riêng các trường đã đổi; không đổi gì thì không ghi. */
+    private void logChanges(String action, User actor, User target,
+                            Map<String, Object> before, Map<String, Object> after) {
+        Map<String, Object> oldValues = new LinkedHashMap<>();
+        Map<String, Object> newValues = new LinkedHashMap<>();
+        after.forEach((field, value) -> {
+            if (!Objects.equals(before.get(field), value)) {
+                oldValues.put(field, before.get(field));
+                newValues.put(field, value);
+            }
+        });
+        if (!newValues.isEmpty()) {
+            logAccount(action, actor, target, oldValues, newValues);
+        }
+    }
+
+    /** Sự kiện về một tài khoản thuộc công ty của tài khoản đó, dù ai làm. */
+    private void logAccount(String action, User actor, User target,
+                            Map<String, Object> oldValues, Map<String, Object> newValues) {
+        auditLogRepository.save(AuditLog.builder()
+                .companyId(AuditCompany.ofAccount(target))
+                .actionType(action)
+                .entityName(ENTITY_USER)
+                .entityId(target.getId() == null ? null : target.getId().toString())
+                .user(actor)
+                .oldValues(oldValues)
+                .newValues(newValues)
+                .createdAt(Instant.now())
+                .build());
     }
 
     private boolean isPlatformRole(UserRole role) {

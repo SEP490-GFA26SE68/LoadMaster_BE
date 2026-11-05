@@ -26,7 +26,9 @@ import java.util.TreeMap;
 public final class ManagerDashboardCalculator {
 
     static final ZoneId VIETNAM = ZoneId.of("Asia/Ho_Chi_Minh");
-    static final int RECENT_TRIPS = 10;
+    /** Số chuyến gần đây mặc định và tối đa của một lần đọc. */
+    public static final int RECENT_TRIPS = 10;
+    public static final int MAX_RECENT_TRIPS = 50;
     private static final BigDecimal HUNDRED = BigDecimal.valueOf(100);
 
     private ManagerDashboardCalculator() {
@@ -65,6 +67,22 @@ public final class ManagerDashboardCalculator {
             List<TripFacts> trips,
             List<VehicleStatus> vehicles
     ) {
+        return compute(from, to, trips, vehicles, RECENT_TRIPS);
+    }
+
+    /** Số chuyến gần đây đọc được: 1 → {@link #MAX_RECENT_TRIPS}. */
+    public static int clampRecentLimit(int requested) {
+        return Math.max(1, Math.min(requested, MAX_RECENT_TRIPS));
+    }
+
+    /** @param recentLimit số chuyến của {@code recentTrips}, kẹp về 1 → {@link #MAX_RECENT_TRIPS}. */
+    public static ManagerDashboardResponse compute(
+            LocalDate from,
+            LocalDate to,
+            List<TripFacts> trips,
+            List<VehicleStatus> vehicles,
+            int recentLimit
+    ) {
         Map<String, Long> byStatus = new LinkedHashMap<>();
         for (TripStatus status : TripStatus.values()) {
             byStatus.put(status.name(), trips.stream().filter(t -> t.status() == status).count());
@@ -94,7 +112,7 @@ public final class ManagerDashboardCalculator {
                 .vehicles(vehicleCounts(vehicles))
                 .fillByDay(fillByDay(filled))
                 .weightByVehicle(weightByVehicle(trips))
-                .recentTrips(recentTrips(trips))
+                .recentTrips(recentTrips(trips, recentLimit))
                 .build();
     }
 
@@ -142,11 +160,11 @@ public final class ManagerDashboardCalculator {
         return rows;
     }
 
-    private static List<RecentTrip> recentTrips(List<TripFacts> trips) {
+    private static List<RecentTrip> recentTrips(List<TripFacts> trips, int recentLimit) {
         return trips.stream()
                 .sorted(Comparator.comparing(TripFacts::departureTime, Comparator.nullsLast(Comparator.reverseOrder()))
                         .thenComparing(TripFacts::tripId, Comparator.reverseOrder()))
-                .limit(RECENT_TRIPS)
+                .limit(clampRecentLimit(recentLimit))
                 .map(trip -> RecentTrip.builder()
                         .tripId(trip.tripId())
                         .tripCode(trip.tripCode())
