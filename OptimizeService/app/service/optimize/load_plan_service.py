@@ -86,6 +86,10 @@ class LoadPlanService:
         if current_user_id is not None and str(current_user_id).isdigit():
             user_id_int = int(current_user_id)
 
+        # Mỗi chuyến chỉ một phương án đã duyệt: kho và tài xế đọc phương án đó.
+        # Duyệt phương án khác của cùng chuyến thì gỡ duyệt phương án cũ.
+        self._unapprove_other_plans_of_trip(plan, db)
+
         plan.approved = True
         plan.approved_by_id = user_id_int
         self.load_plan_repository.update(plan, db)
@@ -103,6 +107,24 @@ class LoadPlanService:
         db.refresh(plan)
 
         return plan
+
+    @staticmethod
+    def _unapprove_other_plans_of_trip(plan: LoadPlan, db: Session) -> None:
+        from app.entity.optimization.optimization_job import OptimizationJob
+
+        job = db.query(OptimizationJob).filter(OptimizationJob.id == plan.job_id).first()
+        if job is None or job.trip_id is None:
+            return
+        trip_job_ids = db.query(OptimizationJob.id).filter(OptimizationJob.trip_id == job.trip_id)
+        (
+            db.query(LoadPlan)
+            .filter(
+                LoadPlan.job_id.in_(trip_job_ids),
+                LoadPlan.id != plan.id,
+                LoadPlan.approved.is_(True),
+            )
+            .update({LoadPlan.approved: False}, synchronize_session=False)
+        )
 
     @staticmethod
     def _validate_lifo(placements: List[PackagePlacement]) -> bool:

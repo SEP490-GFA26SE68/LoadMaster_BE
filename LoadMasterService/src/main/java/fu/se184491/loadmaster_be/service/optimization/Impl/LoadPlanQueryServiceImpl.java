@@ -1,6 +1,7 @@
 package fu.se184491.loadmaster_be.service.optimization.Impl;
 
 import fu.se184491.loadmaster_be.client.OptimizationClient;
+import fu.se184491.loadmaster_be.constant.trip.TripStatus;
 import fu.se184491.loadmaster_be.dto.response.optimization.LoadPlanDetailResponse;
 import fu.se184491.loadmaster_be.dto.response.optimization.PlacementDetailResponse;
 import fu.se184491.loadmaster_be.dto.response.optimization.TripLoadPlansResponse;
@@ -83,6 +84,10 @@ public class LoadPlanQueryServiceImpl implements LoadPlanQueryService {
         if (Boolean.TRUE.equals(plan.getApproved())) {
             throw new AppException(ErrorCode.PLAN_ALREADY_APPROVED);
         }
+        // Kho và tài xế đọc phương án đã duyệt: hết pha lập kế hoạch thì không đổi được phương án nữa.
+        tripRepository.findById(plan.getTripId())
+                .filter(trip -> trip.getStatus() == TripStatus.PLANNED)
+                .orElseThrow(() -> new AppException(ErrorCode.PLAN_TRIP_NOT_PLANNED));
         User approver = currentUserService.getCurrentUser();
         optimizationClient.approvePlan(planId, approver.getId());
         return getPlan(planId);

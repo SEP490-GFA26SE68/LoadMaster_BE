@@ -53,7 +53,7 @@ def db_session():
     TestingSession = sessionmaker(autocommit=False, autoflush=False, bind=engine)
     session = TestingSession()
 
-    trip = Trip(id=str(uuid.uuid4()), status="DRAFT")
+    trip = Trip(id=1, status="PLANNED")
     session.add(trip)
     session.commit()
 
@@ -91,6 +91,24 @@ def plan_with_placements(db_session):
 
 
 class TestLoadPlanServiceApproval:
+    def test_approving_another_plan_of_the_trip_unapproves_the_old_one(self, db_session, plan_with_placements):
+        """Mỗi chuyến một phương án đã duyệt: duyệt phương án B của cùng chuyến thì gỡ duyệt A."""
+        plan_with_placements.approved = True
+        other_job = OptimizationJob(job_uuid=str(uuid.uuid4()), trip_id=1, status=OptimizationJobStatus.COMPLETED.value)
+        db_session.add(other_job)
+        db_session.commit()
+        plan_b = LoadPlan(job_id=other_job.id, plan_name="B", packed_items_count=1, approved=False)
+        db_session.add(plan_b)
+        db_session.commit()
+        db_session.add(PackagePlacement(load_plan_id=plan_b.id, package_id=1, step_sequence=1, pos_x=0, pos_y=0, pos_z=0))
+        db_session.commit()
+
+        LoadPlanService().approve_plan(plan_b.id, current_user_id=5, db=db_session)
+
+        db_session.expire_all()
+        approved = [p.id for p in db_session.query(LoadPlan).filter(LoadPlan.approved.is_(True))]
+        assert approved == [plan_b.id]
+
     def test_approve_plan_success_sets_approved_and_creates_audit_log(self, db_session, plan_with_placements):
         """Duyệt plan thành công: approved=True, approved_by_id được gán, và audit_log được ghi"""
         service = LoadPlanService()
