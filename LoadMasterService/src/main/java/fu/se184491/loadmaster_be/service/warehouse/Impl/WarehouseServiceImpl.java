@@ -45,6 +45,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -257,6 +258,7 @@ public class WarehouseServiceImpl implements WarehouseService {
                 .innerHeight(type != null ? type.getInnerHeight() : null)
                 .doorWidth(type != null ? type.getDoorWidth() : null)
                 .doorHeight(type != null ? type.getDoorHeight() : null)
+                .maxPayloadKg(type != null ? type.getMaxPayloadKg() : null)
                 .totalPackages(steps.size())
                 .confirmedCount(confirmedCount)
                 .deviationCount(deviationCount)
@@ -520,14 +522,19 @@ public class WarehouseServiceImpl implements WarehouseService {
         String packageCode = null;
         String qrToken = null;
         Long packageId = null;
+        BigDecimal weightKg = null;
 
         if (p.getCargoPackage() != null) {
             packageId = p.getCargoPackage().getId();
             barcode = p.getCargoPackage().getTrackingBarcode();
             packageCode = p.getCargoPackage().getPackageCode();
             qrToken = p.getCargoPackage().getQrToken();
+            weightKg = p.getCargoPackage().getActualWeightKg();
             if (p.getCargoPackage().getPackageType() != null) {
                 packageName = p.getCargoPackage().getPackageType().getName();
+                if (weightKg == null) {
+                    weightKg = p.getCargoPackage().getPackageType().getWeightKg();
+                }
             }
         }
         if (packageName == null) {
@@ -548,6 +555,7 @@ public class WarehouseServiceImpl implements WarehouseService {
                 .packedWidth(p.getPackedWidth())
                 .packedHeight(p.getPackedHeight())
                 .rotation(p.getRotationType())
+                .weightKg(weightKg)
                 .sequence(p.getStepSequence())
                 .stopId(stop != null ? stop.getId() : null)
                 .stopSequence(stop != null ? stop.getStopSequence() : null)

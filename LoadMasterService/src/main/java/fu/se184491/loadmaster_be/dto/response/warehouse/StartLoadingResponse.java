@@ -6,6 +6,7 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
 
@@ -35,6 +36,8 @@ public class StartLoadingResponse {
     private Integer innerHeight;
     private Integer doorWidth;
     private Integer doorHeight;
+    /** Tải trọng tối đa của xe (kg), lấy từ loại xe; null khi chưa khai. */
+    private BigDecimal maxPayloadKg;
     private Integer totalPackages;
     private Integer confirmedCount;
     private Integer deviationCount;
