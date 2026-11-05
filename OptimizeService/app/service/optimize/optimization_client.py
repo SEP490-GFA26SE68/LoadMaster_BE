@@ -143,6 +143,24 @@ class OptimizationClient:
         # AC: Xếp hàng của stop cuối cùng trước (sâu nhất), stop đầu tiên sau (gần cửa)
         sorted_zones = sorted(zone_calc_res.zones, key=lambda z: z.zone_start_x)
 
+        # Kiện đã ghim (chạy lại giữ ghim): đặt trước đúng vị trí và hướng cũ,
+        # là vật cản cho các kiện còn lại; không xếp lại chúng.
+        package_stop = {
+            str(p.id): stop_id
+            for stop_id, pkgs in stops_dict.items()
+            for p in pkgs
+        }
+        pinned_placements = self._pinned_placements(problem, packages_map, package_stop)
+        pinned_ids = {str(p.package_id) for p in pinned_placements}
+        for pinned_placement in pinned_placements:
+            placements.append(pinned_placement)
+            total_placed_weight += float(packages_map[str(pinned_placement.package_id)].weight)
+            total_placed_volume += (
+                pinned_placement.packed_l
+                * pinned_placement.packed_w
+                * pinned_placement.packed_h
+            )
+
         # Context cho ConstraintEngine
 
         context = {
@@ -194,7 +212,10 @@ class OptimizationClient:
 
 # 2. Xếp hàng theo từng zone
         for zone in sorted_zones:
-            zone_pkgs = stops_dict.get(zone.stop_id, [])
+            zone_pkgs = [
+                p for p in stops_dict.get(zone.stop_id, [])
+                if str(p.id) not in pinned_ids
+            ]
             # Sắp xếp kiện hàng trong zone: giảm dần theo thể tích
             sorted_pkgs = sorted(zone_pkgs, key=lambda p: (p.l * p.w * p.h, p.weight), reverse=True)
 
@@ -226,6 +247,17 @@ class OptimizationClient:
                 (zone_start, door_y_min, 0.0),
                 (zone_mid_x, door_y_min, 0.0),
             ]
+
+            # Điểm ứng viên sát các kiện đã ghim (mặt sau, mặt bên, mặt trên).
+            for pinned_placement in pinned_placements:
+                for npt in self._extreme_points_of(pinned_placement):
+                    if (
+                        npt[0] < vt.inner_l
+                        and npt[1] < vt.inner_w
+                        and npt[2] < vt.inner_h
+                        and npt not in ep_list
+                    ):
+                        ep_list.append(npt)
 
 
             # HC-11: Sinh thêm Extreme Points gần cuối Stop Zone.
@@ -686,4 +718,63 @@ class OptimizationClient:
             ):
                 return True
         return False
+
+    @staticmethod
+    def _oriented_size(pkg: PackageData, rotation_type: int) -> tuple[float, float, float]:
+        """Kích thước (dài, rộng, cao) theo mã hướng 0..5, cùng quy ước với vòng xếp."""
+        l, w, h = float(pkg.l), float(pkg.w), float(pkg.h)
+        by_rotation = {
+            0: (l, w, h),  # LWH
+            1: (w, l, h),  # WLH
+            2: (l, h, w),  # LHW
+            3: (w, h, l),  # WHL
+            4: (h, l, w),  # HLW
+            5: (h, w, l),  # HWL
+        }
+        return by_rotation.get(rotation_type, (l, w, h))
+
+    @classmethod
+    def _pinned_placements(
+        cls,
+        problem: ProblemRequest,
+        packages_map: dict[str, PackageData],
+        package_stop: dict[str, Any],
+    ) -> list[PlacementData]:
+        """Placement cố định của các kiện đã ghim. Kiện không thuộc chuyến bị bỏ qua."""
+        result: list[PlacementData] = []
+        seen: set[str] = set()
+        for pin in problem.pinned or []:
+            key = str(pin.package_id)
+            pkg = packages_map.get(key)
+            if pkg is None or key in seen:
+                continue
+            seen.add(key)
+            try:
+                rotation = int(pin.rotation_type)
+            except (TypeError, ValueError):
+                rotation = 0
+            size = cls._oriented_size(pkg, rotation)
+            result.append(PlacementData(
+                package_id=pkg.id,
+                x=float(pin.pos_x),
+                y=float(pin.pos_y),
+                z=float(pin.pos_z),
+                packed_l=float(pin.packed_l) if pin.packed_l is not None else size[0],
+                packed_w=float(pin.packed_w) if pin.packed_w is not None else size[1],
+                packed_h=float(pin.packed_h) if pin.packed_h is not None else size[2],
+                rotation_type=rotation,
+                step_sequence=len(result) + 1,
+                stop_zone_id=package_stop.get(key),
+                pinned=True,
+            ))
+        return result
+
+    @staticmethod
+    def _extreme_points_of(p: PlacementData) -> list[tuple[float, float, float]]:
+        return [
+            (p.x + p.packed_l, p.y, p.z),
+            (p.x, p.y + p.packed_w, p.z),
+            (p.x, p.y, p.z + p.packed_h),
+            (p.x + p.packed_l, p.y + p.packed_w, p.z),
+        ]
 

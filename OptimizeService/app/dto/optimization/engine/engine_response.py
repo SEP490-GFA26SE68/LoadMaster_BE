@@ -17,6 +17,8 @@ class PlacementData(BaseModel):
     rotation_type: Union[int, str] = 0
     step_sequence: int = 1
     stop_zone_id: Optional[Union[UUID, str, int]] = None
+    # Kiện đã ghim: giữ nguyên vị trí và hướng của phương án trước.
+    pinned: bool = False
 
 
 class UnplacedData(BaseModel):

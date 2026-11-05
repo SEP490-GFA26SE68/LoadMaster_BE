@@ -19,7 +19,7 @@ public class CargoSegregationController {
     private final CurrentUserService currentUserService;
 
     @GetMapping("/{id}/segregation")
-    @PreAuthorize("hasAuthority('TRIP_MANAGE')")
+    @PreAuthorize("hasAnyRole('DISPATCHER', 'MANAGER')")
     public SegregationResult checkTrip(@PathVariable Long id) {
         return cargoSegregationService.checkTrip(currentUserService.getCurrentCompanyId(), id);
     }

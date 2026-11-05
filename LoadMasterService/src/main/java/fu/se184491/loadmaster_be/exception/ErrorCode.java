@@ -202,6 +202,12 @@ public enum ErrorCode {
     LOAD_PLAN_NOT_FOUND("Không tìm thấy kế hoạch xếp hàng", HttpStatus.NOT_FOUND),
     PLACEMENT_NOT_FOUND("Không tìm thấy vị trí kiện hàng", HttpStatus.NOT_FOUND),
     PLACEMENT_NOT_IN_PLAN("Vị trí kiện hàng không thuộc về kế hoạch xếp hàng này", HttpStatus.BAD_REQUEST),
+    PLAN_ALREADY_APPROVED("Kế hoạch xếp hàng này đã được phê duyệt", HttpStatus.BAD_REQUEST),
+    PLAN_HAS_NO_PLACEMENTS("Kế hoạch xếp hàng không có kiện hàng nào", HttpStatus.BAD_REQUEST),
+    PLAN_LIFO_INVALID("Thứ tự dỡ hàng LIFO không hợp lệ", HttpStatus.BAD_REQUEST),
+    OPTIMIZATION_JOB_NOT_FOUND("Không tìm thấy yêu cầu tối ưu", HttpStatus.NOT_FOUND),
+    OPTIMIZATION_SERVICE_UNAVAILABLE("Dịch vụ tối ưu xếp hàng không khả dụng", HttpStatus.SERVICE_UNAVAILABLE),
+    INSUFFICIENT_CREDITS("Công ty không đủ credit để chạy tối ưu xếp hàng", HttpStatus.PAYMENT_REQUIRED),
 
     // -------------------------------------------------------------------------
     // Warehouse & Loading errors

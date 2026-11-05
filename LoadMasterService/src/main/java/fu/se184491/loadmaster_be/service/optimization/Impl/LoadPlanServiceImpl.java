@@ -52,6 +52,7 @@ public class LoadPlanServiceImpl implements LoadPlanService {
     private final UnplacedPackageRepository unplacedPackageRepository;
     private final OptimizationEngineClient optimizationEngineClient;
     private final fu.se184491.loadmaster_be.service.credit.CreditService creditService;
+    private final fu.se184491.loadmaster_be.repository.trip.DeliveryStopRepository deliveryStopRepository;
 
     @Override
     @Transactional
@@ -210,9 +211,13 @@ public class LoadPlanServiceImpl implements LoadPlanService {
                 if (pDto.getPackageId() != null) {
                     pkg = cargoPackageRepository.findById(pDto.getPackageId()).orElse(null);
                 }
+                fu.se184491.loadmaster_be.entity.trip.DeliveryStop stopZone = pDto.getStopZoneId() != null
+                        ? deliveryStopRepository.findById(pDto.getStopZoneId()).orElse(null)
+                        : null;
                 PackagePlacement placement = PackagePlacement.builder()
                         .loadPlan(newPlan)
                         .cargoPackage(pkg)
+                        .stopZone(stopZone)
                         .posX(pDto.getPosX())
                         .posY(pDto.getPosY())
                         .posZ(pDto.getPosZ())

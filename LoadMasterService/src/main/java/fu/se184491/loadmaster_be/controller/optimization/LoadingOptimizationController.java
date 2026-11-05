@@ -1,69 +1,74 @@
-
 package fu.se184491.loadmaster_be.controller.optimization;
 
-import fu.se184491.loadmaster_be.client.OptimizationClient;
-import fu.se184491.loadmaster_be.service.trip.TripService;
-
+import fu.se184491.loadmaster_be.dto.ApiResponse;
+import fu.se184491.loadmaster_be.dto.response.optimization.LoadPlanDetailResponse;
+import fu.se184491.loadmaster_be.dto.response.optimization.OptimizationJobStartResponse;
+import fu.se184491.loadmaster_be.dto.response.optimization.TripLoadPlansResponse;
+import fu.se184491.loadmaster_be.service.optimization.LoadPlanQueryService;
+import fu.se184491.loadmaster_be.service.optimization.LoadingOptimizationService;
 import lombok.RequiredArgsConstructor;
-
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
 
-import java.util.Map;
+import java.util.List;
 
+/**
+ * Tối ưu xếp hàng 3D của một chuyến và đọc phương án.
+ * Điều phối viên chạy tối ưu; quản lý công ty chỉ đọc. Mọi đường dẫn kiểm chuyến / job thuộc công ty của phiên.
+ * Đơn vị: toạ độ và kích thước cm, khối lượng kg.
+ */
 @RestController
 @RequestMapping("/api/trips")
 @RequiredArgsConstructor
 public class LoadingOptimizationController {
 
-    private final TripService tripService;
-    private final OptimizationClient optimizationClient;
+    private final LoadingOptimizationService loadingOptimizationService;
+    private final LoadPlanQueryService loadPlanQueryService;
 
     @PostMapping("/{tripId}/optimize-loading")
     @PreAuthorize("hasRole('DISPATCHER')")
-    public ResponseEntity<String> optimizeLoading(
+    public ResponseEntity<ApiResponse<OptimizationJobStartResponse>> optimizeLoading(
             @PathVariable Long tripId
     ) {
-        // 1. Kiểm tra Trip có thuộc công ty đang đăng nhập không.
-        tripService.getTripById(tripId);
-
-        // 2. Tạo JSON request cho FastAPI.
-        Map<String, Object> request = Map.of(
-                "trip_id", tripId,
-                "objective", "MAX_VOLUME",
-                "time_limit_sec", 60
-        );
-
-        // 3. Gửi request sang FastAPI bằng service token.
-        String response = optimizationClient.createJob(request);
-
-        // 4. Trả kết quả FastAPI cho Frontend.
+        OptimizationJobStartResponse response = loadingOptimizationService.startLoadingOptimization(tripId);
         return ResponseEntity
                 .status(HttpStatus.ACCEPTED)
-                .body(response);
+                .body(ApiResponse.success("Tác vụ tối ưu đã được khởi tạo", response));
     }
 
-
+    /** Phong bì trạng thái job của dịch vụ tối ưu, giữ nguyên (trường snake_case). */
     @GetMapping("/optimization-jobs/{jobId}")
-    @PreAuthorize("hasRole('DISPATCHER')")
+    @PreAuthorize("hasAnyRole('DISPATCHER', 'MANAGER')")
     public ResponseEntity<String> getOptimizationJobStatus(
             @PathVariable String jobId
     ) {
-        String response = optimizationClient.getJobStatus(jobId);
-
-        return ResponseEntity.ok(response);
+        return ResponseEntity.ok()
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(loadingOptimizationService.getJobStatus(jobId));
     }
 
     @GetMapping("/optimization-jobs/{jobId}/plans")
-    @PreAuthorize("hasRole('DISPATCHER')")
-    public ResponseEntity<String> getOptimizationJobPlans(
+    @PreAuthorize("hasAnyRole('DISPATCHER', 'MANAGER')")
+    public ResponseEntity<ApiResponse<List<LoadPlanDetailResponse>>> getOptimizationJobPlans(
             @PathVariable String jobId
     ) {
-        String response = optimizationClient.getJobPlans(jobId);
-
-        return ResponseEntity.ok(response);
+        return ResponseEntity.ok(ApiResponse.success(
+                "Danh sách kế hoạch xếp hàng", loadPlanQueryService.getJobPlans(jobId)));
     }
 
+    @GetMapping("/{tripId}/load-plans")
+    @PreAuthorize("hasAnyRole('DISPATCHER', 'MANAGER')")
+    public ResponseEntity<ApiResponse<TripLoadPlansResponse>> getTripLoadPlans(
+            @PathVariable Long tripId
+    ) {
+        return ResponseEntity.ok(ApiResponse.success(
+                "Danh sách kế hoạch xếp hàng của chuyến", loadPlanQueryService.getTripLoadPlans(tripId)));
+    }
 }
