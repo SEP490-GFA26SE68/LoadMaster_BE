@@ -30,7 +30,7 @@ public class TrialAccountRequestController {
     private final UserRepository userRepository;
 
     @PostMapping
-    @PreAuthorize("hasRole('SYSTEM_ADMIN') or hasAuthority('SYSTEM_ADMIN')")
+    @PreAuthorize("hasAnyRole('SYSTEM_SUPPORTER', 'SYSTEM_ADMIN', 'SYSTEM_MANAGER') or hasAnyAuthority('SYSTEM_SUPPORTER', 'SYSTEM_ADMIN', 'SYSTEM_MANAGER')")
     public ResponseEntity<TrialAccountRequestResponse> createTrialRequest(
             @Valid @RequestBody CreateTrialAccountRequest request,
             @AuthenticationPrincipal Jwt jwt
@@ -41,7 +41,7 @@ public class TrialAccountRequestController {
     }
 
     @GetMapping
-    @PreAuthorize("hasRole('SYSTEM_ADMIN') or hasAuthority('SYSTEM_ADMIN')")
+    @PreAuthorize("hasAnyRole('SYSTEM_MANAGER', 'SYSTEM_ADMIN', 'SYSTEM_SUPPORTER') or hasAnyAuthority('SYSTEM_MANAGER', 'SYSTEM_ADMIN', 'SYSTEM_SUPPORTER')")
     public ResponseEntity<PageResponse<TrialAccountRequestResponse>> getTrialRequests(
             @RequestParam(required = false) String search,
             @RequestParam(required = false) TrialRequestStatus status,
@@ -54,14 +54,14 @@ public class TrialAccountRequestController {
     }
 
     @GetMapping("/{id}")
-    @PreAuthorize("hasRole('SYSTEM_ADMIN') or hasAuthority('SYSTEM_ADMIN')")
+    @PreAuthorize("hasAnyRole('SYSTEM_MANAGER', 'SYSTEM_ADMIN', 'SYSTEM_SUPPORTER') or hasAnyAuthority('SYSTEM_MANAGER', 'SYSTEM_ADMIN', 'SYSTEM_SUPPORTER')")
     public ResponseEntity<TrialAccountRequestResponse> getTrialRequestById(@PathVariable Long id) {
         TrialAccountRequestResponse response = trialAccountRequestService.getTrialRequestById(id);
         return ResponseEntity.ok(response);
     }
 
     @PostMapping("/{id}/approve")
-    @PreAuthorize("hasRole('SYSTEM_ADMIN') or hasAuthority('SYSTEM_ADMIN')")
+    @PreAuthorize("hasAnyRole('SYSTEM_MANAGER', 'SYSTEM_ADMIN') or hasAnyAuthority('SYSTEM_MANAGER', 'SYSTEM_ADMIN')")
     public ResponseEntity<TrialAccountRequestResponse> approveTrialRequest(
             @PathVariable Long id,
             @RequestBody(required = false) ApproveTrialAccountRequest request,
@@ -76,7 +76,7 @@ public class TrialAccountRequestController {
     }
 
     @PostMapping("/{id}/reject")
-    @PreAuthorize("hasRole('SYSTEM_ADMIN') or hasAuthority('SYSTEM_ADMIN')")
+    @PreAuthorize("hasAnyRole('SYSTEM_MANAGER', 'SYSTEM_ADMIN') or hasAnyAuthority('SYSTEM_MANAGER', 'SYSTEM_ADMIN')")
     public ResponseEntity<TrialAccountRequestResponse> rejectTrialRequest(
             @PathVariable Long id,
             @RequestBody(required = false) RejectTrialAccountRequest request,

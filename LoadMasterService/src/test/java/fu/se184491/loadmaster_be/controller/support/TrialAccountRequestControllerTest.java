@@ -55,9 +55,34 @@ class TrialAccountRequestControllerTest {
     private RestAccessDeniedHandler accessDeniedHandler;
 
     @Test
-    @DisplayName("POST /api/trial-requests - Denies SYSTEM_SUPPORTER and SYSTEM_MANAGER with 403 Forbidden")
-    @WithMockUser(roles = {"SYSTEM_SUPPORTER", "SYSTEM_MANAGER"})
-    void createTrialRequest_whenNotSystemAdmin_returnsForbidden() throws Exception {
+    @DisplayName("POST /api/trial-requests - Allows SYSTEM_SUPPORTER to forward trial request")
+    @WithMockUser(roles = "SYSTEM_SUPPORTER")
+    void createTrialRequest_whenSystemSupporter_allowsAndCallsService() throws Exception {
+        String body = """
+                {
+                  "companyName": "Trial Co",
+                  "taxCode": "0109998887",
+                  "fullName": "Nguyen Van A",
+                  "email": "trial@co.vn",
+                  "phoneNumber": "0912345678"
+                }
+                """;
+
+        when(trialAccountRequestService.createTrialRequest(any(), any()))
+                .thenReturn(TrialAccountRequestResponse.builder().id(10L).companyName("Trial Co").build());
+
+        mockMvc.perform(post("/api/trial-requests")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isCreated());
+
+        verify(trialAccountRequestService).createTrialRequest(any(), any());
+    }
+
+    @Test
+    @DisplayName("POST /api/trial-requests - Denies COMPANY_ADMIN with 403 Forbidden")
+    @WithMockUser(roles = "COMPANY_ADMIN")
+    void createTrialRequest_whenCompanyAdmin_returnsForbidden() throws Exception {
         String body = """
                 {
                   "companyName": "Trial Co",
@@ -77,12 +102,27 @@ class TrialAccountRequestControllerTest {
     }
 
     @Test
-    @DisplayName("GET /api/trial-requests & POST /api/trial-requests/{id}/approve - Denies SYSTEM_MANAGER with 403 Forbidden")
+    @DisplayName("GET /api/trial-requests & POST /api/trial-requests/{id}/approve - Allows SYSTEM_MANAGER")
     @WithMockUser(roles = "SYSTEM_MANAGER")
-    void trialRequests_whenCallerIsSystemManager_returnsForbidden() throws Exception {
-        mockMvc.perform(get("/api/trial-requests"))
-                .andExpect(status().isForbidden());
+    void trialRequests_whenCallerIsSystemManager_allowsAccess() throws Exception {
+        when(trialAccountRequestService.getTrialRequests(any(), any(), any()))
+                .thenReturn(PageResponse.<TrialAccountRequestResponse>builder().data(List.of()).build());
+        when(trialAccountRequestService.approveTrialRequest(any(), any(), any()))
+                .thenReturn(TrialAccountRequestResponse.builder().id(1L).build());
 
+        mockMvc.perform(get("/api/trial-requests"))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(post("/api/trial-requests/1/approve")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    @DisplayName("POST /api/trial-requests/{id}/approve - Denies SYSTEM_SUPPORTER with 403 Forbidden")
+    @WithMockUser(roles = "SYSTEM_SUPPORTER")
+    void approveTrialRequest_whenCallerIsSystemSupporter_returnsForbidden() throws Exception {
         mockMvc.perform(post("/api/trial-requests/1/approve")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{}"))
