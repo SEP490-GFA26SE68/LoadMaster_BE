@@ -114,4 +114,10 @@ class NotificationRulesTest {
                 .as("không ghi tài xế thì không báo ai").isFalse();
         assertThat(NotificationRules.concerns(event("PICKUP_LOADED", 13L, null, Map.of(), 13L), DISPATCHER)).isFalse();
     }
+
+    @Test
+    void tripUpdateWithoutStatusIsNotTheDriversAndDoesNotThrow() {
+        assertThat(NotificationRules.concerns(event("TRIP_UPDATED", 10L, Map.of(), Map.of("driverId", 13L), 13L), DRIVER)).isFalse();
+        assertThat(NotificationRules.concerns(event("TRIP_UPDATED", 10L, null, null, 13L), DRIVER)).isFalse();
+    }
 }

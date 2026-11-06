@@ -105,7 +105,7 @@ public final class NotificationRules {
         return switch (event.action()) {
             case "MANUAL_CONFIRM_REJECTED" -> sameId(value(event.newValues(), "requestedBy"), driverId);
             // Đổi tài xế khi chuyến đã ở kho: báo người mới và người vừa bị thay
-            case "TRIP_UPDATED" -> DRIVER_KNOWS.contains(text(value(event.newValues(), "tripStatus")))
+            case "TRIP_UPDATED" -> driverKnows(text(value(event.newValues(), "tripStatus")))
                     && (sameId(value(event.newValues(), "driverId"), driverId)
                     || sameId(value(event.oldValues(), "driverId"), driverId));
             // Kho bắt đầu xếp: chuyến mới của tài xế
@@ -117,6 +117,11 @@ public final class NotificationRules {
             case "PICKUP_APPROVED", "PICKUP_REJECTED" -> sameId(value(event.newValues(), "driverId"), driverId);
             default -> false;
         };
+    }
+
+    // Set.of ném NullPointerException khi hỏi null: sự kiện sửa chuyến không mang trạng thái thì tài xế chưa biết chuyến
+    private static boolean driverKnows(String status) {
+        return status != null && DRIVER_KNOWS.contains(status);
     }
 
     private static boolean wasLoading(Event event) {
