@@ -7,6 +7,7 @@ import fu.se184491.loadmaster_be.dto.response.credit.CreditBalanceResponse;
 import fu.se184491.loadmaster_be.dto.response.credit.CreditTransactionResponse;
 import fu.se184491.loadmaster_be.entity.billing.CreditAccount;
 import fu.se184491.loadmaster_be.entity.billing.CreditTransaction;
+import fu.se184491.loadmaster_be.entity.common.AuditLog;
 import fu.se184491.loadmaster_be.entity.company.Company;
 import fu.se184491.loadmaster_be.exception.AppException;
 import fu.se184491.loadmaster_be.exception.ErrorCode;
@@ -14,6 +15,7 @@ import fu.se184491.loadmaster_be.exception.InsufficientCreditsException;
 import fu.se184491.loadmaster_be.repository.billing.CompanySubscriptionRepository;
 import fu.se184491.loadmaster_be.repository.billing.CreditAccountRepository;
 import fu.se184491.loadmaster_be.repository.billing.CreditTransactionRepository;
+import fu.se184491.loadmaster_be.repository.common.AuditLogRepository;
 import fu.se184491.loadmaster_be.repository.company.CompanyRepository;
 import fu.se184491.loadmaster_be.service.credit.CreditService;
 import lombok.RequiredArgsConstructor;
@@ -23,8 +25,11 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.Optional;
 
 @Service
@@ -35,11 +40,14 @@ public class CreditServiceImpl implements CreditService {
     /** Một lần chạy tối ưu 3D (ba phương án ứng viên) dùng đúng 1 credit, như lần chạy lại. */
     public static final int INITIAL_OPTIMIZATION_CREDIT_COST = 1;
     public static final int RERUN_OPTIMIZATION_CREDIT_COST = 1;
+    /** Số dư sau một lần trừ xuống tới mức này thì báo "Sắp hết credit" cho quản trị công ty (đề xuất, chờ chốt). */
+    public static final int LOW_CREDIT_THRESHOLD = 10;
 
     private final CreditAccountRepository creditAccountRepository;
     private final CreditTransactionRepository creditTransactionRepository;
     private final CompanySubscriptionRepository companySubscriptionRepository;
     private final CompanyRepository companyRepository;
+    private final AuditLogRepository auditLogRepository;
 
     @Override
     @Transactional
@@ -133,6 +141,25 @@ public class CreditServiceImpl implements CreditService {
         tx.prePersist();
         creditTransactionRepository.save(tx);
         log.info("Deducted {} credit(s) for company {}. New balance: {}", creditsToDeduct, companyId, account.getBalance());
+        auditLowBalance(companyId, account.getBalance());
+    }
+
+    /** Sự kiện của hệ thống (không người làm), thuộc công ty: nguồn của thông báo "Sắp hết credit". */
+    private void auditLowBalance(Long companyId, Integer balance) {
+        if (balance == null || balance > LOW_CREDIT_THRESHOLD || isUnlimitedPlan(companyId)) {
+            return;
+        }
+        Map<String, Object> values = new LinkedHashMap<>();
+        values.put("balance", balance);
+        values.put("threshold", LOW_CREDIT_THRESHOLD);
+        auditLogRepository.save(AuditLog.builder()
+                .companyId(companyId)
+                .actionType("CREDIT_LOW_BALANCE")
+                .entityName("Company")
+                .entityId(String.valueOf(companyId))
+                .newValues(values)
+                .createdAt(Instant.now())
+                .build());
     }
 
     @Override

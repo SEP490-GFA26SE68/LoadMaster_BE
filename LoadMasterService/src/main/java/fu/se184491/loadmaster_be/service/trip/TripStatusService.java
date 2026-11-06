@@ -65,6 +65,12 @@ public class TripStatusService {
 
         trip.setStatus(newStatus);
         Trip savedTrip = tripRepository.save(trip);
+        Map<String, Object> newValues = new java.util.HashMap<>();
+        newValues.put("status", newStatus.name());
+        // Tài xế lúc chuyển: chuông của tài xế đọc đúng người của chuyến khi đó
+        if (trip.getDriver() != null) {
+            newValues.put("driverId", trip.getDriver().getId());
+        }
         auditLogRepository.save(AuditLog.builder()
                 .companyId(AuditCompany.ofTrip(trip))
                 .actionType("TRIP_STATUS_TRANSITION")
@@ -72,7 +78,7 @@ public class TripStatusService {
                 .entityId(tripId.toString())
                 .user(actor)
                 .oldValues(Map.of("status", currentStatus.name()))
-                .newValues(Map.of("status", newStatus.name()))
+                .newValues(newValues)
                 .createdAt(Instant.now())
                 .build());
         return savedTrip;

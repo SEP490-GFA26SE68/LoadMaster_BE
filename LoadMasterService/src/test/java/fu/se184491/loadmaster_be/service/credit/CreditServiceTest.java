@@ -47,6 +47,9 @@ public class CreditServiceTest {
     @Mock
     private CompanySubscriptionRepository companySubscriptionRepository;
 
+    @Mock
+    private fu.se184491.loadmaster_be.repository.common.AuditLogRepository auditLogRepository;
+
     @InjectMocks
     private CreditServiceImpl creditService;
 

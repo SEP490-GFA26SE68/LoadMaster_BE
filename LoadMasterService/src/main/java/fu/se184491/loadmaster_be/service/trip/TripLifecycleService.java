@@ -149,6 +149,10 @@ public class TripLifecycleService {
             return;
         }
         tripRepository.save(trip);
+        // Pha của chuyến lúc sửa (giống nhau ở hai bên nên không phải trường đã đổi): chuông của tài xế biết
+        // chuyến đã ở kho hay chưa khi đổi tài xế
+        before.put("tripStatus", trip.getStatus().name());
+        after.put("tripStatus", trip.getStatus().name());
         audit("TRIP_UPDATED", trip, actor, before, after);
         if (vehicleChanged) {
             // Phương án tính cho xe cũ: lỗi thời và thôi là bản duyệt; điều phối tối ưu lại rồi duyệt.
@@ -207,6 +211,9 @@ public class TripLifecycleService {
         after.put("reason", trimmedReason);
         after.put("requirementsReleased", requirementCount);
         after.put("loadedPackages", loadedCount);
+        if (trip.getDriver() != null) {
+            after.put("driverId", trip.getDriver().getId());
+        }
         audit("TRIP_CANCELLED", trip, actor, Map.of("status", previousStatus.name()), after);
     }
 
