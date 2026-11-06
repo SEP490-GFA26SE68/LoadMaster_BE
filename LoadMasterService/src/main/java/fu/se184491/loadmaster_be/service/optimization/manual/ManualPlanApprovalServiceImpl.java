@@ -159,6 +159,7 @@ public class ManualPlanApprovalServiceImpl implements ManualPlanApprovalService 
                 .rearAxleLoad(loads == null ? null : decimal(loads.rearKg(), 2))
                 .rehandlingCount(rehandling)
                 .objective(sourcePlan.getObjective())
+                .algorithmName(sourcePlan.getAlgorithmName())
                 .manuallyEdited(edited.isEmpty() ? sourcePlan.getManuallyEdited() : Boolean.TRUE)
                 .stale(false)
                 .build());

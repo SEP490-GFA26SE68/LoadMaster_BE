@@ -89,6 +89,24 @@ class LoadPlanReadRepositoryTest {
     }
 
     @Test
+    void eachPlanCarriesTheAlgorithmThatMadeItAndTheRunTier() throws SQLException {
+        ResultSet ga = planRow(1, "MAX_VOLUME", "A", "MAX_VOLUME");
+        when(ga.getString("plan_algorithm")).thenReturn("GA");
+        when(ga.getString("algorithm_name")).thenReturn("EP_DBLF_GA");
+        ResultSet old = planRow(2, null, null, "MAX_VOLUME");
+        when(old.getString("algorithm_name")).thenReturn("EP_DBLF");
+        rows(ga, old);
+
+        List<LoadPlanDetailResponse> plans = repository.findPlansByJob(7L);
+
+        assertThat(plans).extracting(LoadPlanDetailResponse::getAlgorithmName).containsExactly("GA", "EP_DBLF");
+        assertThat(plans).extracting(LoadPlanDetailResponse::getRunAlgorithm).containsExactly("EP_DBLF_GA", "EP_DBLF");
+        ArgumentCaptor<String> sql = ArgumentCaptor.forClass(String.class);
+        verify(jdbc).query(sql.capture(), anyMap(), any(RowMapper.class));
+        assertThat(sql.getValue()).contains("lp.algorithm_name AS plan_algorithm", "j.algorithm_name");
+    }
+
+    @Test
     void jobStatusReadsColumnsAndCountsPackedPlans() throws SQLException {
         ResultSet rs = mock(ResultSet.class);
         when(rs.getLong("id")).thenReturn(42L);
@@ -101,6 +119,7 @@ class LoadPlanReadRepositoryTest {
         when(rs.getTimestamp(eq("created_at"), any(Calendar.class)))
                 .thenReturn(Timestamp.from(Instant.parse("2026-11-05T03:15:00Z")));
         when(rs.getInt("packed_plans")).thenReturn(0);
+        when(rs.getString("algorithm_name")).thenReturn("EP_DBLF_GA_AI");
         rows(rs);
 
         Optional<OptimizationJobStatusResponse> status = repository.findJobStatus(42L);
@@ -113,6 +132,7 @@ class LoadPlanReadRepositoryTest {
             assertThat(job.getComputationMs()).isEqualTo(120L);
             assertThat(job.getCreatedAt()).isEqualTo(Instant.parse("2026-11-05T03:15:00Z"));
             assertThat(job.getPackedPlanCount()).isZero();
+            assertThat(job.getRunAlgorithm()).isEqualTo("EP_DBLF_GA_AI");
         });
         ArgumentCaptor<String> sql = ArgumentCaptor.forClass(String.class);
         verify(jdbc).query(sql.capture(), eq(Map.of("id", 42L)), any(RowMapper.class));

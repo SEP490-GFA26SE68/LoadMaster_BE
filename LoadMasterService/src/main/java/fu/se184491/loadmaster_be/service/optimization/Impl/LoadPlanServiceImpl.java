@@ -24,6 +24,9 @@ import fu.se184491.loadmaster_be.constant.trip.TripStatus;
 import fu.se184491.loadmaster_be.helpers.CurrentUserService;
 import fu.se184491.loadmaster_be.exception.AppException;
 import fu.se184491.loadmaster_be.exception.ErrorCode;
+import fu.se184491.loadmaster_be.constant.billing.SubscriptionStatus;
+import fu.se184491.loadmaster_be.constant.billing.SubscriptionTier;
+import fu.se184491.loadmaster_be.repository.billing.CompanySubscriptionRepository;
 import fu.se184491.loadmaster_be.repository.cargo.CargoPackageRepository;
 import fu.se184491.loadmaster_be.repository.common.AuditLogRepository;
 import fu.se184491.loadmaster_be.repository.optimization.LoadPlanRepository;
@@ -58,6 +61,32 @@ public class LoadPlanServiceImpl implements LoadPlanService {
     private final fu.se184491.loadmaster_be.service.credit.CreditService creditService;
     private final fu.se184491.loadmaster_be.repository.trip.DeliveryStopRepository deliveryStopRepository;
     private final CurrentUserService currentUserService;
+    private final CompanySubscriptionRepository companySubscriptionRepository;
+
+    /** Hạng của gói đang hiệu lực (ACTIVE hoặc TRIAL) của công ty sở hữu chuyến; không có thì BASIC. */
+    private SubscriptionTier currentTier(Trip trip) {
+        Long companyId = trip != null && trip.getCompany() != null
+                ? trip.getCompany().getId()
+                : null;
+        if (companyId == null) {
+            return SubscriptionTier.BASIC;
+        }
+        return companySubscriptionRepository.findByCompanyId(companyId)
+                .filter(sub -> sub.getStatus() == SubscriptionStatus.ACTIVE
+                        || sub.getStatus() == SubscriptionStatus.TRIAL)
+                .filter(sub -> sub.getPlan() != null && sub.getPlan().getTier() != null)
+                .map(sub -> sub.getPlan().getTier())
+                .orElse(SubscriptionTier.BASIC);
+    }
+
+    /** Thuật toán của hạng gói hiện tại: BASIC → EP_DBLF, PRO → EP_DBLF_GA, ULTIMATE → EP_DBLF_GA_AI. */
+    private OptimizationAlgorithm rerunAlgorithm(LoadPlan currentPlan) {
+        return switch (currentTier(currentPlan.getJob() != null ? currentPlan.getJob().getTrip() : null)) {
+            case PRO -> OptimizationAlgorithm.EP_DBLF_GA;
+            case ULTIMATE -> OptimizationAlgorithm.EP_DBLF_GA_AI;
+            default -> OptimizationAlgorithm.EP_DBLF;
+        };
+    }
 
     /**
      * Phương án chỉ được ghim, bỏ ghim hay chạy lại khi nó thuộc công ty của người gọi và chuyến của
@@ -138,9 +167,8 @@ public class LoadPlanServiceImpl implements LoadPlanService {
         OptimizationJob newJob = OptimizationJob.builder()
                 .trip(currentPlan.getJob() != null ? currentPlan.getJob().getTrip() : null)
                 .jobUuid(jobUuid)
-                .algorithmName(currentPlan.getJob() != null && currentPlan.getJob().getAlgorithmName() != null
-                        ? currentPlan.getJob().getAlgorithmName()
-                        : OptimizationAlgorithm.GENETIC_ALGORITHM)
+                // Chạy lại theo hạng gói của công ty lúc này, như lần chạy đầy đủ
+                .algorithmName(rerunAlgorithm(currentPlan))
                 .objective(objective)
                 .timeLimitSec(timeLimit)
                 .seed(request.getSeed())
@@ -173,6 +201,8 @@ public class LoadPlanServiceImpl implements LoadPlanService {
                 .timeLimitSec(timeLimit)
                 .seed(request.getSeed())
                 .pinnedPlacements(pinnedDtos)
+                .subscriptionTier(currentTier(newJob.getTrip()).name())
+                .algorithmName(newJob.getAlgorithmName().name())
                 .build();
 
         // S8-08 Credit check & deduction before sending to Engine (Rerun = 1 credit)
@@ -219,6 +249,7 @@ public class LoadPlanServiceImpl implements LoadPlanService {
                 .packedItemsCount(engineResult != null ? engineResult.getPackedItemsCount() : 0)
                 .volumeUtilization(engineResult != null ? engineResult.getVolumeUtilization() : BigDecimal.ZERO)
                 .weightUtilization(engineResult != null ? engineResult.getWeightUtilization() : BigDecimal.ZERO)
+                .algorithmName(engineResult != null ? engineResult.getAlgorithmName() : null)
                 .approved(false)
                 .build();
         newPlan = loadPlanRepository.save(newPlan);
@@ -293,8 +324,14 @@ public class LoadPlanServiceImpl implements LoadPlanService {
                 .frontAxleLoad(newPlan.getFrontAxleLoad())
                 .rearAxleLoad(newPlan.getRearAxleLoad())
                 .rehandlingCount(newPlan.getRehandlingCount())
+                .algorithmName(newPlan.getAlgorithmName() != null ? newPlan.getAlgorithmName() : jobAlgorithm(newJob))
+                .runAlgorithm(jobAlgorithm(newJob))
                 .placements(savedPlacements.stream().map(this::mapToResponse).collect(Collectors.toList()))
                 .build();
+    }
+
+    private static String jobAlgorithm(OptimizationJob job) {
+        return job != null && job.getAlgorithmName() != null ? job.getAlgorithmName().name() : null;
     }
 
     private void validatePlacementBelongsToPlan(PackagePlacement placement, Long loadPlanId) {

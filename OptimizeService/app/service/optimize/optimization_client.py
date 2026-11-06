@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+import logging
 import time
-from typing import Optional, Any
+from typing import Optional, Any, Sequence
 import httpx
 
 from app.config.settings import settings
@@ -29,6 +30,9 @@ from app.service.optimize.constraint_engine import ConstraintEngine
 from app.service.optimize.unload_feasibility_validator import (
     UnloadFeasibilityValidator,
 )
+
+logger = logging.getLogger(__name__)
+
 
 class OptimizationClient:
     """
@@ -65,26 +69,117 @@ class OptimizationClient:
     def solve_candidates(self, problem: ProblemRequest) -> EngineOptimizationResponse:
         """
         Một job ra ba phương án ứng viên A · B · C (MAX_VOLUME, AXLE_BALANCE, MIN_REHANDLING).
-        Xếp thử vài cách (chiến lược khác nhau của cùng bộ giải, mỗi cách vẫn qua HC-01 → HC-12),
-        rồi mỗi mục tiêu chọn cách tốt nhất theo chỉ số của chính nó. Giới hạn thời gian của
-        job áp cho cả lượt: hết giờ thì dừng thử cách mới, cách đầu luôn được chạy.
+        Xếp thử vài cách (mỗi cách vẫn qua HC-01 → HC-12), rồi mỗi mục tiêu chọn cách tốt nhất
+        theo chỉ số của chính nó. Các cách được thử theo hạng thuật toán của job
+        (AlgorithmTierService.plan_algorithms_for):
+          BASIC    EP + DBLF, bốn chiến lược.
+          PRO      + GA và SA (metaheuristic.py), giải mã bằng chính bộ dựng EP + DBLF.
+          ULTIMATE + EP có Lumo-R1.1 chấm chỗ đặt, + ba mô hình Lumo tự xếp (lumo_models.py),
+                   mọi chỗ đặt của AI được kiểm lại bằng ConstraintEngine.
+        Mỗi cách xếp mang mã thuật toán đã sinh ra nó (`algorithm_name`). Giới hạn thời gian
+        của job áp cho cả lượt: hết giờ thì dừng thử cách mới, cách đầu luôn được chạy.
         Kết quả trả về là phương án A, kèm cả ba ở `candidates`.
         """
+        from app.constant.optimization.plan_algorithm import PlanAlgorithm
+        from app.service.optimize.algorithm_tier_service import AlgorithmTierService
+
         start = time.monotonic()
         deadline = start + max(int(problem.time_limit_sec or 60), 1)
+        allowed = AlgorithmTierService.plan_algorithms_for(problem.algorithm_name)
+        tried: list[str] = []
         layouts: list[EngineOptimizationResponse] = []
+        ep_runs: list[tuple[str, EngineOptimizationResponse]] = []
+        # Cách xếp mang nhãn EP_DBLF phải là EP thuần: gói có Lumo chấm điểm thì tắt nó ở đây
+        # (Lumo-R1.1 chấm chỗ đặt là một cách xếp riêng, EP_LUMO_R1_1).
+        ep_kwargs = {"use_lumo_scorer": False} if uses_lumo(problem.algorithm_name) else {}
         for strategy in layout_strategies_for(problem.vehicle):
             if layouts and time.monotonic() >= deadline:
                 break
-            layouts.append(self.solve_in_process(problem, strategy=strategy))
+            layout = self.solve_in_process(problem, strategy=strategy, **ep_kwargs)
+            layout = layout.model_copy(update={"algorithm_name": PlanAlgorithm.EP_DBLF.value})
+            layouts.append(layout)
+            ep_runs.append((strategy, layout))
+        tried.append(PlanAlgorithm.EP_DBLF.value)
+
+        if len(allowed) > 1:
+            layouts += self._advanced_layouts(problem, allowed, ep_runs, start, deadline, tried)
 
         candidates = pick_candidates(layouts, problem.vehicle)
+        logger.info(
+            "Optimization tier=%s tried=%s layouts=%d chosen A/B/C=%s",
+            problem.algorithm_name or "EP_DBLF",
+            tried,
+            len(layouts),
+            [c.result.algorithm_name for c in candidates],
+        )
         head = candidates[0].result
         total_ms = int((time.monotonic() - start) * 1000)
         return head.model_copy(update={
             "metrics": head.metrics.model_copy(update={"computation_ms": total_ms}),
             "candidates": candidates,
+            "algorithms_tried": tried,
         })
+
+    def _advanced_layouts(
+        self,
+        problem: ProblemRequest,
+        allowed: list[str],
+        ep_runs: list[tuple[str, EngineOptimizationResponse]],
+        start: float,
+        deadline: float,
+        tried: list[str],
+    ) -> list[EngineOptimizationResponse]:
+        """
+        Cách xếp của gói PRO / ULTIMATE. Thứ tự: mô hình AI greedy (mỗi mô hình một lượt cố định),
+        EP + Lumo-R1.1, rồi GA → SA dùng phần thời gian còn lại (tối đa ngân sách trong settings).
+        Một bước hỏng (thiếu torch, lỗi mô hình) chỉ bị bỏ qua, không làm hỏng job.
+        """
+        from app.constant.optimization.plan_algorithm import PlanAlgorithm as P
+        from app.service.optimize.metaheuristic import run_ga_sa
+
+        layouts: list[EngineOptimizationResponse] = []
+        ai_codes = [c for c in allowed if c in (P.LUMO_R1.value, P.LUMO_R1_1.value, P.LUMO_R2.value)]
+        if ai_codes:
+            try:
+                from app.ml.lumo_models import run_lumo_models
+
+                ai = run_lumo_models(problem, ai_codes, self, deadline=deadline)
+                tried.extend(code for code in ai.tried)
+                layouts += ai.layouts
+            except Exception as exc:  # không bao giờ làm hỏng job vì AI
+                logger.warning("Lumo models skipped: %s", exc)
+
+        if P.EP_LUMO_R1_1.value in allowed and time.monotonic() < deadline:
+            # Kiện ghim vẫn giữ nguyên: Lumo-R1.1 chỉ chọn trong các chỗ đặt hợp lệ của EP.
+            scorer = None
+            try:
+                scorer = get_lumo_scorer()
+            except Exception as exc:
+                logger.warning("EP_LUMO_R1_1 skipped: %s", exc)
+            if scorer is not None:
+                layout = self.solve_in_process(problem, strategy=LayoutStrategy.CENTER_FIRST,
+                                               use_lumo_scorer=True, quiet=True)
+                layouts.append(layout.model_copy(update={"algorithm_name": P.EP_LUMO_R1_1.value}))
+                tried.append(P.EP_LUMO_R1_1.value)
+            else:
+                logger.info("EP_LUMO_R1_1 skipped: Lumo-R1.1 scorer unavailable (torch or weights missing)")
+
+        if P.GA.value in allowed and time.monotonic() < deadline:
+            # Chuyến lớn: một lần giải mã (một lượt EP + DBLF) có thể mất vài giây, nên ngân sách
+            # được nới tới đủ METAHEURISTIC_MIN_DECODES lần giải mã — vẫn trong giới hạn của request.
+            decode_sec = max(((r.metrics.computation_ms or 0) / 1000.0 for _, r in ep_runs), default=0.0)
+            budget = min(
+                max(float(settings.METAHEURISTIC_TIME_BUDGET_SEC),
+                    int(settings.METAHEURISTIC_MIN_DECODES) * decode_sec),
+                max(0.0, deadline - time.monotonic() - 0.2),
+            )
+            if budget > 0:
+                meta = run_ga_sa(self, problem, ep_runs, budget_sec=budget,
+                                 max_evaluations=int(settings.METAHEURISTIC_MAX_EVALUATIONS),
+                                 run_sa=P.SA.value in allowed)
+                tried.extend(meta.tried)
+                layouts += meta.layouts
+        return layouts
 
     async def _solve_http(self, problem: ProblemRequest) -> EngineOptimizationResponse:
         headers = {}
@@ -120,19 +215,35 @@ class OptimizationClient:
         self,
         problem: ProblemRequest,
         strategy: str = LayoutStrategy.CENTER_FIRST,
+        order: Optional[Sequence[str]] = None,
+        orientation_pref: Optional[dict[str, int]] = None,
+        use_lumo_scorer: Optional[bool] = None,
+        quiet: bool = False,
     ) -> EngineOptimizationResponse:
         """
         Nâng cấp S5b-04: Zone-aware 3D Packing Heuristic với Extreme Points (EP)
         và ConstraintEngine (Fragility, Stacking, Support Area, Rotation, COG, Axle Load).
-        Gói ULTIMATE (EP_DBLF_GA_AI): Lumo-R1.1 chọn ứng viên nếu load được trọng số; không thì heuristic.
 
         `strategy` chỉ đổi thứ tự xét kiện và cách chấm điểm chỗ đặt (xem LayoutStrategy);
         mọi ràng buộc cứng giữ nguyên.
+
+        Lối của metaheuristic (GA / SA giải mã nhiễm sắc thể bằng chính bộ dựng này):
+          order             mã kiện theo thứ tự xét; chỉ đổi thứ tự TRONG mỗi vùng điểm giao
+                            (vùng vẫn xếp sâu trước, kiện ghim vẫn đặt trước và không xếp lại).
+          orientation_pref  mã kiện → chỉ số hướng ưu tiên trong các hướng được phép (lấy theo modulo);
+                            có chỗ đặt hợp lệ với hướng đó thì chọn trong số đó, không thì như thường.
+                            Vắng hoặc âm: không ưu tiên.
+        use_lumo_scorer: True thì Lumo-R1.1 chọn trong các chỗ đặt hợp lệ (nếu nạp được trọng số);
+        None giữ cách cũ (theo algorithm_name của job). quiet: tắt bản in gỡ lỗi trước HC-11 / HC-12.
         """
         start_time = time.time()
+        _debug_print = (lambda *args, **kwargs: None) if quiet else print
         lumo = None
-        if uses_lumo(problem.algorithm_name):
+        if use_lumo_scorer is None:
+            use_lumo_scorer = uses_lumo(problem.algorithm_name)
+        if use_lumo_scorer:
             lumo = get_lumo_scorer()
+        rank = {str(pid): i for i, pid in enumerate(order)} if order is not None else None
         vt = problem.vehicle
         placements: list[PlacementData] = []
         unplaced: list[UnplacedData] = []
@@ -145,51 +256,7 @@ class OptimizationClient:
         packages_map = {str(p.id): p for p in problem.packages}
 
         # 1. Phân nhóm packages theo stop & tính toán stop zones
-        stops_dict: dict[Any, list[PackageData]] = {}
-        stop_seq_map: dict[Any, int] = {}
-        if problem.stops:
-            for s in problem.stops:
-                stops_dict[s.id] = []
-                stop_seq_map[s.id] = s.sequence
-
-        for pkg in problem.packages:
-            # Map by stop_index or stop ID if available
-            matched_stop_id = None
-            if problem.stops:
-                # stop_index là thứ tự điểm (stop_sequence). Khớp theo thứ tự trước:
-                # so với id trước thì kiện của điểm thứ tự 2 rơi vào điểm có id 2.
-                matched_stop_id = next(
-                    (s.id for s in problem.stops if s.sequence == pkg.stop_index),
-                    None,
-                )
-                if matched_stop_id is None:
-                    matched_stop_id = next(
-                        (s.id for s in problem.stops if str(s.id) == str(pkg.stop_index)),
-                        None,
-                    )
-                if matched_stop_id is None and problem.stops:
-                    matched_stop_id = problem.stops[0].id
-            else:
-                matched_stop_id = "default-stop"
-
-            if matched_stop_id not in stops_dict:
-                stops_dict[matched_stop_id] = []
-            stops_dict[matched_stop_id].append(pkg)
-
-        # Build stops input for StopZoneCalculator
-        # Điểm giao không còn kiện nào (kho bỏ kiện cuối của nó) không chiếm vùng nào trong thùng.
-        stops_input = []
-        for stop_id, pkgs in stops_dict.items():
-            if not pkgs:
-                continue
-            stops_input.append({
-                "stop_id": stop_id,
-                "sequence": stop_seq_map.get(stop_id, 1),
-                "packages": [{"volume": p.l * p.w * p.h, "weight": p.weight} for p in pkgs],
-            })
-
-        # Tính stop zones
-        zone_calc_res = StopZoneCalculator.calculate_zones(vt, stops_input)
+        stops_dict, zone_calc_res, package_stop = self._stop_groups(problem)
         zones_by_id = {str(z.stop_id): z for z in zone_calc_res.zones}
 
         # Sắp xếp các zone từ sâu nhất (x = 0) đến gần cửa sau (x = inner_l)
@@ -198,11 +265,6 @@ class OptimizationClient:
 
         # Kiện đã ghim (chạy lại giữ ghim): đặt trước đúng vị trí và hướng cũ,
         # là vật cản cho các kiện còn lại; không xếp lại chúng.
-        package_stop = {
-            str(p.id): stop_id
-            for stop_id, pkgs in stops_dict.items()
-            for p in pkgs
-        }
         pinned_placements = self._pinned_placements(problem, packages_map, package_stop)
         pinned_ids = {str(p.package_id) for p in pinned_placements}
         for pinned_placement in pinned_placements:
@@ -272,6 +334,11 @@ class OptimizationClient:
             return normalized_x ** 2 + normalized_y ** 2
 
 
+        # Điểm ứng viên "sát cuối vùng" dưới đây dùng kích thước của `pkg` còn lại từ vòng lặp trước
+        # (kiện cuối của danh sách kiện ở vùng đầu, kiện xét cuối của vùng trước ở các vùng sau).
+        # Giữ đúng hành vi đó để EP + DBLF ra cùng kết quả như trước khi tách _stop_groups.
+        pkg = problem.packages[-1] if problem.packages else None
+
 # 2. Xếp hàng theo từng zone
         for zone in sorted_zones:
             zone_pkgs = [
@@ -279,7 +346,10 @@ class OptimizationClient:
                 if str(p.id) not in pinned_ids
             ]
             # Sắp xếp kiện hàng trong zone: giảm dần theo thể tích
-            if strategy == LayoutStrategy.HEAVY_FIRST:
+            if rank is not None:
+                # Thứ tự do GA / SA đưa vào; kiện không có trong order đứng cuối, giữ thứ tự cũ.
+                sorted_pkgs = sorted(zone_pkgs, key=lambda p: rank.get(str(p.id), len(rank)))
+            elif strategy == LayoutStrategy.HEAVY_FIRST:
                 sorted_pkgs = sorted(zone_pkgs, key=lambda p: (p.weight, p.l * p.w * p.h), reverse=True)
             else:
                 sorted_pkgs = sorted(zone_pkgs, key=lambda p: (p.l * p.w * p.h, p.weight), reverse=True)
@@ -335,7 +405,7 @@ class OptimizationClient:
 #
 # Không thay đổi giới hạn zone hoặc các Hard Constraints.
 
-            for orientation_l in {float(pkg.l), float(pkg.w)}:
+            for orientation_l in ({float(pkg.l), float(pkg.w)} if pkg is not None else ()):
                 right_aligned_x = zone_end - orientation_l
 
                 if right_aligned_x >= zone_start:
@@ -437,6 +507,15 @@ class OptimizationClient:
                     ),
                 )
 
+                # Hướng ưu tiên của GA / SA (nếu có): một mã hướng trong các hướng được phép.
+                preferred_rot = None
+                if orientation_pref:
+                    pref_index = orientation_pref.get(str(pkg.id))
+                    if pref_index is not None and int(pref_index) >= 0:
+                        preferred_rot = orientations[int(pref_index) % len(orientations)][3]
+
+                # 1–2. Chỗ đặt qua biên vùng và không chồng lấn, kèm điểm chấm của chiến lược.
+                geometric: list[tuple[tuple, PlacementData]] = []
                 for pt in sorted_eps:
                     px, py, pz = pt
                     for (ol, ow, oh, rot_type) in orientations:
@@ -464,30 +543,52 @@ class OptimizationClient:
                             step_sequence=len(placements) + 1,
                             stop_zone_id=zone.stop_id,
                         )
+                        if strategy == LayoutStrategy.DEEP_FIRST:
+                            # DBLF: thấp nhất, sâu nhất, sát vách trái.
+                            score = (float(pz), float(px), float(py))
+                        else:
+                            # Ưu tiên placement trên sàn trước,
+                            # sau đó mới tối ưu COG.
+                            score = (
+                                candidate_cog_score(candidate)
+                                + (float(pz) / float(vt.inner_h)) * 0.1,
+                            )
+                        geometric.append((score, candidate))
 
-                        # 3. ConstraintEngine check
+                # 3. ConstraintEngine check.
+                if lumo is not None:
+                    # Lumo-R1.1 cần mọi chỗ đặt hợp lệ để chọn.
+                    for score, candidate in geometric:
                         violations = ConstraintEngine.check_all(candidate, context)
-
                         if not violations:
                             valid_candidates.append(candidate)
-                            if strategy == LayoutStrategy.DEEP_FIRST:
-                                # DBLF: thấp nhất, sâu nhất, sát vách trái.
-                                score = (float(pz), float(px), float(py))
-                            else:
-                                # Ưu tiên placement trên sàn trước,
-                                # sau đó mới tối ưu COG.
-                                score = (
-                                    candidate_cog_score(candidate)
-                                    + (float(pz) / float(vt.inner_h)) * 0.1,
-                                )
-
                             if best_candidate_score is None or score < best_candidate_score:
                                 best_candidate_score = score
                                 chosen_placement = candidate
                         else:
-                            last_violations = [
-                                v.violation_code for v in violations
-                            ]
+                            last_violations = [v.violation_code for v in violations]
+                else:
+                    # Chọn chỗ đặt hợp lệ có điểm nhỏ nhất (hoà: đứng trước) — kết quả y hệt việc kiểm
+                    # mọi chỗ rồi lấy min, nhưng chỉ kiểm ConstraintEngine tới chỗ hợp lệ đầu tiên theo
+                    # thứ tự điểm. Có hướng ưu tiên thì các chỗ đúng hướng đó được xét trước.
+                    ordered = sorted(
+                        range(len(geometric)),
+                        key=lambda i: (
+                            preferred_rot is not None and geometric[i][1].rotation_type != preferred_rot,
+                            geometric[i][0],
+                            i,
+                        ),
+                    )
+                    failed: dict[int, list[str]] = {}
+                    for i in ordered:
+                        violations = ConstraintEngine.check_all(geometric[i][1], context)
+                        if not violations:
+                            chosen_placement = geometric[i][1]
+                            break
+                        failed[i] = [v.violation_code for v in violations]
+                    if chosen_placement is None and failed:
+                        # Như vòng cũ: lý do của chỗ đặt cuối cùng theo thứ tự Extreme Points.
+                        last_violations = failed[max(failed)]
 
                 if lumo is not None and valid_candidates:
                     remaining = sum(1 for zone_pkgs in stops_dict.values() for _ in zone_pkgs) - len(placements)
@@ -576,7 +677,7 @@ class OptimizationClient:
         if placements:
 
             # DEBUG: Quan sát phương án trước final validation.
-            print("\n=== BEFORE HC-11 / HC-12 ===")
+            _debug_print("\n=== BEFORE HC-11 / HC-12 ===")
 
             total_weight = 0.0
             weighted_x = 0.0
@@ -596,7 +697,7 @@ class OptimizationClient:
                 weighted_y += weight * cy
                 weighted_z += weight * cz
 
-                print(
+                _debug_print(
                     f"Package {p.package_id}: "
                     f"position=({p.x}, {p.y}, {p.z}), "
                     f"center=({cx}, {cy}, {cz}), "
@@ -604,21 +705,21 @@ class OptimizationClient:
                 )
 
             if total_weight > 0:
-                print(
+                _debug_print(
                     "COG:",
                     round(weighted_x / total_weight, 2),
                     round(weighted_y / total_weight, 2),
                     round(weighted_z / total_weight, 2),
                 )
 
-            print(
+            _debug_print(
                 "Allowed COG X:",
                 round(float(vt.inner_l) * 0.35, 2),
                 "-",
                 round(float(vt.inner_l) * 0.65, 2),
             )
 
-            print(
+            _debug_print(
                 "Allowed COG Y:",
                 round(float(vt.inner_w) * 0.35, 2),
                 "-",
@@ -682,67 +783,9 @@ class OptimizationClient:
         )
 
         # 3. Tính COG tổng và Axle Load
-        cog_x, cog_y, cog_z = None, None, None
-        front_axle_load, rear_axle_load = None, None
-
-        if placements and total_placed_weight > 0:
-            weighted_x = sum((p.x + p.packed_l / 2.0) * float(packages_map.get(str(p.package_id)).weight) for p in placements if str(p.package_id) in packages_map)
-            weighted_y = sum((p.y + p.packed_w / 2.0) * float(packages_map.get(str(p.package_id)).weight) for p in placements if str(p.package_id) in packages_map)
-            weighted_z = sum((p.z + p.packed_h / 2.0) * float(packages_map.get(str(p.package_id)).weight) for p in placements if str(p.package_id) in packages_map)
-
-            cog_x = round(weighted_x / total_placed_weight, 3)
-            cog_y = round(weighted_y / total_placed_weight, 3)
-            cog_z = round(weighted_z / total_placed_weight, 3)
-
-
-            # HC-12: Tải trục tổng = tải xe rỗng + tải hàng.
-            front_x = float(vt.front_axle_x)
-            rear_x = float(vt.rear_axle_x)
-            wheelbase = rear_x - front_x
-
-            rear_cargo_load = sum(
-                float(packages_map[str(p.package_id)].weight)
-                * (
-                        float(p.x)
-                        + float(p.packed_l) / 2.0
-                        - front_x
-                )
-                / wheelbase
-                for p in placements
-            )
-
-            front_cargo_load = (
-                    total_placed_weight - rear_cargo_load
-            )
-
-            front_axle_load = round(
-                float(vt.empty_front_axle_load_kg)
-                + front_cargo_load,
-                2,
-                )
-
-            rear_axle_load = round(
-                float(vt.empty_rear_axle_load_kg)
-                + rear_cargo_load,
-                2,
-                )
-
-
         comp_ms = int((time.time() - start_time) * 1000)
-        vol_util = round(total_placed_volume / vehicle_volume, 4) if vehicle_volume > 0 else 0.0
-        wt_util = round(total_placed_weight / vt.max_payload_kg, 4) if vt.max_payload_kg > 0 else 0.0
-
-        metrics = MetricsData(
-            volume_utilization=vol_util,
-            weight_utilization=wt_util,
-            packed_count=len(placements),
-            computation_ms=comp_ms,
-            cog_x=cog_x,
-            cog_y=cog_y,
-            cog_z=cog_z,
-            front_axle_load=front_axle_load,
-            rear_axle_load=rear_axle_load,
-            rehandling_count=rehandling_count,
+        metrics = self._plan_metrics(
+            placements, packages_map, vt, total_placed_weight, total_placed_volume, rehandling_count, comp_ms
         )
 
 
@@ -805,6 +848,214 @@ class OptimizationClient:
             metrics=metrics,
         )
 
+
+    def evaluate_fixed_layout(
+        self,
+        problem: ProblemRequest,
+        placements_in: Sequence[PlacementData],
+        algorithm_name: str,
+        started_at: Optional[float] = None,
+    ) -> tuple[Optional[EngineOptimizationResponse], Optional[str]]:
+        """
+        Kiểm lại một cách xếp do bộ giải khác (mô hình AI) dựng, bằng đúng các luật và cách tính
+        chỉ số của solve_in_process: từng chỗ đặt qua ConstraintEngine.check_all theo thứ tự xếp
+        (mỗi kiện so với các kiện đặt trước nó), rồi HC-11 / HC-12 trên cả phương án và
+        UnloadFeasibilityValidator. Không sửa chỗ đặt nào (không dời khối cân trọng tâm).
+        Trả (cách xếp, None) khi đạt; (None, lý do) khi vi phạm ràng buộc cứng — cả cách xếp bị bỏ.
+        """
+        start_time = started_at if started_at is not None else time.time()
+        vt = problem.vehicle
+        packages_map = {str(p.id): p for p in problem.packages}
+        _, zone_calc_res, package_stop = self._stop_groups(problem)
+
+        placements: list[PlacementData] = []
+        seen: set[str] = set()
+        context = {
+            "vehicle": vt,
+            "existing_placements": placements,
+            "packages_map": packages_map,
+            "check_cog": False,
+            "check_axle": False,
+        }
+        for item in placements_in:
+            key = str(item.package_id)
+            pkg = packages_map.get(key)
+            if pkg is None:
+                return None, f"UNKNOWN_PACKAGE:{key}"
+            if key in seen:
+                return None, f"DUPLICATE_PACKAGE:{key}"
+            seen.add(key)
+            placement = item.model_copy(update={
+                "package_id": pkg.id,
+                "step_sequence": len(placements) + 1,
+                "stop_zone_id": package_stop.get(key),
+                "pinned": False,
+            })
+            violations = ConstraintEngine.check_all(placement, context)
+            if violations:
+                return None, f"{violations[0].violation_code}:{key}"
+            placements.append(placement)
+
+        if placements:
+            for check in (
+                ConstraintEngine.check_cog(all_placements=placements, vehicle=vt, packages_map=packages_map),
+                ConstraintEngine.check_axle_load(all_placements=placements, vehicle=vt, packages_map=packages_map),
+            ):
+                if not check.passed:
+                    return None, check.violation_code
+            unload = UnloadFeasibilityValidator.validate(
+                placements=placements, packages_map=packages_map, vehicle=vt
+            )
+            if not unload.passed:
+                return None, unload.violation_code or "MULTI_DROP_LIFO_VIOLATION"
+
+        unplaced = [
+            UnplacedData(package_id=p.id, reason="CONSTRAINT_VIOLATED", violated_constraints=["NO_FEASIBLE_SPACE"])
+            for p in problem.packages
+            if str(p.id) not in seen
+        ]
+        total_weight = sum(float(packages_map[str(p.package_id)].weight) for p in placements)
+        total_volume = sum(p.packed_l * p.packed_w * p.packed_h for p in placements)
+        rehandling = StopZoneCalculator.count_rehandling(zone_calc_res.zones, placements, package_stop)
+        metrics = self._plan_metrics(
+            placements, packages_map, vt, total_weight, total_volume, rehandling,
+            int((time.time() - start_time) * 1000),
+        )
+        return EngineOptimizationResponse(
+            placements=placements, unplaced=unplaced, metrics=metrics, algorithm_name=algorithm_name
+        ), None
+
+    @staticmethod
+    def _plan_metrics(
+        placements: list[PlacementData],
+        packages_map: dict[str, PackageData],
+        vt,
+        total_placed_weight: float,
+        total_placed_volume: float,
+        rehandling_count: int,
+        comp_ms: int,
+    ) -> MetricsData:
+        """Chỉ số của một cách xếp: thể tích, tải trọng, trọng tâm, tải trục (HC-12), số dỡ-xếp lại."""
+        vehicle_volume = float(vt.inner_l * vt.inner_w * vt.inner_h)
+        cog_x, cog_y, cog_z = None, None, None
+        front_axle_load, rear_axle_load = None, None
+
+        if placements and total_placed_weight > 0:
+            weighted_x = sum((p.x + p.packed_l / 2.0) * float(packages_map.get(str(p.package_id)).weight) for p in placements if str(p.package_id) in packages_map)
+            weighted_y = sum((p.y + p.packed_w / 2.0) * float(packages_map.get(str(p.package_id)).weight) for p in placements if str(p.package_id) in packages_map)
+            weighted_z = sum((p.z + p.packed_h / 2.0) * float(packages_map.get(str(p.package_id)).weight) for p in placements if str(p.package_id) in packages_map)
+
+            cog_x = round(weighted_x / total_placed_weight, 3)
+            cog_y = round(weighted_y / total_placed_weight, 3)
+            cog_z = round(weighted_z / total_placed_weight, 3)
+
+
+            # HC-12: Tải trục tổng = tải xe rỗng + tải hàng.
+            front_x = float(vt.front_axle_x)
+            rear_x = float(vt.rear_axle_x)
+            wheelbase = rear_x - front_x
+
+            rear_cargo_load = sum(
+                float(packages_map[str(p.package_id)].weight)
+                * (
+                        float(p.x)
+                        + float(p.packed_l) / 2.0
+                        - front_x
+                )
+                / wheelbase
+                for p in placements
+            )
+
+            front_cargo_load = (
+                    total_placed_weight - rear_cargo_load
+            )
+
+            front_axle_load = round(
+                float(vt.empty_front_axle_load_kg)
+                + front_cargo_load,
+                2,
+                )
+
+            rear_axle_load = round(
+                float(vt.empty_rear_axle_load_kg)
+                + rear_cargo_load,
+                2,
+                )
+
+
+        vol_util = round(total_placed_volume / vehicle_volume, 4) if vehicle_volume > 0 else 0.0
+        wt_util = round(total_placed_weight / vt.max_payload_kg, 4) if vt.max_payload_kg > 0 else 0.0
+
+        metrics = MetricsData(
+            volume_utilization=vol_util,
+            weight_utilization=wt_util,
+            packed_count=len(placements),
+            computation_ms=comp_ms,
+            cog_x=cog_x,
+            cog_y=cog_y,
+            cog_z=cog_z,
+            front_axle_load=front_axle_load,
+            rear_axle_load=rear_axle_load,
+            rehandling_count=rehandling_count,
+        )
+        return metrics
+
+    @staticmethod
+    def _stop_groups(problem: ProblemRequest):
+        """Kiện theo điểm giao, vùng điểm giao (StopZoneCalculator) và điểm giao của từng kiện."""
+        vt = problem.vehicle
+        stops_dict: dict[Any, list[PackageData]] = {}
+        stop_seq_map: dict[Any, int] = {}
+        if problem.stops:
+            for s in problem.stops:
+                stops_dict[s.id] = []
+                stop_seq_map[s.id] = s.sequence
+
+        for pkg in problem.packages:
+            # Map by stop_index or stop ID if available
+            matched_stop_id = None
+            if problem.stops:
+                # stop_index là thứ tự điểm (stop_sequence). Khớp theo thứ tự trước:
+                # so với id trước thì kiện của điểm thứ tự 2 rơi vào điểm có id 2.
+                matched_stop_id = next(
+                    (s.id for s in problem.stops if s.sequence == pkg.stop_index),
+                    None,
+                )
+                if matched_stop_id is None:
+                    matched_stop_id = next(
+                        (s.id for s in problem.stops if str(s.id) == str(pkg.stop_index)),
+                        None,
+                    )
+                if matched_stop_id is None and problem.stops:
+                    matched_stop_id = problem.stops[0].id
+            else:
+                matched_stop_id = "default-stop"
+
+            if matched_stop_id not in stops_dict:
+                stops_dict[matched_stop_id] = []
+            stops_dict[matched_stop_id].append(pkg)
+
+        # Build stops input for StopZoneCalculator
+        # Điểm giao không còn kiện nào (kho bỏ kiện cuối của nó) không chiếm vùng nào trong thùng.
+        stops_input = []
+        for stop_id, pkgs in stops_dict.items():
+            if not pkgs:
+                continue
+            stops_input.append({
+                "stop_id": stop_id,
+                "sequence": stop_seq_map.get(stop_id, 1),
+                "packages": [{"volume": p.l * p.w * p.h, "weight": p.weight} for p in pkgs],
+            })
+
+        # Tính stop zones
+        zone_calc_res = StopZoneCalculator.calculate_zones(vt, stops_input)
+
+        package_stop = {
+            str(p.id): stop_id
+            for stop_id, pkgs in stops_dict.items()
+            for p in pkgs
+        }
+        return stops_dict, zone_calc_res, package_stop
 
     @staticmethod
     def _rebalance_along_x(

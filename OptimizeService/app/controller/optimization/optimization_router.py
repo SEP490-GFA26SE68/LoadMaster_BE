@@ -74,6 +74,9 @@ async def submit_job(
             )
 
     job = job_service.create_job(trip_id=request.trip_id, config=request, db=db)
+    if problem is not None:
+        # Bài có kiện ghim dựng trước khi có job: gắn mã thuật toán theo gói như job.
+        problem.algorithm_name = getattr(job, "algorithm_name", None)
 
     if problem is None:
         background_tasks.add_task(runner.run, job.job_uuid)

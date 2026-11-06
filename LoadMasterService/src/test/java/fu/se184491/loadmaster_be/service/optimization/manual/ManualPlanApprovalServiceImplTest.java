@@ -92,7 +92,7 @@ class ManualPlanApprovalServiceImplTest {
         when(tripRepository.findById(10L)).thenReturn(Optional.of(trip));
         when(currentUserService.getCurrentUser()).thenReturn(User.builder().id(42L).build());
         when(loadPlanRepository.findById(5L)).thenReturn(Optional.of(LoadPlan.builder().id(5L).version(1)
-                .job(OptimizationJob.builder().id(9L).trip(trip).build()).objective("MAX_VOLUME").build()));
+                .job(OptimizationJob.builder().id(9L).trip(trip).build()).objective("MAX_VOLUME").algorithmName("GA").build()));
         when(loadPlanRepository.saveAndFlush(any(LoadPlan.class))).thenAnswer(call -> {
             LoadPlan plan = call.getArgument(0);
             plan.setId(6L);
@@ -153,6 +153,7 @@ class ManualPlanApprovalServiceImplTest {
         assertThat(plan.getValue().getParentPlanId()).isEqualTo(5L);
         assertThat(plan.getValue().getVersion()).isEqualTo(2);
         assertThat(plan.getValue().getApprovedBy().getId()).isEqualTo(42L);
+        assertThat(plan.getValue().getAlgorithmName()).isEqualTo("GA");
 
         ArgumentCaptor<List<NewPlacement>> rows = ArgumentCaptor.forClass(List.class);
         verify(writeRepository).insertPlacements(eq(6L), rows.capture());
@@ -310,7 +311,7 @@ class ManualPlanApprovalServiceImplTest {
     @Test
     void pinOnlyChangeKeepsTheOptimizerRehandlingCount() {
         when(loadPlanRepository.findById(5L)).thenReturn(Optional.of(LoadPlan.builder().id(5L).version(1).rehandlingCount(3)
-                .job(OptimizationJob.builder().id(9L).trip(trip).build()).objective("MAX_VOLUME").build()));
+                .job(OptimizationJob.builder().id(9L).trip(trip).build()).objective("MAX_VOLUME").algorithmName("GA").build()));
         ApproveEditsRequest pinOnly = ApproveEditsRequest.builder().placements(List.of()).pinnedPlacementIds(List.of(101L)).build();
 
         service.approveEdits(5L, pinOnly);

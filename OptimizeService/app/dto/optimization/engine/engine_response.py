@@ -50,6 +50,11 @@ class EngineOptimizationResponse(BaseModel):
     # Ba phương án ứng viên của một job (A · B · C), chỉ bộ giải nội bộ điền.
     # Không đưa ra JSON: lần chạy lại và engine ngoài vẫn là một kết quả.
     candidates: List["CandidatePlanData"] = Field(default_factory=list, exclude=True)
+    # Thuật toán đã sinh ra cách xếp này (mã của PlanAlgorithm: EP_DBLF, GA, SA, EP_LUMO_R1_1,
+    # LUMO_R1, LUMO_R1_1, LUMO_R2). Engine ngoài không điền thì để trống.
+    algorithm_name: Optional[str] = None
+    # Các thuật toán job đã chạy (kể cả cách không được chọn); chỉ để ghi log, không đưa ra JSON.
+    algorithms_tried: List[str] = Field(default_factory=list, exclude=True)
 
 
 class CandidatePlanData(BaseModel):

@@ -20,5 +20,7 @@ public class OptimizationResultDto {
     private BigDecimal volumeUtilization;
     private BigDecimal weightUtilization;
     private Long computationMs;
+    /** Thuật toán đã tạo ra phương án (EP_DBLF | GA | SA | EP_LUMO_R1_1 | LUMO_R1…); dịch vụ cũ không gửi: null. */
+    private String algorithmName;
     private List<PlacementResultDto> placements;
 }

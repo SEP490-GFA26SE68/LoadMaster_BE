@@ -173,6 +173,7 @@ class OptimizationResultPersistenceService:
         plan.plan_name = plan_name
         plan.objective = objective
         plan.candidate_label = candidate_label
+        plan.algorithm_name = result.algorithm_name
         plan.packed_items_count = packed_count
         plan.volume_utilization = vol_util
         plan.weight_utilization = wt_util

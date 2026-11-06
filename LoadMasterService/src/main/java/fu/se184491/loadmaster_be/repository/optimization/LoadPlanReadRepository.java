@@ -54,6 +54,7 @@ public class LoadPlanReadRepository {
                    lp.is_approved, lp.approved_by, u.full_name AS approved_by_name,
                    lp.cog_x, lp.cog_y, lp.cog_z, lp.front_axle_load, lp.rear_axle_load,
                    lp.rehandling_count, lp.objective AS plan_objective, lp.candidate_label,
+                   lp.algorithm_name AS plan_algorithm,
                    COALESCE(lp.manually_edited, FALSE) AS manually_edited,
                    COALESCE(lp.is_stale, FALSE) AS is_stale,
                    j.job_uuid, j.trip_id, j.status AS job_status, j.objective,
@@ -102,7 +103,7 @@ public class LoadPlanReadRepository {
     public Optional<OptimizationJobStatusResponse> findJobStatus(Long jobId) {
         List<OptimizationJobStatusResponse> rows = jdbc.query("""
                         SELECT j.id, j.job_uuid, j.trip_id, j.objective, j.time_limit_sec, j.status,
-                               j.computation_ms, j.created_at,
+                               j.computation_ms, j.created_at, j.algorithm_name,
                                (SELECT COUNT(*) FROM load_plans lp
                                 WHERE lp.job_id = j.id AND COALESCE(lp.packed_items_count, 0) > 0) AS packed_plans,
                                (SELECT COALESCE(MAX(per_plan.pins), 0) FROM (
@@ -124,6 +125,7 @@ public class LoadPlanReadRepository {
                             .timeLimitSec(nullableInt(rs, "time_limit_sec"))
                             .status(rs.getString("status"))
                             .computationMs(nullableLong(rs, "computation_ms"))
+                            .runAlgorithm(rs.getString("algorithm_name"))
                             // Dịch vụ tối ưu ghi created_at theo giờ UTC (không múi giờ).
                             .createdAt(createdAt == null ? null : createdAt.toInstant())
                             .packedPlanCount(rs.getInt("packed_plans"))
@@ -232,7 +234,9 @@ public class LoadPlanReadRepository {
                 // Mục tiêu của phương án ứng viên; phương án cũ không có thì lấy của job.
                 .objective(Optional.ofNullable(rs.getString("plan_objective")).orElse(rs.getString("objective")))
                 .candidateLabel(rs.getString("candidate_label"))
-                .algorithmName(rs.getString("algorithm_name"))
+                // Thuật toán đã tạo ra phương án; phương án cũ không có thì lấy của job.
+                .algorithmName(Optional.ofNullable(rs.getString("plan_algorithm")).orElse(rs.getString("algorithm_name")))
+                .runAlgorithm(rs.getString("algorithm_name"))
                 // Bản chỉnh tay không chạy bộ tối ưu: thời gian chạy của job không phải của nó.
                 .computationMs(rs.getBoolean("manually_edited") ? null : nullableLong(rs, "computation_ms"))
                 .planName(rs.getString("plan_name"))
