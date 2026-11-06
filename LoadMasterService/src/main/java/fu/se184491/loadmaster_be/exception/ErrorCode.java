@@ -284,7 +284,18 @@ public enum ErrorCode {
     // -------------------------------------------------------------------------
     AGREEMENT_NOT_FOUND("Không tìm thấy thỏa thuận dịch vụ của doanh nghiệp", HttpStatus.NOT_FOUND),
     AGREEMENT_ALREADY_SIGNED("Thỏa thuận dịch vụ này đã được ký trước đó", HttpStatus.BAD_REQUEST),
-    AGREEMENT_DEADLINE_EXPIRED("Đã quá thời hạn 3 ngày ký thỏa thuận dịch vụ. Tài khoản đã bị khóa", HttpStatus.FORBIDDEN);
+    AGREEMENT_DEADLINE_EXPIRED("Đã quá thời hạn 3 ngày ký thỏa thuận dịch vụ. Tài khoản đã bị khóa", HttpStatus.FORBIDDEN),
+
+    // -------------------------------------------------------------------------
+    // Driver delivery: sự cố theo kiện, xác nhận tay khi dỡ, phương án đã xếp
+    // -------------------------------------------------------------------------
+    DELIVERY_STOP_NOT_ARRIVED("Chưa báo đến điểm giao này", HttpStatus.CONFLICT),
+    DELIVERY_ISSUE_NOTE_REQUIRED("Sự cố loại Khác phải có ghi chú", HttpStatus.BAD_REQUEST),
+    MANUAL_CONFIRM_NOTE_REQUIRED("Xác nhận tay với lý do Khác phải có ghi chú", HttpStatus.BAD_REQUEST),
+    MANUAL_CONFIRM_PENDING("Còn xác nhận tay chờ điều phối viên duyệt", HttpStatus.CONFLICT),
+    MANUAL_CONFIRM_NOT_FOUND("Không tìm thấy xác nhận tay", HttpStatus.NOT_FOUND),
+    MANUAL_CONFIRM_NOT_PENDING("Xác nhận tay này đã được xử lý", HttpStatus.CONFLICT),
+    NO_LOADED_PLAN("Chuyến chưa có phương án kho đã xếp", HttpStatus.NOT_FOUND);
 
     private final String message;
     private final HttpStatus httpStatus;

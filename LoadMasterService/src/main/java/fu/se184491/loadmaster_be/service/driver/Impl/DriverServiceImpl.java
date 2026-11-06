@@ -15,6 +15,9 @@ import fu.se184491.loadmaster_be.dto.response.driver.StopPackageResponse;
 import fu.se184491.loadmaster_be.entity.account.User;
 import fu.se184491.loadmaster_be.entity.cargo.CargoPackage;
 import fu.se184491.loadmaster_be.entity.common.AuditLog;
+import fu.se184491.loadmaster_be.constant.driver.ManualConfirmStatus;
+import fu.se184491.loadmaster_be.entity.driver.DeliveryIssue;
+import fu.se184491.loadmaster_be.entity.driver.ManualUnloadConfirmation;
 import fu.se184491.loadmaster_be.entity.driver.UnloadConfirmation;
 import fu.se184491.loadmaster_be.entity.optimization.LoadPlan;
 import fu.se184491.loadmaster_be.entity.optimization.PackagePlacement;
@@ -29,6 +32,8 @@ import fu.se184491.loadmaster_be.exception.WrongStopException;
 import fu.se184491.loadmaster_be.helpers.CurrentUserService;
 import fu.se184491.loadmaster_be.repository.cargo.CargoPackageRepository;
 import fu.se184491.loadmaster_be.repository.common.AuditLogRepository;
+import fu.se184491.loadmaster_be.repository.driver.DeliveryIssueRepository;
+import fu.se184491.loadmaster_be.repository.driver.ManualUnloadConfirmationRepository;
 import fu.se184491.loadmaster_be.repository.driver.UnloadConfirmationRepository;
 import fu.se184491.loadmaster_be.repository.optimization.LoadPlanRepository;
 import fu.se184491.loadmaster_be.repository.optimization.PackagePlacementRepository;
@@ -80,6 +85,8 @@ public class DriverServiceImpl implements DriverService {
     private final TripStatusService tripStatusService;
     private final TripPackageResolver tripPackageResolver;
     private final TripLookupHelper tripLookupHelper;
+    private final DeliveryIssueRepository deliveryIssueRepository;
+    private final ManualUnloadConfirmationRepository manualConfirmationRepository;
 
     @Override
     @Transactional(readOnly = true)
@@ -135,6 +142,20 @@ public class DriverServiceImpl implements DriverService {
                 unloadedAtById.put(confirmation.getCargoPackage().getId(), confirmation.getUnloadedAt());
             }
         }
+        // Sự cố và xác nhận tay mới nhất của từng kiện ở điểm này
+        Map<Long, DeliveryIssue> issueById = new HashMap<>();
+        for (DeliveryIssue issue : deliveryIssueRepository.findByDeliveryStopIdOrderByReportedAtAsc(currentStop.getId())) {
+            if (issue.getCargoPackage() != null) {
+                issueById.put(issue.getCargoPackage().getId(), issue);
+            }
+        }
+        Map<Long, ManualUnloadConfirmation> manualById = new HashMap<>();
+        for (ManualUnloadConfirmation manual : manualConfirmationRepository.findByDeliveryStopIdOrderByRequestedAtAsc(currentStop.getId())) {
+            if (manual.getCargoPackage() != null) {
+                manualById.put(manual.getCargoPackage().getId(), manual);
+            }
+        }
+        StopState state = new StopState(unloadedAtById, issueById, manualById);
 
         Optional<LoadPlan> approvedPlanOpt = loadPlanRepository
                 .findFirstByJobTripIdAndApprovedTrueOrderByIdDesc(trip.getId());
@@ -156,7 +177,7 @@ public class DriverServiceImpl implements DriverService {
             int order = 1;
             for (PackagePlacement placement : stopPlacements) {
                 packageResponses.add(stopPackage(
-                        placement.getCargoPackage(), placement.getStepSequence(), order++, unloadedAtById));
+                        placement.getCargoPackage(), placement.getStepSequence(), order++, state));
             }
         }
 
@@ -164,7 +185,7 @@ public class DriverServiceImpl implements DriverService {
         if (packageResponses.isEmpty()) {
             int order = 1;
             for (CargoPackage pkg : stopPackages) {
-                packageResponses.add(stopPackage(pkg, null, order++, unloadedAtById));
+                packageResponses.add(stopPackage(pkg, null, order++, state));
             }
         }
 
@@ -183,12 +204,26 @@ public class DriverServiceImpl implements DriverService {
                 .build();
     }
 
-    private StopPackageResponse stopPackage(CargoPackage pkg, Integer stepSequence, int unloadOrder,
-                                            Map<Long, LocalDateTime> unloadedAtById) {
+    /** Tiến độ của một điểm theo từng kiện: lần dỡ, sự cố mới nhất, xác nhận tay mới nhất. */
+    private record StopState(Map<Long, LocalDateTime> unloadedAtById,
+                             Map<Long, DeliveryIssue> issueById,
+                             Map<Long, ManualUnloadConfirmation> manualById) {
+    }
+
+    private StopPackageResponse stopPackage(CargoPackage pkg, Integer stepSequence, int unloadOrder, StopState state) {
         Long id = pkg != null ? pkg.getId() : null;
+        Map<Long, LocalDateTime> unloadedAtById = state.unloadedAtById();
         boolean unloaded = id != null
                 && (unloadedAtById.containsKey(id) || pkg.getStatus() == PackageStatus.DELIVERED);
+        DeliveryIssue issue = id != null ? state.issueById().get(id) : null;
+        ManualUnloadConfirmation manual = id != null ? state.manualById().get(id) : null;
         return StopPackageResponse.builder()
+                .issueKind(issue != null && issue.getKind() != null ? issue.getKind().name() : null)
+                .issueNote(issue != null ? issue.getNote() : null)
+                .manualStatus(manual != null && manual.getStatus() != null ? manual.getStatus().name() : null)
+                .manualReason(manual != null && manual.getReason() != null ? manual.getReason().name() : null)
+                .manualRejectReason(manual != null && manual.getStatus() == ManualConfirmStatus.REJECTED
+                        ? manual.getDecisionNote() : null)
                 .packageId(id)
                 .packageName(getPackageDisplayName(pkg))
                 .trackingBarcode(pkg != null ? pkg.getTrackingBarcode() : null)
@@ -298,15 +333,37 @@ public class DriverServiceImpl implements DriverService {
             throw new AppException(ErrorCode.NO_PENDING_DELIVERY_STOP);
         }
 
+        // Còn xác nhận tay chờ điều phối viên duyệt thì chưa hoàn tất được điểm
+        if (manualConfirmationRepository.countByDeliveryStopIdAndStatus(stopId, ManualConfirmStatus.PENDING) > 0) {
+            throw new AppException(ErrorCode.MANUAL_CONFIRM_PENDING);
+        }
+
+        // Kiện đã báo sự cố (khách từ chối, hỏng, thiếu…) không phải dỡ: hoàn tất điểm thì kiện chưa dỡ là hoàn trả
+        Map<Long, DeliveryIssue> issueById = new HashMap<>();
+        for (DeliveryIssue issue : deliveryIssueRepository.findByDeliveryStopIdOrderByReportedAtAsc(stopId)) {
+            if (issue.getCargoPackage() != null) {
+                issueById.put(issue.getCargoPackage().getId(), issue);
+            }
+        }
         int unconfirmedCount = 0;
+        int deliveredCount = 0;
+        List<DeliveryIssue> returnedIssues = new ArrayList<>();
         for (CargoPackage pkg : tripPackageResolver.packagesOfStop(stopId)) {
-            if (!unloadConfirmationRepository.existsByCargoPackageId(pkg.getId())) {
+            if (unloadConfirmationRepository.existsByCargoPackageId(pkg.getId())) {
+                deliveredCount++;
+            } else if (issueById.containsKey(pkg.getId())) {
+                returnedIssues.add(issueById.get(pkg.getId()));
+            } else {
                 unconfirmedCount++;
             }
         }
 
         if (unconfirmedCount > 0) {
             throw new IncompleteStopException("Điểm dừng chưa hoàn tất: còn " + unconfirmedCount + " kiện hàng chưa được dỡ");
+        }
+        for (DeliveryIssue issue : returnedIssues) {
+            issue.setReturned(Boolean.TRUE);
+            deliveryIssueRepository.save(issue);
         }
 
         if (stop.getActualArrival() == null) {
@@ -323,7 +380,9 @@ public class DriverServiceImpl implements DriverService {
                 .user(driver)
                 .newValues(Map.of(
                         "stopId", stop.getId(),
-                        "tripId", trip.getId()
+                        "tripId", trip.getId(),
+                        "delivered", deliveredCount,
+                        "returned", returnedIssues.size()
                 ))
                 .createdAt(Instant.now())
                 .build();
@@ -369,6 +428,8 @@ public class DriverServiceImpl implements DriverService {
                 .nextStopId(nextStopId)
                 .tripStatus(tripStatus != null ? tripStatus.name() : null)
                 .tripCompleted(tripCompleted)
+                .deliveredCount(deliveredCount)
+                .returnedCount(returnedIssues.size())
                 .message(tripCompleted
                         ? "Điểm giao cuối cùng đã hoàn tất, chuyến đi đã giao thành công (DELIVERED)"
                         : "Điểm giao hàng đã hoàn thành thành công, đã kích hoạt điểm dừng tiếp theo")
