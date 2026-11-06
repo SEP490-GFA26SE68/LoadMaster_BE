@@ -396,11 +396,11 @@ public class DriverServiceImpl implements DriverService {
         TripStatus tripStatus = trip.getStatus();
 
         if (nextStopOpt.isPresent()) {
+            // Điểm kế tiếp giữ PENDING tới khi tài xế báo đến (arrive ghi giờ đến thật): ARRIVED ở đây làm ETA coi
+            // như xe đã tới điểm đó và màn tài xế bỏ qua bước "Đã đến".
             DeliveryStop nextStop = nextStopOpt.get();
-            nextStop.setStatus(DeliveryStopStatus.ARRIVED);
-            deliveryStopRepository.save(nextStop);
             nextStopId = nextStop.getId();
-            log.info("Activated next stop {} ({}) for trip {}", nextStop.getId(), nextStop.getStopName(), trip.getId());
+            log.info("Next stop {} ({}) for trip {}", nextStop.getId(), nextStop.getStopName(), trip.getId());
         } else {
             tripStatus = tripStatusService.transitionTo(trip.getId(), TripStatus.DELIVERED, driver.getId()).getStatus();
             tripCompleted = true;

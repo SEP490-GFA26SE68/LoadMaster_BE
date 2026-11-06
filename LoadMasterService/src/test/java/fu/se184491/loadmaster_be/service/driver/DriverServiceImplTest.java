@@ -52,6 +52,7 @@ import java.util.List;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -184,6 +185,27 @@ class DriverServiceImplTest {
         assertTrue(response.getTripCompleted());
         assertEquals("DELIVERED", response.getTripStatus());
         assertEquals(DeliveryStopStatus.COMPLETED, stop.getStatus());
+    }
+
+    @Test
+    void completingStopLeavesNextStopPendingUntilDriverArrives() {
+        trip.setStatus(TripStatus.IN_TRANSIT);
+        DeliveryStop stop = DeliveryStop.builder().id(30L).trip(trip).stopSequence(1)
+                .status(DeliveryStopStatus.ARRIVED).actualArrival(LocalDateTime.now()).build();
+        DeliveryStop next = DeliveryStop.builder().id(31L).trip(trip).stopSequence(2)
+                .status(DeliveryStopStatus.PENDING).build();
+        CargoPackage pkg = CargoPackage.builder().id(1L).build();
+        when(deliveryStopRepository.findById(30L)).thenReturn(Optional.of(stop));
+        when(tripPackageResolver.packagesOfStop(30L)).thenReturn(List.of(pkg));
+        when(unloadConfirmationRepository.existsByCargoPackageId(1L)).thenReturn(true);
+        when(deliveryStopRepository.findFirstByTripIdAndStatusNotOrderByStopSequenceAsc(10L, DeliveryStopStatus.COMPLETED))
+                .thenReturn(Optional.of(next));
+
+        CompleteStopResponse response = service.completeStop(30L, 8L);
+
+        assertEquals(31L, response.getNextStopId());
+        assertEquals(DeliveryStopStatus.PENDING, next.getStatus());
+        assertNull(next.getActualArrival());
     }
 
     @Test
