@@ -132,7 +132,6 @@ class OptimizationClient:
         total_placed_weight = 0.0
         total_placed_volume = 0.0
         vehicle_volume = float(vt.inner_l * vt.inner_w * vt.inner_h)
-        rehandling_count = 0
 
         # Map packages by ID
         packages_map = {str(p.id): p for p in problem.packages}
@@ -478,7 +477,6 @@ class OptimizationClient:
                             ]
 
                 # Nếu không đặt được trong zone (zone đầy), thử fallback xếp ở vị trí khác trong xe
-                is_rehandling = False
                 if not chosen_placement:
                     # Thử toàn bộ xe
                     all_vehicle_eps = sorted(
@@ -508,7 +506,6 @@ class OptimizationClient:
                             violations = ConstraintEngine.check_all(candidate, context)
                             if not violations:
                                 chosen_placement = candidate
-                                is_rehandling = True
                                 break
                             else:
                                 last_violations = [v.violation_code for v in violations]
@@ -519,8 +516,6 @@ class OptimizationClient:
                     placements.append(chosen_placement)
                     total_placed_weight += pkg.weight
                     total_placed_volume += chosen_placement.packed_l * chosen_placement.packed_w * chosen_placement.packed_h
-                    if is_rehandling:
-                        rehandling_count += 1
 
                     # Sinh thêm Extreme Points mới
                     cx = chosen_placement.x
@@ -650,8 +645,13 @@ class OptimizationClient:
                 placements = []
                 total_placed_weight = 0.0
                 total_placed_volume = 0.0
-                rehandling_count = 0
 
+
+        # Số dỡ-xếp lại theo đúng một luật với bản chỉnh tay của LoadMasterService: kiện có tâm theo X nằm
+        # ngoài vùng của điểm giao mình, trên cách xếp cuối (kể cả kiện ghim và sau khi dời khối cân trọng tâm).
+        rehandling_count = StopZoneCalculator.count_rehandling(
+            zone_calc_res.zones, placements, package_stop
+        )
 
         # 3. Tính COG tổng và Axle Load
         cog_x, cog_y, cog_z = None, None, None
