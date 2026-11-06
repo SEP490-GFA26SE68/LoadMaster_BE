@@ -72,4 +72,16 @@ public class LoadPlan {
 
     @Column(name = "candidate_label", length = 1)
     private String candidateLabel;
+
+    /**
+     * Bản duyệt dựng từ một phương án đã chỉnh tay (dời / xoay kiện). Dịch vụ tối ưu không ghi cột này: phương án của nó để trống (null).
+     */
+    @Column(name = "manually_edited")
+    private Boolean manuallyEdited;
+
+    /**
+     * Phương án lỗi thời: hàng, xe hoặc điểm giao của chuyến đã đổi sau khi tối ưu. Không duyệt được; null là còn hiệu lực.
+     */
+    @Column(name = "is_stale")
+    private Boolean stale;
 }

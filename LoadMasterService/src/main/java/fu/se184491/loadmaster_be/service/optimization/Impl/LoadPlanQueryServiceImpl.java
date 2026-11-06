@@ -92,6 +92,9 @@ public class LoadPlanQueryServiceImpl implements LoadPlanQueryService {
         if (Boolean.TRUE.equals(plan.getApproved())) {
             throw new AppException(ErrorCode.PLAN_ALREADY_APPROVED);
         }
+        if (Boolean.TRUE.equals(plan.getStale())) {
+            throw new AppException(ErrorCode.PLAN_STALE);
+        }
         // Kho và tài xế đọc phương án đã duyệt: hết pha lập kế hoạch thì không đổi được phương án nữa.
         tripRepository.findById(plan.getTripId())
                 .filter(trip -> trip.getStatus() == TripStatus.PLANNED)

@@ -196,4 +196,17 @@ class LoadPlanQueryServiceImplTest {
                 .isEqualTo(ErrorCode.OPTIMIZATION_JOB_NOT_FOUND);
         verify(readRepository, never()).findJobStatus(anyLong());
     }
+
+    @Test
+    void stalePlanCannotBeApproved() {
+        LoadPlanDetailResponse stale = plan(5L, false);
+        stale.setStale(true);
+        when(readRepository.findPlan(5L)).thenReturn(Optional.of(new PlanWithCompany(stale, COMPANY)));
+
+        assertThatThrownBy(() -> service.approvePlan(5L))
+                .isInstanceOf(AppException.class)
+                .extracting(LoadPlanQueryServiceImplTest::codeOf)
+                .isEqualTo(ErrorCode.PLAN_STALE);
+        verify(optimizationClient, never()).approvePlan(anyLong(), anyLong());
+    }
 }
