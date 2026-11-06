@@ -306,7 +306,21 @@ public enum ErrorCode {
     MANUAL_CONFIRM_PENDING("Còn xác nhận tay chờ điều phối viên duyệt", HttpStatus.CONFLICT),
     MANUAL_CONFIRM_NOT_FOUND("Không tìm thấy xác nhận tay", HttpStatus.NOT_FOUND),
     MANUAL_CONFIRM_NOT_PENDING("Xác nhận tay này đã được xử lý", HttpStatus.CONFLICT),
-    NO_LOADED_PLAN("Chuyến chưa có phương án kho đã xếp", HttpStatus.NOT_FOUND);
+    NO_LOADED_PLAN("Chuyến chưa có phương án kho đã xếp", HttpStatus.NOT_FOUND),
+
+    // -------------------------------------------------------------------------
+    // Nhận hàng dọc đường
+    // -------------------------------------------------------------------------
+    PICKUP_REQUEST_NOT_FOUND("Không tìm thấy yêu cầu nhận hàng dọc đường", HttpStatus.NOT_FOUND),
+    PICKUP_INVALID("Yêu cầu nhận hàng dọc đường thiếu hoặc sai dữ liệu", HttpStatus.BAD_REQUEST),
+    PICKUP_PACKAGES_REQUIRED("Yêu cầu nhận hàng phải có ít nhất một kiện", HttpStatus.BAD_REQUEST),
+    PICKUP_TRIP_NOT_IN_TRANSIT("Chỉ nhận hàng dọc đường khi chuyến đang vận chuyển", HttpStatus.CONFLICT),
+    INVALID_PICKUP_STATUS_TRANSITION("Yêu cầu nhận hàng không ở trạng thái cho phép thao tác này", HttpStatus.CONFLICT),
+    PICKUP_ROUTE_UNAVAILABLE("Chưa kiểm được luật nhận hàng: thiếu toạ độ điểm, vị trí xe hoặc kích thước thùng", HttpStatus.CONFLICT),
+    PICKUP_REASON_REQUIRED("Phải ghi lý do", HttpStatus.BAD_REQUEST),
+    PICKUP_PACKAGE_NOT_AT_STOP("Kiện nhận không thuộc điểm nhận hiện tại", HttpStatus.CONFLICT),
+    PICKUP_PACKAGE_ALREADY_PICKED("Kiện nhận này đã lên xe", HttpStatus.CONFLICT),
+    PICKUP_STOP_INCOMPLETE("Còn kiện nhận chưa đối chiếu ở điểm nhận", HttpStatus.CONFLICT);
 
     private final String message;
     private final HttpStatus httpStatus;

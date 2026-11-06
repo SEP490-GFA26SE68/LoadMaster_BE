@@ -37,6 +37,7 @@ import fu.se184491.loadmaster_be.repository.trip.TripRepository;
 import fu.se184491.loadmaster_be.repository.warehouse.LoadingExecutionRepository;
 import fu.se184491.loadmaster_be.service.driver.Impl.DriverServiceImpl;
 import fu.se184491.loadmaster_be.service.monitoring.TripLookupHelper;
+import fu.se184491.loadmaster_be.service.pickup.PickupDriverService;
 import fu.se184491.loadmaster_be.service.trip.TripPackageResolver;
 import fu.se184491.loadmaster_be.service.trip.TripStatusService;
 import org.junit.jupiter.api.BeforeEach;
@@ -81,6 +82,7 @@ class DriverServiceImplTest {
     @Mock private TripLookupHelper tripLookupHelper;
     @Mock private DeliveryIssueRepository deliveryIssueRepository;
     @Mock private ManualUnloadConfirmationRepository manualConfirmationRepository;
+    @Mock private PickupDriverService pickupDriverService;
 
     @InjectMocks
     private DriverServiceImpl service;
@@ -186,6 +188,8 @@ class DriverServiceImplTest {
         assertEquals("DELIVERED", response.getTripStatus());
         assertEquals(DeliveryStopStatus.COMPLETED, stop.getStatus());
         assertNotNull(trip.getCompletedAt());
+        verify(pickupDriverService).requireComplete(stop);
+        verify(pickupDriverService).onStopCompleted(stop, driver);
     }
 
     @Test
@@ -283,6 +287,7 @@ class DriverServiceImplTest {
         var response = service.getCurrentStop(10L);
 
         assertEquals(arrivedAt, response.getActualArrival());
+        assertEquals("DELIVERY", response.getStopType());
         assertEquals(2, response.getPackages().size());
         var first = response.getPackages().get(0);
         assertEquals("qr-1", first.getQrToken());
