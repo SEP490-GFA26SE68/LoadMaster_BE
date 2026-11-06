@@ -1,6 +1,8 @@
 package fu.se184491.loadmaster_be.controller.payment;
 
 import fu.se184491.loadmaster_be.service.payment.PaymentCallbackHandler;
+import fu.se184491.loadmaster_be.service.payment.MockPaymentPolicy;
+import org.springframework.security.access.prepost.PreAuthorize;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
@@ -17,6 +19,7 @@ import java.util.Map;
 public class PaymentWebhookController {
 
     private final PaymentCallbackHandler paymentCallbackHandler;
+    private final MockPaymentPolicy mockPaymentPolicy;
 
     @PostMapping("/webhook/vnpay")
     public ResponseEntity<Map<String, String>> handleVnPayWebhookPost(@RequestParam Map<String, String> allParams) {
@@ -41,15 +44,11 @@ public class PaymentWebhookController {
                 .build();
     }
 
+    @PreAuthorize("hasAnyRole('ADMIN', 'COMPANY_ADMIN')")
     @GetMapping("/api/payment/mock-checkout")
     public ResponseEntity<Map<String, Object>> mockCheckout(@RequestParam String txnRef) {
-        log.info("Executing mock checkout for txnRef: {}", txnRef);
-        Map<String, String> mockParams = new HashMap<>();
-        mockParams.put("vnp_TxnRef", txnRef);
-        mockParams.put("vnp_ResponseCode", "00");
-        mockParams.put("vnp_Mock", "true");
-
-        Map<String, String> callbackResult = paymentCallbackHandler.handleVnPayCallback(mockParams);
+        mockPaymentPolicy.requireEnabled();
+        Map<String, String> callbackResult = paymentCallbackHandler.handleMockCheckout(txnRef);
 
         Map<String, Object> result = new HashMap<>();
         result.put("success", true);

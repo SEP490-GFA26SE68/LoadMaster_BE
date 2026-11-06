@@ -86,6 +86,10 @@ public enum ErrorCode {
     // -------------------------------------------------------------------------
     // Subscription & Payment errors
     // -------------------------------------------------------------------------
+    OPTIMIZATION_ENTITLEMENT_REQUIRED("Subscription is missing, inactive, expired or not yet started", HttpStatus.FORBIDDEN),
+    OPTIMIZATION_TIER_INVALID("Subscription algorithm configuration is invalid", HttpStatus.FORBIDDEN),
+    OPTIMIZATION_IDEMPOTENCY_CONFLICT("Idempotency key was used for a different optimization action", HttpStatus.CONFLICT),
+    OPTIMIZATION_RERUN_UNAVAILABLE("Optimization engine does not implement pinned rerun; no credits charged", HttpStatus.SERVICE_UNAVAILABLE),
     SUBSCRIPTION_NOT_FOUND("Không tìm thấy thông tin gói dịch vụ", HttpStatus.NOT_FOUND),
     SUBSCRIPTION_PLAN_ALREADY_EXISTS("Mã gói dịch vụ đã tồn tại", HttpStatus.CONFLICT),
     SUBSCRIPTION_TIER_ALREADY_EXISTS("Đã có một gói dịch vụ khác đang kích hoạt cho Tier này", HttpStatus.CONFLICT),

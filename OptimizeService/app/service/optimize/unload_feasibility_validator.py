@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import math
+import time
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Tuple
 
@@ -28,7 +29,7 @@ class UnloadFeasibilityValidator:
     - X = 0: đầu sâu trong xe.
     - X = inner_l: cửa sau.
     - Dỡ kiện theo chiều +X.
-    - Không xoay, nâng hay dịch ngang khi rút kiện.
+    - Không xoay; có thể nâng/dịch ngang rồi kéo ra nếu đường đi không bị chặn.
     - stop_index nhỏ hơn được giao trước.
     - Kiểm tra toàn bộ trình tự dỡ hàng.
 
@@ -47,6 +48,8 @@ class UnloadFeasibilityValidator:
             placements: List[PlacementData],
             packages_map: Dict[str, PackageData],
             vehicle: VehicleData,
+            *,
+            deadline: Optional[float] = None,
     ) -> UnloadValidationResult:
 
         def fail(code: str, detail: str) -> UnloadValidationResult:
@@ -55,6 +58,15 @@ class UnloadFeasibilityValidator:
                 violation_code=code,
                 detail=detail,
             )
+
+        def expired() -> bool:
+            return deadline is not None and time.monotonic() >= deadline
+
+        def timeout() -> UnloadValidationResult:
+            return fail("UNLOAD_TIME_LIMIT_REACHED", "Unload validation exceeded the optimization deadline")
+
+        if expired():
+            return timeout()
 
         # 1. Kiểm tra hình học xe và cửa.
         vehicle_values = (
@@ -108,6 +120,8 @@ class UnloadFeasibilityValidator:
         seen_ids = set()
 
         for p in placements:
+            if expired():
+                return timeout()
             package_id = str(p.package_id)
 
             if package_id in seen_ids:
@@ -180,11 +194,17 @@ class UnloadFeasibilityValidator:
         from app.service.optimize.constraint_engine import ConstraintEngine
 
         for i, p in enumerate(placements):
+            if expired():
+                return timeout()
             others = [
                 other
                 for j, other in enumerate(placements)
                 if j != i
             ]
+
+            obstacle_result = ConstraintEngine.check_obstacles(p, vehicle)
+            if not obstacle_result.passed:
+                return fail(obstacle_result.violation_code, obstacle_result.detail)
 
             if not ConstraintEngine.check_non_overlap(
                     p, others
@@ -200,6 +220,8 @@ class UnloadFeasibilityValidator:
             thỏa HC-05 và HC-06.
             """
             for i in indices:
+                if expired():
+                    return False
                 p = placements[i]
                 others = [
                     placements[j]
@@ -208,12 +230,12 @@ class UnloadFeasibilityValidator:
                 ]
 
                 if not ConstraintEngine.check_support_area(
-                        p, others
+                        p, others, obstacles=vehicle.obstacles
                 ).passed:
                     return False
 
                 if not ConstraintEngine.check_stability(
-                        p, others
+                        p, others, obstacles=vehicle.obstacles
                 ).passed:
                     return False
 
@@ -222,6 +244,8 @@ class UnloadFeasibilityValidator:
         initial_state = frozenset(range(len(placements)))
 
         if not stable_remaining(initial_state):
+            if expired():
+                return timeout()
             return fail(
                 "INVALID_UNLOAD_DATA",
                 "Initial load plan has unsupported or unstable packages",
@@ -265,7 +289,17 @@ class UnloadFeasibilityValidator:
                 min_z = min(z1, z2)
                 max_z = max(z1, z2) + h
 
+                # Fixed obstacles persist in every DFS state and block every movement segment.
+                for obstacle in vehicle.obstacles:
+                    if expired():
+                        return False
+                    if ConstraintEngine.obstacle_overlaps_bounds(obstacle,
+                            (min_x, min_y, min_z), (max_x, max_y, max_z)):
+                        return False
+
                 for j in remaining:
+                    if expired():
+                        return False
                     if j == index:
                         continue
 
@@ -394,6 +428,9 @@ class UnloadFeasibilityValidator:
         ) -> Optional[Tuple[int, ...]]:
             nonlocal explored_states, search_limit_reached
 
+            if expired():
+                return None
+
             if not remaining:
                 return ()
 
@@ -436,7 +473,7 @@ class UnloadFeasibilityValidator:
                 if suffix is not None:
                     return (i,) + suffix
 
-                if search_limit_reached:
+                if search_limit_reached or expired():
                     return None
 
             impossible_states.add(remaining)
@@ -444,7 +481,12 @@ class UnloadFeasibilityValidator:
 
         sequence = search(initial_state)
 
+        if expired():
+            return timeout()
+
         if sequence is None:
+            if expired():
+                return timeout()
             if search_limit_reached:
                 return fail(
                     "UNLOAD_SEARCH_LIMIT_REACHED",

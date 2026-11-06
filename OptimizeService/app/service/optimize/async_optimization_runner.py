@@ -4,12 +4,14 @@ import logging
 from typing import Optional, Union, Any, Callable
 from uuid import UUID
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import SQLAlchemyError
 
 from app.config.database import SessionLocal
 from app.constant.optimization.job_status import OptimizationJobStatus
 from app.dto.optimization.engine.problem_request import (
     ProblemRequest,
     VehicleData,
+    ObstacleData,
     PackageData,
     StopData,
 )
@@ -49,6 +51,29 @@ class AsyncOptimizationRunner:
             from app.client.loadmaster_credit_client import LoadMasterCreditClient
             self.credit_client = LoadMasterCreditClient()
 
+    @staticmethod
+    def load_vehicle_obstacles(vehicle_type):
+        """Always load the mapped relation; missing/unreadable geometry must fail closed."""
+        try:
+            rows = vehicle_type.obstacles
+            if rows is None:
+                raise ValueError("Obstacle relation returned no collection")
+            return [ObstacleData(id=o.id, name=o.name, type=o.type, x=o.x, y=o.y, z=o.z,
+                                 length=o.length, width=o.width, height=o.height,
+                                 load_bearing=o.load_bearing) for o in rows]
+        except (SQLAlchemyError, AttributeError, TypeError, ValueError) as exc:
+            raise ValueError(f"Unable to load valid fixed obstacles for vehicle type {vehicle_type.id}") from exc
+
+    @staticmethod
+    def restrict_profile_rotations(allowed, profile):
+        if profile is None:
+            return allowed
+        # Java's import validator explicitly leaves orientation syntax undefined.
+        # Never guess that an unparsed restriction means all orientations.
+        if profile.orientation is not None and profile.orientation.strip():
+            raise ValueError("Packing profile orientation syntax is not supported; cannot safely infer allowed rotations")
+        return [code for code in allowed if code in (0, 1)] if profile.upright_only is True else allowed
+
     def build_problem_request(self, job_uuid: Union[str, UUID], db: Session) -> ProblemRequest:
         """
         Xây dựng ProblemRequest từ Trip, Vehicle, Package lưu trong DB (S5b-04).
@@ -70,8 +95,7 @@ class AsyncOptimizationRunner:
             raise AppException(ErrorCode.VEHICLE_NOT_FOUND)
 
         vt = trip.vehicle.vehicle_type
-        # Quy đổi đơn vị mm sang m nếu lớn hơn 50mm
-        # Tất cả kích thước sử dụng cm
+        # Database dimensions and fixed obstacles use cm; do not guess unit conversions.
         inner_l = float(vt.inner_length or 0)
         inner_w = float(vt.inner_width or 0)
         inner_h = float(vt.inner_height or 0)
@@ -80,6 +104,7 @@ class AsyncOptimizationRunner:
 
 
         vehicle_data = VehicleData(
+            obstacles=self.load_vehicle_obstacles(vt),
             inner_l=inner_l,
             inner_w=inner_w,
             inner_h=inner_h,
@@ -347,6 +372,8 @@ class AsyncOptimizationRunner:
                 max_stack = None
 
 
+            allowed_rotations = self.restrict_profile_rotations(allowed_rotations, pkg.packing_profile)
+
             package_items.append(
                 PackageData(
                     id=str(pkg.id),
@@ -408,29 +435,21 @@ class AsyncOptimizationRunner:
             logger.info(f"Starting async optimization job: {job_uuid_str}")
             job = self.job_service.get_job(job_uuid_str, session)
 
-            # Đảm bảo algorithm_tier và algorithm_name được thiết lập
-            if job.subscription_tier and not job.algorithm_tier:
-                from app.service.optimize.algorithm_tier_service import AlgorithmTierService
-                job.algorithm_tier = AlgorithmTierService.get_algorithm_tier(job.subscription_tier)
-                job.algorithm_name = AlgorithmTierService.resolve_algorithm(job.algorithm_tier, job.algorithm_name)
-                session.commit()
-
-            # Trừ credit trước khi chạy (S5b-05)
-            if job.company_id and self.credit_client is not None:
-                try:
-                    await self.credit_client.deduct_credit(job.company_id, job_uuid_str)
-                    is_credit_deducted = True
-                except Exception as credit_err:
-                    logger.error(f"Credit deduction failed for job {job_uuid_str}: {credit_err}")
-                    self.job_service.update_status(job_uuid_str, OptimizationJobStatus.FAILED, db=session)
-                    return
-
-            self.job_service.update_status(job_uuid_str, OptimizationJobStatus.RUNNING, db=session)
+            from app.service.optimize.authorized_job_dispatch import claim_for_execution
+            if not claim_for_execution(job_uuid_str, job.trip_id, session):
+                logger.info("Job %s is already running or terminal; skipping duplicate task", job_uuid_str)
+                return
+            # Spring committed the job and USAGE atomically before dispatch. No second deduction.
+            # Preserve the existing exception/refund path for authorized billed jobs.
+            is_credit_deducted = True
 
             if problem is None:
                 problem = self.build_problem_request(job_uuid_str, session)
 
             result = await self.optimization_client.solve(problem)
+            from app.dto.optimization.engine.rotation_contract import validate_result_rotations
+            validate_result_rotations(problem, result)
+
 
             if self.persistence_service is not None and hasattr(self.persistence_service, "save"):
                 self.persistence_service.save(job_uuid_str, result, session)

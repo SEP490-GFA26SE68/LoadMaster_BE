@@ -1,6 +1,7 @@
 package fu.se184491.loadmaster_be.client;
 
 import fu.se184491.loadmaster_be.config.payment.VnPayConfig;
+import fu.se184491.loadmaster_be.service.payment.MockPaymentPolicy;
 import fu.se184491.loadmaster_be.entity.billing.PaymentTransaction;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -22,14 +23,15 @@ import java.util.*;
 public class VnPayClient {
 
     private final VnPayConfig config;
+    private final MockPaymentPolicy mockPaymentPolicy;
     private static final DateTimeFormatter DATE_FORMATTER = DateTimeFormatter.ofPattern("yyyyMMddHHmmss");
 
     public boolean isMock() {
-        return config.isMock();
+        return mockPaymentPolicy.isEnabled();
     }
 
     public String createPaymentUrl(PaymentTransaction txn, String orderInfo, String ipAddress) {
-        if (config.isMock()) {
+        if (isMock()) {
             return "/api/payment/mock-checkout?txnRef=" + txn.getGatewayTransactionId();
         }
 

@@ -40,6 +40,26 @@ public class OptimizationJob {
     @Column(name = "parent_plan_id")
     private Long parentPlanId;
 
+    // Same columns already consumed by the Python job model; tier is a server snapshot.
+    @Column(name = "company_id", length = 64)
+    private String companyId;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "subscription_tier", length = 50)
+    private fu.se184491.loadmaster_be.constant.billing.SubscriptionTier subscriptionTier;
+
+    @Column(name = "algorithm_tier", length = 50)
+    private String algorithmTier;
+
+    // Existing PostgreSQL column is timestamp without time zone, historically written as UTC by Python.
+    @Column(name = "created_at", updatable = false)
+    private java.time.LocalDateTime createdAt;
+
+    @PrePersist
+    public void initializeCreatedAt() {
+        if (createdAt == null) createdAt = java.time.LocalDateTime.now(java.time.ZoneOffset.UTC);
+    }
+
     @Column(name = "seed")
     private Integer seed;
 }

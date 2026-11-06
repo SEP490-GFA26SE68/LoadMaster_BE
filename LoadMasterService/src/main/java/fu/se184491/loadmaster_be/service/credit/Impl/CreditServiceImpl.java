@@ -39,6 +39,8 @@ public class CreditServiceImpl implements CreditService {
     private final CreditTransactionRepository creditTransactionRepository;
     private final CompanySubscriptionRepository companySubscriptionRepository;
     private final CompanyRepository companyRepository;
+    private final fu.se184491.loadmaster_be.repository.optimization.OptimizationJobRepository optimizationJobs;
+    private final fu.se184491.loadmaster_be.service.optimization.OptimizationEntitlementService entitlements;
 
     @Override
     @Transactional
@@ -65,73 +67,54 @@ public class CreditServiceImpl implements CreditService {
     @Override
     @Transactional
     public void deductCredit(Long companyId, String reference) {
-        deductCredit(companyId, reference, INITIAL_OPTIMIZATION_CREDIT_COST);
+        deductCredit(companyId, reference, 0); // zero means derive cost from server job, never from caller.
     }
 
     @Override
     @Transactional
     public void deductCredit(Long companyId, String reference, int amount) {
-
-        if (reference == null || reference.isBlank()) {
-            throw new IllegalArgumentException(
-                    "Credit transaction reference must not be blank"
-            );
+        if (companyId == null || reference == null || reference.isBlank()) {
+            throw new IllegalArgumentException("Company and job reference are required");
         }
-
-        // Không trừ credit lần thứ hai cho cùng một Optimization Job.
-        Optional<CreditTransaction> existingUsage =
-                creditTransactionRepository.findByReferenceAndType(
-                        reference,
-                        CreditTransactionType.USAGE
-                );
-
+        companyRepository.findByIdForUpdate(companyId)
+                .orElseThrow(() -> new AppException(ErrorCode.COMPANY_NOT_FOUND));
+        var job = optimizationJobs.findByJobUuidForUpdate(reference)
+                .orElseThrow(() -> new IllegalArgumentException("Credit deduction requires a persisted server job"));
+        if (!companyId.toString().equals(job.getCompanyId()) || job.getTrip() == null
+                || job.getTrip().getCompany() == null
+                || !companyId.equals(job.getTrip().getCompany().getId())) {
+            throw new org.springframework.security.access.AccessDeniedException("Job belongs to another company");
+        }
+        int creditsToDeduct = job.getParentPlanId() == null
+                ? INITIAL_OPTIMIZATION_CREDIT_COST : RERUN_OPTIMIZATION_CREDIT_COST;
+        if (amount != 0 && amount != creditsToDeduct) {
+            throw new IllegalArgumentException("Credit cost does not match server job action");
+        }
+        // This read must be AFTER taking the serialization locks, including on a retry.
+        Optional<CreditTransaction> existingUsage = creditTransactionRepository
+                .findByReferenceAndType(reference, CreditTransactionType.USAGE);
         if (existingUsage.isPresent()) {
             CreditTransaction existing = existingUsage.get();
-
-            Long existingCompanyId = existing.getCreditAccount()
-                    .getCompany()
-                    .getId();
-
-            if (!existingCompanyId.equals(companyId)) {
-                throw new IllegalStateException(
-                        "Credit reference belongs to another company"
-                );
+            if (!companyId.equals(existing.getCreditAccount().getCompany().getId())
+                    || existing.getAmount() != -creditsToDeduct) {
+                throw new IllegalStateException("Conflicting credit usage reference");
             }
-
-            log.info(
-                    "Credit already deducted for reference {}. Skipping duplicate.",
-                    reference
-            );
-            return;
+            return; // includes a committed deduction whose HTTP response was lost; never charge again.
         }
-
-        int creditsToDeduct = amount > 0 ? amount : INITIAL_OPTIMIZATION_CREDIT_COST;
-
+        entitlements.requireActive(companyId);
         CreditAccount account = creditAccountRepository.findByCompanyIdForUpdate(companyId)
                 .orElseGet(() -> getOrCreateAccount(companyId));
-
-        resetBalanceIfSubscriptionInactive(companyId, account);
-
-        if (account.getBalance() < creditsToDeduct) {
-            log.warn("Company {} has insufficient credits (balance: {}, required: {}) for reference {}",
-                    companyId, account.getBalance(), creditsToDeduct, reference);
+        if (account.getBalance() == null || account.getBalance() < creditsToDeduct) {
             throw new InsufficientCreditsException();
         }
-
         account.setBalance(account.getBalance() - creditsToDeduct);
         creditAccountRepository.save(account);
-
         CreditTransaction tx = CreditTransaction.builder()
-                .creditAccount(account)
-                .amount(-creditsToDeduct)
-                .type(CreditTransactionType.USAGE)
-                .reference(reference)
-                .refunded(false)
-                .createdAt(LocalDateTime.now().truncatedTo(ChronoUnit.SECONDS))
-                .build();
+                .creditAccount(account).amount(-creditsToDeduct).type(CreditTransactionType.USAGE)
+                .reference(reference).refunded(false)
+                .createdAt(LocalDateTime.now().truncatedTo(ChronoUnit.SECONDS)).build();
         tx.prePersist();
         creditTransactionRepository.save(tx);
-        log.info("Deducted {} credit(s) for company {}. New balance: {}", creditsToDeduct, companyId, account.getBalance());
     }
 
     @Override

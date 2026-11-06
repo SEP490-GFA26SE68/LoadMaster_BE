@@ -17,7 +17,7 @@ class VehicleType(Base):
 
     id = pk_id()
     name = Column(String(100), nullable=True)
-    inner_length = Column(Integer, nullable=True)  # mm or m
+    inner_length = Column(Integer, nullable=True)  # cm, matching backend vehicle geometry
     inner_width = Column(Integer, nullable=True)
     inner_height = Column(Integer, nullable=True)
     door_width = Column(Integer, nullable=True)
@@ -65,7 +65,25 @@ class VehicleType(Base):
     )
 
 
+    obstacles = relationship("VehicleTypeObstacle", back_populates="vehicle_type")
     vehicles = relationship("Vehicle", back_populates="vehicle_type")
+
+
+class VehicleTypeObstacle(Base):
+    __tablename__ = "vehicle_type_obstacles"
+
+    id = pk_id()
+    vehicle_type_id = fk_id("vehicle_types.id", nullable=False)
+    name = Column(String(100), nullable=False)
+    type = Column(String(50), nullable=False)
+    x = Column(Numeric(10, 1), nullable=False)
+    y = Column(Numeric(10, 1), nullable=False)
+    z = Column(Numeric(10, 1), nullable=False)
+    length = Column(Integer, nullable=False)
+    width = Column(Integer, nullable=False)
+    height = Column(Integer, nullable=False)
+    load_bearing = Column(Boolean, nullable=False)
+    vehicle_type = relationship("VehicleType", back_populates="obstacles")
 
 
 class Vehicle(Base):
@@ -84,6 +102,7 @@ class Trip(Base):
     __tablename__ = "trips"
 
     id = pk_id()  # supports UUID or string
+    company_id = Column(BigInteger, nullable=True)
     vehicle_id = fk_id("vehicles.id", nullable=True)
     trip_code = Column(String(50), nullable=True)
     status = Column(String(50), nullable=True)
@@ -198,3 +217,18 @@ class CargoPackage(Base):
 
     order = relationship("TransportOrder", back_populates="packages")
     package_type = relationship("PackageType", back_populates="packages")
+
+
+class CargoPackagePackingProfile(Base):
+    """Read the existing per-package rotation restrictions; no schema creation here."""
+    __tablename__ = "cargo_package_packing_profiles"
+    id = pk_id()
+    package_id = fk_id("packages.id", nullable=False)
+    orientation = Column(String(100), nullable=True)
+    upright_only = Column(Boolean, nullable=True)
+
+
+CargoPackage.packing_profile = relationship(
+    "CargoPackagePackingProfile", uselist=False,
+    primaryjoin=CargoPackage.id == CargoPackagePackingProfile.package_id,
+)

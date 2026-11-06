@@ -22,6 +22,7 @@ public class PaymentGatewayService {
 
     private final PaymentTransactionRepository paymentTransactionRepository;
     private final VnPayClient vnPayClient;
+    private final MockPaymentPolicy mockPaymentPolicy;
 
     @Transactional
     public PaymentUrlResponse createPayment(Company company,
@@ -31,6 +32,9 @@ public class PaymentGatewayService {
                                             BigDecimal amountVnd,
                                             String orderInfo,
                                             String ipAddress) {
+        if (gateway == PaymentGateway.MOCK) {
+            mockPaymentPolicy.requireEnabled();
+        }
         String prefix = (gateway != null ? gateway.name() : "VNPAY") + "_";
         String gatewayTxnId = prefix + UUID.randomUUID().toString().replace("-", "").substring(0, 16).toUpperCase();
 

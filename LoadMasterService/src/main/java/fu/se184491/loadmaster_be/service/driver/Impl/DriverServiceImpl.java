@@ -49,6 +49,7 @@ import java.util.Optional;
 public class DriverServiceImpl implements DriverService {
 
     private final TripRepository tripRepository;
+    private final fu.se184491.loadmaster_be.helpers.CurrentUserService currentUser;
     private final DeliveryStopRepository deliveryStopRepository;
     private final LoadPlanRepository loadPlanRepository;
     private final PackagePlacementRepository packagePlacementRepository;
@@ -67,8 +68,11 @@ public class DriverServiceImpl implements DriverService {
         }
         userRepository.findById(driverId).orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
 
+        Long companyId = currentUser.getCurrentCompanyId();
         List<DriverTripResponse> trips = new ArrayList<>();
         for (Trip trip : tripRepository.findByDriver_IdOrderByDepartureTimeDesc(driverId)) {
+            // Fail closed on legacy cross-company driver assignments instead of leaking them in the list.
+            if (companyId == null || trip.getCompany() == null || !companyId.equals(trip.getCompany().getId())) continue;
             trips.add(DriverTripResponse.builder()
                     .tripId(trip.getId())
                     .tripCode(trip.getTripCode())

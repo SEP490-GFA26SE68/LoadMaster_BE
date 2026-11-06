@@ -29,14 +29,15 @@ def make_package(
 
 
 def make_placement(rotation_type=0) -> PlacementData:
+    dims = [(100,80,60),(80,100,60),(100,60,80),(80,60,100),(60,100,80),(60,80,100)][rotation_type]
     return PlacementData(
         package_id="package-01",
         x=0,
         y=0,
         z=0,
-        packed_l=100,
-        packed_w=80,
-        packed_h=60,
+        packed_l=dims[0],
+        packed_w=dims[1],
+        packed_h=dims[2],
         rotation_type=rotation_type,
         step_sequence=1,
     )
@@ -66,9 +67,9 @@ def make_placement(rotation_type=0) -> PlacementData:
         # Hướng không thuộc danh sách chuỗi
         (2, ["0", "1"], False),
 
-        # Danh sách rỗng: tương thích hành vi hiện tại
-        (0, [], True),
-        (1, [], True),
+        # Empty whitelist permits no orientation; it never means all six.
+        (0, [], False),
+        (1, [], False),
     ],
 )
 def test_hc03_allowed_rotations(
@@ -108,7 +109,7 @@ def test_hc03_rotation_locked(
         expected_pass,
 ):
     package = make_package(
-        allowed_rotations=[],
+        allowed_rotations=[0],
         rotation_allowed=False,
     )
     placement = make_placement(rotation_type)

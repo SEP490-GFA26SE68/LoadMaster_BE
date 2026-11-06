@@ -20,7 +20,7 @@ public class InternalCreditController {
     private final CreditService creditService;
 
     @PostMapping("/deduct")
-    @PreAuthorize("hasAuthority('ROLE_OPTIMIZATION_CREDIT')")
+    @PreAuthorize("@creditServiceAuthorization.isAllowed(authentication)")
     public ResponseEntity<ApiResponse<Void>> deductCredit(
             @RequestBody Map<String, Object> request
     ) {
@@ -38,7 +38,7 @@ public class InternalCreditController {
     }
 
     @PostMapping("/refund")
-    @PreAuthorize("hasAuthority('ROLE_OPTIMIZATION_CREDIT')")
+    @PreAuthorize("@creditServiceAuthorization.isAllowed(authentication)")
     public ResponseEntity<ApiResponse<Void>> refundCredit(
             @RequestBody Map<String, Object> request
     ) {

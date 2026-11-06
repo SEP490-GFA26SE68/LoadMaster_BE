@@ -20,6 +20,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from starlette.testclient import TestClient
 
+from tests.optimization_fixtures import bill_job, reserve_job, isolated_credit, token, install_jwks
 from app.main import app
 from app.config.database import get_db, SessionLocal
 from app.constant.optimization.job_status import OptimizationJobStatus
@@ -69,11 +70,11 @@ def db_session():
     vt = VehicleType(
         id=1,
         name="Van 1 Tan",
-        inner_length=3000,  # mm
-        inner_width=1800,   # mm
-        inner_height=1800,  # mm
+        inner_length=300,  # cm
+        inner_width=180,   # cm
+        inner_height=180,  # cm
         max_payload_kg=1000.0,
-    )
+     max_cog_offset_ratio=0.15, door_width=180, door_height=180, front_axle_x=0, rear_axle_x=300, front_axle_limit_kg=2200, rear_axle_limit_kg=3300, empty_front_axle_load_kg=100, empty_rear_axle_load_kg=100)
     session.add(vt)
     session.commit()
 
@@ -81,7 +82,7 @@ def db_session():
     session.add(v)
     session.commit()
 
-    trip_id = str(uuid.uuid4())
+    trip_id = 1
     trip = Trip(id=trip_id, vehicle_id=1, status="DRAFT")
     session.add(trip)
     session.commit()
@@ -94,7 +95,7 @@ def db_session():
     session.add(order)
     session.commit()
 
-    pt = PackageType(id=1, type_code="BOX_M", length=500, width=400, height=300)
+    pt = PackageType(id=1, type_code="BOX_M", length=50, width=40, height=30)
     session.add(pt)
     session.commit()
 
@@ -102,6 +103,11 @@ def db_session():
     session.add(pkg)
     session.commit()
 
+    from app.entity.trip_model import DeliveryRequirement,DeliveryRequirementPackage
+    session.add(DeliveryRequirement(id=1,trip_id=trip_id))
+    stop.delivery_requirement_id=1
+    session.add(DeliveryRequirementPackage(delivery_requirement_id=1,package_id=1))
+    session.commit()
     yield session
     session.close()
 
@@ -109,9 +115,9 @@ def db_session():
 @pytest.fixture
 def sample_problem():
     return ProblemRequest(
-        vehicle=VehicleData(inner_l=3.0, inner_w=1.8, inner_h=1.8, max_payload_kg=1000.0),
+        vehicle=VehicleData(inner_l=300, inner_w=180, inner_h=180, max_payload_kg=1000.0),
         packages=[
-            PackageData(id=str(uuid.uuid4()), l=0.5, w=0.4, h=0.3, weight=15.0)
+            PackageData(id="1", l=50, w=40, h=30, weight=15.0)
         ],
         objective="MAX_VOLUME_UTIL",
         time_limit_sec=30,
@@ -137,14 +143,15 @@ class TestAsyncOptimizationRunnerUnit:
         )
         db_session.add(job)
         db_session.commit()
+        bill_job(db_session,job)
 
         # Mock client solve
         mock_client = MagicMock(spec=OptimizationClient)
         mock_response = EngineOptimizationResponse(
             placements=[
                 PlacementData(
-                    package_id=uuid.uuid4(), x=0, y=0, z=0,
-                    packed_l=0.5, packed_w=0.4, packed_h=0.3, rotation_type=0, step_sequence=1,
+                    package_id="1", x=0, y=0, z=0,
+                    packed_l=50, packed_w=40, packed_h=30, rotation_type=0, step_sequence=1,
                 )
             ],
             unplaced=[],
@@ -154,6 +161,7 @@ class TestAsyncOptimizationRunnerUnit:
 
         runner = AsyncOptimizationRunner(
             job_service=job_service,
+            credit_client=isolated_credit(),
             optimization_client=mock_client,
             engine_exception_handler=EngineExceptionHandler(job_service=job_service),
         )
@@ -176,13 +184,14 @@ class TestAsyncOptimizationRunnerUnit:
         )
         db_session.add(job)
         db_session.commit()
+        bill_job(db_session,job)
 
         mock_client = MagicMock(spec=OptimizationClient)
         mock_response = EngineOptimizationResponse(
             placements=[
                 PlacementData(
-                    package_id=uuid.uuid4(), x=0, y=0, z=0,
-                    packed_l=0.5, packed_w=0.4, packed_h=0.3, rotation_type=0, step_sequence=1,
+                    package_id="1", x=0, y=0, z=0,
+                    packed_l=50, packed_w=40, packed_h=30, rotation_type=0, step_sequence=1,
                 )
             ],
             unplaced=[],
@@ -193,6 +202,7 @@ class TestAsyncOptimizationRunnerUnit:
 
         runner = AsyncOptimizationRunner(
             job_service=job_service,
+            credit_client=isolated_credit(),
             optimization_client=mock_client,
             persistence_service=mock_persistence,
         )
@@ -212,12 +222,14 @@ class TestAsyncOptimizationRunnerUnit:
         )
         db_session.add(job)
         db_session.commit()
+        bill_job(db_session,job)
 
         mock_client = MagicMock(spec=OptimizationClient)
         mock_client.solve = AsyncMock(side_effect=httpx.TimeoutException("Timeout"))
 
         runner = AsyncOptimizationRunner(
             job_service=job_service,
+            credit_client=isolated_credit(),
             optimization_client=mock_client,
         )
 
@@ -237,12 +249,14 @@ class TestAsyncOptimizationRunnerUnit:
         )
         db_session.add(job)
         db_session.commit()
+        bill_job(db_session,job)
 
         mock_client = MagicMock(spec=OptimizationClient)
         mock_client.solve = AsyncMock(side_effect=RuntimeError("Algorithm crash"))
 
         runner = AsyncOptimizationRunner(
             job_service=job_service,
+            credit_client=isolated_credit(),
             optimization_client=mock_client,
         )
 
@@ -268,14 +282,14 @@ class TestAsyncOptimizationRunnerUnit:
         runner = AsyncOptimizationRunner(job_service=job_service)
         problem = runner.build_problem_request(job.job_uuid, db=db_session)
 
-        assert problem.vehicle.inner_l == 3.0
-        assert problem.vehicle.inner_w == 1.8
-        assert problem.vehicle.inner_h == 1.8
+        assert problem.vehicle.inner_l == 300
+        assert problem.vehicle.inner_w == 180
+        assert problem.vehicle.inner_h == 180
         assert problem.vehicle.max_payload_kg == 1000.0
         assert len(problem.packages) == 1
-        assert problem.packages[0].l == 0.5
-        assert problem.packages[0].w == 0.4
-        assert problem.packages[0].h == 0.3
+        assert problem.packages[0].l == 50
+        assert problem.packages[0].w == 40
+        assert problem.packages[0].h == 30
         assert problem.packages[0].weight == 15.0
         assert problem.time_limit_sec == 45
 
@@ -285,29 +299,30 @@ class TestAsyncOptimizationRunnerUnit:
 # ---------------------------------------------------------------------------
 
 class TestAsyncJobExecutionApi:
-    def test_submit_job_returns_202_and_executes_in_background(self, db_session):
+    def test_submit_job_returns_202_and_executes_in_background(self, db_session, monkeypatch):
         """
         Integration test:
           1. POST /api/v1/optimization/jobs trả về 202 Accepted và job_id
           2. Background task chạy và cập nhật status sang COMPLETED
           3. GET /api/v1/optimization/jobs/{job_id} trả về status COMPLETED
         """
-        import jwt
-        token = jwt.encode(
-            {"preferred_username": "dispatcher_user", "roles": ["DISPATCHER"]},
-            "a_very_secret_key_for_testing_1234567890",
-            algorithm="HS256",
-        )
-        headers = {"Authorization": f"Bearer {token}"}
-
         trip = db_session.query(Trip).first()
+        from app.config.settings import settings
+        install_jwks(monkeypatch)
+        job=reserve_job(db_session,trip.id)
+        headers={"Authorization":"Bearer "+token([settings.KEYCLOAK_REQUIRED_ROLE],service=True)}
+
 
         app.dependency_overrides[get_db] = lambda: db_session
 
+        from app.controller.optimization.optimization_router import get_async_runner
+        app.dependency_overrides[get_async_runner] = lambda: AsyncOptimizationRunner(
+            session_factory=lambda:db_session,credit_client=isolated_credit())
         client = TestClient(app)
 
         submit_payload = {
             "trip_id": trip.id,
+            "job_uuid": job.job_uuid,
             "objective": "MAX_VOLUME",
             "time_limit_sec": 30,
             "algorithm_name": "DEFAULT_GREEDY",
@@ -319,7 +334,7 @@ class TestAsyncJobExecutionApi:
         res_data = response.json()
         assert res_data["success"] is True
         job_id = res_data["data"]["job_id"]
-        assert job_id is not None
+        assert job_id == job.job_uuid
 
         # Kiểm tra qua GET /jobs/{job_id} (TestClient thực thi BackgroundTasks đồng bộ trước khi trả về)
         poll_resp = client.get(f"/api/v1/optimization/jobs/{job_id}", headers=headers)

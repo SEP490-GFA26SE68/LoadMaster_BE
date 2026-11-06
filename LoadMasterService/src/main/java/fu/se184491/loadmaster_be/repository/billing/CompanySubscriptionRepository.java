@@ -13,6 +13,10 @@ import java.util.Optional;
 @Repository
 public interface CompanySubscriptionRepository extends JpaRepository<CompanySubscription, Long>, JpaSpecificationExecutor<CompanySubscription> {
     Optional<CompanySubscription> findByCompanyId(Long companyId);
+
+    @org.springframework.data.jpa.repository.Lock(jakarta.persistence.LockModeType.PESSIMISTIC_READ)
+    @org.springframework.data.jpa.repository.Query("select s from CompanySubscription s where s.company.id = :companyId")
+    Optional<CompanySubscription> findByCompanyIdForEntitlement(@org.springframework.data.repository.query.Param("companyId") Long companyId);
     Optional<CompanySubscription> findByCompanyIdAndStatus(Long companyId, SubscriptionStatus status);
     boolean existsByPlanIdAndStatus(Long planId, SubscriptionStatus status);
     long countByPlanIdAndStatus(Long planId, SubscriptionStatus status);

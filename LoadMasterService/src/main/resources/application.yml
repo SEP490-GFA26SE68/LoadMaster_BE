@@ -50,7 +50,8 @@ spring:
 
   jpa:
     hibernate:
-      ddl-auto: update
+      # Shared databases: schema changes require a separately reviewed migration.
+      ddl-auto: validate
     properties:
       hibernate:
         format_sql: true
@@ -61,7 +62,7 @@ vnpay:
   hash-secret: ${VNPAY_HASH_SECRET:DEMOHASHSECRET1234567890ABCDEF}
   vnp-url: ${VNPAY_URL:https://sandbox.vnpayment.vn/paymentv2/vpcpay.html}
   return-url: ${VNPAY_RETURN_URL:http://localhost:8080/webhook/vnpay-return}
-  mock: ${VNPAY_MOCK:true}
+  mock: ${VNPAY_MOCK:false}
 
 
 goong:

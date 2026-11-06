@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import time
+import logging
+import math
 from typing import Optional, Any
 import httpx
 
@@ -20,6 +22,12 @@ from app.service.optimize.constraint_engine import ConstraintEngine
 from app.service.optimize.unload_feasibility_validator import (
     UnloadFeasibilityValidator,
 )
+
+from app.service.optimize.load_balance_search import LoadBalanceSearch, center_of_mass, validate_plan
+from app.dto.optimization.engine.rotation_contract import orientations as package_orientations, matches_rotation
+
+logger = logging.getLogger(__name__)
+
 
 class OptimizationClient:
     """
@@ -50,7 +58,25 @@ class OptimizationClient:
         Nếu không thành công hoặc cấu hình in-process, chạy thuật toán nội bộ.
         """
         if self.http_client is not None or self.engine_url:
-            return await self._solve_http(problem)
+            deadline = time.monotonic() + float(problem.time_limit_sec)
+            result = await self._solve_http(problem)
+            # Enforce the rotation contract even without obstacles or a trusted remote engine.
+            metadata = {str(p.id): p for p in problem.packages}
+            for placement in result.placements:
+                package = metadata.get(str(placement.package_id))
+                if package is None or not matches_rotation(package, placement, ConstraintEngine.EPSILON):
+                    raise ValueError("External engine returned a forbidden rotation or inconsistent dimensions")
+            if problem.vehicle.obstacles:
+                # A remote engine may ignore a new DTO field; never trust that omission.
+                expected = {str(p.id) for p in problem.packages}
+                returned = [str(p.package_id) for p in [*result.placements, *result.unplaced]]
+                if len(expected) != len(problem.packages) or len(returned) != len(set(returned)) or set(returned) != expected:
+                    raise ValueError("External engine returned an invalid package partition")
+                codes = validate_plan(result.placements, problem.vehicle,
+                                      {str(p.id): p for p in problem.packages}, deadline)
+                if codes:
+                    raise ValueError(f"External engine returned an unsafe or unvalidated plan: {codes}")
+            return result
         return self.solve_in_process(problem)
 
     async def _solve_http(self, problem: ProblemRequest) -> EngineOptimizationResponse:
@@ -88,7 +114,13 @@ class OptimizationClient:
         Nâng cấp S5b-04: Zone-aware 3D Packing Heuristic với Extreme Points (EP)
         và ConstraintEngine (Fragility, Stacking, Support Area, Rotation, COG, Axle Load).
         """
-        start_time = time.time()
+        start_time = time.monotonic()
+        budget = float(problem.time_limit_sec)
+        if not math.isfinite(budget) or budget < 0:
+            raise ValueError("time_limit_sec must be finite and non-negative")
+        deadline = start_time + budget
+        initial_deadline = start_time + budget * 0.50
+        search_deadline = start_time + budget * 0.90
         vt = problem.vehicle
         placements: list[PlacementData] = []
         unplaced: list[UnplacedData] = []
@@ -97,6 +129,15 @@ class OptimizationClient:
         total_placed_volume = 0.0
         vehicle_volume = float(vt.inner_l * vt.inner_w * vt.inner_h)
         rehandling_count = 0
+
+        input_keys = [str(p.id) for p in problem.packages]
+        if len(input_keys) != len(set(input_keys)):
+            raise ValueError("Duplicate package IDs in optimization input")
+        stop_ids = [str(s.id) for s in problem.stops]
+        stop_sequences = [s.sequence for s in problem.stops]
+        if (len(stop_ids) != len(set(stop_ids)) or len(stop_sequences) != len(set(stop_sequences))
+                or any(sequence < 1 for sequence in stop_sequences)):
+            raise ValueError("Stop IDs and positive delivery sequences must be unique")
 
         # Map packages by ID
         packages_map = {str(p.id): p for p in problem.packages}
@@ -136,8 +177,9 @@ class OptimizationClient:
 
         unload_checks = 0
         unload_rejections = 0
+        last_unload_code = None
         def is_unload_feasible(candidate: PlacementData) -> bool:
-            nonlocal unload_checks, unload_rejections
+            nonlocal unload_checks, unload_rejections, last_unload_code
 
             unload_checks += 1
 
@@ -147,8 +189,10 @@ class OptimizationClient:
                 placements=trial_placements,
                 packages_map=packages_map,
                 vehicle=vt,
+                deadline=initial_deadline,
             )
 
+            last_unload_code = None if result.passed else result.violation_code
             if not result.passed:
                 unload_rejections += 1
 
@@ -231,6 +275,19 @@ class OptimizationClient:
 
 
 
+        logger.info("[INPUT CHECK] Total=%s Grouped=%s Stops=%s", len(input_ids), len(grouped_ids), len(stops_dict))
+        search = LoadBalanceSearch(problem, search_deadline)
+        input_codes = search.input_violations() if problem.packages else []
+        if time.monotonic() >= deadline:
+            input_codes = ["OPTIMIZATION_TIME_LIMIT_REACHED"]
+        if input_codes:
+            logger.info("[FINAL VALIDATION] Input rejected: %s", input_codes)
+            logger.info("[OPTIMIZATION SUMMARY] Packed=0/%s Unplaced=%s TimeMs=%s", len(problem.packages),
+                        len(problem.packages), int((time.monotonic() - start_time) * 1000))
+            return EngineOptimizationResponse(unplaced=[UnplacedData(package_id=p.id, reason="CONSTRAINT_VIOLATED",
+                    violated_constraints=input_codes) for p in problem.packages],
+                    metrics=MetricsData(computation_ms=int((time.monotonic() - start_time) * 1000)))
+
     # Build stops input for StopZoneCalculator
         stops_input = []
         for stop_id, pkgs in stops_dict.items():
@@ -241,7 +298,13 @@ class OptimizationClient:
             })
 
         # Tính stop zones
-        zone_calc_res = StopZoneCalculator.calculate_zones(vt, stops_input)
+        try:
+            zone_calc_res = StopZoneCalculator.calculate_zones(vt, stops_input, weight_blend=0.5)
+        except ValueError as error:
+            if "Insufficient vehicle length for stop zones" not in str(error):
+                raise
+            # A heuristic gap must not make an otherwise packable small/many-stop load impossible.
+            zone_calc_res = StopZoneCalculator.calculate_zones(vt, stops_input, accessibility_buffer=0, weight_blend=0.5)
         zones_by_id = {str(z.stop_id): z for z in zone_calc_res.zones}
 
         # Sắp xếp các zone từ sâu nhất (x = 0) đến gần cửa sau (x = inner_l)
@@ -255,8 +318,7 @@ class OptimizationClient:
             "existing_placements": placements,
             "packages_map": packages_map,
 
-            # HC-11/HC-12 chưa hoàn thiện.
-            # Không kiểm tra COG/Axle tại từng placement.
+            # Partial-load COG/axle are scores; full-load HC-11/HC-12 stay mandatory at final validation.
             "check_cog": False,
             "check_axle": False,
         }
@@ -338,6 +400,10 @@ class OptimizationClient:
 
 
             for pkg in sorted_pkgs:
+                if time.monotonic() >= initial_deadline:
+                    unplaced.append(UnplacedData(package_id=pkg.id, reason="CONSTRAINT_VIOLATED",
+                                                 violated_constraints=["OPTIMIZATION_TIME_LIMIT_REACHED"]))
+                    continue
 
                 # Sinh EP căn phải theo kích thước kiện hiện tại.
                 # Với 6 hướng xoay, trục X có thể là L, W hoặc H.
@@ -359,13 +425,13 @@ class OptimizationClient:
                                 0.0,
                             )
 
-                            if candidate_pt not in ep_list:
+                            if len(ep_list) < LoadBalanceSearch.MAX_GENERATED_CANDIDATES and candidate_pt not in ep_list:
                                 ep_list.append(candidate_pt)
 
                 if vt.max_payload_kg > 0 and (total_placed_weight + pkg.weight > vt.max_payload_kg):
                     unplaced.append(UnplacedData(
                         package_id=pkg.id,
-                        reason="WEIGHT_LIMIT_EXCEEDED",
+                        reason="OVER_WEIGHT",
                         violated_constraints=["WEIGHT_LIMIT_EXCEEDED"],
                     ))
                     continue
@@ -382,39 +448,8 @@ class OptimizationClient:
                 # 5 = HWL
                 #
                 # Quy ước này phải đồng bộ với 3D Viewer.
-                if pkg.rotation_allowed is False:
-                    # Không cho phép xoay: chỉ hướng 0
-                    allowed_rotations = {0}
-
-                elif pkg.allowed_rotations:
-                    # Có danh sách cụ thể: chỉ cho phép các hướng này
-                    allowed_rotations = {
-                        int(rotation)
-                        for rotation in pkg.allowed_rotations
-                    }
-
-                else:
-                    # Không giới hạn: cho phép cả 6 hướng
-                    allowed_rotations = set(range(6))
-
-
-                orientation_candidates = [
-                    (float(pkg.l), float(pkg.w), float(pkg.h), 0),  # LWH
-                    (float(pkg.w), float(pkg.l), float(pkg.h), 1),  # WLH
-                    (float(pkg.l), float(pkg.h), float(pkg.w), 2),  # LHW
-                    (float(pkg.w), float(pkg.h), float(pkg.l), 3),  # WHL
-                    (float(pkg.h), float(pkg.l), float(pkg.w), 4),  # HLW
-                    (float(pkg.h), float(pkg.w), float(pkg.l), 5),  # HWL
-                ]
-
-                orientations = [
-                    orientation
-                    for orientation in orientation_candidates
-                    if orientation[3] in allowed_rotations
-                    and orientation[0] <= vt.inner_l
-                    and orientation[1] <= vt.inner_w
-                    and orientation[2] <= vt.inner_h
-                ]
+                orientations = [o for o in package_orientations(pkg)
+                                if o[0] <= vt.inner_l and o[1] <= vt.inner_w and o[2] <= vt.inner_h]
 
                 if not orientations:
                     unplaced.append(
@@ -454,8 +489,12 @@ class OptimizationClient:
                 )
 
                 for pt in sorted_eps:
+                    if time.monotonic() >= initial_deadline:
+                        break
                     px, py, pz = pt
                     for (ol, ow, oh, rot_type) in orientations:
+                        if time.monotonic() >= initial_deadline:
+                            break
                         # 1. Bounds check trong zone
                         if px + ol > zone.zone_end_x + 1e-4:
                             continue
@@ -497,7 +536,7 @@ class OptimizationClient:
                         else:
                             last_violations = [
                                 v.violation_code for v in violations
-                            ]
+                            ] or ([last_unload_code] if last_unload_code else [])
 
                 # Nếu không đặt được trong zone (zone đầy), thử fallback xếp ở vị trí khác trong xe
                 is_rehandling = False
@@ -508,8 +547,12 @@ class OptimizationClient:
                         key=lambda pt: (pt[0], pt[2], pt[1]),
                     )
                     for pt in all_vehicle_eps:
+                        if time.monotonic() >= initial_deadline:
+                            break
                         px, py, pz = pt
                         for (ol, ow, oh, rot_type) in orientations:
+                            if time.monotonic() >= initial_deadline:
+                                break
                             if px + ol > vt.inner_l + 1e-4 or py + ow > vt.inner_w + 1e-4 or pz + oh > vt.inner_h + 1e-4:
                                 continue
                             if self._check_overlap(px, py, pz, ol, ow, oh, placements):
@@ -534,7 +577,7 @@ class OptimizationClient:
                                 is_rehandling = True
                                 break
                             else:
-                                last_violations = [v.violation_code for v in violations]
+                                last_violations = [v.violation_code for v in violations] or ([last_unload_code] if last_unload_code else [])
                         if chosen_placement:
                             break
 
@@ -561,95 +604,53 @@ class OptimizationClient:
                     ]
                     for npt in new_pts:
                         if npt[0] < vt.inner_l and npt[1] < vt.inner_w and npt[2] < vt.inner_h:
-                            if npt not in ep_list:
+                            if len(ep_list) < LoadBalanceSearch.MAX_GENERATED_CANDIDATES and npt not in ep_list:
                                 ep_list.append(npt)
                 else:
                     unplaced.append(UnplacedData(
                         package_id=pkg.id,
                         reason="CONSTRAINT_VIOLATED",
-                        violated_constraints=last_violations or ["NO_FEASIBLE_SPACE"],
+                        violated_constraints=(["OPTIMIZATION_TIME_LIMIT_REACHED"]
+                                              if time.monotonic() >= initial_deadline
+                                              else last_violations or ["NO_FEASIBLE_SPACE"]),
                     ))
 
 
-        # HC-11 / HC-12: Final LoadPlan Validation
-        # Chỉ kiểm tra sau khi đã xếp xong tất cả kiện hàng.
-        if placements:
-
-            # DEBUG: Quan sát phương án trước final validation.
-            print("\n=== BEFORE HC-11 / HC-12 ===")
-
-            total_weight = 0.0
-            weighted_x = 0.0
-            weighted_y = 0.0
-            weighted_z = 0.0
-
-            for p in placements:
-                pkg = packages_map[str(p.package_id)]
-                weight = float(pkg.weight)
-
-                cx = float(p.x) + float(p.packed_l) / 2
-                cy = float(p.y) + float(p.packed_w) / 2
-                cz = float(p.z) + float(p.packed_h) / 2
-
-                total_weight += weight
-                weighted_x += weight * cx
-                weighted_y += weight * cy
-                weighted_z += weight * cz
-
-                print(
-                    f"Package {p.package_id}: "
-                    f"position=({p.x}, {p.y}, {p.z}), "
-                    f"center=({cx}, {cy}, {cz}), "
-                    f"weight={weight}kg"
-                )
-
-            if total_weight > 0:
-                print(
-                    "COG:",
-                    round(weighted_x / total_weight, 2),
-                    round(weighted_y / total_weight, 2),
-                    round(weighted_z / total_weight, 2),
-                )
-
-                cog_ratio = float(vt.max_cog_offset_ratio)
-
-            print(
-                "Allowed COG X:",
-                round(float(vt.inner_l) * (0.5 - cog_ratio), 2),
-                "-",
-                round(float(vt.inner_l) * (0.5 + cog_ratio), 2),
-            )
-
-            print(
-                "Allowed COG Y:",
-                round(float(vt.inner_w) * (0.5 - cog_ratio), 2),
-                "-",
-                round(float(vt.inner_w) * (0.5 + cog_ratio), 2),
-            )
-
-
-            final_checks = [
-                ConstraintEngine.check_cog(
-                    all_placements=placements,
-                    vehicle=vt,
-                    packages_map=packages_map,
-                ),
-                ConstraintEngine.check_axle_load(
-                    all_placements=placements,
-                    vehicle=vt,
-                    packages_map=packages_map,
-                ),
-            ]
-
-            violations = [
-                result.violation_code
-                for result in final_checks
-                if not result.passed
-            ]
-
-            if violations:
-                reject_current_placements(violations)
-
+        initial_cog = center_of_mass(placements, packages_map)
+        logger.info("[INITIAL PLAN] Packed=%s COG_X=%s COG_Y=%s", len(placements),
+                    initial_cog[0] if initial_cog else None, initial_cog[1] if initial_cog else None)
+        improved = search.improve(placements, zones_by_id)
+        if improved is not placements:
+            placements = improved
+            rehandling_count = 0  # Every accepted repack has a verified unloading sequence without rehandling.
+        cached = search.validated_copy(placements)
+        if cached is not None:
+            # Exact immutable snapshot already passed ALL checks for this problem.
+            # A second validation timing out must not erase that proven result.
+            placements, violations = cached, []
+        elif not placements and search.last_violations:
+            violations = search.last_violations
+        else:
+            violations = validate_plan(placements, vt, packages_map, deadline)
+        if violations and search.best_plan:
+            logger.info("[FINAL VALIDATION] Retaining best validated plan after: %s", violations)
+            placements, violations = search.best_plan_copy(), []
+            rehandling_count = 0
+        packed_keys = {str(p.package_id) for p in placements}
+        unplaced_by_id = {str(u.package_id): u for u in unplaced}
+        missing_codes = violations or (["OPTIMIZATION_TIME_LIMIT_REACHED"]
+                                      if time.monotonic() >= search_deadline else ["NO_FEASIBLE_SPACE"])
+        unplaced = [unplaced_by_id.get(str(p.id)) or UnplacedData(package_id=p.id, reason="CONSTRAINT_VIOLATED",
+                    violated_constraints=missing_codes) for p in problem.packages if str(p.id) not in packed_keys]
+        total_placed_weight = sum(float(packages_map[str(p.package_id)].weight) for p in placements)
+        total_placed_volume = sum(p.packed_l * p.packed_w * p.packed_h for p in placements)
+        logger.info("[FINAL VALIDATION] COG=%s Axle=%s Unload=%s Packed=%s Violations=%s",
+                    True if not violations else "failed_or_not_evaluated",
+                    True if not violations else "failed_or_not_evaluated",
+                    "passed" if not violations else "failed_or_not_evaluated",
+                    len(placements), violations)
+        if violations:
+            reject_current_placements(violations)
 
         # 3. Tính COG tổng và Axle Load
         cog_x, cog_y, cog_z = None, None, None
@@ -698,7 +699,7 @@ class OptimizationClient:
                 )
 
 
-        comp_ms = int((time.time() - start_time) * 1000)
+        comp_ms = int((time.monotonic() - start_time) * 1000)
         vol_util = round(total_placed_volume / vehicle_volume, 4) if vehicle_volume > 0 else 0.0
         wt_util = round(total_placed_weight / vt.max_payload_kg, 4) if vt.max_payload_kg > 0 else 0.0
 
@@ -716,39 +717,7 @@ class OptimizationClient:
         )
 
 
-        # HC-09: Final Unload Feasibility Validation
-        # Kiểm tra toàn bộ LoadPlan sau khi xếp.
-
-        unload_result = UnloadFeasibilityValidator.validate(
-            placements=placements,
-            packages_map=packages_map,
-            vehicle=vt,
-        )
-
-
-        if not unload_result.passed:
-            reject_current_placements(
-                [
-                    unload_result.violation_code
-                    or "MULTI_DROP_LIFO_VIOLATION"
-                ]
-            )
-
-            metrics = MetricsData(
-                volume_utilization=0.0,
-                weight_utilization=0.0,
-                packed_count=0,
-                computation_ms=int(
-                    (time.time() - start_time) * 1000
-                ),
-                cog_x=None,
-                cog_y=None,
-                cog_z=None,
-                front_axle_load=None,
-                rear_axle_load=None,
-                rehandling_count=0,
-            )
-
+        # Full HC-01..HC-12 and unload validation completed before computing returned metrics.
 
         packed_ids = [
             str(p.package_id)
@@ -781,15 +750,9 @@ class OptimizationClient:
             "Optimization result does not match input packages"
         )
 
-        print(
-            f"[OPTIMIZATION SUMMARY] "
-            f"Packed={len(placements)}/{len(problem.packages)}, "
-            f"Unplaced={len(unplaced)}, "
-            f"UnloadChecks={unload_checks}, "
-            f"UnloadRejections={unload_rejections}, "
-            f"TimeMs={int((time.time() - start_time) * 1000)}"
-
-        )
+        logger.info("[OPTIMIZATION SUMMARY] Packed=%s/%s Unplaced=%s UnloadChecks=%s UnloadRejections=%s TimeMs=%s",
+                    len(placements), len(problem.packages), len(unplaced), unload_checks, unload_rejections,
+                    int((time.monotonic() - start_time) * 1000))
 
         return EngineOptimizationResponse(
             placements=placements,

@@ -1,6 +1,6 @@
 import pytest
 from datetime import datetime, timedelta
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
@@ -19,13 +19,18 @@ from app.dto.response.package_placement_response import PackagePlacementResponse
 from app.dto.response.load_plan_comparison_response import LoadPlanComparisonResponse
 
 
+from tests.optimization_fixtures import token, install_jwks
+
+@pytest.fixture(autouse=True)
+def test_jwks(monkeypatch):
+    install_jwks(monkeypatch)
+    yield
+    app.dependency_overrides.clear()
+
+
 def make_jwt_token(roles: list[str], user_id: int = 99) -> str:
-    payload = {
-        "preferred_username": "dispatcher_user",
-        "user_id": user_id,
-        "roles": roles,
-    }
-    return jwt.encode(payload, "secret-test-key-32-bytes-minimum-length!", algorithm="HS256")
+    return token(roles,user_id)
+
 
 
 class TestLoadPlanApiUpgrade:
@@ -41,34 +46,35 @@ class TestLoadPlanApiUpgrade:
         session_factory = sessionmaker(autocommit=False, autoflush=False, bind=engine)
         session = session_factory()
 
+        session.execute(text("ALTER TABLE delivery_requirements ADD COLUMN deadline DATETIME"))
         # Seed data
-        vt = VehicleType(id=1, name="Truck 5T", inner_length=6000, inner_width=2400, inner_height=2400, max_payload_kg=5000)
+        vt = VehicleType(id=1, name="Truck 5T", inner_length=6000, inner_width=2400, inner_height=2400, max_payload_kg=5000, max_cog_offset_ratio=0.15)
         v = Vehicle(id=1, vehicle_type_id=1, license_plate="29C-11111")
-        trip = Trip(id="trip-cmp", vehicle_id=1)
+        trip = Trip(id=1, vehicle_id=1)
 
         now = datetime.utcnow()
         stop1 = DeliveryStop(
             id=1,
-            trip_id="trip-cmp",
+            trip_id=1,
             stop_sequence=1,
             stop_name="Kho Hà Nội",
             latitude=21.0285,
             longitude=105.8542,
             planned_arrival=now + timedelta(hours=2),
-            deadline=now + timedelta(hours=3),
+
         )
         stop2 = DeliveryStop(
             id=2,
-            trip_id="trip-cmp",
+            trip_id=1,
             stop_sequence=2,
             stop_name="Kho Phủ Lý",
             latitude=20.5400,
             longitude=105.9100,
             planned_arrival=now + timedelta(hours=6),
-            deadline=now + timedelta(hours=5),  # 1 hour late
+
         )
 
-        job = OptimizationJob(id=1, trip_id="trip-cmp", job_uuid="job-cmp-1", status="COMPLETED")
+        job = OptimizationJob(id=1, trip_id=1, job_uuid="job-cmp-1", status="COMPLETED")
 
         # Plan 1: Basic
         plan1 = LoadPlan(
@@ -120,6 +126,12 @@ class TestLoadPlanApiUpgrade:
         )
 
         session.add_all([vt, v, trip, stop1, stop2, job, plan1, plan2, placement1])
+        session.commit()
+        for id, hours in [(1,3),(2,5)]:
+            session.execute(text("INSERT INTO delivery_requirements(id,trip_id,deadline) VALUES(:id,1,:deadline)"),
+                            {'id':id,'deadline':now+timedelta(hours=hours)})
+        stop1.delivery_requirement_id=1
+        stop2.delivery_requirement_id=2
         session.commit()
 
         yield session

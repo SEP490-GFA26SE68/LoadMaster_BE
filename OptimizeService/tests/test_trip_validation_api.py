@@ -202,14 +202,14 @@ class TestTripValidationWithRealSqliteDb:
             Trip, Vehicle, VehicleType, DeliveryStop, TransportOrder, CargoPackage, PackageType
         )
 
-        trip_id = uuid.uuid4()
+        trip_id = 1
         vt = VehicleType(
             name="Truck 5T",
             inner_length=6000,
             inner_width=2400,
             inner_height=2400,
             max_payload_kg=5000.0,
-        )
+         max_cog_offset_ratio=0.15)
         db_session.add(vt)
         db_session.flush()
 
@@ -217,11 +217,11 @@ class TestTripValidationWithRealSqliteDb:
         db_session.add(vehicle)
         db_session.flush()
 
-        trip = Trip(id=str(trip_id), vehicle_id=vehicle.id, trip_code="TRIP-001", status="PLANNED")
+        trip = Trip(id=trip_id, vehicle_id=vehicle.id, trip_code="TRIP-001", status="PLANNED")
         db_session.add(trip)
         db_session.flush()
 
-        stop = DeliveryStop(trip_id=str(trip_id), stop_sequence=1, stop_name="Stop 1", latitude=10.762622, longitude=106.660172)
+        stop = DeliveryStop(trip_id=trip_id, stop_sequence=1, stop_name="Stop 1", latitude=10.762622, longitude=106.660172)
         db_session.add(stop)
         db_session.flush()
 
@@ -262,8 +262,8 @@ class TestTripValidationWithRealSqliteDb:
         """End-to-end với DB thật: Trip không có vehicle trả về can_optimize=False"""
         from app.entity.trip_model import Trip
 
-        trip_id = uuid.uuid4()
-        trip = Trip(id=str(trip_id), vehicle_id=None, trip_code="TRIP-NO-VEHICLE", status="PLANNED")
+        trip_id = 1
+        trip = Trip(id=trip_id, vehicle_id=None, trip_code="TRIP-NO-VEHICLE", status="PLANNED")
         db_session.add(trip)
         db_session.commit()
 

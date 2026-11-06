@@ -12,6 +12,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -29,6 +30,7 @@ public class LoadPlanController {
 
     private final LoadPlanService loadPlanService;
 
+    @PreAuthorize("hasRole('DISPATCHER')")
     @PostMapping("/{id}/pin")
     @Operation(summary = "Pin placement", description = "Pin a placement in the load plan to fix its position for subsequent re-runs")
     public ResponseEntity<ApiResponse<PackagePlacementResponse>> pinPlacement(
@@ -38,6 +40,7 @@ public class LoadPlanController {
         return ResponseEntity.ok(ApiResponse.success("Ghim vị trí kiện hàng thành công", response));
     }
 
+    @PreAuthorize("hasRole('DISPATCHER')")
     @DeleteMapping("/{id}/pin/{placementId}")
     @Operation(summary = "Unpin placement", description = "Unpin a previously pinned placement in the load plan")
     public ResponseEntity<ApiResponse<PackagePlacementResponse>> unpinPlacement(
@@ -47,6 +50,7 @@ public class LoadPlanController {
         return ResponseEntity.ok(ApiResponse.success("Bỏ ghim vị trí kiện hàng thành công", response));
     }
 
+    @PreAuthorize("hasRole('DISPATCHER')")
     @PostMapping("/{id}/rerun")
     @Operation(summary = "Rerun optimization", description = "Rerun optimization keeping pinned placements fixed, creating a new load plan version")
     public ResponseEntity<ApiResponse<LoadPlanResponse>> rerunOptimization(
@@ -56,6 +60,7 @@ public class LoadPlanController {
         return ResponseEntity.ok(ApiResponse.success("Chạy lại tối ưu hóa kế hoạch xếp hàng thành công", response));
     }
 
+    @PreAuthorize("hasAnyRole('DISPATCHER', 'MANAGER', 'ADMIN', 'COMPANY_ADMIN', 'WAREHOUSE_WORKER', 'DRIVER')")
     @GetMapping("/compare")
     @Operation(summary = "Compare plans", description = "Compare metrics side-by-side between two load plans")
     public ResponseEntity<ApiResponse<PlanComparisonResponse>> comparePlans(

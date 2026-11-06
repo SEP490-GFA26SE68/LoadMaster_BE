@@ -32,13 +32,18 @@ from app.exception.error_code import ErrorCode
 from app.service.optimize.load_plan_service import LoadPlanService
 
 
+from tests.optimization_fixtures import token, install_jwks
+
+@pytest.fixture(autouse=True)
+def test_jwks(monkeypatch):
+    install_jwks(monkeypatch)
+    yield
+    app.dependency_overrides.clear()
+
+
 def make_jwt_token(roles: list[str], user_id: int = 99) -> str:
-    payload = {
-        "preferred_username": "dispatcher_user",
-        "user_id": user_id,
-        "roles": roles,
-    }
-    return jwt.encode(payload, "secret-test-key-32-bytes-minimum-length!", algorithm="HS256")
+    return token(roles,user_id)
+
 
 
 @pytest.fixture
@@ -53,7 +58,7 @@ def db_session():
     TestingSession = sessionmaker(autocommit=False, autoflush=False, bind=engine)
     session = TestingSession()
 
-    trip = Trip(id=str(uuid.uuid4()), status="DRAFT")
+    trip = Trip(id=1, status="DRAFT")
     session.add(trip)
     session.commit()
 

@@ -2,7 +2,7 @@
 package fu.se184491.loadmaster_be.controller.optimization;
 
 import fu.se184491.loadmaster_be.client.OptimizationClient;
-import fu.se184491.loadmaster_be.service.trip.TripService;
+
 
 import lombok.RequiredArgsConstructor;
 
@@ -18,36 +18,23 @@ import java.util.Map;
 @RequiredArgsConstructor
 public class LoadingOptimizationController {
 
-    private final TripService tripService;
+    private final fu.se184491.loadmaster_be.service.optimization.OptimizationSubmissionService submissionService;
     private final OptimizationClient optimizationClient;
 
     @PostMapping("/{tripId}/optimize-loading")
     @PreAuthorize("hasRole('DISPATCHER')")
-    public ResponseEntity<String> optimizeLoading(
-            @PathVariable Long tripId
+    public ResponseEntity<fu.se184491.loadmaster_be.dto.ApiResponse<Map<String, String>>> optimizeLoading(
+            @PathVariable Long tripId,
+            @RequestHeader(value = "Idempotency-Key", required = false) String suppliedKey
     ) {
-        // 1. Kiểm tra Trip có thuộc công ty đang đăng nhập không.
-        tripService.getTripById(tripId);
-
-        // 2. Tạo JSON request cho FastAPI.
-        Map<String, Object> request = Map.of(
-                "trip_id", tripId,
-                "objective", "MAX_VOLUME",
-                "time_limit_sec", 60
-        );
-
-        // 3. Gửi request sang FastAPI bằng service token.
-        String response = optimizationClient.createJob(request);
-
-        // 4. Trả kết quả FastAPI cho Frontend.
-        return ResponseEntity
-                .status(HttpStatus.ACCEPTED)
-                .body(response);
+        // Optional for compatibility. Callers needing retry guarantees MUST send and retain their own key.
+        String key = suppliedKey == null ? java.util.UUID.randomUUID().toString() : suppliedKey;
+        var response = submissionService.submitInitial(tripId, key);
+        return ResponseEntity.status(HttpStatus.ACCEPTED).header("Idempotency-Key", key).body(response);
     }
 
-
     @GetMapping("/optimization-jobs/{jobId}")
-    @PreAuthorize("hasRole('DISPATCHER')")
+    @PreAuthorize("hasRole('DISPATCHER') and @optimizationAccess.canReadJob(#jobId)")
     public ResponseEntity<String> getOptimizationJobStatus(
             @PathVariable String jobId
     ) {
@@ -57,7 +44,7 @@ public class LoadingOptimizationController {
     }
 
     @GetMapping("/optimization-jobs/{jobId}/plans")
-    @PreAuthorize("hasRole('DISPATCHER')")
+    @PreAuthorize("hasRole('DISPATCHER') and @optimizationAccess.canReadJob(#jobId)")
     public ResponseEntity<String> getOptimizationJobPlans(
             @PathVariable String jobId
     ) {

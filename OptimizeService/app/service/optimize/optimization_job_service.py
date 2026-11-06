@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import uuid
 from typing import Optional, Union
 from sqlalchemy.orm import Session
 
@@ -25,46 +24,9 @@ class OptimizationJobService:
             db: Session,
     ) -> OptimizationJob:
         """
-        Tạo Optimization Job cho Trip có ID kiểu BIGINT.
+        Retired: Spring Boot creates and charges jobs in one transaction.
         """
-        if isinstance(trip_id, bool) or not isinstance(trip_id, int) or trip_id <= 0:
-            raise AppException(ErrorCode.INVALID_INPUT)
-
-        trip = db.query(Trip).filter(Trip.id == trip_id).first()
-
-        if not trip:
-            raise AppException(ErrorCode.TRIP_NOT_FOUND)
-
-        from app.service.optimize.algorithm_tier_service import AlgorithmTierService
-
-        objective_val = (
-            config.objective.value
-            if hasattr(config.objective, "value")
-            else str(config.objective)
-        )
-
-        tier = AlgorithmTierService.get_algorithm_tier(
-            config.subscription_tier
-        )
-
-        resolved_algo = AlgorithmTierService.resolve_algorithm(
-            tier,
-            config.algorithm_name,
-        )
-
-        job = OptimizationJob(
-            trip_id=trip_id,
-            job_uuid=str(uuid.uuid4()),
-            objective=objective_val,
-            time_limit_sec=config.time_limit_sec,
-            status=OptimizationJobStatus.PENDING.value,
-            algorithm_name=resolved_algo,
-            company_id=config.company_id,
-            subscription_tier=tier,
-            algorithm_tier=tier,
-        )
-
-        return self.repository.create(job, db)
+        raise AppException(ErrorCode.UNAUTHORIZED)  # Spring is the sole job/credit admission authority.
 
 
     def get_job(self, job_uuid: str, db: Session) -> OptimizationJob:

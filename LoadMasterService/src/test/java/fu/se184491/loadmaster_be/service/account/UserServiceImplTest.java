@@ -15,7 +15,6 @@ import fu.se184491.loadmaster_be.dto.response.account.UserListItemResponse;
 import fu.se184491.loadmaster_be.entity.account.User;
 import fu.se184491.loadmaster_be.entity.company.Company;
 import fu.se184491.loadmaster_be.entity.company.CompanyAgreement;
-import fu.se184491.loadmaster_be.entity.support.SupportTicket;
 import fu.se184491.loadmaster_be.exception.AppException;
 import fu.se184491.loadmaster_be.exception.ErrorCode;
 import fu.se184491.loadmaster_be.helpers.CurrentUserService;
@@ -36,7 +35,9 @@ import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Optional;
 
@@ -148,7 +149,7 @@ class UserServiceImplTest {
     }
 
     @Test
-    @DisplayName("Seam 1 - createUser & updateUser: Initializes non-null createdAt and updatedAt equal to each other in yyyy-MM-dd HH:mm:ss format, and updates only updatedAt >= createdAt on update")
+    @DisplayName("Seam 1 - createUser & updateUser: Initializes non-null createdAt and updatedAt equal to each other as UTC Instants, and updates only updatedAt >= createdAt on update")
     void createAndUpdateUser_setsCreatedAtAndUpdatedAtInSecondsFormat() {
         when(currentUserService.getCurrentUser()).thenReturn(companyAdminCaller);
         when(userRepository.existsByEmail("dispatcher@acme.vn")).thenReturn(false);
@@ -183,13 +184,7 @@ class UserServiceImplTest {
         assertNotNull(createdEntity.getUpdatedAt(), "Entity updatedAt must not be null on initial creation");
         assertEquals(createdEntity.getCreatedAt(), createdEntity.getUpdatedAt(), "Initial updatedAt must equal createdAt");
 
-        SupportTicket.LocalDateTimeSecondsConverter converter = new SupportTicket.LocalDateTimeSecondsConverter();
-        String dbCreated = converter.convertToDatabaseColumn(createdEntity.getCreatedAt());
-        String dbUpdated = converter.convertToDatabaseColumn(createdEntity.getUpdatedAt());
-        assertTrue(dbCreated.matches("^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01]) ([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]$"));
-        assertEquals(dbCreated, dbUpdated);
-
-        LocalDateTime originalCreatedAt = LocalDateTime.of(2026, 11, 1, 8, 30, 0);
+        Instant originalCreatedAt = Instant.parse("2026-11-01T08:30:00Z");
         createdEntity.setCreatedAt(originalCreatedAt);
         createdEntity.setUpdatedAt(originalCreatedAt);
         when(userRepository.findById(51L)).thenReturn(Optional.of(createdEntity));
@@ -565,11 +560,11 @@ class UserServiceImplTest {
                 .company(company10)
                 .userRoleType(UserRole.ADMIN)
                 .status(UserStatus.INACTIVE)
-                .createdAt(LocalDateTime.now().minusMonths(5))
-                .updatedAt(LocalDateTime.now().minusMonths(3).minusDays(1))
+                .createdAt(OffsetDateTime.now(ZoneOffset.UTC).minusMonths(5).toInstant())
+                .updatedAt(OffsetDateTime.now(ZoneOffset.UTC).minusMonths(3).minusDays(1).toInstant())
                 .build();
 
-        when(userRepository.findByStatusAndUpdatedAtBefore(eq(UserStatus.INACTIVE), any(LocalDateTime.class)))
+        when(userRepository.findByStatusAndUpdatedAtBefore(eq(UserStatus.INACTIVE), any(Instant.class)))
                 .thenReturn(List.of(expiredInactiveUser));
 
         userService.purgeInactiveUsersAfterThreeMonths();

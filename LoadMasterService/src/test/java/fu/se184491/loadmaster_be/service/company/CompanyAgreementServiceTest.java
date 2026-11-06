@@ -76,8 +76,8 @@ class CompanyAgreementServiceTest {
                 .phoneNumber("0912345678")
                 .userRoleType(UserRole.ADMIN)
                 .status(UserStatus.ACTIVE)
-                .createdAt(LocalDateTime.of(2026, 10, 1, 8, 0, 0))
-                .updatedAt(LocalDateTime.of(2026, 10, 1, 8, 0, 0))
+                .createdAt(Instant.parse("2026-10-01T08:00:00Z"))
+                .updatedAt(Instant.parse("2026-10-01T08:00:00Z"))
                 .build();
 
         testAgreement = CompanyAgreement.builder()
@@ -230,8 +230,8 @@ class CompanyAgreementServiceTest {
                 .email("trial-3days@test.vn")
                 .userRoleType(UserRole.ADMIN)
                 .status(UserStatus.ACTIVE)
-                .createdAt(LocalDateTime.now().minusDays(4).withNano(0))
-                .updatedAt(LocalDateTime.now().minusDays(4).withNano(0))
+                .createdAt(Instant.now().minus(4, java.time.temporal.ChronoUnit.DAYS).truncatedTo(java.time.temporal.ChronoUnit.SECONDS))
+                .updatedAt(Instant.now().minus(4, java.time.temporal.ChronoUnit.DAYS).truncatedTo(java.time.temporal.ChronoUnit.SECONDS))
                 .build();
 
         CompanyAgreement pendingPast3Days = CompanyAgreement.builder()
@@ -250,8 +250,8 @@ class CompanyAgreementServiceTest {
                 .email("trial-3months@test.vn")
                 .userRoleType(UserRole.ADMIN)
                 .status(UserStatus.INACTIVE)
-                .createdAt(LocalDateTime.now().minusMonths(4).withNano(0))
-                .updatedAt(LocalDateTime.now().minusMonths(3).withNano(0))
+                .createdAt(java.time.OffsetDateTime.now(java.time.ZoneOffset.UTC).minusMonths(4).toInstant().truncatedTo(java.time.temporal.ChronoUnit.SECONDS))
+                .updatedAt(java.time.OffsetDateTime.now(java.time.ZoneOffset.UTC).minusMonths(3).toInstant().truncatedTo(java.time.temporal.ChronoUnit.SECONDS))
                 .build();
 
         CompanyAgreement expiredPast3Months = CompanyAgreement.builder()

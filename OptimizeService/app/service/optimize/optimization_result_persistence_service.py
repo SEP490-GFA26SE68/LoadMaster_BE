@@ -177,7 +177,7 @@ class OptimizationResultPersistenceService:
                             packed_length=p.packed_l,
                             packed_width=p.packed_w,
                             packed_height=p.packed_h,
-                            rotation_type=p.rotation_type or 0,
+                            rotation_type=p.rotation_type,
                             step_sequence=p.step_sequence or 1,
                             pinned=False,
                             stop_zone_id=zone_id_val,

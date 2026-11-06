@@ -27,6 +27,8 @@ import fu.se184491.loadmaster_be.repository.optimization.OptimizationJobReposito
 import fu.se184491.loadmaster_be.repository.optimization.PackagePlacementRepository;
 import fu.se184491.loadmaster_be.repository.optimization.UnplacedPackageRepository;
 import fu.se184491.loadmaster_be.service.optimization.LoadPlanService;
+import fu.se184491.loadmaster_be.helpers.CurrentUserService;
+import org.springframework.security.access.AccessDeniedException;
 import fu.se184491.loadmaster_be.service.optimization.OptimizationEngineClient;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -45,6 +47,8 @@ import java.util.stream.Collectors;
 public class LoadPlanServiceImpl implements LoadPlanService {
 
     private final LoadPlanRepository loadPlanRepository;
+    private final CurrentUserService currentUserService;
+    private final fu.se184491.loadmaster_be.service.optimization.OptimizationEntitlementService entitlements;
     private final PackagePlacementRepository packagePlacementRepository;
     private final AuditLogRepository auditLogRepository;
     private final OptimizationJobRepository optimizationJobRepository;
@@ -56,8 +60,7 @@ public class LoadPlanServiceImpl implements LoadPlanService {
     @Override
     @Transactional
     public PackagePlacementResponse pinPlacement(Long loadPlanId, PinPlacementRequest request) {
-        LoadPlan loadPlan = loadPlanRepository.findById(loadPlanId)
-                .orElseThrow(() -> new AppException(ErrorCode.LOAD_PLAN_NOT_FOUND));
+        LoadPlan loadPlan = requireOwnedPlan(loadPlanId);
 
         PackagePlacement placement = packagePlacementRepository.findById(request.getPlacementId())
                 .orElseThrow(() -> new AppException(ErrorCode.PLACEMENT_NOT_FOUND));
@@ -77,8 +80,7 @@ public class LoadPlanServiceImpl implements LoadPlanService {
     @Override
     @Transactional
     public PackagePlacementResponse unpinPlacement(Long loadPlanId, Long placementId) {
-        LoadPlan loadPlan = loadPlanRepository.findById(loadPlanId)
-                .orElseThrow(() -> new AppException(ErrorCode.LOAD_PLAN_NOT_FOUND));
+        LoadPlan loadPlan = requireOwnedPlan(loadPlanId);
 
         PackagePlacement placement = packagePlacementRepository.findById(placementId)
                 .orElseThrow(() -> new AppException(ErrorCode.PLACEMENT_NOT_FOUND));
@@ -98,177 +100,9 @@ public class LoadPlanServiceImpl implements LoadPlanService {
     @Override
     @Transactional
     public LoadPlanResponse rerunOptimization(Long loadPlanId, RerunOptimizationRequest request) {
-        LoadPlan currentPlan = loadPlanRepository.findById(loadPlanId)
-                .orElseThrow(() -> new AppException(ErrorCode.LOAD_PLAN_NOT_FOUND));
-
-        // 1. Load pinned placements from current plan
-        List<PackagePlacement> pinnedPlacements = packagePlacementRepository.findByLoadPlanIdAndPinnedTrue(loadPlanId);
-
-        // 2. Create new OptimizationJob with parentPlanId
-        int nextVersion = (currentPlan.getVersion() != null ? currentPlan.getVersion() : 1) + 1;
-        String jobUuid = UUID.randomUUID().toString();
-        OptimizationObjective objective = request.getObjective() != null
-                ? request.getObjective()
-                : (currentPlan.getJob() != null && currentPlan.getJob().getObjective() != null
-                    ? currentPlan.getJob().getObjective()
-                    : OptimizationObjective.MAX_VOLUME);
-        Integer timeLimit = request.getTimeLimitSec() != null ? request.getTimeLimitSec() : 60;
-
-        OptimizationJob newJob = OptimizationJob.builder()
-                .trip(currentPlan.getJob() != null ? currentPlan.getJob().getTrip() : null)
-                .jobUuid(jobUuid)
-                .algorithmName(currentPlan.getJob() != null && currentPlan.getJob().getAlgorithmName() != null
-                        ? currentPlan.getJob().getAlgorithmName()
-                        : OptimizationAlgorithm.GENETIC_ALGORITHM)
-                .objective(objective)
-                .timeLimitSec(timeLimit)
-                .seed(request.getSeed())
-                .parentPlanId(currentPlan.getId())
-                .status(OptimizationJobStatus.RUNNING)
-                .build();
-        newJob = optimizationJobRepository.save(newJob);
-
-        // 3. Prepare pinned list for Engine
-        List<PinnedPlacementDto> pinnedDtos = pinnedPlacements.stream()
-                .map(p -> PinnedPlacementDto.builder()
-                        .placementId(p.getId())
-                        .packageId(p.getCargoPackage() != null ? p.getCargoPackage().getId() : null)
-                        .posX(p.getPosX())
-                        .posY(p.getPosY())
-                        .posZ(p.getPosZ())
-                        .packedLength(p.getPackedLength())
-                        .packedWidth(p.getPackedWidth())
-                        .packedHeight(p.getPackedHeight())
-                        .rotationType(p.getRotationType())
-                        .stepSequence(p.getStepSequence())
-                        .build())
-                .collect(Collectors.toList());
-
-        RerunEngineRequest engineRequest = RerunEngineRequest.builder()
-                .jobUuid(jobUuid)
-                .tripId(newJob.getTrip() != null ? newJob.getTrip().getId() : null)
-                .parentPlanId(currentPlan.getId())
-                .objective(objective.name())
-                .timeLimitSec(timeLimit)
-                .seed(request.getSeed())
-                .pinnedPlacements(pinnedDtos)
-                .build();
-
-        // S8-08 Credit check & deduction before sending to Engine (Rerun = 1 credit)
-        if (newJob.getTrip() != null && newJob.getTrip().getCompany() != null) {
-            creditService.deductCredit(newJob.getTrip().getCompany().getId(), jobUuid, 1);
-        }
-
-        // 4. Send to Engine
-        OptimizationResultDto engineResult;
-        try {
-            engineResult = optimizationEngineClient.rerunOptimization(engineRequest);
-        } catch (Exception e) {
-            log.error("Optimization engine failed for job {}: {}", jobUuid, e.getMessage());
-            newJob.setStatus(OptimizationJobStatus.FAILED);
-            optimizationJobRepository.save(newJob);
-            if (newJob.getTrip() != null && newJob.getTrip().getCompany() != null) {
-                try {
-                    creditService.refundCredit(newJob.getTrip().getCompany().getId(), jobUuid);
-                } catch (Exception refundEx) {
-                    log.error("Failed to refund credit on engine failure for job {}: {}", jobUuid, refundEx.getMessage());
-                }
-            }
-            throw e;
-        }
-
-        // Update Job status
-        newJob.setStatus(OptimizationJobStatus.COMPLETED);
-        if (engineResult != null && engineResult.getComputationMs() != null) {
-            newJob.setComputationMs(engineResult.getComputationMs());
-        }
-        optimizationJobRepository.save(newJob);
-
-        // 5. Save new plan with version = old.version + 1 and parentPlanId
-        String baseName = currentPlan.getPlanName() != null
-                ? currentPlan.getPlanName().replaceAll(" \\(v\\d+\\)$", "")
-                : "Plan";
-        String newPlanName = baseName + " (v" + nextVersion + ")";
-
-        LoadPlan newPlan = LoadPlan.builder()
-                .job(newJob)
-                .planName(newPlanName)
-                .version(nextVersion)
-                .parentPlanId(currentPlan.getId())
-                .packedItemsCount(engineResult != null ? engineResult.getPackedItemsCount() : 0)
-                .volumeUtilization(engineResult != null ? engineResult.getVolumeUtilization() : BigDecimal.ZERO)
-                .weightUtilization(engineResult != null ? engineResult.getWeightUtilization() : BigDecimal.ZERO)
-                .approved(false)
-                .build();
-        newPlan = loadPlanRepository.save(newPlan);
-
-        // Save placements
-        List<PackagePlacement> savedPlacements = new ArrayList<>();
-        if (engineResult != null && engineResult.getPlacements() != null) {
-            for (PlacementResultDto pDto : engineResult.getPlacements()) {
-                CargoPackage pkg = null;
-                if (pDto.getPackageId() != null) {
-                    pkg = cargoPackageRepository.findById(pDto.getPackageId()).orElse(null);
-                }
-                PackagePlacement placement = PackagePlacement.builder()
-                        .loadPlan(newPlan)
-                        .cargoPackage(pkg)
-                        .posX(pDto.getPosX())
-                        .posY(pDto.getPosY())
-                        .posZ(pDto.getPosZ())
-                        .packedLength(pDto.getPackedLength())
-                        .packedWidth(pDto.getPackedWidth())
-                        .packedHeight(pDto.getPackedHeight())
-                        .rotationType(pDto.getRotationType())
-                        .stepSequence(pDto.getStepSequence())
-                        .pinned(Boolean.TRUE.equals(pDto.getPinned()))
-                        .build();
-                savedPlacements.add(packagePlacementRepository.save(placement));
-            }
-        }
-
-        // AuditLog for Rerun
-        Map<String, Object> oldValues = new HashMap<>();
-        oldValues.put("parentPlanId", currentPlan.getId());
-        oldValues.put("parentVersion", currentPlan.getVersion());
-
-        Map<String, Object> newValues = new HashMap<>();
-        newValues.put("newPlanId", newPlan.getId());
-        newValues.put("version", nextVersion);
-        newValues.put("pinnedCount", pinnedPlacements.size());
-
-        AuditLog auditLog = AuditLog.builder()
-                .actionType("RERUN_OPTIMIZATION")
-                .entityName("LoadPlan")
-                .entityId(String.valueOf(newPlan.getId()))
-                .oldValues(oldValues)
-                .newValues(newValues)
-                .createdAt(Instant.now())
-                .build();
-        auditLogRepository.save(auditLog);
-
-        log.info("Rerun optimization completed for plan {}, created new plan {} version {}",
-                currentPlan.getId(), newPlan.getId(), nextVersion);
-
-        return LoadPlanResponse.builder()
-                .id(newPlan.getId())
-                .jobId(newJob.getId())
-                .jobUuid(newJob.getJobUuid())
-                .planName(newPlan.getPlanName())
-                .version(newPlan.getVersion())
-                .parentPlanId(newPlan.getParentPlanId())
-                .packedItemsCount(newPlan.getPackedItemsCount())
-                .volumeUtilization(newPlan.getVolumeUtilization())
-                .weightUtilization(newPlan.getWeightUtilization())
-                .approved(newPlan.getApproved())
-                .cogX(newPlan.getCogX())
-                .cogY(newPlan.getCogY())
-                .cogZ(newPlan.getCogZ())
-                .frontAxleLoad(newPlan.getFrontAxleLoad())
-                .rearAxleLoad(newPlan.getRearAxleLoad())
-                .rehandlingCount(newPlan.getRehandlingCount())
-                .placements(savedPlacements.stream().map(this::mapToResponse).collect(Collectors.toList()))
-                .build();
+        LoadPlan currentPlan = requireOwnedPlan(loadPlanId);
+        entitlements.requireActive(currentPlan.getJob().getTrip().getCompany().getId());
+        throw new AppException(ErrorCode.OPTIMIZATION_RERUN_UNAVAILABLE);
     }
 
     private void validatePlacementBelongsToPlan(PackagePlacement placement, Long loadPlanId) {
@@ -299,11 +133,9 @@ public class LoadPlanServiceImpl implements LoadPlanService {
     @Override
     @Transactional(readOnly = true)
     public PlanComparisonResponse comparePlans(Long planId1, Long planId2) {
-        LoadPlan plan1 = loadPlanRepository.findById(planId1)
-                .orElseThrow(() -> new AppException(ErrorCode.LOAD_PLAN_NOT_FOUND));
+        LoadPlan plan1 = requireOwnedPlan(planId1);
 
-        LoadPlan plan2 = loadPlanRepository.findById(planId2)
-                .orElseThrow(() -> new AppException(ErrorCode.LOAD_PLAN_NOT_FOUND));
+        LoadPlan plan2 = requireOwnedPlan(planId2);
 
         PlanMetricsDto m1 = buildPlanMetrics(plan1);
         PlanMetricsDto m2 = buildPlanMetrics(plan2);
@@ -314,6 +146,18 @@ public class LoadPlanServiceImpl implements LoadPlanService {
                 .plan1Metrics(m1)
                 .plan2Metrics(m2)
                 .build();
+    }
+
+    private LoadPlan requireOwnedPlan(Long planId) {
+        LoadPlan plan = loadPlanRepository.findById(planId)
+                .orElseThrow(() -> new AppException(ErrorCode.LOAD_PLAN_NOT_FOUND));
+        Long companyId = currentUserService.getCurrentCompanyId();
+        if (plan.getJob() == null || plan.getJob().getTrip() == null
+                || plan.getJob().getTrip().getCompany() == null || companyId == null
+                || !companyId.equals(plan.getJob().getTrip().getCompany().getId())) {
+            throw new AccessDeniedException("Load plan does not belong to the current company");
+        }
+        return plan;
     }
 
     private PlanMetricsDto buildPlanMetrics(LoadPlan plan) {

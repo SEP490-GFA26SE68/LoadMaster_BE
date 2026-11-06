@@ -1,6 +1,8 @@
 package fu.se184491.loadmaster_be.client;
 
 import fu.se184491.loadmaster_be.config.payment.VnPayConfig;
+import fu.se184491.loadmaster_be.service.payment.MockPaymentPolicy;
+import org.springframework.mock.env.MockEnvironment;
 import fu.se184491.loadmaster_be.constant.billing.PaymentGateway;
 import fu.se184491.loadmaster_be.constant.billing.PaymentStatus;
 import fu.se184491.loadmaster_be.entity.billing.PaymentTransaction;
@@ -30,7 +32,7 @@ public class VnPayClientTest {
         config.setReturnUrl("http://localhost:3000/payment/vnpay-return");
         config.setMock(false);
 
-        client = new VnPayClient(config);
+        client = new VnPayClient(config, new MockPaymentPolicy(config, new MockEnvironment()));
     }
 
     @Test

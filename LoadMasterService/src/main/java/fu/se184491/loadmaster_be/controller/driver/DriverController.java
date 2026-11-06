@@ -38,21 +38,26 @@ import java.util.List;
 public class DriverController {
 
     private final DriverService driverService;
+    private final fu.se184491.loadmaster_be.service.optimization.OptimizationAccess optimizationAccess;
     private final GpsTrackingService gpsTrackingService;
     private final TripExceptionService tripExceptionService;
     private final TripLookupHelper tripLookupHelper;
 
+    @org.springframework.security.access.prepost.PreAuthorize("hasAnyRole('DRIVER','DISPATCHER','MANAGER','ADMIN','COMPANY_ADMIN')")
     @GetMapping("/trips")
     @Operation(summary = "List driver trips", description = "Retrieve trips assigned to the driver, newest departure first")
     public ResponseEntity<ApiResponse<List<DriverTripResponse>>> listTrips(
             @RequestParam(value = "driverId", required = false) Long driverId) {
+        optimizationAccess.canReadUser(driverId);
         return ResponseEntity.ok(ApiResponse.success("Lấy danh sách chuyến đi của tài xế thành công", driverService.listTrips(driverId)));
     }
 
+    @org.springframework.security.access.prepost.PreAuthorize("hasAnyRole('DRIVER','DISPATCHER','MANAGER','ADMIN','COMPANY_ADMIN')")
     @GetMapping("/trips/{id}/current-stop")
     @Operation(summary = "Get current stop", description = "Retrieve current pending stop and recommended packages to unload in LIFO order")
     public ResponseEntity<ApiResponse<CurrentStopResponse>> getCurrentStop(
             @PathVariable("id") Long id) {
+        optimizationAccess.canReadTrip(id);
         CurrentStopResponse currentStop = driverService.getCurrentStop(id);
         return ResponseEntity.ok(ApiResponse.success("Lấy thông tin điểm dừng hiện tại thành công", currentStop));
     }

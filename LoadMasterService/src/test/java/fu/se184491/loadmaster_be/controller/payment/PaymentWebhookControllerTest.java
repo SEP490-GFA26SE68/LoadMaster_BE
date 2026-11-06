@@ -2,6 +2,7 @@ package fu.se184491.loadmaster_be.controller.payment;
 
 import fu.se184491.loadmaster_be.config.security.WebSecurityConfig;
 import fu.se184491.loadmaster_be.service.payment.PaymentCallbackHandler;
+import fu.se184491.loadmaster_be.service.payment.MockPaymentPolicy;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -9,6 +10,7 @@ import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationConverter;
+import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
@@ -28,6 +30,9 @@ public class PaymentWebhookControllerTest {
 
     @Autowired
     private MockMvc mockMvc;
+
+    @MockitoBean
+    private MockPaymentPolicy mockPaymentPolicy;
 
     @MockitoBean
     private PaymentCallbackHandler paymentCallbackHandler;
@@ -50,16 +55,10 @@ public class PaymentWebhookControllerTest {
     }
 
     @Test
-    @DisplayName("GET /api/payment/mock-checkout - Simulates mock payment")
-    void testMockCheckout() throws Exception {
-        when(paymentCallbackHandler.handleVnPayCallback(anyMap()))
-                .thenReturn(Map.of("RspCode", "00", "Message", "Confirm Success"));
-
-        mockMvc.perform(get("/api/payment/mock-checkout")
-                        .param("txnRef", "MOCK_123"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.success").value(true))
-                .andExpect(jsonPath("$.txnRef").value("MOCK_123"));
+    @WithMockUser(roles = "DISPATCHER")
+    void dispatcherCannotUseAdminMockCheckout() throws Exception {
+        mockMvc.perform(get("/api/payment/mock-checkout").param("txnRef", "MOCK_123"))
+                .andExpect(status().isForbidden());
     }
 
     @Test

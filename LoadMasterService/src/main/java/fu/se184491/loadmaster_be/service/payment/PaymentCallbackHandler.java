@@ -1,6 +1,8 @@
 package fu.se184491.loadmaster_be.service.payment;
 
 import fu.se184491.loadmaster_be.client.VnPayClient;
+import fu.se184491.loadmaster_be.helpers.CurrentUserService;
+import org.springframework.security.access.AccessDeniedException;
 import fu.se184491.loadmaster_be.constant.billing.PaymentStatus;
 import fu.se184491.loadmaster_be.entity.billing.PaymentTransaction;
 import fu.se184491.loadmaster_be.repository.billing.PaymentTransactionRepository;
@@ -25,27 +27,34 @@ public class PaymentCallbackHandler {
     private final VnPayClient vnPayClient;
     private final SubscriptionService subscriptionService;
     private final CreditService creditService;
+    private final MockPaymentPolicy mockPaymentPolicy;
+    private final CurrentUserService currentUserService;
 
     @Transactional
     public Map<String, String> handleVnPayCallback(Map<String, String> params) {
-        Map<String, String> response = new HashMap<>();
-
-        String txnRef = params.get("vnp_TxnRef");
-        boolean isMock = (txnRef != null && txnRef.startsWith("MOCK_"))
-                || "true".equalsIgnoreCase(params.get("vnp_Mock"))
-                || vnPayClient.isMock();
-
-        // 1. Verify Checksum (skip for mock dev transactions)
-        if (!isMock) {
-            boolean validSignature = vnPayClient.verifyCallback(params);
-            if (!validSignature) {
-                log.warn("VNPay callback signature verification failed for params: {}", params);
-                response.put("RspCode", "97");
-                response.put("Message", "Invalid Checksum");
-                return response;
-            }
+        // Public callbacks always require a signature. Client flags and transaction prefixes never bypass it.
+        if (!vnPayClient.verifyCallback(params)) {
+            return Map.of("RspCode", "97", "Message", "Invalid Checksum");
         }
+        return processVerifiedCallback(params);
+    }
 
+    @Transactional
+    public Map<String, String> handleMockCheckout(String reference) {
+        mockPaymentPolicy.requireEnabled();
+        PaymentTransaction transaction = paymentTransactionRepository.findByGatewayTransactionId(reference)
+                .orElseThrow(() -> new IllegalArgumentException("Payment transaction not found"));
+        Long companyId = currentUserService.getCurrentCompanyId();
+        if (transaction.getCompany() == null || companyId == null
+                || !companyId.equals(transaction.getCompany().getId())) {
+            throw new AccessDeniedException("Payment does not belong to the current company");
+        }
+        return processVerifiedCallback(Map.of("vnp_TxnRef", reference, "vnp_ResponseCode", "00"));
+    }
+
+    private Map<String, String> processVerifiedCallback(Map<String, String> params) {
+        Map<String, String> response = new HashMap<>();
+        String txnRef = params.get("vnp_TxnRef");
         // 2. Find Payment Transaction
         Optional<PaymentTransaction> txnOpt = paymentTransactionRepository.findByGatewayTransactionId(txnRef);
         if (txnOpt.isEmpty()) {
