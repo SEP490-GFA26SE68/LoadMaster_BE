@@ -115,8 +115,7 @@ public class LoadPlanReadRepository {
                             .objective(rs.getString("objective"))
                             .timeLimitSec(nullableInt(rs, "time_limit_sec"))
                             .status(rs.getString("status"))
-                            // Bản chỉnh tay không chạy bộ tối ưu: thời gian chạy của job không phải của nó.
-                .computationMs(rs.getBoolean("manually_edited") ? null : nullableLong(rs, "computation_ms"))
+                            .computationMs(nullableLong(rs, "computation_ms"))
                             // Dịch vụ tối ưu ghi created_at theo giờ UTC (không múi giờ).
                             .createdAt(createdAt == null ? null : createdAt.toInstant())
                             .packedPlanCount(rs.getInt("packed_plans"))
@@ -206,7 +205,8 @@ public class LoadPlanReadRepository {
                 .objective(Optional.ofNullable(rs.getString("plan_objective")).orElse(rs.getString("objective")))
                 .candidateLabel(rs.getString("candidate_label"))
                 .algorithmName(rs.getString("algorithm_name"))
-                .computationMs(nullableLong(rs, "computation_ms"))
+                // Bản chỉnh tay không chạy bộ tối ưu: thời gian chạy của job không phải của nó.
+                .computationMs(rs.getBoolean("manually_edited") ? null : nullableLong(rs, "computation_ms"))
                 .planName(rs.getString("plan_name"))
                 .version(nullableInt(rs, "version"))
                 .parentPlanId(nullableLong(rs, "parent_plan_id"))
