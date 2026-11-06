@@ -166,6 +166,9 @@ class ManualPlanApprovalServiceImplTest {
         verify(auditLogRepository).save(audit.capture());
         assertThat(audit.getValue().getActionType()).isEqualTo("PLAN_APPROVED");
         assertThat(audit.getValue().getNewValues()).containsEntry("movedCount", 1).containsEntry("manuallyEdited", true);
+        // Người bấm "Duyệt bản chỉnh" là người làm: chuông ghi đúng tên và bỏ được việc chính mình làm
+        assertThat(audit.getValue().getUser()).isNotNull();
+        assertThat(audit.getValue().getUser().getId()).isEqualTo(42L);
     }
 
     @Test
@@ -313,6 +316,10 @@ class ManualPlanApprovalServiceImplTest {
         service.approveEdits(5L, pinOnly);
 
         assertThat(savedPlan().getRehandlingCount()).isEqualTo(3);
+        ArgumentCaptor<AuditLog> audit = ArgumentCaptor.forClass(AuditLog.class);
+        verify(auditLogRepository).save(audit.capture());
+        assertThat(audit.getValue().getUser().getId()).isEqualTo(42L);
+        assertThat(audit.getValue().getNewValues()).containsEntry("movedCount", 0).containsEntry("pinnedCount", 1);
     }
 
     @Test

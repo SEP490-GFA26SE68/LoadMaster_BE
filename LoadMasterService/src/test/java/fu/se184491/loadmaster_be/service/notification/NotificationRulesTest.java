@@ -94,4 +94,24 @@ class NotificationRulesTest {
         assertThat(NotificationRules.concerns(ticket, MANAGER)).isTrue();
         assertThat(NotificationRules.concerns(ticket, DISPATCHER)).isFalse();
     }
+
+    @Test
+    void pickupRequestsReachDispatchersAndDecisionsReachTheTripDriver() {
+        NotificationRules.Event requested = event("PICKUP_REQUESTED", 13L, null, Map.of("tripId", 5L), 13L);
+        assertThat(NotificationRules.concerns(requested, DISPATCHER)).isTrue();
+        assertThat(NotificationRules.concerns(event("PICKUP_REQUESTED", 10L, null, Map.of(), 13L), DISPATCHER))
+                .as("điều phối viên tự gửi thì không báo chính mình").isFalse();
+        assertThat(NotificationRules.concerns(requested, MANAGER)).isFalse();
+        assertThat(NotificationRules.concerns(requested, DRIVER)).isFalse();
+
+        NotificationRules.Event approved = event("PICKUP_APPROVED", 10L, null, Map.of("driverId", 13L), 13L);
+        assertThat(NotificationRules.concerns(approved, DRIVER)).isTrue();
+        assertThat(NotificationRules.concerns(approved, new NotificationRules.Viewer(30L, UserRole.DRIVER))).isFalse();
+        assertThat(NotificationRules.concerns(approved, DISPATCHER)).isFalse();
+        assertThat(NotificationRules.concerns(
+                event("PICKUP_REJECTED", 10L, null, Map.of("driverId", 13L, "reason", "Xe đầy"), 13L), DRIVER)).isTrue();
+        assertThat(NotificationRules.concerns(event("PICKUP_REJECTED", 10L, null, Map.of(), 13L), DRIVER))
+                .as("không ghi tài xế thì không báo ai").isFalse();
+        assertThat(NotificationRules.concerns(event("PICKUP_LOADED", 13L, null, Map.of(), 13L), DISPATCHER)).isFalse();
+    }
 }
