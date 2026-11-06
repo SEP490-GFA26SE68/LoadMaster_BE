@@ -221,6 +221,7 @@ public class DriverServiceImpl implements DriverService {
                 .issueKind(issue != null && issue.getKind() != null ? issue.getKind().name() : null)
                 .issueNote(issue != null ? issue.getNote() : null)
                 .manualStatus(manual != null && manual.getStatus() != null ? manual.getStatus().name() : null)
+                .manualReason(manual != null && manual.getReason() != null ? manual.getReason().name() : null)
                 .manualRejectReason(manual != null && manual.getStatus() == ManualConfirmStatus.REJECTED
                         ? manual.getDecisionNote() : null)
                 .packageId(id)

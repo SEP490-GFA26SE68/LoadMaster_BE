@@ -55,6 +55,9 @@ public class StopPackageResponse {
     @Schema(description = "Xác nhận tay gần nhất của kiện ở điểm này: PENDING, APPROVED, REJECTED; null khi không có")
     private String manualStatus;
 
+    @Schema(description = "Lý do tài xế xác nhận tay gần nhất: LABEL_DAMAGED, QR_UNREADABLE, OTHER")
+    private String manualReason;
+
     @Schema(description = "Lý do điều phối viên từ chối xác nhận tay gần nhất")
     private String manualRejectReason;
 }
