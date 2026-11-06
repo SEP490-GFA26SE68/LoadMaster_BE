@@ -31,6 +31,7 @@ class ErrorCode(str, Enum):
     PLAN_HAS_NO_PLACEMENTS = ("PLAN_HAS_NO_PLACEMENTS", "Kế hoạch xếp hàng không có kiện hàng nào", 400)
     PLAN_LIFO_INVALID = ("PLAN_LIFO_INVALID", "Thứ tự dỡ hàng LIFO không hợp lệ", 400)
     INSUFFICIENT_CREDITS = ("INSUFFICIENT_CREDITS", "Công ty không đủ credit để thực hiện tối ưu", 402)
+    PINNED_SET_INVALID = ("PINNED_SET_INVALID", "Bộ kiện đã ghim không đứng vững; chưa chạy tối ưu", 400)
 
     def __new__(cls, code: str, message: str, http_status: int):
         obj = str.__new__(cls, code)

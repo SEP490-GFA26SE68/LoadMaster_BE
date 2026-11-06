@@ -215,7 +215,7 @@ class OptimizationResultPersistenceService:
                         packed_height=p.packed_h,
                         rotation_type=p.rotation_type or 0,
                         step_sequence=p.step_sequence or 1,
-                        pinned=False,
+                        pinned=bool(getattr(p, "pinned", False)),
                         stop_zone_id=zone_id_val,
                     )
                 )
