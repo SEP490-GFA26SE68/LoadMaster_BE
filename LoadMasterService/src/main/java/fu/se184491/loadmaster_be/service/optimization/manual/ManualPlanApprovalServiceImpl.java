@@ -192,6 +192,7 @@ public class ManualPlanApprovalServiceImpl implements ManualPlanApprovalService 
         newValues.put("pinnedCount", pins.size());
         auditLogRepository.save(AuditLog.builder()
                 .actionType("PLAN_APPROVED")
+                .user(approver)
                 .companyId(AuditCompany.ofPlan(approved))
                 .entityName("LOAD_PLAN")
                 .entityId(String.valueOf(approved.getId()))

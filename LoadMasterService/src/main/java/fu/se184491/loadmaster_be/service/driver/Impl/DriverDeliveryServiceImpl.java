@@ -480,6 +480,10 @@ public class DriverDeliveryServiceImpl implements DriverDeliveryService {
         values.put("packageId", pkg.getId());
         values.put("tripId", confirmation.getTrip().getId());
         values.put("reason", reason);
+        // Người gửi xác nhận tay: chuông của tài xế chỉ báo xác nhận của chính mình
+        if (confirmation.getRequestedBy() != null) {
+            values.put("requestedBy", confirmation.getRequestedBy().getId());
+        }
         audit(confirmation.getTrip(), dispatcher, "MANUAL_CONFIRM_REJECTED", "ManualUnloadConfirmation", confirmation.getId(), values);
         return toResponse(confirmation);
     }

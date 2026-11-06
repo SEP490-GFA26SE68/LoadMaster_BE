@@ -16,4 +16,6 @@ public class OptimizationJobStartResponse {
     private String jobId;
     private Long tripId;
     private String subscriptionTier;
+    /** Số kiện đã ghim lần chạy giữ nguyên (0 khi không giữ ghim). */
+    private Integer pinnedCount;
 }

@@ -562,6 +562,9 @@ public class WarehouseServiceImpl implements WarehouseService {
         newValues.put("status", "COMPLETED");
         newValues.put("tripStatus", trip.getStatus().name());
         newValues.put("completedAt", execution.getCompletedAt().toString());
+        if (trip.getDriver() != null) {
+            newValues.put("driverId", trip.getDriver().getId());
+        }
 
         AuditLog auditLog = AuditLog.builder()
                 .companyId(AuditCompany.ofTrip(trip))

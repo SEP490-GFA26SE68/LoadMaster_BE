@@ -8,11 +8,14 @@ import fu.se184491.loadmaster_be.dto.request.support.CreateSupportTicketRequest;
 import fu.se184491.loadmaster_be.dto.request.support.UpdateSupportTicketRequest;
 import fu.se184491.loadmaster_be.dto.response.support.SupportTicketResponse;
 import fu.se184491.loadmaster_be.entity.account.User;
+import fu.se184491.loadmaster_be.entity.common.AuditLog;
 import fu.se184491.loadmaster_be.entity.support.SupportTicket;
 import fu.se184491.loadmaster_be.exception.AppException;
 import fu.se184491.loadmaster_be.exception.ErrorCode;
 import fu.se184491.loadmaster_be.helpers.CurrentUserService;
 import fu.se184491.loadmaster_be.repository.account.UserRepository;
+import fu.se184491.loadmaster_be.repository.common.AuditLogRepository;
+import fu.se184491.loadmaster_be.service.audit.AuditCompany;
 import fu.se184491.loadmaster_be.repository.support.SupportTicketRepository;
 import fu.se184491.loadmaster_be.service.support.SupportTicketService;
 import lombok.RequiredArgsConstructor;
@@ -53,6 +56,7 @@ public class SupportTicketServiceImpl implements SupportTicketService {
     private final SupportTicketRepository supportTicketRepository;
     private final UserRepository userRepository;
     private final CurrentUserService currentUserService;
+    private final AuditLogRepository auditLogRepository;
 
     @Override
     @Transactional
@@ -150,7 +154,35 @@ public class SupportTicketServiceImpl implements SupportTicketService {
         if (request.resolutionNote() != null) {
             pruneCompanyChatHistoryToRecentDays(saved);
         }
+        auditUpdate(saved, request);
         return toResponse(saved);
+    }
+
+    /**
+     * Người khác (hỗ trợ khách hàng) cập nhật yêu cầu: ghi nhật ký thuộc công ty của người gửi, mang
+     * {@code requestedBy}, để chuông của người gửi nhận được. Người gửi tự cập nhật thì không ghi.
+     */
+    private void auditUpdate(SupportTicket ticket, UpdateSupportTicketRequest request) {
+        User actor = currentUserService.getCurrentUser();
+        User requester = ticket.getRequester();
+        if (actor == null || requester == null || requester.getId() == null
+                || requester.getId().equals(actor.getId())) {
+            return;
+        }
+        Map<String, Object> values = new LinkedHashMap<>();
+        values.put("requestedBy", requester.getId());
+        values.put("ticketCode", ticket.getTicketCode());
+        values.put("status", ticket.getStatus() == null ? null : ticket.getStatus().name());
+        values.put("replied", request.resolutionNote() != null);
+        auditLogRepository.save(AuditLog.builder()
+                .companyId(AuditCompany.ofAccount(requester))
+                .user(actor)
+                .actionType("SUPPORT_TICKET_UPDATED")
+                .entityName("SupportTicket")
+                .entityId(ticket.getId() == null ? null : ticket.getId().toString())
+                .newValues(values)
+                .createdAt(Instant.now())
+                .build());
     }
 
     @Override

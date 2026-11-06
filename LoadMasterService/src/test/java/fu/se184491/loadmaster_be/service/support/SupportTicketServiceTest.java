@@ -49,6 +49,9 @@ class SupportTicketServiceTest {
     @Mock
     private CurrentUserService currentUserService;
 
+    @Mock
+    private fu.se184491.loadmaster_be.repository.common.AuditLogRepository auditLogRepository;
+
     @InjectMocks
     private SupportTicketServiceImpl supportTicketService;
 
