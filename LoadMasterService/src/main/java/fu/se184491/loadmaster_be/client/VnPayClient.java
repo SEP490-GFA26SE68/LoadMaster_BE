@@ -29,8 +29,13 @@ public class VnPayClient {
     }
 
     public String createPaymentUrl(PaymentTransaction txn, String orderInfo, String ipAddress) {
+        String txnRef = txn.getGatewayTransactionId() != null ? txn.getGatewayTransactionId() : String.valueOf(txn.getId());
+        return createPaymentUrl(txnRef, txn.getAmountVnd(), orderInfo, ipAddress);
+    }
+
+    public String createPaymentUrl(String txnRef, BigDecimal amountVnd, String orderInfo, String ipAddress) {
         if (config.isMock()) {
-            return "/api/payment/mock-checkout?txnRef=" + txn.getGatewayTransactionId();
+            return "/api/payment/mock-checkout?txnRef=" + txnRef;
         }
 
         Map<String, String> vnpParams = new HashMap<>();
@@ -38,10 +43,10 @@ public class VnPayClient {
         vnpParams.put("vnp_Command", "pay");
         vnpParams.put("vnp_TmnCode", config.getTmnCode());
 
-        long amount = txn.getAmountVnd().multiply(BigDecimal.valueOf(100)).longValue();
+        long amount = amountVnd.multiply(BigDecimal.valueOf(100)).longValue();
         vnpParams.put("vnp_Amount", String.valueOf(amount));
         vnpParams.put("vnp_CurrCode", "VND");
-        vnpParams.put("vnp_TxnRef", txn.getGatewayTransactionId() != null ? txn.getGatewayTransactionId() : String.valueOf(txn.getId()));
+        vnpParams.put("vnp_TxnRef", txnRef);
         vnpParams.put("vnp_OrderInfo", orderInfo != null ? orderInfo : "LoadMaster Payment");
         vnpParams.put("vnp_OrderType", "other");
         vnpParams.put("vnp_Locale", "vn");
