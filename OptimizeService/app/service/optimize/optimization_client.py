@@ -15,6 +15,9 @@ from app.dto.optimization.engine.engine_response import (
 from app.service.auth.keycloak_token_provider import KeycloakTokenProvider
 
 
+
+from app.ml.lumo_scorer import get_lumo_scorer, uses_lumo
+
 from app.service.optimize.candidate_plans import (
     LayoutStrategy,
     axle_balance_target_x,
@@ -121,10 +124,15 @@ class OptimizationClient:
         """
         Nâng cấp S5b-04: Zone-aware 3D Packing Heuristic với Extreme Points (EP)
         và ConstraintEngine (Fragility, Stacking, Support Area, Rotation, COG, Axle Load).
+        Gói ULTIMATE (EP_DBLF_GA_AI): Lumo-R1.1 chọn ứng viên nếu load được trọng số; không thì heuristic.
+
         `strategy` chỉ đổi thứ tự xét kiện và cách chấm điểm chỗ đặt (xem LayoutStrategy);
         mọi ràng buộc cứng giữ nguyên.
         """
         start_time = time.time()
+        lumo = None
+        if uses_lumo(problem.algorithm_name):
+            lumo = get_lumo_scorer()
         vt = problem.vehicle
         placements: list[PlacementData] = []
         unplaced: list[UnplacedData] = []
@@ -288,6 +296,11 @@ class OptimizationClient:
 
 # HC-09: Khẩu độ cửa sau theo trục Y.
 # Cửa nằm giữa chiều rộng thùng xe.
+            door_w = float(vt.door_w) if vt.door_w else float(vt.inner_w)
+            door_y_min = (
+                float(vt.inner_w) - door_w
+             ) / 2.0
+
             # Xe chưa khai cửa: không có điểm mép cửa; ConstraintEngine (HC-10) trả
             # PACKAGE_CANNOT_PASS_DOOR cho từng kiện thay vì solver gãy ở float(None).
             door_y_min = (
@@ -405,6 +418,8 @@ class OptimizationClient:
                 # Thử tìm vị trí trong zone hiện tại
                 chosen_placement = None
                 last_violations: list[str] = []
+                best_candidate_score = float("inf")
+                valid_candidates: list[PlacementData] = []
                 best_candidate_score: Optional[tuple] = None
 
                 # Sắp xếp EP theo DBLF: x tăng dần (sâu), z tăng dần (dưới đáy), y tăng dần (trái)
@@ -458,6 +473,15 @@ class OptimizationClient:
                         violations = ConstraintEngine.check_all(candidate, context)
 
                         if not violations:
+                            valid_candidates.append(candidate)
+                            score = candidate_cog_score(candidate)
+
+                        # Ưu tiên placement trên sàn trước,
+                        # sau đó mới tối ưu COG.
+                            score += (float(pz) / float(vt.inner_h)) * 0.1
+
+                            if score < best_candidate_score:
+
                             if strategy == LayoutStrategy.DEEP_FIRST:
                                 # DBLF: thấp nhất, sâu nhất, sát vách trái.
                                 score = (float(pz), float(px), float(py))
@@ -470,12 +494,28 @@ class OptimizationClient:
                                 )
 
                             if best_candidate_score is None or score < best_candidate_score:
+
                                 best_candidate_score = score
                                 chosen_placement = candidate
                         else:
                             last_violations = [
                                 v.violation_code for v in violations
                             ]
+
+                if lumo is not None and valid_candidates:
+                    remaining = sum(1 for zone_pkgs in stops_dict.values() for _ in zone_pkgs) - len(placements)
+                    picked = lumo.pick(
+                        vt,
+                        packages_map,
+                        placements,
+                        valid_candidates,
+                        max(remaining - 1, 0),
+                        len(problem.packages),
+                        zone_start,
+                        zone_end,
+                    )
+                    if picked is not None:
+                        chosen_placement = valid_candidates[picked]
 
                 # Nếu không đặt được trong zone (zone đầy), thử fallback xếp ở vị trí khác trong xe
                 is_rehandling = False
