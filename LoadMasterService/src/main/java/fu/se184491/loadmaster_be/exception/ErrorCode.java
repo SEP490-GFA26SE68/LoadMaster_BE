@@ -229,6 +229,14 @@ public enum ErrorCode {
     INVALID_SEQUENCE_ORDER("Thứ tự bốc xếp không hợp lệ, vui lòng xử lý các kiện hàng trước", HttpStatus.BAD_REQUEST),
     INCOMPLETE_LOADING("Quá trình bốc xếp chưa hoàn tất", HttpStatus.BAD_REQUEST),
     TRIP_NOT_LOADING("Chuyến không ở trạng thái Đang xếp hàng", HttpStatus.CONFLICT),
+    STAGING_INCOMPLETE("Còn kiện chưa soạn hoặc báo thiếu chờ điều phối viên quyết, chưa xếp được", HttpStatus.CONFLICT),
+    PACKAGE_NOT_IN_LOADING_PLAN("Kiện không thuộc phương án đang xếp của chuyến", HttpStatus.NOT_FOUND),
+    PACKAGE_ALREADY_STAGED("Kiện đã được soạn vào khu chờ", HttpStatus.CONFLICT),
+    STAGING_SHORTAGE_NOT_FOUND("Không tìm thấy báo thiếu", HttpStatus.NOT_FOUND),
+    STAGING_SHORTAGE_NOT_OPEN("Báo thiếu này đã được xử lý", HttpStatus.CONFLICT),
+    LOADING_MANUAL_CONFIRM_PENDING("Còn xác nhận tay của kho chờ điều phối viên duyệt, chưa hoàn tất xếp được", HttpStatus.CONFLICT),
+    SEAL_INVALID("Số seal cần từ 1 đến 32 ký tự", HttpStatus.BAD_REQUEST),
+    SEAL_NOT_ALLOWED("Chỉ ghi được số seal khi đã xếp xong và xe chưa xuất phát", HttpStatus.CONFLICT),
 
     // -------------------------------------------------------------------------
     // Driver & Unloading errors

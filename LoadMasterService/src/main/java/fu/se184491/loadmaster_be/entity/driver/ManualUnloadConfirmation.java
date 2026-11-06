@@ -2,6 +2,8 @@ package fu.se184491.loadmaster_be.entity.driver;
 
 import fu.se184491.loadmaster_be.constant.driver.ManualConfirmReason;
 import fu.se184491.loadmaster_be.constant.driver.ManualConfirmStatus;
+import fu.se184491.loadmaster_be.constant.driver.ManualConfirmStep;
+import fu.se184491.loadmaster_be.entity.optimization.PackagePlacement;
 import fu.se184491.loadmaster_be.entity.account.User;
 import fu.se184491.loadmaster_be.entity.cargo.CargoPackage;
 import fu.se184491.loadmaster_be.entity.trip.DeliveryStop;
@@ -26,8 +28,9 @@ import lombok.Setter;
 import java.time.LocalDateTime;
 
 /**
- * Tài xế xác nhận tay một kiện khi dỡ vì nhãn không đọc được. Kiện được ghi đã dỡ ngay để làm tiếp; điều phối viên duyệt (kiện giữ
- * kết quả) hoặc từ chối kèm lý do (kiện về chưa dỡ). Còn xác nhận {@code PENDING} của điểm thì chưa hoàn tất điểm được.
+ * Xác nhận tay một kiện vì nhãn không đọc được: tài xế khi dỡ, hoặc kho khi soạn hàng / xếp ({@link #step}). Kiện được ghi đã dỡ / đã
+ * soạn / đã xếp ngay để làm tiếp; điều phối viên duyệt (kiện giữ kết quả) hoặc từ chối kèm lý do (kiện về chưa xử lý). Còn xác nhận
+ * {@code PENDING} của điểm thì chưa hoàn tất điểm được; của bước kho thì chưa xong xếp được. {@code delivery_stop_id} là điểm giao của kiện.
  */
 @Entity
 @Table(name = "manual_unload_confirmations")
@@ -82,4 +85,23 @@ public class ManualUnloadConfirmation {
     /** Lý do từ chối của điều phối viên. */
     @Column(name = "decision_note", columnDefinition = "TEXT")
     private String decisionNote;
+
+    /** Bước của xác nhận; null (bản ghi cũ) là bước dỡ. */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "step", length = 20)
+    private ManualConfirmStep step;
+
+    /** Vị trí kiện trong phương án, chỉ ở bước xếp. */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "placement_id")
+    private PackagePlacement placement;
+
+    /** Bước thật của xác nhận: bản ghi không có bước là bước dỡ. */
+    public ManualConfirmStep effectiveStep() {
+        return step != null ? step : ManualConfirmStep.UNLOADING;
+    }
+
+    public boolean isUnloadingStep() {
+        return effectiveStep() == ManualConfirmStep.UNLOADING;
+    }
 }

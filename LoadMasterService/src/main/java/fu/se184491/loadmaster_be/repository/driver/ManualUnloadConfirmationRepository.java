@@ -17,4 +17,7 @@ public interface ManualUnloadConfirmationRepository extends JpaRepository<Manual
     long countByDeliveryStopIdAndStatus(Long deliveryStopId, ManualConfirmStatus status);
 
     boolean existsByCargoPackageIdAndStatus(Long packageId, ManualConfirmStatus status);
+
+    /** Mọi xác nhận tay của chuyến (mọi bước), theo thứ tự gửi. */
+    List<ManualUnloadConfirmation> findByTripIdOrderByRequestedAtAsc(Long tripId);
 }

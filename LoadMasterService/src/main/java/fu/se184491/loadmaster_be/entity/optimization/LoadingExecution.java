@@ -36,4 +36,13 @@ public class LoadingExecution {
 
     @Column(name = "started_at") private LocalDateTime startedAt;
     @Column(name = "completed_at") private LocalDateTime completedAt;
+
+    /** Phiên có bước soạn hàng: chưa soạn đủ (hoặc còn báo thiếu chờ quyết) thì chưa xếp được. null là phiên không soạn hàng. */
+    @Column(name = "staging_required") private Boolean stagingRequired;
+
+    /** Lúc kho ghi số seal (sau khi xếp xong, trước khi tài xế xuất phát) và người ghi. */
+    @Column(name = "sealed_at") private LocalDateTime sealedAt;
+
+    @ManyToOne(fetch = FetchType.LAZY) @JoinColumn(name = "sealed_by")
+    private User sealedBy;
 }

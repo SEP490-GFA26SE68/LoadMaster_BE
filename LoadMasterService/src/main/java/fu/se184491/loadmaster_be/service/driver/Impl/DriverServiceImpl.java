@@ -151,7 +151,8 @@ public class DriverServiceImpl implements DriverService {
         }
         Map<Long, ManualUnloadConfirmation> manualById = new HashMap<>();
         for (ManualUnloadConfirmation manual : manualConfirmationRepository.findByDeliveryStopIdOrderByRequestedAtAsc(currentStop.getId())) {
-            if (manual.getCargoPackage() != null) {
+            // Xác nhận tay của kho (soạn, xếp) với cùng kiện không phải việc của điểm giao
+            if (manual.getCargoPackage() != null && manual.isUnloadingStep()) {
                 manualById.put(manual.getCargoPackage().getId(), manual);
             }
         }
