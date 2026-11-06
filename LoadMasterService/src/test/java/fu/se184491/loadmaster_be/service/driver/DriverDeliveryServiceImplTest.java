@@ -51,7 +51,11 @@ import fu.se184491.loadmaster_be.service.driver.Impl.DriverDeliveryServiceImpl;
 import fu.se184491.loadmaster_be.service.monitoring.EtaCalculationService;
 import fu.se184491.loadmaster_be.service.monitoring.TripLookupHelper;
 import fu.se184491.loadmaster_be.service.trip.TripPackageResolver;
+import fu.se184491.loadmaster_be.constant.driver.ManualConfirmStep;
+import fu.se184491.loadmaster_be.repository.warehouse.StagingConfirmationRepository;
 import org.junit.jupiter.api.BeforeEach;
+import fu.se184491.loadmaster_be.constant.warehouse.StagingMethod;
+import fu.se184491.loadmaster_be.service.warehouse.StagingRecorder;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
@@ -91,6 +95,8 @@ class DriverDeliveryServiceImplTest {
     @Mock private CargoPackageRepository cargoPackageRepository;
     @Mock private DeliveryIssueRepository deliveryIssueRepository;
     @Mock private ManualUnloadConfirmationRepository manualConfirmationRepository;
+    @Mock private StagingConfirmationRepository stagingConfirmationRepository;
+    @Mock private StagingRecorder stagingRecorder;
     @Mock private GpsTrackingRepository gpsTrackingRepository;
     @Mock private EtaCalculationService etaCalculationService;
     @Mock private AuditLogRepository auditLogRepository;
@@ -364,6 +370,21 @@ class DriverDeliveryServiceImplTest {
         assertEquals("APPROVED", response.getStatus());
         assertEquals("Điều phối B", response.getDecidedByName());
         assertEquals(ManualConfirmStatus.APPROVED, confirmation.getStatus());
+        verify(stagingRecorder, never()).record(any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void approvingAStagingConfirmationStagesThePackageUnderTheWorker() {
+        trip.setStatus(TripStatus.LOADING);
+        User dispatcher = User.builder().id(2L).fullName("Điều phối B").company(company).build();
+        when(currentUserService.getCurrentUser()).thenReturn(dispatcher);
+        CargoPackage pkg = CargoPackage.builder().id(1L).build();
+        ManualUnloadConfirmation confirmation = pendingConfirmation(pkg);
+        confirmation.setStep(ManualConfirmStep.STAGING);
+
+        service.approveManualConfirmation("10", 60L);
+
+        verify(stagingRecorder).record(trip, pkg, StagingMethod.MANUAL, driver, dispatcher);
     }
 
     @Test
@@ -382,6 +403,71 @@ class DriverDeliveryServiceImplTest {
         assertEquals(PackageStatus.LOADED, pkg.getStatus());
         assertEquals(ManualConfirmStatus.REJECTED, confirmation.getStatus());
         verify(unloadConfirmationRepository).delete(unload);
+    }
+
+    @Test
+    void rejectingAStagingConfirmationPutsThePackageBackToNotStaged() {
+        trip.setStatus(TripStatus.LOADING);
+        CargoPackage pkg = CargoPackage.builder().id(1L).status(PackageStatus.PLANNED).build();
+        ManualUnloadConfirmation confirmation = pendingConfirmation(pkg);
+        confirmation.setStep(ManualConfirmStep.STAGING);
+        RejectManualConfirmRequest request = new RejectManualConfirmRequest();
+        request.setReason("Không thấy kiện");
+
+        ManualConfirmationResponse response = service.rejectManualConfirmation("10", 60L, request);
+
+        assertEquals("STAGING", response.getStep());
+        verify(stagingConfirmationRepository).deleteByTripIdAndCargoPackageId(10L, 1L);
+        verify(unloadConfirmationRepository, never()).findByCargoPackageId(any());
+        assertEquals(PackageStatus.PLANNED, pkg.getStatus());
+    }
+
+    @Test
+    void rejectingALoadingConfirmationPutsThePlacementBackToNotLoaded() {
+        trip.setStatus(TripStatus.LOADING);
+        CargoPackage pkg = CargoPackage.builder().id(1L).status(PackageStatus.LOADED).build();
+        PackagePlacement placement = PackagePlacement.builder().id(71L).cargoPackage(pkg).build();
+        ManualUnloadConfirmation confirmation = pendingConfirmation(pkg);
+        confirmation.setStep(ManualConfirmStep.LOADING);
+        confirmation.setPlacement(placement);
+        PlacementConfirmation loaded = PlacementConfirmation.builder().id(80L).placement(placement).build();
+        when(placementConfirmationRepository.findByPlacementId(71L)).thenReturn(Optional.of(loaded));
+        RejectManualConfirmRequest request = new RejectManualConfirmRequest();
+        request.setReason("Xếp sai kiện");
+
+        ManualConfirmationResponse response = service.rejectManualConfirmation("10", 60L, request);
+
+        assertEquals("LOADING", response.getStep());
+        assertEquals(71L, response.getPlacementId());
+        verify(placementConfirmationRepository).delete(loaded);
+        assertEquals(PackageStatus.PLANNED, pkg.getStatus());
+    }
+
+    @Test
+    void warehouseConfirmationCannotBeDecidedOnceTheTripLeft() {
+        ManualUnloadConfirmation confirmation = pendingConfirmation(CargoPackage.builder().id(1L).build());
+        confirmation.setStep(ManualConfirmStep.LOADING);
+
+        AppException error = assertThrows(AppException.class, () -> service.approveManualConfirmation("10", 60L));
+
+        assertEquals(ErrorCode.MANUAL_CONFIRM_NOT_PENDING, error.getErrorCode());
+    }
+
+    @Test
+    void pendingListOfALoadingTripHoldsOnlyWarehouseConfirmations() {
+        trip.setStatus(TripStatus.LOADING);
+        ManualUnloadConfirmation staging = ManualUnloadConfirmation.builder().id(61L).trip(trip).deliveryStop(stop1)
+                .cargoPackage(CargoPackage.builder().id(1L).build()).status(ManualConfirmStatus.PENDING)
+                .step(ManualConfirmStep.STAGING).build();
+        ManualUnloadConfirmation unloading = ManualUnloadConfirmation.builder().id(62L).trip(trip).deliveryStop(stop1)
+                .cargoPackage(CargoPackage.builder().id(2L).build()).status(ManualConfirmStatus.PENDING).build();
+        when(manualConfirmationRepository.findByTripIdAndStatusOrderByRequestedAtAsc(10L, ManualConfirmStatus.PENDING))
+                .thenReturn(List.of(staging, unloading));
+
+        List<ManualConfirmationResponse> pending = service.listPendingManualConfirmations("10");
+
+        assertEquals(List.of(61L), pending.stream().map(ManualConfirmationResponse::getId).toList());
+        assertEquals("STAGING", pending.get(0).getStep());
     }
 
     @Test

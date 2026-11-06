@@ -169,8 +169,11 @@ class OptimizationClient:
             stops_dict[matched_stop_id].append(pkg)
 
         # Build stops input for StopZoneCalculator
+        # Điểm giao không còn kiện nào (kho bỏ kiện cuối của nó) không chiếm vùng nào trong thùng.
         stops_input = []
         for stop_id, pkgs in stops_dict.items():
+            if not pkgs:
+                continue
             stops_input.append({
                 "stop_id": stop_id,
                 "sequence": stop_seq_map.get(stop_id, 1),

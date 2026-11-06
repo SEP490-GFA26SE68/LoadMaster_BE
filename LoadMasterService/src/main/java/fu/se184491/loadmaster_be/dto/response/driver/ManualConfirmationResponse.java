@@ -8,7 +8,7 @@ import lombok.Setter;
 
 import java.time.LocalDateTime;
 
-/** Một xác nhận tay khi dỡ: kiện, điểm giao, người gửi, lý do, trạng thái duyệt. Mốc giờ: {@code LocalDateTime} giờ Việt Nam. */
+/** Một xác nhận tay (kho soạn, xếp hoặc tài xế dỡ): kiện, điểm giao, người gửi, lý do, trạng thái duyệt. Mốc giờ: {@code LocalDateTime} giờ Việt Nam. */
 @Getter
 @Setter
 @NoArgsConstructor
@@ -37,4 +37,8 @@ public class ManualConfirmationResponse {
     private String decidedByName;
     private LocalDateTime decidedAt;
     private String decisionNote;
+    /** Bước: {@code STAGING} (kho soạn hàng), {@code LOADING} (kho xếp) hoặc {@code UNLOADING} (tài xế dỡ). */
+    private String step;
+    /** Vị trí xếp của kiện, khi bước là {@code LOADING}. */
+    private Long placementId;
 }

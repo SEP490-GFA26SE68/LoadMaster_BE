@@ -40,6 +40,7 @@ import fu.se184491.loadmaster_be.repository.cargo.CargoPackageRepository;
 import fu.se184491.loadmaster_be.repository.common.AuditLogRepository;
 import fu.se184491.loadmaster_be.repository.driver.DeliveryIssueRepository;
 import fu.se184491.loadmaster_be.repository.driver.ManualUnloadConfirmationRepository;
+import fu.se184491.loadmaster_be.repository.warehouse.StagingConfirmationRepository;
 import fu.se184491.loadmaster_be.repository.driver.UnloadConfirmationRepository;
 import fu.se184491.loadmaster_be.repository.monitoring.GpsTrackingRepository;
 import fu.se184491.loadmaster_be.repository.optimization.PackagePlacementRepository;
@@ -54,6 +55,9 @@ import fu.se184491.loadmaster_be.service.monitoring.DeadlineStatusRule;
 import fu.se184491.loadmaster_be.service.monitoring.EtaCalculationService;
 import fu.se184491.loadmaster_be.service.monitoring.TripLookupHelper;
 import fu.se184491.loadmaster_be.service.trip.TripPackageResolver;
+import fu.se184491.loadmaster_be.constant.driver.ManualConfirmStep;
+import fu.se184491.loadmaster_be.constant.warehouse.StagingMethod;
+import fu.se184491.loadmaster_be.service.warehouse.StagingRecorder;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -96,6 +100,8 @@ public class DriverDeliveryServiceImpl implements DriverDeliveryService {
     private final CargoPackageRepository cargoPackageRepository;
     private final DeliveryIssueRepository deliveryIssueRepository;
     private final ManualUnloadConfirmationRepository manualConfirmationRepository;
+    private final StagingConfirmationRepository stagingConfirmationRepository;
+    private final StagingRecorder stagingRecorder;
     private final GpsTrackingRepository gpsTrackingRepository;
     private final EtaCalculationService etaCalculationService;
     private final AuditLogRepository auditLogRepository;
@@ -398,11 +404,14 @@ public class DriverDeliveryServiceImpl implements DriverDeliveryService {
     @Transactional(readOnly = true)
     public List<ManualConfirmationResponse> listPendingManualConfirmations(String tripIdOrCode) {
         Trip trip = tripLookupHelper.requireTrip(tripIdOrCode, currentUserService.getCurrentCompanyId());
-        if (trip.getStatus() != TripStatus.IN_TRANSIT) {
+        // Đang xếp hàng: xác nhận tay của kho (soạn, xếp); Đang vận chuyển: của tài xế (dỡ)
+        if (trip.getStatus() != TripStatus.IN_TRANSIT && trip.getStatus() != TripStatus.LOADING) {
             return List.of();
         }
         return manualConfirmationRepository.findByTripIdAndStatusOrderByRequestedAtAsc(trip.getId(), ManualConfirmStatus.PENDING)
-                .stream().map(DriverDeliveryServiceImpl::toResponse).toList();
+                .stream()
+                .filter(entry -> stepMatches(entry, trip))
+                .map(DriverDeliveryServiceImpl::toResponse).toList();
     }
 
     @Override
@@ -414,6 +423,11 @@ public class DriverDeliveryServiceImpl implements DriverDeliveryService {
         confirmation.setDecidedBy(dispatcher);
         confirmation.setDecidedAt(LocalDateTime.now());
         manualConfirmationRepository.save(confirmation);
+        // Xác nhận tay lúc soạn chỉ tính là đã soạn khi được duyệt: kiện vào khu chờ dưới tên người kho đã gửi.
+        if (confirmation.effectiveStep() == ManualConfirmStep.STAGING) {
+            stagingRecorder.record(confirmation.getTrip(), confirmation.getCargoPackage(), StagingMethod.MANUAL,
+                    confirmation.getRequestedBy(), dispatcher);
+        }
 
         Map<String, Object> values = new LinkedHashMap<>();
         values.put("packageId", confirmation.getCargoPackage().getId());
@@ -432,11 +446,29 @@ public class DriverDeliveryServiceImpl implements DriverDeliveryService {
         ManualUnloadConfirmation confirmation = pendingConfirmation(tripIdOrCode, confirmationId);
         User dispatcher = currentUserService.getCurrentUser();
         CargoPackage pkg = confirmation.getCargoPackage();
-        // Kiện về chưa dỡ: tài xế phải đối chiếu lại kiện này trước khi hoàn tất điểm
-        unloadConfirmationRepository.findByCargoPackageId(pkg.getId()).ifPresent(unloadConfirmationRepository::delete);
-        if (pkg.getStatus() == PackageStatus.DELIVERED) {
-            pkg.setStatus(PackageStatus.LOADED);
-            cargoPackageRepository.save(pkg);
+        switch (confirmation.effectiveStep()) {
+            // Kiện về chưa soạn: kho phải đối chiếu lại kiện này bằng nhãn
+            case STAGING -> stagingConfirmationRepository
+                    .deleteByTripIdAndCargoPackageId(confirmation.getTrip().getId(), pkg.getId());
+            // Vị trí về chưa xếp: kho phải đối chiếu lại kiện này rồi mới xếp tiếp
+            case LOADING -> {
+                if (confirmation.getPlacement() != null) {
+                    placementConfirmationRepository.findByPlacementId(confirmation.getPlacement().getId())
+                            .ifPresent(placementConfirmationRepository::delete);
+                }
+                if (pkg.getStatus() == PackageStatus.LOADED) {
+                    pkg.setStatus(PackageStatus.PLANNED);
+                    cargoPackageRepository.save(pkg);
+                }
+            }
+            // Kiện về chưa dỡ: tài xế phải đối chiếu lại kiện này trước khi hoàn tất điểm
+            case UNLOADING -> {
+                unloadConfirmationRepository.findByCargoPackageId(pkg.getId()).ifPresent(unloadConfirmationRepository::delete);
+                if (pkg.getStatus() == PackageStatus.DELIVERED) {
+                    pkg.setStatus(PackageStatus.LOADED);
+                    cargoPackageRepository.save(pkg);
+                }
+            }
         }
         confirmation.setStatus(ManualConfirmStatus.REJECTED);
         confirmation.setDecidedBy(dispatcher);
@@ -452,20 +484,31 @@ public class DriverDeliveryServiceImpl implements DriverDeliveryService {
         return toResponse(confirmation);
     }
 
-    /** Xác nhận tay còn chờ của một chuyến Đang vận chuyển thuộc công ty người đăng nhập. */
+    /**
+     * Xác nhận tay còn chờ của chuyến thuộc công ty người đăng nhập: của kho khi chuyến Đang xếp hàng, của tài xế khi chuyến Đang vận
+     * chuyển.
+     */
     private ManualUnloadConfirmation pendingConfirmation(String tripIdOrCode, Long confirmationId) {
         Trip trip = tripLookupHelper.requireTrip(tripIdOrCode, currentUserService.getCurrentCompanyId());
         ManualUnloadConfirmation confirmation = manualConfirmationRepository.findById(confirmationId)
                 .filter(found -> found.getTrip() != null && trip.getId().equals(found.getTrip().getId()))
                 .orElseThrow(() -> new AppException(ErrorCode.MANUAL_CONFIRM_NOT_FOUND));
-        if (confirmation.getStatus() != ManualConfirmStatus.PENDING || trip.getStatus() != TripStatus.IN_TRANSIT) {
+        if (confirmation.getStatus() != ManualConfirmStatus.PENDING || !stepMatches(confirmation, trip)) {
             throw new AppException(ErrorCode.MANUAL_CONFIRM_NOT_PENDING);
         }
         return confirmation;
     }
 
+    /** Bước của xác nhận tay khớp pha của chuyến: soạn, xếp lúc Đang xếp hàng; dỡ lúc Đang vận chuyển. */
+    private static boolean stepMatches(ManualUnloadConfirmation confirmation, Trip trip) {
+        return confirmation.isUnloadingStep()
+                ? trip.getStatus() == TripStatus.IN_TRANSIT
+                : trip.getStatus() == TripStatus.LOADING;
+    }
+
     private List<ManualUnloadConfirmation> pendingOf(DeliveryStop stop, CargoPackage pkg) {
         return manualConfirmationRepository.findByDeliveryStopIdOrderByRequestedAtAsc(stop.getId()).stream()
+                .filter(ManualUnloadConfirmation::isUnloadingStep)
                 .filter(entry -> entry.getStatus() == ManualConfirmStatus.PENDING)
                 .filter(entry -> entry.getCargoPackage() != null && pkg.getId().equals(entry.getCargoPackage().getId()))
                 .toList();
@@ -522,7 +565,7 @@ public class DriverDeliveryServiceImpl implements DriverDeliveryService {
                 .build());
     }
 
-    static ManualConfirmationResponse toResponse(ManualUnloadConfirmation confirmation) {
+    public static ManualConfirmationResponse toResponse(ManualUnloadConfirmation confirmation) {
         CargoPackage pkg = confirmation.getCargoPackage();
         DeliveryStop stop = confirmation.getDeliveryStop();
         Trip trip = confirmation.getTrip();
@@ -546,6 +589,8 @@ public class DriverDeliveryServiceImpl implements DriverDeliveryService {
                 .decidedByName(confirmation.getDecidedBy() != null ? confirmation.getDecidedBy().getFullName() : null)
                 .decidedAt(confirmation.getDecidedAt())
                 .decisionNote(confirmation.getDecisionNote())
+                .step(confirmation.effectiveStep().name())
+                .placementId(confirmation.getPlacement() != null ? confirmation.getPlacement().getId() : null)
                 .build();
     }
 

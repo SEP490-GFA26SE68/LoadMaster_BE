@@ -46,4 +46,18 @@ public class StartLoadingResponse {
     private LocalDateTime startedAt;
     private LocalDateTime completedAt;
     private List<PlacementStepResponse> placements;
+
+    /** Phiên có bước soạn hàng (bắt đầu với {@code staging: true}). */
+    private Boolean stagingRequired;
+    /** Mọi kiện đã soạn và không còn báo thiếu chờ quyết: xếp được. Phiên không soạn hàng luôn là true. */
+    private Boolean stagingComplete;
+    private Integer stagedCount;
+    private Integer openShortageCount;
+    /** Kiện hỏng bị bỏ lại kho. */
+    private Integer damagedCount;
+    /** Xác nhận tay của kho (soạn, xếp) còn chờ điều phối viên duyệt: còn thì chưa hoàn tất xếp được. */
+    private Integer pendingManualCount;
+    private String sealNumber;
+    private LocalDateTime sealedAt;
+    private String sealedByName;
 }

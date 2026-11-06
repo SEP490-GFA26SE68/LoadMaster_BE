@@ -12,7 +12,12 @@ import java.util.List;
 
 public interface WarehouseService {
 
-    List<WarehouseTaskResponse> getTasks(Long companyId, Long workerId);
+    default List<WarehouseTaskResponse> getTasks(Long companyId, Long workerId) {
+        return getTasks(companyId, workerId, false);
+    }
+
+    /** {@code includeAwaitingReplan}: thêm chuyến quay về lập kế hoạch vì kiện thiếu / hỏng (màn web; app di động không hỏi). */
+    List<WarehouseTaskResponse> getTasks(Long companyId, Long workerId, boolean includeAwaitingReplan);
 
     StartLoadingResponse startLoading(Long tripId, StartLoadingRequest request);
 

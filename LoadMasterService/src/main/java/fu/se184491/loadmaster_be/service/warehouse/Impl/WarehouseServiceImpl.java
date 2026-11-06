@@ -35,10 +35,12 @@ import fu.se184491.loadmaster_be.repository.optimization.PackagePlacementReposit
 import fu.se184491.loadmaster_be.repository.trip.DeliveryStopRepository;
 import fu.se184491.loadmaster_be.repository.trip.TripRepository;
 import fu.se184491.loadmaster_be.repository.warehouse.DeviationRepository;
+import fu.se184491.loadmaster_be.repository.warehouse.LoadingDamageRepository;
 import fu.se184491.loadmaster_be.repository.warehouse.LoadingExecutionRepository;
 import fu.se184491.loadmaster_be.repository.warehouse.PlacementConfirmationRepository;
 import fu.se184491.loadmaster_be.service.trip.TripPackageResolver;
 import fu.se184491.loadmaster_be.service.trip.TripStatusService;
+import fu.se184491.loadmaster_be.service.warehouse.WarehouseProgress;
 import fu.se184491.loadmaster_be.service.warehouse.WarehouseService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -74,15 +76,18 @@ public class WarehouseServiceImpl implements WarehouseService {
     private final TripStatusService tripStatusService;
     private final DeliveryStopRepository deliveryStopRepository;
     private final TripPackageResolver tripPackageResolver;
+    private final WarehouseProgress warehouseProgress;
+    private final LoadingDamageRepository loadingDamageRepository;
 
     /**
      * Nhiệm vụ của kho: chuyến Đã lập kế hoạch của công ty người đăng nhập, có phương án đã
      * duyệt và chưa bắt đầu xếp. {@code companyId}, {@code workerId} chỉ giữ cho client cũ:
-     * gửi khác người đăng nhập là bị từ chối.
+     * gửi khác người đăng nhập là bị từ chối. {@code includeAwaitingReplan} thêm chuyến có phiên xếp dừng vì kiện thiếu / hỏng mà điều phối
+     * viên chưa duyệt phương án mới ({@code awaitingReplan}: kho chỉ xem, không bắt đầu được).
      */
     @Override
     @Transactional(readOnly = true)
-    public List<WarehouseTaskResponse> getTasks(Long companyId, Long workerId) {
+    public List<WarehouseTaskResponse> getTasks(Long companyId, Long workerId, boolean includeAwaitingReplan) {
         User worker = currentUserService.getCurrentUser();
         Long targetCompanyId = companyOf(worker);
         if ((companyId != null && !companyId.equals(targetCompanyId))
@@ -98,6 +103,9 @@ public class WarehouseServiceImpl implements WarehouseService {
                     .findFirstByJobTripIdAndApprovedTrueOrderByIdDesc(trip.getId());
 
             if (approvedPlanOpt.isEmpty()) {
+                if (includeAwaitingReplan) {
+                    awaitingReplan(trip).ifPresent(tasks::add);
+                }
                 continue;
             }
 
@@ -145,8 +153,31 @@ public class WarehouseServiceImpl implements WarehouseService {
                     .build());
         }
 
+        // Bỏ yêu cầu giao vừa hết kiện đưa chuyến về Nháp: vẫn chờ điều phối viên tối ưu lại.
+        if (includeAwaitingReplan) {
+            for (Trip trip : tripRepository.findByCompanyIdAndStatus(targetCompanyId, TripStatus.DRAFT)) {
+                awaitingReplan(trip).ifPresent(tasks::add);
+            }
+        }
+
         log.info("Found {} warehouse tasks for companyId {}", tasks.size(), targetCompanyId);
         return tasks;
+    }
+
+    /** Chuyến chưa có phương án đã duyệt mà phiên xếp gần nhất dừng vì kiện thiếu / hỏng: chờ điều phối viên tối ưu lại. */
+    private Optional<WarehouseTaskResponse> awaitingReplan(Trip trip) {
+        return loadingExecutionRepository.findAllByLoadPlanJobTripId(trip.getId()).stream()
+                .max(java.util.Comparator.comparing(LoadingExecution::getId))
+                .filter(execution -> execution.getStatus() == LoadingExecutionStatus.ABORTED && execution.getAbortReason() != null)
+                .map(execution -> WarehouseTaskResponse.builder()
+                        .tripId(trip.getId())
+                        .tripCode(trip.getTripCode())
+                        .vehicleInfo(formatVehicleInfo(trip.getVehicle()))
+                        .departureTime(trip.getDepartureTime())
+                        .status(trip.getStatus() != null ? trip.getStatus().name() : null)
+                        .awaitingReplan(true)
+                        .replanReason(execution.getAbortReason().name())
+                        .build());
     }
 
     @Override
@@ -168,17 +199,21 @@ public class WarehouseServiceImpl implements WarehouseService {
                 .findFirstByJobTripIdAndApprovedTrueOrderByIdDesc(tripId)
                 .orElseThrow(() -> new AppException(ErrorCode.NO_APPROVED_LOAD_PLAN));
 
-        // Mỗi phương án chỉ có một phiên xếp (load_plan_id là duy nhất).
-        if (loadingExecutionRepository.findByLoadPlanId(approvedPlan.getId()).isPresent()) {
+        // Mỗi phương án chỉ có một phiên xếp (load_plan_id là duy nhất). Phiên đã dừng của chính phương án này được mở lại từ đầu.
+        Optional<LoadingExecution> existing = loadingExecutionRepository.findByLoadPlanId(approvedPlan.getId());
+        if (existing.isPresent() && existing.get().getStatus() != LoadingExecutionStatus.ABORTED) {
             throw new AppException(ErrorCode.TRIP_ALREADY_LOADING);
         }
-
-        LoadingExecution execution = LoadingExecution.builder()
+        boolean staging = request != null && Boolean.TRUE.equals(request.getStaging());
+        LoadingExecution execution = existing.isPresent()
+                ? reopen(existing.get(), worker, staging)
+                : LoadingExecution.builder()
                 .loadPlan(approvedPlan)
                 .worker(worker)
                 .status(LoadingExecutionStatus.IN_PROGRESS)
                 .startedAt(LocalDateTime.now())
                 .totalDeviations(0)
+                .stagingRequired(staging)
                 .build();
 
         execution = loadingExecutionRepository.save(execution);
@@ -188,6 +223,25 @@ public class WarehouseServiceImpl implements WarehouseService {
         log.info("Started loading execution {} for trip {} with {} placements",
                 execution.getId(), trip.getTripCode(), response.getTotalPackages());
         return response;
+    }
+
+    /** Phiên đã dừng của phương án đang duyệt bắt đầu lại từ đầu: bỏ các lần xác nhận vị trí, sai lệch, kiện hỏng của nó. */
+    private LoadingExecution reopen(LoadingExecution execution, User worker, boolean staging) {
+        Long planId = execution.getLoadPlan().getId();
+        placementConfirmationRepository.deleteAll(placementConfirmationRepository.findByPlacementLoadPlanId(planId));
+        loadingDamageRepository.deleteAll(loadingDamageRepository.findByPlacementLoadPlanId(planId));
+        deviationRepository.deleteAll(deviationRepository.findByPlacementLoadPlanId(planId));
+        execution.setWorker(worker);
+        execution.setStatus(LoadingExecutionStatus.IN_PROGRESS);
+        execution.setStartedAt(LocalDateTime.now());
+        execution.setCompletedAt(null);
+        execution.setTotalDeviations(0);
+        execution.setStagingRequired(staging);
+        execution.setSealNumber(null);
+        execution.setSealedAt(null);
+        execution.setSealedBy(null);
+        execution.setAbortReason(null);
+        return execution;
     }
 
     /**
@@ -222,13 +276,18 @@ public class WarehouseServiceImpl implements WarehouseService {
                 .filter(Objects::nonNull)
                 .collect(Collectors.toSet());
         Map<Long, DeliveryStop> stops = stopsByPackage(trip.getId());
+        WarehouseProgress.State state = warehouseProgress.of(trip.getId(), plan.getId());
 
         List<PlacementStepResponse> steps = new ArrayList<>();
         int confirmedCount = 0;
         int deviationCount = 0;
+        int damagedCount = 0;
         for (PackagePlacement placement : placements) {
             String status;
-            if (confirmed.contains(placement.getId())) {
+            if (state.leftOut().contains(placement.getId())) {
+                status = PlacementStepResponse.STATUS_DAMAGED;
+                damagedCount++;
+            } else if (confirmed.contains(placement.getId())) {
                 status = PlacementStepResponse.STATUS_CONFIRMED;
                 confirmedCount++;
             } else if (deviated.contains(placement.getId())) {
@@ -240,8 +299,11 @@ public class WarehouseServiceImpl implements WarehouseService {
             DeliveryStop stop = placement.getCargoPackage() != null
                     ? stops.get(placement.getCargoPackage().getId())
                     : null;
-            steps.add(mapToStepResponse(placement, stop != null ? stop : placement.getStopZone(), status));
+            PlacementStepResponse step = mapToStepResponse(placement, stop != null ? stop : placement.getStopZone(), status);
+            withProgress(step, placement, state);
+            steps.add(step);
         }
+        boolean stagingRequired = Boolean.TRUE.equals(execution.getStagingRequired());
 
         Vehicle vehicle = trip.getVehicle();
         VehicleType type = vehicle != null ? vehicle.getVehicleType() : null;
@@ -262,12 +324,40 @@ public class WarehouseServiceImpl implements WarehouseService {
                 .totalPackages(steps.size())
                 .confirmedCount(confirmedCount)
                 .deviationCount(deviationCount)
-                .pendingCount(steps.size() - confirmedCount - deviationCount)
+                .pendingCount(steps.size() - confirmedCount - deviationCount - damagedCount)
                 .status(execution.getStatus() != null ? execution.getStatus().name() : null)
                 .startedAt(execution.getStartedAt())
                 .completedAt(execution.getCompletedAt())
                 .placements(steps)
+                .stagingRequired(stagingRequired)
+                .stagingComplete(!stagingRequired || state.stagingComplete(placements))
+                .stagedCount(state.stagedCount(placements))
+                .openShortageCount(state.openShortages())
+                .damagedCount(damagedCount)
+                .pendingManualCount(state.pendingManual())
+                .sealNumber(execution.getSealNumber())
+                .sealedAt(execution.getSealedAt())
+                .sealedByName(execution.getSealedBy() != null ? execution.getSealedBy().getFullName() : null)
                 .build();
+    }
+
+    /** Soạn hàng, báo thiếu và xác nhận tay của kho với kiện của vị trí này. */
+    private static void withProgress(PlacementStepResponse step, PackagePlacement placement, WarehouseProgress.State state) {
+        Long packageId = placement.getCargoPackage() != null ? placement.getCargoPackage().getId() : null;
+        if (packageId == null) {
+            return;
+        }
+        var staged = state.stagedByPackage().get(packageId);
+        step.setStaged(staged != null);
+        step.setStagingMethod(staged != null && staged.getMethod() != null ? staged.getMethod().name() : null);
+        var shortage = state.shortageByPackage().get(packageId);
+        step.setShortageStatus(shortage != null && shortage.getStatus() != null ? shortage.getStatus().name() : null);
+        var manual = state.manualByPackage().get(packageId);
+        if (manual != null) {
+            step.setManualStatus(manual.getStatus() != null ? manual.getStatus().name() : null);
+            step.setManualStep(manual.effectiveStep().name());
+            step.setManualRejectReason(manual.getDecisionNote());
+        }
     }
 
     /** Điểm giao thật của từng kiện trong chuyến, đọc qua yêu cầu giao của từng điểm. */
@@ -294,19 +384,10 @@ public class WarehouseServiceImpl implements WarehouseService {
             throw new AppException(ErrorCode.PLACEMENT_ALREADY_CONFIRMED);
         }
 
-        // Verify sequence order: all placements with stepSequence < this placement's stepSequence must be handled
         List<PackagePlacement> allPlacements = packagePlacementRepository
                 .findByLoadPlanIdOrderByStepSequenceAsc(placement.getLoadPlan().getId());
-
-        for (PackagePlacement p : allPlacements) {
-            if (p.getStepSequence() < placement.getStepSequence()) {
-                boolean isHandled = placementConfirmationRepository.existsByPlacementId(p.getId())
-                        || deviationRepository.existsByPlacementId(p.getId());
-                if (!isHandled) {
-                    throw new AppException(ErrorCode.INVALID_SEQUENCE_ORDER);
-                }
-            }
-        }
+        requireStaged(placement, allPlacements);
+        requireInSequence(placement, allPlacements);
 
         PlacementConfirmation confirmation = PlacementConfirmation.builder()
                 .placement(placement)
@@ -359,6 +440,8 @@ public class WarehouseServiceImpl implements WarehouseService {
         if (deviationRepository.existsByPlacementId(placementId)) {
             throw new AppException(ErrorCode.DEVIATION_ALREADY_RECORDED);
         }
+        requireStaged(placement, packagePlacementRepository
+                .findByLoadPlanIdOrderByStepSequenceAsc(placement.getLoadPlan().getId()));
 
         Deviation deviation = Deviation.builder()
                 .placement(placement)
@@ -443,7 +526,12 @@ public class WarehouseServiceImpl implements WarehouseService {
         List<PackagePlacement> placements = packagePlacementRepository.findByLoadPlanId(approvedPlan.getId());
 
         List<Long> unhandledPlacementIds = new ArrayList<>();
+        List<PackagePlacement> loaded = new ArrayList<>();
         for (PackagePlacement p : placements) {
+            if (warehouseProgress.isLeftOut(p.getId())) {
+                continue;
+            }
+            loaded.add(p);
             boolean handled = placementConfirmationRepository.existsByPlacementId(p.getId())
                     || deviationRepository.existsByPlacementId(p.getId());
             if (!handled) {
@@ -455,11 +543,15 @@ public class WarehouseServiceImpl implements WarehouseService {
             throw new IncompleteLoadingException("Quá trình bốc xếp chưa hoàn tất, còn "
                     + unhandledPlacementIds.size() + " kiện hàng chưa được xác nhận hoặc ghi nhận sai lệch");
         }
+        WarehouseProgress.State state = warehouseProgress.of(tripId, approvedPlan.getId());
+        if (state != null && state.pendingManual() > 0) {
+            throw new AppException(ErrorCode.LOADING_MANUAL_CONFIRM_PENDING);
+        }
 
         execution.setStatus(LoadingExecutionStatus.COMPLETED);
         execution.setCompletedAt(LocalDateTime.now());
         loadingExecutionRepository.save(execution);
-        placements.forEach(this::markLoaded);
+        loaded.forEach(this::markLoaded);
 
         // Chuyến ở lại Đang xếp hàng (xếp xong — chờ xuất phát); tài xế bấm xuất phát mới sang
         // Đang vận chuyển (POST /api/driver/trips/{id}/start).
@@ -490,7 +582,7 @@ public class WarehouseServiceImpl implements WarehouseService {
                 .tripCode(trip.getTripCode())
                 .status(execution.getStatus().name())
                 .tripStatus(trip.getStatus().name())
-                .totalPackages(placements.size())
+                .totalPackages(loaded.size())
                 .totalDeviations(execution.getTotalDeviations() != null ? execution.getTotalDeviations() : 0)
                 .completedAt(execution.getCompletedAt())
                 .build();
@@ -499,11 +591,33 @@ public class WarehouseServiceImpl implements WarehouseService {
     private PlacementStepResponse findNextPlacement(List<PackagePlacement> allPlacements, Integer currentSequence) {
         return allPlacements.stream()
                 .filter(p -> p.getStepSequence() > currentSequence)
-                .filter(p -> !placementConfirmationRepository.existsByPlacementId(p.getId())
-                        && !deviationRepository.existsByPlacementId(p.getId()))
+                .filter(p -> !handled(p))
                 .findFirst()
                 .map(p -> mapToStepResponse(p, stopOf(p), PlacementStepResponse.STATUS_PENDING))
                 .orElse(null);
+    }
+
+    /** Vị trí đã xử lý: đã xác nhận, đã ghi sai lệch, hoặc là kiện hỏng bị bỏ lại kho. */
+    private boolean handled(PackagePlacement placement) {
+        return placementConfirmationRepository.existsByPlacementId(placement.getId())
+                || deviationRepository.existsByPlacementId(placement.getId())
+                || warehouseProgress.isLeftOut(placement.getId());
+    }
+
+    /** Mọi vị trí đứng trước vị trí này theo thứ tự xếp phải đã xử lý. */
+    private void requireInSequence(PackagePlacement placement, List<PackagePlacement> allPlacements) {
+        for (PackagePlacement p : allPlacements) {
+            if (p.getStepSequence() < placement.getStepSequence() && !handled(p)) {
+                throw new AppException(ErrorCode.INVALID_SEQUENCE_ORDER);
+            }
+        }
+    }
+
+    /** Phiên có bước soạn hàng: xếp chỉ sau khi soạn đủ. */
+    private void requireStaged(PackagePlacement placement, List<PackagePlacement> allPlacements) {
+        Trip trip = placement.getLoadPlan().getJob().getTrip();
+        loadingExecutionRepository.findByLoadPlanId(placement.getLoadPlan().getId())
+                .ifPresent(execution -> warehouseProgress.requireStagingComplete(execution, trip.getId(), allPlacements));
     }
 
     private DeliveryStop stopOf(PackagePlacement placement) {
