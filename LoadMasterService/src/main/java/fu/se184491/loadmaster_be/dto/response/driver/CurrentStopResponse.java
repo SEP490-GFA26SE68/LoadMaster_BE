@@ -6,6 +6,7 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.time.LocalDateTime;
 import java.util.List;
 
 @Data
@@ -32,6 +33,9 @@ public class CurrentStopResponse {
 
     @Schema(description = "Trạng thái điểm dừng")
     private String status;
+
+    @Schema(description = "Giờ đến thật của điểm (giờ Việt Nam, không múi giờ); null khi chưa báo đến")
+    private LocalDateTime actualArrival;
 
     @Schema(description = "Danh sách kiện hàng cần dỡ theo thứ tự khuyến nghị LIFO")
     private List<StopPackageResponse> packages;

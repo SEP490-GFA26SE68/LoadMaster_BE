@@ -215,6 +215,38 @@ class DriverServiceImplTest {
     }
 
     @Test
+    void currentStopCarriesArrivalCodesAndUnloadState() {
+        trip.setStatus(TripStatus.IN_TRANSIT);
+        LocalDateTime arrivedAt = LocalDateTime.of(2026, 11, 6, 9, 30);
+        LocalDateTime unloadedAt = LocalDateTime.of(2026, 11, 6, 9, 40);
+        DeliveryStop stop = DeliveryStop.builder().id(30L).trip(trip).stopSequence(1)
+                .status(DeliveryStopStatus.ARRIVED).actualArrival(arrivedAt).build();
+        CargoPackage done = CargoPackage.builder().id(1L).packageCode("SHIP-1").qrToken("qr-1")
+                .trackingBarcode("PK-1").status(PackageStatus.DELIVERED).build();
+        CargoPackage waiting = CargoPackage.builder().id(2L).packageCode("SHIP-2").qrToken("qr-2")
+                .trackingBarcode("PK-2").status(PackageStatus.LOADED).build();
+        when(deliveryStopRepository.findFirstByTripIdAndStatusNotOrderByStopSequenceAsc(10L, DeliveryStopStatus.COMPLETED))
+                .thenReturn(Optional.of(stop));
+        when(tripPackageResolver.packagesOfStop(30L)).thenReturn(List.of(done, waiting));
+        when(unloadConfirmationRepository.findByDeliveryStopId(30L)).thenReturn(List.of(
+                UnloadConfirmation.builder().id(40L).cargoPackage(done).deliveryStop(stop).unloadedAt(unloadedAt).build()));
+
+        var response = service.getCurrentStop(10L);
+
+        assertEquals(arrivedAt, response.getActualArrival());
+        assertEquals(2, response.getPackages().size());
+        var first = response.getPackages().get(0);
+        assertEquals("qr-1", first.getQrToken());
+        assertEquals("SHIP-1", first.getPackageCode());
+        assertEquals("PK-1", first.getTrackingBarcode());
+        assertTrue(first.getUnloaded());
+        assertEquals(unloadedAt, first.getUnloadedAt());
+        var second = response.getPackages().get(1);
+        assertFalse(second.getUnloaded());
+        assertEquals(null, second.getUnloadedAt());
+    }
+
+    @Test
     void arrivingTwiceIsRejected() {
         trip.setStatus(TripStatus.IN_TRANSIT);
         DeliveryStop stop = DeliveryStop.builder().id(30L).trip(trip).stopSequence(1)

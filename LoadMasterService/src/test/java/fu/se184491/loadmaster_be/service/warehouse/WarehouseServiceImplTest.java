@@ -40,6 +40,7 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.math.BigDecimal;
 import java.util.List;
 import java.util.Optional;
 
@@ -134,11 +135,14 @@ class WarehouseServiceImplTest {
         trip.setVehicle(Vehicle.builder().id(3L).licensePlate("51C-123.45")
                 .vehicleType(VehicleType.builder().name("Xe 8 tấn")
                         .innerLength(720).innerWidth(235).innerHeight(240)
-                        .doorWidth(230).doorHeight(230).build())
+                        .doorWidth(230).doorHeight(230).maxPayloadKg(new BigDecimal("8000")).build())
                 .build());
         CargoPackage first = CargoPackage.builder().id(1L).packageCode("DH-001-001")
-                .trackingBarcode("DH-001-001").qrToken("token-1").build();
-        CargoPackage second = CargoPackage.builder().id(2L).packageCode("DH-001-002").qrToken("token-2").build();
+                .trackingBarcode("DH-001-001").qrToken("token-1").actualWeightKg(new BigDecimal("12.5")).build();
+        CargoPackage second = CargoPackage.builder().id(2L).packageCode("DH-001-002").qrToken("token-2")
+                .packageType(fu.se184491.loadmaster_be.entity.cargo.PackageType.builder()
+                        .name("Thùng carton").weightKg(new BigDecimal("7")).build())
+                .build();
         CargoPackage third = CargoPackage.builder().id(3L).packageCode("DH-001-003").qrToken("token-3").build();
         PackagePlacement p1 = PackagePlacement.builder().id(71L).loadPlan(plan).cargoPackage(first).stepSequence(1).build();
         PackagePlacement p2 = PackagePlacement.builder().id(72L).loadPlan(plan).cargoPackage(second).stepSequence(2).build();
@@ -183,6 +187,10 @@ class WarehouseServiceImplTest {
         assertEquals(202L, steps.get(2).getStopId());
         assertEquals(2, steps.get(2).getStopSequence());
         assertEquals("Thủ Đức", steps.get(2).getStopName());
+        assertEquals(new BigDecimal("8000"), session.getMaxPayloadKg());
+        assertEquals(new BigDecimal("12.5"), steps.get(0).getWeightKg());
+        assertEquals(new BigDecimal("7"), steps.get(1).getWeightKg());
+        assertEquals(null, steps.get(2).getWeightKg());
     }
 
     @Test

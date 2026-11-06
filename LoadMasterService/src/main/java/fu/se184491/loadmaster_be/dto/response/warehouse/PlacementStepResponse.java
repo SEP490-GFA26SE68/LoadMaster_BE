@@ -6,6 +6,8 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
+import java.math.BigDecimal;
+
 /**
  * Một bước xếp của phiên xếp. Toạ độ và kích thước: cm, đã áp hướng xoay.
  *
@@ -38,6 +40,8 @@ public class PlacementStepResponse {
     private Integer packedWidth;
     private Integer packedHeight;
     private Integer rotation;
+    /** Khối lượng kiện (kg): khối lượng thực tế, không có thì khối lượng của loại kiện. */
+    private BigDecimal weightKg;
     private Integer sequence;
     private Long stopId;
     private Integer stopSequence;

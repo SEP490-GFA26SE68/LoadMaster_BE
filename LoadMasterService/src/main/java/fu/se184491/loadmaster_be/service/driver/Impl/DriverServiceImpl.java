@@ -49,6 +49,7 @@ import java.time.Instant;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -127,6 +128,13 @@ public class DriverServiceImpl implements DriverService {
         List<CargoPackage> stopPackages = tripPackageResolver.packagesOfStop(currentStop.getId());
         Set<Long> stopPackageIds = stopPackages.stream().map(CargoPackage::getId).collect(Collectors.toSet());
         List<StopPackageResponse> packageResponses = new ArrayList<>();
+        // Kiện đã dỡ ở điểm này: tải lại trang vẫn thấy kiện nào đã xong.
+        Map<Long, LocalDateTime> unloadedAtById = new HashMap<>();
+        for (UnloadConfirmation confirmation : unloadConfirmationRepository.findByDeliveryStopId(currentStop.getId())) {
+            if (confirmation.getCargoPackage() != null) {
+                unloadedAtById.put(confirmation.getCargoPackage().getId(), confirmation.getUnloadedAt());
+            }
+        }
 
         Optional<LoadPlan> approvedPlanOpt = loadPlanRepository
                 .findFirstByJobTripIdAndApprovedTrueOrderByIdDesc(trip.getId());
@@ -147,15 +155,8 @@ public class DriverServiceImpl implements DriverService {
 
             int order = 1;
             for (PackagePlacement placement : stopPlacements) {
-                CargoPackage pkg = placement.getCargoPackage();
-                packageResponses.add(StopPackageResponse.builder()
-                        .packageId(pkg != null ? pkg.getId() : null)
-                        .packageName(getPackageDisplayName(pkg))
-                        .trackingBarcode(pkg != null ? pkg.getTrackingBarcode() : null)
-                        .weight(pkg != null ? pkg.getActualWeightKg() : null)
-                        .stepSequence(placement.getStepSequence())
-                        .unloadOrder(order++)
-                        .build());
+                packageResponses.add(stopPackage(
+                        placement.getCargoPackage(), placement.getStepSequence(), order++, unloadedAtById));
             }
         }
 
@@ -163,14 +164,7 @@ public class DriverServiceImpl implements DriverService {
         if (packageResponses.isEmpty()) {
             int order = 1;
             for (CargoPackage pkg : stopPackages) {
-                packageResponses.add(StopPackageResponse.builder()
-                        .packageId(pkg.getId())
-                        .packageName(getPackageDisplayName(pkg))
-                        .trackingBarcode(pkg.getTrackingBarcode())
-                        .weight(pkg.getActualWeightKg())
-                        .stepSequence(null)
-                        .unloadOrder(order++)
-                        .build());
+                packageResponses.add(stopPackage(pkg, null, order++, unloadedAtById));
             }
         }
 
@@ -184,7 +178,27 @@ public class DriverServiceImpl implements DriverService {
                 .stopName(currentStop.getStopName())
                 .address(currentStop.getAddress())
                 .status(currentStop.getStatus() != null ? currentStop.getStatus().name() : null)
+                .actualArrival(currentStop.getActualArrival())
                 .packages(packageResponses)
+                .build();
+    }
+
+    private StopPackageResponse stopPackage(CargoPackage pkg, Integer stepSequence, int unloadOrder,
+                                            Map<Long, LocalDateTime> unloadedAtById) {
+        Long id = pkg != null ? pkg.getId() : null;
+        boolean unloaded = id != null
+                && (unloadedAtById.containsKey(id) || pkg.getStatus() == PackageStatus.DELIVERED);
+        return StopPackageResponse.builder()
+                .packageId(id)
+                .packageName(getPackageDisplayName(pkg))
+                .trackingBarcode(pkg != null ? pkg.getTrackingBarcode() : null)
+                .packageCode(pkg != null ? pkg.getPackageCode() : null)
+                .qrToken(pkg != null ? pkg.getQrToken() : null)
+                .weight(pkg != null ? pkg.getActualWeightKg() : null)
+                .stepSequence(stepSequence)
+                .unloadOrder(unloadOrder)
+                .unloaded(unloaded)
+                .unloadedAt(id != null ? unloadedAtById.get(id) : null)
                 .build();
     }
 
