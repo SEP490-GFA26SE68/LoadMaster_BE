@@ -6,6 +6,8 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
+import java.math.BigDecimal;
+
 /** Kiện không xếp được của phương án. {@code reason} là mã do dịch vụ tối ưu ghi. */
 @Getter
 @Setter
@@ -17,4 +19,9 @@ public class UnplacedPackageResponse {
     private String packageCode;
     private String trackingBarcode;
     private String reason;
+    /** Kích thước (cm) và khối lượng (kg) của kiện; null khi kiện không còn. */
+    private BigDecimal lengthCm;
+    private BigDecimal widthCm;
+    private BigDecimal heightCm;
+    private BigDecimal weightKg;
 }

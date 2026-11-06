@@ -51,6 +51,8 @@ public class LoadPlanReadRepository {
                    lp.is_approved, lp.approved_by, u.full_name AS approved_by_name,
                    lp.cog_x, lp.cog_y, lp.cog_z, lp.front_axle_load, lp.rear_axle_load,
                    lp.rehandling_count, lp.objective AS plan_objective, lp.candidate_label,
+                   COALESCE(lp.manually_edited, FALSE) AS manually_edited,
+                   COALESCE(lp.is_stale, FALSE) AS is_stale,
                    j.job_uuid, j.trip_id, j.status AS job_status, j.objective,
                    j.algorithm_name, j.computation_ms, t.company_id
             FROM load_plans lp
@@ -113,7 +115,8 @@ public class LoadPlanReadRepository {
                             .objective(rs.getString("objective"))
                             .timeLimitSec(nullableInt(rs, "time_limit_sec"))
                             .status(rs.getString("status"))
-                            .computationMs(nullableLong(rs, "computation_ms"))
+                            // Bản chỉnh tay không chạy bộ tối ưu: thời gian chạy của job không phải của nó.
+                .computationMs(rs.getBoolean("manually_edited") ? null : nullableLong(rs, "computation_ms"))
                             // Dịch vụ tối ưu ghi created_at theo giờ UTC (không múi giờ).
                             .createdAt(createdAt == null ? null : createdAt.toInstant())
                             .packedPlanCount(rs.getInt("packed_plans"))
@@ -172,7 +175,8 @@ public class LoadPlanReadRepository {
         }
         return jdbc.query("""
                         SELECT up.load_plan_id, up.package_id, p.package_code, p.tracking_barcode,
-                               up.rejection_reason
+                               up.rejection_reason, p.actual_length, p.actual_width,
+                               p.actual_height, p.actual_weight_kg
                         FROM unplaced_packages up
                         LEFT JOIN packages p ON p.id = up.package_id
                         WHERE up.load_plan_id IN (:ids)
@@ -184,6 +188,10 @@ public class LoadPlanReadRepository {
                         .packageCode(rs.getString("package_code"))
                         .trackingBarcode(rs.getString("tracking_barcode"))
                         .reason(rs.getString("rejection_reason"))
+                        .lengthCm(rs.getBigDecimal("actual_length"))
+                        .widthCm(rs.getBigDecimal("actual_width"))
+                        .heightCm(rs.getBigDecimal("actual_height"))
+                        .weightKg(rs.getBigDecimal("actual_weight_kg"))
                         .build()));
     }
 
@@ -214,6 +222,8 @@ public class LoadPlanReadRepository {
                 .frontAxleLoad(rs.getBigDecimal("front_axle_load"))
                 .rearAxleLoad(rs.getBigDecimal("rear_axle_load"))
                 .rehandlingCount(nullableInt(rs, "rehandling_count"))
+                .manuallyEdited(rs.getBoolean("manually_edited"))
+                .stale(rs.getBoolean("is_stale"))
                 .build();
     }
 

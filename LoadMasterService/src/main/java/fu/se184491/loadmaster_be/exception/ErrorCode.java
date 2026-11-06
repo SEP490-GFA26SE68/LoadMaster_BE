@@ -211,6 +211,12 @@ public enum ErrorCode {
     OPTIMIZATION_JOB_NOT_FOUND("Không tìm thấy yêu cầu tối ưu", HttpStatus.NOT_FOUND),
     OPTIMIZATION_SERVICE_UNAVAILABLE("Dịch vụ tối ưu xếp hàng không khả dụng", HttpStatus.SERVICE_UNAVAILABLE),
     INSUFFICIENT_CREDITS("Công ty không đủ credit để chạy tối ưu xếp hàng", HttpStatus.PAYMENT_REQUIRED),
+    PLAN_STALE("Phương án lỗi thời: hàng, xe hoặc điểm giao của chuyến đã đổi sau khi tối ưu", HttpStatus.CONFLICT),
+    MANUAL_EDIT_INVALID("Bản chỉnh tay không hợp lệ", HttpStatus.BAD_REQUEST),
+    MANUAL_EDIT_OUT_OF_BOUNDS("Có kiện nằm ngoài lòng thùng", HttpStatus.UNPROCESSABLE_ENTITY),
+    MANUAL_EDIT_OVERLAP("Có kiện chồng lấn kiện khác hoặc vật cản", HttpStatus.UNPROCESSABLE_ENTITY),
+    MANUAL_EDIT_UNSUPPORTED("Có kiện không đủ diện tích đỡ bên dưới", HttpStatus.UNPROCESSABLE_ENTITY),
+    MANUAL_EDIT_AXLE_OVERLOAD("Bản chỉnh làm tải trục vượt giới hạn", HttpStatus.UNPROCESSABLE_ENTITY),
 
     // -------------------------------------------------------------------------
     // Warehouse & Loading errors

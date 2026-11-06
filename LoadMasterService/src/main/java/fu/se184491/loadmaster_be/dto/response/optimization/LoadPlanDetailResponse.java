@@ -45,6 +45,10 @@ public class LoadPlanDetailResponse {
     private BigDecimal frontAxleLoad;
     private BigDecimal rearAxleLoad;
     private Integer rehandlingCount;
+    /** Bản duyệt dựng từ phương án đã chỉnh tay (dời / xoay kiện). */
+    private Boolean manuallyEdited;
+    /** Phương án lỗi thời: hàng, xe hoặc điểm giao của chuyến đã đổi sau khi tối ưu; không duyệt được. */
+    private Boolean stale;
     private List<PlacementDetailResponse> placements;
     private List<UnplacedPackageResponse> unplaced;
 }
