@@ -564,6 +564,7 @@ public class PackageServiceImpl implements PackageService {
         // Không cho sửa kiện đã xếp, đã giao hoặc đã hủy.
         if (cargoPackage.getStatus() == PackageStatus.LOADED
                 || cargoPackage.getStatus() == PackageStatus.DELIVERED
+                || cargoPackage.getStatus() == PackageStatus.RETURNED
                 || cargoPackage.getStatus() == PackageStatus.CANCELLED) {
             throw new IllegalStateException(
                     "Không thể chỉnh sửa kiện ở trạng thái hiện tại"
@@ -716,6 +717,7 @@ public class PackageServiceImpl implements PackageService {
 
         if (cargoPackage.getStatus() == PackageStatus.LOADED
                 || cargoPackage.getStatus() == PackageStatus.DELIVERED
+                || cargoPackage.getStatus() == PackageStatus.RETURNED
                 || cargoPackage.getStatus() == PackageStatus.CANCELLED) {
             throw new IllegalStateException(
                     "Không thể xóa kiện ở trạng thái hiện tại"

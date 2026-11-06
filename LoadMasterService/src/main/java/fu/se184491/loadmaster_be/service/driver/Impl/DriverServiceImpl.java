@@ -364,6 +364,10 @@ public class DriverServiceImpl implements DriverService {
         for (DeliveryIssue issue : returnedIssues) {
             issue.setReturned(Boolean.TRUE);
             deliveryIssueRepository.save(issue);
+            // Kiện ở lại xe, được chở về kho: hoàn trả
+            CargoPackage returned = issue.getCargoPackage();
+            returned.setStatus(PackageStatus.RETURNED);
+            cargoPackageRepository.save(returned);
         }
 
         if (stop.getActualArrival() == null) {
@@ -402,6 +406,8 @@ public class DriverServiceImpl implements DriverService {
             nextStopId = nextStop.getId();
             log.info("Next stop {} ({}) for trip {}", nextStop.getId(), nextStop.getStopName(), trip.getId());
         } else {
+            trip.setCompletedAt(LocalDateTime.now());
+            tripRepository.save(trip);
             tripStatus = tripStatusService.transitionTo(trip.getId(), TripStatus.DELIVERED, driver.getId()).getStatus();
             tripCompleted = true;
 
@@ -531,7 +537,23 @@ public class DriverServiceImpl implements DriverService {
                 .status(trip.getStatus() != null ? trip.getStatus().name() : null)
                 .loadingCompleted(loadingExecutionRepository
                         .existsByLoadPlanJobTripIdAndStatus(trip.getId(), LoadingExecutionStatus.COMPLETED))
+                .completedAt(completedAtOf(trip))
                 .build();
+    }
+
+    /** Giờ giao xong của chuyến đã giao; chuyến giao xong trước khi có cột completed_at thì lấy giờ đến muộn nhất của các điểm. */
+    private LocalDateTime completedAtOf(Trip trip) {
+        if (trip.getStatus() != TripStatus.DELIVERED) {
+            return null;
+        }
+        if (trip.getCompletedAt() != null) {
+            return trip.getCompletedAt();
+        }
+        return deliveryStopRepository.findByTripIdOrderByStopSequenceAsc(trip.getId()).stream()
+                .map(DeliveryStop::getActualArrival)
+                .filter(java.util.Objects::nonNull)
+                .max(LocalDateTime::compareTo)
+                .orElse(null);
     }
 
     private static boolean isPlacementForStop(PackagePlacement placement, Long stopId, Set<Long> stopPackageIds) {

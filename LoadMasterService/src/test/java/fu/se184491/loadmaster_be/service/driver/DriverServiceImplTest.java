@@ -185,6 +185,25 @@ class DriverServiceImplTest {
         assertTrue(response.getTripCompleted());
         assertEquals("DELIVERED", response.getTripStatus());
         assertEquals(DeliveryStopStatus.COMPLETED, stop.getStatus());
+        assertNotNull(trip.getCompletedAt());
+    }
+
+    @Test
+    void deliveredTripsCarryCompletionTime() {
+        LocalDateTime recorded = LocalDateTime.of(2026, 11, 6, 15, 30);
+        LocalDateTime lastArrival = LocalDateTime.of(2026, 11, 5, 16, 10);
+        Trip done = Trip.builder().id(12L).company(trip.getCompany()).driver(driver).status(TripStatus.DELIVERED).completedAt(recorded).build();
+        Trip older = Trip.builder().id(13L).company(trip.getCompany()).driver(driver).status(TripStatus.DELIVERED).build();
+        when(tripRepository.findByDriver_IdOrderByDepartureTimeDesc(8L)).thenReturn(List.of(trip, done, older));
+        when(deliveryStopRepository.findByTripIdOrderByStopSequenceAsc(13L)).thenReturn(List.of(
+                DeliveryStop.builder().id(40L).trip(older).stopSequence(1).actualArrival(lastArrival.minusHours(2)).build(),
+                DeliveryStop.builder().id(41L).trip(older).stopSequence(2).actualArrival(lastArrival).build()));
+
+        List<DriverTripResponse> trips = service.listTrips(null);
+
+        assertNull(trips.get(0).getCompletedAt());
+        assertEquals(recorded, trips.get(1).getCompletedAt());
+        assertEquals(lastArrival, trips.get(2).getCompletedAt());
     }
 
     @Test
@@ -355,6 +374,7 @@ class DriverServiceImplTest {
         assertEquals(1, response.getDeliveredCount());
         assertEquals(1, response.getReturnedCount());
         assertEquals(Boolean.TRUE, issue.getReturned());
+        assertEquals(PackageStatus.RETURNED, refused.getStatus());
         assertEquals(DeliveryStopStatus.COMPLETED, stop.getStatus());
         assertEquals(31L, response.getNextStopId());
     }

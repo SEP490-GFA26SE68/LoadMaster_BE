@@ -91,4 +91,8 @@ public class Trip {
 
     @Column(name = "created_at")
     private Instant createdAt;
+
+    /** Giờ tài xế hoàn tất điểm giao cuối (chuyến thành DELIVERED); chuyến chưa giao xong hoặc giao xong trước khi có cột này thì null. */
+    @Column(name = "completed_at")
+    private LocalDateTime completedAt;
 }
