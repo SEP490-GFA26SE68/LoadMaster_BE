@@ -25,12 +25,17 @@ public class PaymentCallbackHandler {
     private final VnPayClient vnPayClient;
     private final SubscriptionService subscriptionService;
     private final CreditService creditService;
+    private final fu.se184491.loadmaster_be.service.registration.GuestRegistrationService guestRegistrationService;
 
     @Transactional
     public Map<String, String> handleVnPayCallback(Map<String, String> params) {
         Map<String, String> response = new HashMap<>();
 
         String txnRef = params.get("vnp_TxnRef");
+        if (txnRef != null && txnRef.startsWith("REG_")) {
+            return guestRegistrationService.handlePaymentCallback(params);
+        }
+
         boolean isMock = (txnRef != null && txnRef.startsWith("MOCK_"))
                 || "true".equalsIgnoreCase(params.get("vnp_Mock"))
                 || vnPayClient.isMock();
