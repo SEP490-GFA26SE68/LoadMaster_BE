@@ -41,6 +41,20 @@ public interface TripRepository extends
 
     Page<Trip> findByCompanyId(Long companyId, Pageable pageable);
 
+    /** Chuyến của công ty có giờ xuất phát trong [start, end). */
+    @Query("""
+        SELECT t
+        FROM Trip t
+        WHERE t.company.id = :companyId
+          AND t.departureTime >= :start
+          AND t.departureTime < :end
+        """)
+    List<Trip> findDepartingBetween(
+            @Param("companyId") Long companyId,
+            @Param("start") java.time.LocalDateTime start,
+            @Param("end") java.time.LocalDateTime end
+    );
+
     /**
      * Khóa chuyến trong transaction khi gán yêu cầu giao.
      * Giúp các request gán cùng một chuyến được xử lý tuần tự.

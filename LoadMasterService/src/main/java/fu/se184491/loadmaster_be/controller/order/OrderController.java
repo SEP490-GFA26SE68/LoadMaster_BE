@@ -35,25 +35,25 @@ public class OrderController {
 
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
-    @PreAuthorize("hasAnyAuthority('ORDER_MANAGE', 'DISPATCHER')")
+    @PreAuthorize("hasRole('DISPATCHER')")
     public OrderResponse createOrder(@Valid @RequestBody OrderRequest request) {
         return orderService.createOrder(getCurrentCompanyId(), request);
     }
 
     @PutMapping("/{id}")
-    @PreAuthorize("hasAnyAuthority('ORDER_MANAGE', 'DISPATCHER')")
+    @PreAuthorize("hasRole('DISPATCHER')")
     public OrderResponse updateOrder(@PathVariable Long id, @Valid @RequestBody OrderRequest request) {
         return orderService.updateOrder(getCurrentCompanyId(), id, request);
     }
 
     @GetMapping("/{id}")
-    @PreAuthorize("hasAnyAuthority('ORDER_MANAGE', 'DISPATCHER')")
+    @PreAuthorize("hasRole('DISPATCHER')")
     public OrderResponse getOrderById(@PathVariable Long id) {
         return orderService.getOrderById(getCurrentCompanyId(), id);
     }
 
     @GetMapping
-    @PreAuthorize("hasAnyAuthority('ORDER_MANAGE', 'DISPATCHER')")
+    @PreAuthorize("hasRole('DISPATCHER')")
     public Page<OrderResponse> getAllOrders(
             @RequestParam(required = false) Long customerId,
             @RequestParam(required = false) Long deliveryStopId,

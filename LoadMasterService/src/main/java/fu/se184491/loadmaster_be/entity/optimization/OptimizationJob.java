@@ -42,4 +42,17 @@ public class OptimizationJob {
 
     @Column(name = "seed")
     private Integer seed;
+
+    // Dịch vụ tối ưu (Python) ghi bốn cột này khi tạo job. Java khai để ddl-auto tạo cột (cho phép null).
+    @Column(name = "company_id", length = 64)
+    private String companyId;
+
+    @Column(name = "subscription_tier", length = 50)
+    private String subscriptionTier;
+
+    @Column(name = "algorithm_tier", length = 50)
+    private String algorithmTier;
+
+    @Column(name = "created_at")
+    private java.time.LocalDateTime createdAt;
 }

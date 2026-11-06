@@ -5,11 +5,14 @@ import fu.se184491.loadmaster_be.constant.trip.TripStatus;
 import fu.se184491.loadmaster_be.dto.ApiResponse;
 import fu.se184491.loadmaster_be.dto.PageResponse;
 import fu.se184491.loadmaster_be.dto.request.trip.DriverResponse;
+import fu.se184491.loadmaster_be.dto.request.trip.CancelTripRequest;
 import fu.se184491.loadmaster_be.dto.request.trip.TripCreateRequest;
+import fu.se184491.loadmaster_be.dto.request.trip.TripUpdateRequest;
 import fu.se184491.loadmaster_be.dto.response.trip.TripDetailResponse;
 import fu.se184491.loadmaster_be.dto.response.trip.TripResponse;
 import fu.se184491.loadmaster_be.dto.response.trip.TripStopResponse;
 import fu.se184491.loadmaster_be.dto.response.trip.TripVehicleConfigResponse;
+import fu.se184491.loadmaster_be.service.trip.TripLifecycleService;
 import fu.se184491.loadmaster_be.service.trip.TripService;
 
 import jakarta.validation.Valid;
@@ -36,6 +39,7 @@ import java.util.Set;
 public class TripController {
 
     private final TripService tripService;
+    private final TripLifecycleService tripLifecycleService;
 
     /**
      * Tạo chuyến mới.
@@ -72,7 +76,7 @@ public class TripController {
     }
 
     @GetMapping
-    @PreAuthorize("hasAnyRole('DISPATCHER', 'WAREHOUSE_WORKER', 'ROLE_MANAGER')")
+    @PreAuthorize("hasAnyRole('DISPATCHER', 'WAREHOUSE_WORKER', 'MANAGER')")
     public ResponseEntity<PageResponse<TripResponse>> getTrips(
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size,
@@ -228,4 +232,54 @@ public class TripController {
     }
 
 
+    /**
+     * Sửa tên, giờ xuất phát, xe, tài xế, kho xuất phát của chuyến Nháp / Đã lập kế hoạch.
+     * Đổi giờ xuất phát hoặc kho xuất phát thì bỏ tuyến, chuyến về Nháp.
+     */
+    @PatchMapping("/{id}")
+    @PreAuthorize("hasRole('DISPATCHER')")
+    public ResponseEntity<ApiResponse<TripResponse>> updateTrip(
+            @PathVariable Long id,
+            @Valid @RequestBody TripUpdateRequest request
+    ) {
+        tripLifecycleService.updateTrip(id, request);
+        return ResponseEntity.ok(ApiResponse.success(
+                "Cập nhật chuyến thành công",
+                tripService.getTripById(id)
+        ));
+    }
+
+    /**
+     * Huỷ chuyến Nháp / Đã lập kế hoạch / Đang xếp hàng kèm lý do.
+     * Yêu cầu giao và kiện của chuyến về Chờ xử lý.
+     */
+    @PostMapping("/{id}/cancel")
+    @PreAuthorize("hasRole('DISPATCHER')")
+    public ResponseEntity<ApiResponse<TripResponse>> cancelTrip(
+            @PathVariable Long id,
+            @Valid @RequestBody CancelTripRequest request
+    ) {
+        tripLifecycleService.cancelTrip(id, request.reason());
+        return ResponseEntity.ok(ApiResponse.success(
+                "Huỷ chuyến thành công",
+                tripService.getTripById(id)
+        ));
+    }
+
+    /**
+     * Gỡ một yêu cầu giao khỏi chuyến Nháp / Đã lập kế hoạch: xoá điểm giao của nó,
+     * yêu cầu và kiện về Chờ xử lý, tuyến bị bỏ (chuyến về Nháp).
+     */
+    @DeleteMapping("/{tripId}/delivery-requirements/{requirementId}")
+    @PreAuthorize("hasRole('DISPATCHER')")
+    public ResponseEntity<ApiResponse<TripDetailResponse>> removeRequirementFromTrip(
+            @PathVariable Long tripId,
+            @PathVariable Long requirementId
+    ) {
+        tripLifecycleService.removeRequirementFromTrip(tripId, requirementId);
+        return ResponseEntity.ok(ApiResponse.success(
+                "Gỡ yêu cầu giao khỏi chuyến thành công",
+                tripService.getTripDetail(tripId)
+        ));
+    }
 }

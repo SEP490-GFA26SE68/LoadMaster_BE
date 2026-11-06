@@ -1,5 +1,6 @@
 package fu.se184491.loadmaster_be.service.optimization.Impl;
 
+import fu.se184491.loadmaster_be.service.audit.AuditCompany;
 import fu.se184491.loadmaster_be.constant.optimization.OptimizationAlgorithm;
 import fu.se184491.loadmaster_be.constant.optimization.OptimizationJobStatus;
 import fu.se184491.loadmaster_be.constant.optimization.OptimizationObjective;
@@ -18,6 +19,9 @@ import fu.se184491.loadmaster_be.entity.common.AuditLog;
 import fu.se184491.loadmaster_be.entity.optimization.LoadPlan;
 import fu.se184491.loadmaster_be.entity.optimization.OptimizationJob;
 import fu.se184491.loadmaster_be.entity.optimization.PackagePlacement;
+import fu.se184491.loadmaster_be.entity.trip.Trip;
+import fu.se184491.loadmaster_be.constant.trip.TripStatus;
+import fu.se184491.loadmaster_be.helpers.CurrentUserService;
 import fu.se184491.loadmaster_be.exception.AppException;
 import fu.se184491.loadmaster_be.exception.ErrorCode;
 import fu.se184491.loadmaster_be.repository.cargo.CargoPackageRepository;
@@ -52,12 +56,31 @@ public class LoadPlanServiceImpl implements LoadPlanService {
     private final UnplacedPackageRepository unplacedPackageRepository;
     private final OptimizationEngineClient optimizationEngineClient;
     private final fu.se184491.loadmaster_be.service.credit.CreditService creditService;
+    private final fu.se184491.loadmaster_be.repository.trip.DeliveryStopRepository deliveryStopRepository;
+    private final CurrentUserService currentUserService;
+
+    /**
+     * Phương án chỉ được ghim, bỏ ghim hay chạy lại khi nó thuộc công ty của người gọi và chuyến của
+     * nó còn Đã lập kế hoạch: từ lúc kho bắt đầu xếp, phương án đã chốt không đổi được nữa.
+     */
+    private LoadPlan editablePlan(Long loadPlanId) {
+        LoadPlan loadPlan = loadPlanRepository.findById(loadPlanId)
+                .orElseThrow(() -> new AppException(ErrorCode.LOAD_PLAN_NOT_FOUND));
+        Trip trip = loadPlan.getJob() != null ? loadPlan.getJob().getTrip() : null;
+        Long companyId = currentUserService.getCurrentCompanyId();
+        if (trip == null || trip.getCompany() == null || !Objects.equals(trip.getCompany().getId(), companyId)) {
+            throw new AppException(ErrorCode.LOAD_PLAN_NOT_FOUND);
+        }
+        if (trip.getStatus() != TripStatus.PLANNED) {
+            throw new AppException(ErrorCode.TRIP_LOCKED);
+        }
+        return loadPlan;
+    }
 
     @Override
     @Transactional
     public PackagePlacementResponse pinPlacement(Long loadPlanId, PinPlacementRequest request) {
-        LoadPlan loadPlan = loadPlanRepository.findById(loadPlanId)
-                .orElseThrow(() -> new AppException(ErrorCode.LOAD_PLAN_NOT_FOUND));
+        LoadPlan loadPlan = editablePlan(loadPlanId);
 
         PackagePlacement placement = packagePlacementRepository.findById(request.getPlacementId())
                 .orElseThrow(() -> new AppException(ErrorCode.PLACEMENT_NOT_FOUND));
@@ -68,7 +91,7 @@ public class LoadPlanServiceImpl implements LoadPlanService {
         placement.setPinned(true);
         PackagePlacement savedPlacement = packagePlacementRepository.save(placement);
 
-        saveAuditLog("PIN_PLACEMENT", savedPlacement.getId(), oldPinned, true);
+        saveAuditLog("PIN_PLACEMENT", loadPlan, savedPlacement.getId(), oldPinned, true);
         log.info("Pinned placement {} in load plan {}", savedPlacement.getId(), loadPlan.getId());
 
         return mapToResponse(savedPlacement);
@@ -77,8 +100,7 @@ public class LoadPlanServiceImpl implements LoadPlanService {
     @Override
     @Transactional
     public PackagePlacementResponse unpinPlacement(Long loadPlanId, Long placementId) {
-        LoadPlan loadPlan = loadPlanRepository.findById(loadPlanId)
-                .orElseThrow(() -> new AppException(ErrorCode.LOAD_PLAN_NOT_FOUND));
+        LoadPlan loadPlan = editablePlan(loadPlanId);
 
         PackagePlacement placement = packagePlacementRepository.findById(placementId)
                 .orElseThrow(() -> new AppException(ErrorCode.PLACEMENT_NOT_FOUND));
@@ -89,7 +111,7 @@ public class LoadPlanServiceImpl implements LoadPlanService {
         placement.setPinned(false);
         PackagePlacement savedPlacement = packagePlacementRepository.save(placement);
 
-        saveAuditLog("UNPIN_PLACEMENT", savedPlacement.getId(), oldPinned, false);
+        saveAuditLog("UNPIN_PLACEMENT", loadPlan, savedPlacement.getId(), oldPinned, false);
         log.info("Unpinned placement {} in load plan {}", savedPlacement.getId(), loadPlan.getId());
 
         return mapToResponse(savedPlacement);
@@ -98,8 +120,7 @@ public class LoadPlanServiceImpl implements LoadPlanService {
     @Override
     @Transactional
     public LoadPlanResponse rerunOptimization(Long loadPlanId, RerunOptimizationRequest request) {
-        LoadPlan currentPlan = loadPlanRepository.findById(loadPlanId)
-                .orElseThrow(() -> new AppException(ErrorCode.LOAD_PLAN_NOT_FOUND));
+        LoadPlan currentPlan = editablePlan(loadPlanId);
 
         // 1. Load pinned placements from current plan
         List<PackagePlacement> pinnedPlacements = packagePlacementRepository.findByLoadPlanIdAndPinnedTrue(loadPlanId);
@@ -210,9 +231,13 @@ public class LoadPlanServiceImpl implements LoadPlanService {
                 if (pDto.getPackageId() != null) {
                     pkg = cargoPackageRepository.findById(pDto.getPackageId()).orElse(null);
                 }
+                fu.se184491.loadmaster_be.entity.trip.DeliveryStop stopZone = pDto.getStopZoneId() != null
+                        ? deliveryStopRepository.findById(pDto.getStopZoneId()).orElse(null)
+                        : null;
                 PackagePlacement placement = PackagePlacement.builder()
                         .loadPlan(newPlan)
                         .cargoPackage(pkg)
+                        .stopZone(stopZone)
                         .posX(pDto.getPosX())
                         .posY(pDto.getPosY())
                         .posZ(pDto.getPosZ())
@@ -239,6 +264,7 @@ public class LoadPlanServiceImpl implements LoadPlanService {
 
         AuditLog auditLog = AuditLog.builder()
                 .actionType("RERUN_OPTIMIZATION")
+                .companyId(AuditCompany.ofJob(newJob))
                 .entityName("LoadPlan")
                 .entityId(String.valueOf(newPlan.getId()))
                 .oldValues(oldValues)
@@ -277,7 +303,7 @@ public class LoadPlanServiceImpl implements LoadPlanService {
         }
     }
 
-    private void saveAuditLog(String actionType, Long placementId, boolean oldPinned, boolean newPinned) {
+    private void saveAuditLog(String actionType, LoadPlan loadPlan, Long placementId, boolean oldPinned, boolean newPinned) {
         Map<String, Object> oldValues = new HashMap<>();
         oldValues.put("pinned", oldPinned);
 
@@ -286,6 +312,7 @@ public class LoadPlanServiceImpl implements LoadPlanService {
 
         AuditLog auditLog = AuditLog.builder()
                 .actionType(actionType)
+                .companyId(AuditCompany.ofPlan(loadPlan))
                 .entityName("PackagePlacement")
                 .entityId(String.valueOf(placementId))
                 .oldValues(oldValues)

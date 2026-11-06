@@ -32,4 +32,7 @@ public class DriverTripResponse {
 
     @Schema(description = "Trạng thái chuyến đi")
     private String status;
+
+    @Schema(description = "Kho đã xếp xong hàng (có phiên xếp COMPLETED): chuyến LOADING thì tài xế xuất phát được")
+    private Boolean loadingCompleted;
 }
