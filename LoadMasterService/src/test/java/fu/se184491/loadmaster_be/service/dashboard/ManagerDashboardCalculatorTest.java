@@ -156,4 +156,20 @@ class ManagerDashboardCalculatorTest {
         assertThat(latest.getFillPercent()).isEqualByComparingTo("75.00");
         assertThat(r.getRecentTrips().get(1).getFillPercent()).isNull();
     }
+
+    @Test
+    void recentTripLimitIsClampedBetweenOneAndFifty() {
+        List<TripFacts> trips = new ArrayList<>();
+        for (int i = 1; i <= 60; i++) {
+            trips.add(trip(i, LocalDateTime.of(2026, 11, 1, 0, 0).plusMinutes(i), TripStatus.PLANNED,
+                    1L, null, "0", 0, 0));
+        }
+
+        assertThat(ManagerDashboardCalculator.compute(FROM, TO, trips, List.of(), 30).getRecentTrips())
+                .hasSize(30);
+        assertThat(ManagerDashboardCalculator.compute(FROM, TO, trips, List.of(), 500).getRecentTrips())
+                .hasSize(50);
+        assertThat(ManagerDashboardCalculator.compute(FROM, TO, trips, List.of(), 0).getRecentTrips())
+                .hasSize(1);
+    }
 }

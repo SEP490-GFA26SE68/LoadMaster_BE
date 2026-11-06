@@ -5,10 +5,13 @@ import fu.se184491.loadmaster_be.constant.optimization.LoadingExecutionStatus;
 import fu.se184491.loadmaster_be.constant.planning.DeliveryRequirementStatus;
 import fu.se184491.loadmaster_be.constant.trip.DeliveryStopStatus;
 import fu.se184491.loadmaster_be.constant.trip.TripStatus;
+import fu.se184491.loadmaster_be.dto.response.driver.ArriveStopResponse;
 import fu.se184491.loadmaster_be.dto.response.driver.CompleteStopResponse;
 import fu.se184491.loadmaster_be.dto.response.driver.ConfirmUnloadResponse;
+import fu.se184491.loadmaster_be.dto.response.driver.DriverTripResponse;
 import fu.se184491.loadmaster_be.entity.account.User;
 import fu.se184491.loadmaster_be.entity.cargo.CargoPackage;
+import fu.se184491.loadmaster_be.entity.common.AuditLog;
 import fu.se184491.loadmaster_be.entity.company.Company;
 import fu.se184491.loadmaster_be.entity.driver.UnloadConfirmation;
 import fu.se184491.loadmaster_be.entity.planning.DeliveryRequirement;
@@ -33,14 +36,18 @@ import fu.se184491.loadmaster_be.service.trip.TripStatusService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
@@ -169,5 +176,82 @@ class DriverServiceImplTest {
         assertTrue(response.getTripCompleted());
         assertEquals("DELIVERED", response.getTripStatus());
         assertEquals(DeliveryStopStatus.COMPLETED, stop.getStatus());
+    }
+
+    @Test
+    void listTripsFlagsLoadingCompletedTrips() {
+        Trip waiting = Trip.builder().id(11L).company(trip.getCompany()).driver(driver).status(TripStatus.LOADING).build();
+        when(tripRepository.findByDriver_IdOrderByDepartureTimeDesc(8L)).thenReturn(List.of(trip, waiting));
+        when(loadingExecutionRepository.existsByLoadPlanJobTripIdAndStatus(10L, LoadingExecutionStatus.COMPLETED))
+                .thenReturn(true);
+        when(loadingExecutionRepository.existsByLoadPlanJobTripIdAndStatus(11L, LoadingExecutionStatus.COMPLETED))
+                .thenReturn(false);
+
+        List<DriverTripResponse> trips = service.listTrips(null);
+
+        assertEquals(2, trips.size());
+        assertEquals("LOADING", trips.get(0).getStatus());
+        assertTrue(trips.get(0).getLoadingCompleted());
+        assertFalse(trips.get(1).getLoadingCompleted());
+    }
+
+    @Test
+    void arrivingRecordsActualArrivalAndAuditLog() {
+        trip.setStatus(TripStatus.IN_TRANSIT);
+        DeliveryStop stop = DeliveryStop.builder().id(30L).trip(trip).stopSequence(1).stopName("Biên Hoà").build();
+        when(deliveryStopRepository.findById(30L)).thenReturn(Optional.of(stop));
+        when(deliveryStopRepository.findFirstByTripIdAndStatusNotOrderByStopSequenceAsc(10L, DeliveryStopStatus.COMPLETED))
+                .thenReturn(Optional.of(stop));
+
+        ArriveStopResponse response = service.arriveAtStop(30L);
+
+        assertEquals("ARRIVED", response.getStatus());
+        assertNotNull(response.getActualArrival());
+        assertEquals(DeliveryStopStatus.ARRIVED, stop.getStatus());
+        ArgumentCaptor<AuditLog> audit = ArgumentCaptor.forClass(AuditLog.class);
+        verify(auditLogRepository).save(audit.capture());
+        assertEquals("STOP_ARRIVED", audit.getValue().getActionType());
+        assertEquals(1L, audit.getValue().getCompanyId());
+    }
+
+    @Test
+    void arrivingTwiceIsRejected() {
+        trip.setStatus(TripStatus.IN_TRANSIT);
+        DeliveryStop stop = DeliveryStop.builder().id(30L).trip(trip).stopSequence(1)
+                .actualArrival(LocalDateTime.now()).status(DeliveryStopStatus.ARRIVED).build();
+        when(deliveryStopRepository.findById(30L)).thenReturn(Optional.of(stop));
+
+        AppException error = assertThrows(AppException.class, () -> service.arriveAtStop(30L));
+
+        assertEquals(ErrorCode.DELIVERY_STOP_ALREADY_ARRIVED, error.getErrorCode());
+        verify(auditLogRepository, never()).save(any());
+    }
+
+    @Test
+    void arrivingAtLaterStopIsRejected() {
+        trip.setStatus(TripStatus.IN_TRANSIT);
+        DeliveryStop current = DeliveryStop.builder().id(30L).trip(trip).stopSequence(1).build();
+        DeliveryStop later = DeliveryStop.builder().id(31L).trip(trip).stopSequence(2).build();
+        when(deliveryStopRepository.findById(31L)).thenReturn(Optional.of(later));
+        when(deliveryStopRepository.findFirstByTripIdAndStatusNotOrderByStopSequenceAsc(10L, DeliveryStopStatus.COMPLETED))
+                .thenReturn(Optional.of(current));
+
+        AppException error = assertThrows(AppException.class, () -> service.arriveAtStop(31L));
+
+        assertEquals(ErrorCode.DELIVERY_STOP_NOT_CURRENT, error.getErrorCode());
+    }
+
+    @Test
+    void arrivingAtCompletedStopOrBeforeDepartureIsRejected() {
+        DeliveryStop stop = DeliveryStop.builder().id(30L).trip(trip).stopSequence(1)
+                .status(DeliveryStopStatus.COMPLETED).build();
+        when(deliveryStopRepository.findById(30L)).thenReturn(Optional.of(stop));
+
+        AppException notInTransit = assertThrows(AppException.class, () -> service.arriveAtStop(30L));
+        assertEquals(ErrorCode.GPS_TRIP_NOT_IN_TRANSIT, notInTransit.getErrorCode());
+
+        trip.setStatus(TripStatus.IN_TRANSIT);
+        AppException completed = assertThrows(AppException.class, () -> service.arriveAtStop(30L));
+        assertEquals(ErrorCode.DELIVERY_STOP_ALREADY_COMPLETED, completed.getErrorCode());
     }
 }

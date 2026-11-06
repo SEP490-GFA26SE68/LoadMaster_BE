@@ -38,4 +38,17 @@ class GlobalExceptionHandlerAppExceptionTest {
         assertEquals("OTP_INCORRECT", response.getBody().getCode());
         assertEquals("Mã không đúng", response.getBody().getMessage());
     }
+
+    @Test
+    @DisplayName("Hoàn tất xếp khi còn kiện chưa xử lý: 400 kèm mã INCOMPLETE_LOADING")
+    void incompleteLoadingCarriesCode() {
+        ResponseEntity<ApiResponse<Void>> response = handler.handleIncompleteLoadingException(
+                new IncompleteLoadingException("Còn 2 kiện"),
+                new MockHttpServletRequest("POST", "/api/warehouse/tasks/1/complete"));
+
+        assertEquals(HttpStatus.BAD_REQUEST, response.getStatusCode());
+        assertFalse(response.getBody().isSuccess());
+        assertEquals("INCOMPLETE_LOADING", response.getBody().getCode());
+        assertEquals("Còn 2 kiện", response.getBody().getMessage());
+    }
 }

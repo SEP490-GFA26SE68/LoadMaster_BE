@@ -24,16 +24,20 @@ public class ManagerDashboardController {
     private final ManagerDashboardService managerDashboardService;
     private final CurrentUserService currentUserService;
 
-    /** {@code from} / {@code to}: ngày theo giờ Việt Nam (YYYY-MM-DD), khoảng đóng. */
+    /**
+     * {@code from} / {@code to}: ngày theo giờ Việt Nam (YYYY-MM-DD), khoảng đóng.
+     * {@code limit}: số chuyến của recentTrips, mặc định 10, tối đa 50.
+     */
     @GetMapping("/api/manager/dashboard")
     @PreAuthorize("hasAnyRole('MANAGER', 'DISPATCHER')")
     @Operation(summary = "Số liệu bảng điều khiển của công ty trong kỳ")
     public ResponseEntity<ApiResponse<ManagerDashboardResponse>> getDashboard(
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
-            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to,
+            @RequestParam(defaultValue = "10") int limit
     ) {
         ManagerDashboardResponse dashboard =
-                managerDashboardService.get(currentUserService.getCurrentCompanyId(), from, to);
+                managerDashboardService.get(currentUserService.getCurrentCompanyId(), from, to, limit);
         return ResponseEntity.ok(ApiResponse.success("Lấy số liệu bảng điều khiển thành công", dashboard));
     }
 }

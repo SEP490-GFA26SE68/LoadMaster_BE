@@ -43,6 +43,14 @@ public class WarehouseController {
         return ResponseEntity.ok(ApiResponse.success("Lấy danh sách nhiệm vụ bốc xếp thành công", tasks));
     }
 
+    @GetMapping("/tasks/{tripId}")
+    @Operation(summary = "Get loading session", description = "Reopen the loading session of a LOADING trip: placements in step order with CONFIRMED / DEVIATION / PENDING status")
+    public ResponseEntity<ApiResponse<StartLoadingResponse>> getSession(
+            @PathVariable("tripId") Long tripId) {
+        StartLoadingResponse response = warehouseService.getSession(tripId);
+        return ResponseEntity.ok(ApiResponse.success("Lấy phiên bốc xếp thành công", response));
+    }
+
     @PostMapping("/tasks/{tripId}/start")
     @Operation(summary = "Start loading", description = "Start loading execution for an approved trip and return placements ordered by step sequence")
     public ResponseEntity<ApiResponse<StartLoadingResponse>> startLoading(

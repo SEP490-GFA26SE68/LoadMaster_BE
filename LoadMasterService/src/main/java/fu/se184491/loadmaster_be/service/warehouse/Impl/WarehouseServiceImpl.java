@@ -18,8 +18,10 @@ import fu.se184491.loadmaster_be.entity.common.AuditLog;
 import fu.se184491.loadmaster_be.entity.optimization.LoadPlan;
 import fu.se184491.loadmaster_be.entity.optimization.LoadingExecution;
 import fu.se184491.loadmaster_be.entity.optimization.PackagePlacement;
+import fu.se184491.loadmaster_be.entity.trip.DeliveryStop;
 import fu.se184491.loadmaster_be.entity.trip.Trip;
 import fu.se184491.loadmaster_be.entity.vehicle.Vehicle;
+import fu.se184491.loadmaster_be.entity.vehicle.VehicleType;
 import fu.se184491.loadmaster_be.entity.warehouse.Deviation;
 import fu.se184491.loadmaster_be.entity.warehouse.PlacementConfirmation;
 import fu.se184491.loadmaster_be.exception.AppException;
@@ -30,10 +32,12 @@ import fu.se184491.loadmaster_be.repository.account.UserRepository;
 import fu.se184491.loadmaster_be.repository.common.AuditLogRepository;
 import fu.se184491.loadmaster_be.repository.optimization.LoadPlanRepository;
 import fu.se184491.loadmaster_be.repository.optimization.PackagePlacementRepository;
+import fu.se184491.loadmaster_be.repository.trip.DeliveryStopRepository;
 import fu.se184491.loadmaster_be.repository.trip.TripRepository;
 import fu.se184491.loadmaster_be.repository.warehouse.DeviationRepository;
 import fu.se184491.loadmaster_be.repository.warehouse.LoadingExecutionRepository;
 import fu.se184491.loadmaster_be.repository.warehouse.PlacementConfirmationRepository;
+import fu.se184491.loadmaster_be.service.trip.TripPackageResolver;
 import fu.se184491.loadmaster_be.service.trip.TripStatusService;
 import fu.se184491.loadmaster_be.service.warehouse.WarehouseService;
 import lombok.RequiredArgsConstructor;
@@ -47,7 +51,10 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -64,6 +71,8 @@ public class WarehouseServiceImpl implements WarehouseService {
     private final AuditLogRepository auditLogRepository;
     private final CurrentUserService currentUserService;
     private final TripStatusService tripStatusService;
+    private final DeliveryStopRepository deliveryStopRepository;
+    private final TripPackageResolver tripPackageResolver;
 
     /**
      * Nhiệm vụ của kho: chuyến Đã lập kế hoạch của công ty người đăng nhập, có phương án đã
@@ -112,6 +121,29 @@ public class WarehouseServiceImpl implements WarehouseService {
                     .build());
         }
 
+        // Chuyến Đang xếp hàng có phiên xếp: kho mở lại phiên bằng GET /api/warehouse/tasks/{tripId}.
+        for (Trip trip : tripRepository.findByCompanyIdAndStatus(targetCompanyId, TripStatus.LOADING)) {
+            Optional<LoadPlan> approvedPlanOpt = loadPlanRepository
+                    .findFirstByJobTripIdAndApprovedTrueOrderByIdDesc(trip.getId());
+            Optional<LoadingExecution> executionOpt = approvedPlanOpt
+                    .flatMap(plan -> loadingExecutionRepository.findByLoadPlanId(plan.getId()));
+            if (executionOpt.isEmpty()) {
+                continue;
+            }
+            LoadingExecution execution = executionOpt.get();
+            tasks.add(WarehouseTaskResponse.builder()
+                    .tripId(trip.getId())
+                    .tripCode(trip.getTripCode())
+                    .vehicleInfo(formatVehicleInfo(trip.getVehicle()))
+                    .totalPackages(approvedPlanOpt.get().getPackedItemsCount())
+                    .loadPlanId(approvedPlanOpt.get().getId())
+                    .departureTime(trip.getDepartureTime())
+                    .status(TripStatus.LOADING.name())
+                    .executionId(execution.getId())
+                    .executionStatus(execution.getStatus() != null ? execution.getStatus().name() : null)
+                    .build());
+        }
+
         log.info("Found {} warehouse tasks for companyId {}", tasks.size(), targetCompanyId);
         return tasks;
     }
@@ -151,26 +183,100 @@ public class WarehouseServiceImpl implements WarehouseService {
         execution = loadingExecutionRepository.save(execution);
         tripStatusService.transitionTo(tripId, TripStatus.LOADING, worker.getId());
 
-        List<PackagePlacement> placements = packagePlacementRepository
-                .findByLoadPlanIdOrderByStepSequenceAsc(approvedPlan.getId());
-
-        List<PlacementStepResponse> placementDtos = placements.stream()
-                .map(this::mapToStepResponse)
-                .toList();
-
+        StartLoadingResponse response = toSession(trip, approvedPlan, execution);
         log.info("Started loading execution {} for trip {} with {} placements",
-                execution.getId(), trip.getTripCode(), placementDtos.size());
+                execution.getId(), trip.getTripCode(), response.getTotalPackages());
+        return response;
+    }
 
+    /**
+     * Mở lại phiên xếp của chuyến Đang xếp hàng (đang dở hoặc đã xếp xong — chờ xuất phát), kèm
+     * trạng thái từng kiện để kho tiếp tục ở kiện chưa xử lý đầu tiên.
+     */
+    @Override
+    @Transactional(readOnly = true)
+    public StartLoadingResponse getSession(Long tripId) {
+        User worker = currentUserService.getCurrentUser();
+        Trip trip = requireCompanyTrip(tripId, worker);
+        if (trip.getStatus() != TripStatus.LOADING) {
+            throw new AppException(ErrorCode.TRIP_NOT_LOADING);
+        }
+        LoadPlan approvedPlan = loadPlanRepository
+                .findFirstByJobTripIdAndApprovedTrueOrderByIdDesc(tripId)
+                .orElseThrow(() -> new AppException(ErrorCode.LOADING_EXECUTION_NOT_FOUND));
+        LoadingExecution execution = loadingExecutionRepository.findByLoadPlanId(approvedPlan.getId())
+                .orElseThrow(() -> new AppException(ErrorCode.LOADING_EXECUTION_NOT_FOUND));
+        return toSession(trip, approvedPlan, execution);
+    }
+
+    private StartLoadingResponse toSession(Trip trip, LoadPlan plan, LoadingExecution execution) {
+        List<PackagePlacement> placements = packagePlacementRepository
+                .findByLoadPlanIdOrderByStepSequenceAsc(plan.getId());
+        Set<Long> confirmed = placementConfirmationRepository.findByPlacementLoadPlanId(plan.getId()).stream()
+                .map(confirmation -> confirmation.getPlacement() != null ? confirmation.getPlacement().getId() : null)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+        Set<Long> deviated = deviationRepository.findByPlacementLoadPlanId(plan.getId()).stream()
+                .map(deviation -> deviation.getPlacement() != null ? deviation.getPlacement().getId() : null)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+        Map<Long, DeliveryStop> stops = stopsByPackage(trip.getId());
+
+        List<PlacementStepResponse> steps = new ArrayList<>();
+        int confirmedCount = 0;
+        int deviationCount = 0;
+        for (PackagePlacement placement : placements) {
+            String status;
+            if (confirmed.contains(placement.getId())) {
+                status = PlacementStepResponse.STATUS_CONFIRMED;
+                confirmedCount++;
+            } else if (deviated.contains(placement.getId())) {
+                status = PlacementStepResponse.STATUS_DEVIATION;
+                deviationCount++;
+            } else {
+                status = PlacementStepResponse.STATUS_PENDING;
+            }
+            DeliveryStop stop = placement.getCargoPackage() != null
+                    ? stops.get(placement.getCargoPackage().getId())
+                    : null;
+            steps.add(mapToStepResponse(placement, stop != null ? stop : placement.getStopZone(), status));
+        }
+
+        Vehicle vehicle = trip.getVehicle();
+        VehicleType type = vehicle != null ? vehicle.getVehicleType() : null;
         return StartLoadingResponse.builder()
                 .executionId(execution.getId())
+                .loadPlanId(plan.getId())
                 .tripId(trip.getId())
                 .tripCode(trip.getTripCode())
-                .vehicleInfo(formatVehicleInfo(trip.getVehicle()))
-                .totalPackages(placementDtos.size())
-                .status(execution.getStatus().name())
+                .vehicleInfo(formatVehicleInfo(vehicle))
+                .licensePlate(vehicle != null ? vehicle.getLicensePlate() : null)
+                .vehicleTypeName(type != null ? type.getName() : null)
+                .innerLength(type != null ? type.getInnerLength() : null)
+                .innerWidth(type != null ? type.getInnerWidth() : null)
+                .innerHeight(type != null ? type.getInnerHeight() : null)
+                .doorWidth(type != null ? type.getDoorWidth() : null)
+                .doorHeight(type != null ? type.getDoorHeight() : null)
+                .totalPackages(steps.size())
+                .confirmedCount(confirmedCount)
+                .deviationCount(deviationCount)
+                .pendingCount(steps.size() - confirmedCount - deviationCount)
+                .status(execution.getStatus() != null ? execution.getStatus().name() : null)
                 .startedAt(execution.getStartedAt())
-                .placements(placementDtos)
+                .completedAt(execution.getCompletedAt())
+                .placements(steps)
                 .build();
+    }
+
+    /** Điểm giao thật của từng kiện trong chuyến, đọc qua yêu cầu giao của từng điểm. */
+    private Map<Long, DeliveryStop> stopsByPackage(Long tripId) {
+        Map<Long, DeliveryStop> byPackage = new HashMap<>();
+        for (DeliveryStop stop : deliveryStopRepository.findByTripIdOrderByStopSequenceAsc(tripId)) {
+            for (CargoPackage cargoPackage : tripPackageResolver.packagesOfStop(stop.getId())) {
+                byPackage.putIfAbsent(cargoPackage.getId(), stop);
+            }
+        }
+        return byPackage;
     }
 
     @Override
@@ -394,18 +500,32 @@ public class WarehouseServiceImpl implements WarehouseService {
                 .filter(p -> !placementConfirmationRepository.existsByPlacementId(p.getId())
                         && !deviationRepository.existsByPlacementId(p.getId()))
                 .findFirst()
-                .map(this::mapToStepResponse)
+                .map(p -> mapToStepResponse(p, stopOf(p), PlacementStepResponse.STATUS_PENDING))
                 .orElse(null);
     }
 
-    private PlacementStepResponse mapToStepResponse(PackagePlacement p) {
+    private DeliveryStop stopOf(PackagePlacement placement) {
+        if (placement.getCargoPackage() != null) {
+            Optional<DeliveryStop> stop = tripPackageResolver.stopOfPackage(placement.getCargoPackage());
+            if (stop.isPresent()) {
+                return stop.get();
+            }
+        }
+        return placement.getStopZone();
+    }
+
+    private PlacementStepResponse mapToStepResponse(PackagePlacement p, DeliveryStop stop, String status) {
         String packageName = null;
         String barcode = null;
+        String packageCode = null;
+        String qrToken = null;
         Long packageId = null;
 
         if (p.getCargoPackage() != null) {
             packageId = p.getCargoPackage().getId();
             barcode = p.getCargoPackage().getTrackingBarcode();
+            packageCode = p.getCargoPackage().getPackageCode();
+            qrToken = p.getCargoPackage().getQrToken();
             if (p.getCargoPackage().getPackageType() != null) {
                 packageName = p.getCargoPackage().getPackageType().getName();
             }
@@ -418,7 +538,9 @@ public class WarehouseServiceImpl implements WarehouseService {
                 .placementId(p.getId())
                 .packageId(packageId)
                 .packageName(packageName)
+                .packageCode(packageCode)
                 .trackingBarcode(barcode)
+                .qrToken(qrToken)
                 .posX(p.getPosX())
                 .posY(p.getPosY())
                 .posZ(p.getPosZ())
@@ -427,6 +549,10 @@ public class WarehouseServiceImpl implements WarehouseService {
                 .packedHeight(p.getPackedHeight())
                 .rotation(p.getRotationType())
                 .sequence(p.getStepSequence())
+                .stopId(stop != null ? stop.getId() : null)
+                .stopSequence(stop != null ? stop.getStopSequence() : null)
+                .stopName(stop != null ? stop.getStopName() : null)
+                .status(status)
                 .build();
     }
 
