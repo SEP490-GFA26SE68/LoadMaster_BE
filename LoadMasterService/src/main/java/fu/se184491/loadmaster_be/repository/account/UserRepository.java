@@ -5,6 +5,9 @@ import fu.se184491.loadmaster_be.constant.account.UserStatus;
 import fu.se184491.loadmaster_be.entity.account.User;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
+import org.springframework.data.jpa.repository.Modifying;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.time.LocalDateTime;
@@ -27,4 +30,8 @@ public interface UserRepository extends
     List<User> findByCompanyIdAndUserRoleTypeAndStatus(Long companyId, UserRole userRole, UserStatus userStatus);
 
     List<User> findByStatusAndUpdatedAtBefore(UserStatus status, LocalDateTime updatedAtCutoff);
+
+    @Modifying(flushAutomatically = true, clearAutomatically = true)
+    @Query(value = "UPDATE users SET keycloak_id = :keycloakId WHERE id = :id", nativeQuery = true)
+    int updateKeycloakId(@Param("id") Long id, @Param("keycloakId") String keycloakId);
 }

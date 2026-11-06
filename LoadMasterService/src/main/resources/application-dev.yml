@@ -11,6 +11,10 @@ app:
       full-name: ${DEV_ADMIN_FULL_NAME}
       # true: admin trong DB gắn với Keycloak khác thì gắn lại vào Keycloak đang nối (chỉ đổi keycloak_id, không xoá)
       relink: ${DEV_ADMIN_RELINK:false}
+    sync:
+      # true: bù user thiếu g    sender-email: ${BREVO_SENDER_EMAIL}ật khẩu chỉ có trên Keycloak)
+      enabled: ${DEV_USER_SYNC:true}
+      password: ${DEV_USER_SYNC_PASSWORD:${DEV_ADMIN_PASSWORD:Admin@12345}}
   brevo:
     api-key: ${BREVO_API_KEY}
     sender-email: ${BREVO_SENDER_EMAIL}

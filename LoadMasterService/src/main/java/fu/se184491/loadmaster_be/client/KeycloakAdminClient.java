@@ -9,6 +9,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 
 import java.net.URI;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
@@ -189,5 +190,62 @@ public class KeycloakAdminClient {
         }
 
         return users[0].id();
+    }
+
+    public List<KeycloakUserRepresentation> listUsers() {
+        String token = serviceTokenProvider.getKeycloakAdminToken();
+        List<KeycloakUserRepresentation> all = new ArrayList<>();
+        int first = 0;
+        int pageSize = 100;
+
+        while (true) {
+            int pageFirst = first;
+            KeycloakUserRepresentation[] batch =
+                    keycloakAdminRestClient
+                            .get()
+                            .uri(uriBuilder -> uriBuilder
+                                    .path("/admin/realms/{realm}/users")
+                                    .queryParam("first", pageFirst)
+                                    .queryParam("max", pageSize)
+                                    .build(REALM)
+                            )
+                            .headers(headers -> headers.setBearerAuth(token))
+                            .retrieve()
+                            .body(KeycloakUserRepresentation[].class);
+
+            if (batch == null || batch.length == 0) {
+                break;
+            }
+
+            all.addAll(List.of(batch));
+            if (batch.length < pageSize) {
+                break;
+            }
+            first += pageSize;
+        }
+
+        return all;
+    }
+
+    public List<KeycloakRoleRepresentation> listRealmRoles(String keycloakUserId) {
+        String token = serviceTokenProvider.getKeycloakAdminToken();
+
+        KeycloakRoleRepresentation[] roles =
+                keycloakAdminRestClient
+                        .get()
+                        .uri(
+                                "/admin/realms/{realm}/users/{userId}/role-mappings/realm",
+                                REALM,
+                                keycloakUserId
+                        )
+                        .headers(headers -> headers.setBearerAuth(token))
+                        .retrieve()
+                        .body(KeycloakRoleRepresentation[].class);
+
+        if (roles == null || roles.length == 0) {
+            return List.of();
+        }
+
+        return List.of(roles);
     }
 }
