@@ -217,6 +217,7 @@ public enum ErrorCode {
     MANUAL_EDIT_OVERLAP("Có kiện chồng lấn kiện khác hoặc vật cản", HttpStatus.UNPROCESSABLE_ENTITY),
     MANUAL_EDIT_UNSUPPORTED("Có kiện không đủ diện tích đỡ bên dưới", HttpStatus.UNPROCESSABLE_ENTITY),
     MANUAL_EDIT_AXLE_OVERLOAD("Bản chỉnh làm tải trục vượt giới hạn", HttpStatus.UNPROCESSABLE_ENTITY),
+    MANUAL_EDIT_ROTATION_NOT_ALLOWED("Loại kiện không cho xoay kiện theo hướng này", HttpStatus.UNPROCESSABLE_ENTITY),
 
     // -------------------------------------------------------------------------
     // Warehouse & Loading errors

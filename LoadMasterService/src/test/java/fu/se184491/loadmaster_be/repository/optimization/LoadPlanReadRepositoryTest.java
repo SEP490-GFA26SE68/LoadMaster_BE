@@ -118,4 +118,49 @@ class LoadPlanReadRepositoryTest {
         verify(jdbc).query(sql.capture(), eq(Map.of("id", 42L)), any(RowMapper.class));
         assertThat(sql.getValue()).contains("COALESCE(lp.packed_items_count, 0) > 0");
     }
+
+    /** Dòng kiện đã xếp giả: số đọc theo tên cột; loại kiện vắng thì cột package_type_id là NULL. */
+    private static ResultSet placementRow(Long typeId, boolean rotationAllowed, boolean x, boolean y, boolean z, int rotation)
+            throws SQLException {
+        ResultSet rs = mock(ResultSet.class);
+        String[] last = {""};
+        when(rs.getLong(anyString())).thenAnswer(call -> {
+            last[0] = call.getArgument(0);
+            return "package_type_id".equals(last[0]) ? (typeId == null ? 0L : typeId) : 1L;
+        });
+        when(rs.getInt(anyString())).thenAnswer(call -> {
+            last[0] = call.getArgument(0);
+            return "rotation_type".equals(last[0]) ? rotation : 1;
+        });
+        when(rs.wasNull()).thenAnswer(call -> typeId == null && "package_type_id".equals(last[0]));
+        when(rs.getBoolean("rotation_allowed")).thenReturn(rotationAllowed);
+        when(rs.getBoolean("allow_rotate_x")).thenReturn(x);
+        when(rs.getBoolean("allow_rotate_y")).thenReturn(y);
+        when(rs.getBoolean("allow_rotate_z")).thenReturn(z);
+        return rs;
+    }
+
+    @Test
+    void placementsCarryTheRotationsTheirPackageTypeAllows() throws SQLException {
+        rows(placementRow(3L, true, false, false, true, 0), placementRow(4L, false, true, true, true, 0),
+                placementRow(5L, true, true, true, true, 0));
+
+        List<LoadPlanReadRepository.PlacementRow> placements = repository.findPlacements(List.of(5L));
+
+        assertThat(placements.get(0).placement().getAllowedRotations()).containsExactly(0, 1);
+        assertThat(placements.get(1).placement().getAllowedRotations()).containsExactly(0);
+        assertThat(placements.get(2).placement().getAllowedRotations()).containsExactly(0, 1, 2, 3, 4, 5);
+        ArgumentCaptor<String> sql = ArgumentCaptor.forClass(String.class);
+        verify(jdbc).query(sql.capture(), anyMap(), any(RowMapper.class));
+        assertThat(sql.getValue()).contains("LEFT JOIN package_types pt ON pt.id = p.package_type_id");
+    }
+
+    @Test
+    void placementWithoutPackageTypeOnlyKeepsItsCurrentRotation() throws SQLException {
+        rows(placementRow(null, true, true, true, true, 1));
+
+        List<LoadPlanReadRepository.PlacementRow> placements = repository.findPlacements(List.of(5L));
+
+        assertThat(placements.get(0).placement().getAllowedRotations()).containsExactly(0, 1);
+    }
 }

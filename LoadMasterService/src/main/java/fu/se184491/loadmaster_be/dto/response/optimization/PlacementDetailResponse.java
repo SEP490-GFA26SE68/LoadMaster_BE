@@ -7,6 +7,7 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 
 import java.math.BigDecimal;
+import java.util.List;
 
 /**
  * Một kiện đã xếp của phương án, đủ cho khung 3D.
@@ -36,4 +37,9 @@ public class PlacementDetailResponse {
     private Long stopId;
     private String stopName;
     private Integer stopSequence;
+    /**
+     * Các mã hướng (0..5, như {@code rotationType}) kiện được nhận khi chỉnh tay, theo loại kiện như dịch vụ tối ưu đọc:
+     * không có loại kiện hoặc tắt xoay thì chỉ hướng gốc. Luôn gồm hướng đang xếp.
+     */
+    private List<Integer> allowedRotations;
 }

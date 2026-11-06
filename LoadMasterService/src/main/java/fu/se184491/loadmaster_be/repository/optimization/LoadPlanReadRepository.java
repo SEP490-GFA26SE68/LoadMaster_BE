@@ -4,6 +4,7 @@ import fu.se184491.loadmaster_be.dto.response.optimization.LoadPlanDetailRespons
 import fu.se184491.loadmaster_be.dto.response.optimization.OptimizationJobStatusResponse;
 import fu.se184491.loadmaster_be.dto.response.optimization.PlacementDetailResponse;
 import fu.se184491.loadmaster_be.dto.response.optimization.UnplacedPackageResponse;
+import fu.se184491.loadmaster_be.service.optimization.manual.ManualLayoutValidator;
 import lombok.RequiredArgsConstructor;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
@@ -17,6 +18,8 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
+import java.util.TreeSet;
 import java.util.TimeZone;
 
 /**
@@ -139,9 +142,12 @@ public class LoadPlanReadRepository {
                                p.actual_weight_kg, pp.pos_x, pp.pos_y, pp.pos_z,
                                pp.packed_length, pp.packed_width, pp.packed_height,
                                pp.rotation_type, pp.step_sequence, pp.pinned,
-                               pp.stop_zone_id, ds.stop_name, ds.stop_sequence
+                               pp.stop_zone_id, ds.stop_name, ds.stop_sequence,
+                               pt.id AS package_type_id, pt.rotation_allowed,
+                               pt.allow_rotate_x, pt.allow_rotate_y, pt.allow_rotate_z
                         FROM package_placements pp
                         LEFT JOIN packages p ON p.id = pp.package_id
+                        LEFT JOIN package_types pt ON pt.id = p.package_type_id
                         LEFT JOIN delivery_stops ds ON ds.id = pp.stop_zone_id
                         WHERE pp.load_plan_id IN (:ids)
                         ORDER BY pp.load_plan_id, pp.step_sequence, pp.id
@@ -165,7 +171,18 @@ public class LoadPlanReadRepository {
                         .stopId(nullableLong(rs, "stop_zone_id"))
                         .stopName(rs.getString("stop_name"))
                         .stopSequence(nullableInt(rs, "stop_sequence"))
+                        .allowedRotations(allowedRotations(rs))
                         .build()));
+    }
+
+    /** Hướng kiện được nhận khi chỉnh tay: như dịch vụ tối ưu đọc loại kiện (không có loại kiện thì không xoay), cộng hướng đang xếp. */
+    private static List<Integer> allowedRotations(ResultSet rs) throws SQLException {
+        boolean typed = nullableLong(rs, "package_type_id") != null;
+        Set<Integer> codes = new TreeSet<>(ManualLayoutValidator.allowedRotations(typed && rs.getBoolean("rotation_allowed"),
+                rs.getBoolean("allow_rotate_x"), rs.getBoolean("allow_rotate_y"), rs.getBoolean("allow_rotate_z")));
+        Integer current = nullableInt(rs, "rotation_type");
+        codes.add(current == null || current < 0 || current > 5 ? 0 : current);
+        return List.copyOf(codes);
     }
 
     public List<UnplacedRow> findUnplaced(Collection<Long> planIds) {
