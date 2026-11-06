@@ -102,6 +102,38 @@ class WarehouseProgressTest {
     }
 
     @Test
+    void loadingManualConfirmationOfAnAbortedPlanDoesNotLeakIntoTheNewSession() {
+        staged();
+        PackagePlacement oldPlacement = PackagePlacement.builder().id(61L).cargoPackage(first)
+                .loadPlan(LoadPlan.builder().id(40L).build()).build();
+        PackagePlacement newPlacement = PackagePlacement.builder().id(81L).cargoPackage(second)
+                .loadPlan(LoadPlan.builder().id(50L).build()).build();
+        when(manualConfirmationRepository.findByTripIdOrderByRequestedAtAsc(10L)).thenReturn(List.of(
+                ManualUnloadConfirmation.builder().cargoPackage(first).status(ManualConfirmStatus.REJECTED)
+                        .step(ManualConfirmStep.LOADING).placement(oldPlacement).build(),
+                ManualUnloadConfirmation.builder().cargoPackage(second).status(ManualConfirmStatus.PENDING)
+                        .step(ManualConfirmStep.LOADING).placement(newPlacement).build()));
+
+        WarehouseProgress.State state = progress.of(10L, 50L);
+
+        assertFalse(state.manualByPackage().containsKey(1L));
+        assertTrue(state.manualByPackage().containsKey(2L));
+    }
+
+    @Test
+    void pendingManualStagingIsNotStagedYet() {
+        staged(first);
+        when(manualConfirmationRepository.findByTripIdOrderByRequestedAtAsc(10L)).thenReturn(List.of(
+                ManualUnloadConfirmation.builder().cargoPackage(second).status(ManualConfirmStatus.PENDING)
+                        .step(ManualConfirmStep.STAGING).build()));
+
+        WarehouseProgress.State state = progress.of(10L, 50L);
+
+        assertFalse(state.stagingComplete(placements));
+        assertEquals(1, state.pendingManual());
+    }
+
+    @Test
     void sessionWithoutStagingStepIsNeverBlocked() {
         LoadingExecution execution = LoadingExecution.builder().loadPlan(LoadPlan.builder().id(50L).build()).build();
 

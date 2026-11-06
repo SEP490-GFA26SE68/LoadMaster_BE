@@ -228,7 +228,18 @@ public class TripLifecycleService {
         if (requirement.getTrip() == null || !tripId.equals(requirement.getTrip().getId())) {
             throw new AppException(ErrorCode.DELIVERY_REQUIREMENT_NOT_IN_TRIP);
         }
+        releaseRequirement(trip, requirement, actor, null);
+    }
 
+    /**
+     * Yêu cầu giao rời chuyến: xoá điểm giao của nó, đánh số lại các điểm còn lại, yêu cầu và kiện chờ xếp về Chờ xử lý, phương án lỗi
+     * thời, bỏ tuyến (chuyến về Nháp). Không kiểm quyền hay pha — nơi gọi kiểm. {@code reason} (tuỳ chọn) ghi vào nhật ký, ví dụ khi kho
+     * bỏ kiện cuối cùng của yêu cầu.
+     */
+    @Transactional
+    public void releaseRequirement(Trip trip, DeliveryRequirement requirement, User actor, String reason) {
+        Long tripId = trip.getId();
+        Long requirementId = requirement.getId();
         List<DeliveryStop> removedStops =
                 deliveryStopRepository.findByTripIdAndDeliveryRequirementId(tripId, requirementId);
         for (DeliveryStop stop : removedStops) {
@@ -252,11 +263,14 @@ public class TripLifecycleService {
         Map<String, Object> after = new HashMap<>();
         after.put("requirementId", requirementId);
         after.put("removedStops", removedStops.stream().map(DeliveryStop::getId).toList());
+        if (reason != null) {
+            after.put("reason", reason);
+        }
         audit("TRIP_REQUIREMENT_REMOVED", trip, actor, Map.of(), after);
         // Hàng của chuyến vừa bớt: phương án xếp đã có thành lỗi thời.
         loadPlanRepository.markStaleByTripId(tripId);
 
-        tripStatusService.invalidateRoute(trip, actor.getId());
+        tripStatusService.invalidateRoute(trip, actor != null ? actor.getId() : null);
     }
 
     /** Đánh số lại 1..n theo thứ tự hiện tại; hai lượt để không vướng khoá (trip_id, stop_sequence). */

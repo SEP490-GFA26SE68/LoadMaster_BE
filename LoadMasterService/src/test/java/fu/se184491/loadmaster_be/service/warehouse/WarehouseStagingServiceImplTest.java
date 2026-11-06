@@ -1,5 +1,6 @@
 package fu.se184491.loadmaster_be.service.warehouse;
 
+import fu.se184491.loadmaster_be.constant.cargo.PackageFlag;
 import fu.se184491.loadmaster_be.constant.driver.ManualConfirmReason;
 import fu.se184491.loadmaster_be.constant.driver.ManualConfirmStatus;
 import fu.se184491.loadmaster_be.constant.driver.ManualConfirmStep;
@@ -39,6 +40,7 @@ import fu.se184491.loadmaster_be.service.warehouse.Impl.WarehouseStagingServiceI
 import fu.se184491.loadmaster_be.service.warehouse.WarehouseSessionLookup.Session;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.InOrder;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
@@ -55,6 +57,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -74,6 +77,7 @@ class WarehouseStagingServiceImplTest {
     @Mock private TripPackageResolver tripPackageResolver;
     @Mock private CurrentUserService currentUserService;
     @Mock private LoadingReplanService loadingReplanService;
+    @Mock private StagingRecorder stagingRecorder;
 
     @InjectMocks
     private WarehouseStagingServiceImpl service;
@@ -104,12 +108,8 @@ class WarehouseStagingServiceImplTest {
     }
 
     @Test
-    void stagingRecordsThePackageAndClosesItsShortage() {
+    void stagingByLabelRecordsThePackageAndReplacesAPendingManualConfirmation() {
         when(stagingConfirmationRepository.findByTripIdAndCargoPackageId(10L, 1L)).thenReturn(Optional.empty());
-        when(stagingConfirmationRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
-        StagingShortage open = StagingShortage.builder().id(5L).trip(trip).cargoPackage(pkg).status(ShortageStatus.OPEN).build();
-        when(stagingShortageRepository.findFirstByTripIdAndCargoPackageIdAndStatus(10L, 1L, ShortageStatus.OPEN))
-                .thenReturn(Optional.of(open));
         StagePackageRequest request = new StagePackageRequest();
         request.setMethod(StagingMethod.CODE);
 
@@ -117,10 +117,9 @@ class WarehouseStagingServiceImplTest {
 
         assertFalse(response.isAlreadyStaged());
         assertEquals("CODE", response.getMethod());
-        assertEquals(ShortageStatus.FOUND, open.getStatus());
-        ArgumentCaptor<StagingConfirmation> saved = ArgumentCaptor.forClass(StagingConfirmation.class);
-        verify(stagingConfirmationRepository).save(saved.capture());
-        assertEquals(StagingMethod.CODE, saved.getValue().getMethod());
+        InOrder order = inOrder(stagingRecorder);
+        order.verify(stagingRecorder).dropPendingManual(10L, 1L);
+        order.verify(stagingRecorder).record(trip, pkg, StagingMethod.CODE, worker, worker);
     }
 
     @Test
@@ -140,10 +139,9 @@ class WarehouseStagingServiceImplTest {
     }
 
     @Test
-    void manualStagingCountsAsStagedAndWaitsForTheDispatcher() {
+    void manualStagingIsNotStagedUntilTheDispatcherApproves() {
         DeliveryStop stop = DeliveryStop.builder().id(30L).build();
         when(stagingConfirmationRepository.findByTripIdAndCargoPackageId(10L, 1L)).thenReturn(Optional.empty());
-        when(stagingConfirmationRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
         when(lookup.stopOf(placement)).thenReturn(stop);
         when(manualConfirmationRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
         ManualUnloadRequest request = new ManualUnloadRequest(ManualConfirmReason.LABEL_DAMAGED, null);
@@ -155,6 +153,9 @@ class WarehouseStagingServiceImplTest {
         assertEquals(ManualConfirmStep.STAGING, manual.getValue().getStep());
         assertEquals(ManualConfirmStatus.PENDING, manual.getValue().getStatus());
         assertEquals(stop, manual.getValue().getDeliveryStop());
+        verify(stagingRecorder).dropPendingManual(10L, 1L);
+        verify(stagingRecorder, never()).record(any(), any(), any(), any(), any());
+        verify(stagingConfirmationRepository, never()).save(any());
     }
 
     @Test
@@ -190,7 +191,7 @@ class WarehouseStagingServiceImplTest {
                 new ResolveShortageRequest(ShortageDecision.KEEP_SEARCHING));
 
         assertEquals("KEEP_SEARCHING", response.getStatus());
-        verify(loadingReplanService, never()).returnToPlanning(any(), any(), any(), any());
+        verify(loadingReplanService, never()).returnToPlanning(any(), any(), any(), any(), any());
     }
 
     @Test
@@ -204,7 +205,7 @@ class WarehouseStagingServiceImplTest {
         StagingShortageResponse response = service.resolveShortage("10", 5L, new ResolveShortageRequest(ShortageDecision.DROP));
 
         assertEquals("DROPPED", response.getStatus());
-        verify(loadingReplanService).returnToPlanning(trip, execution, pkg, null);
+        verify(loadingReplanService).returnToPlanning(trip, execution, pkg, PackageFlag.NOT_FOUND, null);
     }
 
     @Test

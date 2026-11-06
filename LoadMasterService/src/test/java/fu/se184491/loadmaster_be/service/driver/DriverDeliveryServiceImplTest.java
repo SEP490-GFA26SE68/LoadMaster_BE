@@ -54,6 +54,8 @@ import fu.se184491.loadmaster_be.service.trip.TripPackageResolver;
 import fu.se184491.loadmaster_be.constant.driver.ManualConfirmStep;
 import fu.se184491.loadmaster_be.repository.warehouse.StagingConfirmationRepository;
 import org.junit.jupiter.api.BeforeEach;
+import fu.se184491.loadmaster_be.constant.warehouse.StagingMethod;
+import fu.se184491.loadmaster_be.service.warehouse.StagingRecorder;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
@@ -94,6 +96,7 @@ class DriverDeliveryServiceImplTest {
     @Mock private DeliveryIssueRepository deliveryIssueRepository;
     @Mock private ManualUnloadConfirmationRepository manualConfirmationRepository;
     @Mock private StagingConfirmationRepository stagingConfirmationRepository;
+    @Mock private StagingRecorder stagingRecorder;
     @Mock private GpsTrackingRepository gpsTrackingRepository;
     @Mock private EtaCalculationService etaCalculationService;
     @Mock private AuditLogRepository auditLogRepository;
@@ -367,6 +370,21 @@ class DriverDeliveryServiceImplTest {
         assertEquals("APPROVED", response.getStatus());
         assertEquals("Điều phối B", response.getDecidedByName());
         assertEquals(ManualConfirmStatus.APPROVED, confirmation.getStatus());
+        verify(stagingRecorder, never()).record(any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void approvingAStagingConfirmationStagesThePackageUnderTheWorker() {
+        trip.setStatus(TripStatus.LOADING);
+        User dispatcher = User.builder().id(2L).fullName("Điều phối B").company(company).build();
+        when(currentUserService.getCurrentUser()).thenReturn(dispatcher);
+        CargoPackage pkg = CargoPackage.builder().id(1L).build();
+        ManualUnloadConfirmation confirmation = pendingConfirmation(pkg);
+        confirmation.setStep(ManualConfirmStep.STAGING);
+
+        service.approveManualConfirmation("10", 60L);
+
+        verify(stagingRecorder).record(trip, pkg, StagingMethod.MANUAL, driver, dispatcher);
     }
 
     @Test

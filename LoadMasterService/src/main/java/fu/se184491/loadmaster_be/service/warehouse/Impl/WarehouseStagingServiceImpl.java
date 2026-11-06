@@ -1,5 +1,6 @@
 package fu.se184491.loadmaster_be.service.warehouse.Impl;
 
+import fu.se184491.loadmaster_be.constant.cargo.PackageFlag;
 import fu.se184491.loadmaster_be.constant.driver.ManualConfirmReason;
 import fu.se184491.loadmaster_be.constant.driver.ManualConfirmStatus;
 import fu.se184491.loadmaster_be.constant.driver.ManualConfirmStep;
@@ -22,7 +23,6 @@ import fu.se184491.loadmaster_be.entity.optimization.LoadingExecution;
 import fu.se184491.loadmaster_be.entity.optimization.PackagePlacement;
 import fu.se184491.loadmaster_be.entity.trip.DeliveryStop;
 import fu.se184491.loadmaster_be.entity.trip.Trip;
-import fu.se184491.loadmaster_be.entity.warehouse.StagingConfirmation;
 import fu.se184491.loadmaster_be.entity.warehouse.StagingShortage;
 import fu.se184491.loadmaster_be.exception.AppException;
 import fu.se184491.loadmaster_be.exception.ErrorCode;
@@ -35,6 +35,7 @@ import fu.se184491.loadmaster_be.repository.warehouse.StagingShortageRepository;
 import fu.se184491.loadmaster_be.service.monitoring.TripLookupHelper;
 import fu.se184491.loadmaster_be.service.trip.TripPackageResolver;
 import fu.se184491.loadmaster_be.service.warehouse.LoadingReplanService;
+import fu.se184491.loadmaster_be.service.warehouse.StagingRecorder;
 import fu.se184491.loadmaster_be.service.warehouse.WarehouseProgress;
 import fu.se184491.loadmaster_be.service.warehouse.WarehouseSessionLookup;
 import fu.se184491.loadmaster_be.service.warehouse.WarehouseSessionLookup.Session;
@@ -65,6 +66,7 @@ public class WarehouseStagingServiceImpl implements WarehouseStagingService {
     private final TripPackageResolver tripPackageResolver;
     private final CurrentUserService currentUserService;
     private final LoadingReplanService loadingReplanService;
+    private final StagingRecorder stagingRecorder;
 
     @Override
     @Transactional
@@ -78,7 +80,8 @@ public class WarehouseStagingServiceImpl implements WarehouseStagingService {
         if (stagingConfirmationRepository.findByTripIdAndCargoPackageId(tripId, packageId).isPresent()) {
             return response(session, packageId, method, true);
         }
-        record(session, placement.getCargoPackage(), method);
+        stagingRecorder.dropPendingManual(tripId, packageId);
+        stagingRecorder.record(session.trip(), placement.getCargoPackage(), method, session.worker(), session.worker());
         log.info("Worker {} staged package {} for trip {} by {}", session.worker().getId(), packageId, tripId, method);
         return response(session, packageId, method, false);
     }
@@ -100,7 +103,8 @@ public class WarehouseStagingServiceImpl implements WarehouseStagingService {
             throw new AppException(ErrorCode.DELIVERY_STOP_NOT_FOUND);
         }
         CargoPackage pkg = placement.getCargoPackage();
-        record(session, pkg, StagingMethod.MANUAL);
+        // Xác nhận tay chỉ tính là đã soạn khi điều phối viên duyệt; gửi lại thì thay xác nhận tay đang chờ.
+        stagingRecorder.dropPendingManual(tripId, packageId);
         ManualUnloadConfirmation confirmation = manualConfirmationRepository.save(ManualUnloadConfirmation.builder()
                 .trip(session.trip())
                 .deliveryStop(stop)
@@ -185,7 +189,8 @@ public class WarehouseStagingServiceImpl implements WarehouseStagingService {
         } else {
             shortage.setStatus(ShortageStatus.DROPPED);
             stagingShortageRepository.save(shortage);
-            loadingReplanService.returnToPlanning(trip, activeExecution(trip), shortage.getCargoPackage(), dispatcher);
+            loadingReplanService.returnToPlanning(trip, activeExecution(trip), shortage.getCargoPackage(),
+                    PackageFlag.NOT_FOUND, dispatcher);
         }
         Map<String, Object> values = new LinkedHashMap<>();
         values.put("packageId", shortage.getCargoPackage() != null ? shortage.getCargoPackage().getId() : null);
@@ -201,32 +206,6 @@ public class WarehouseStagingServiceImpl implements WarehouseStagingService {
         return loadingExecutionRepository.findByLoadPlanId(plan.getId())
                 .filter(found -> found.getStatus() == LoadingExecutionStatus.IN_PROGRESS)
                 .orElseThrow(() -> new AppException(ErrorCode.STAGING_SHORTAGE_NOT_OPEN));
-    }
-
-    /** Ghi kiện vào khu chờ; báo thiếu còn hiệu lực của kiện thành đã tìm thấy. */
-    private void record(Session session, CargoPackage pkg, StagingMethod method) {
-        LocalDateTime now = LocalDateTime.now();
-        StagingConfirmation confirmation = stagingConfirmationRepository.save(StagingConfirmation.builder()
-                .trip(session.trip())
-                .cargoPackage(pkg)
-                .method(method)
-                .stagedBy(session.worker())
-                .stagedAt(now)
-                .build());
-        for (ShortageStatus status : List.of(ShortageStatus.OPEN, ShortageStatus.KEEP_SEARCHING)) {
-            stagingShortageRepository.findFirstByTripIdAndCargoPackageIdAndStatus(session.trip().getId(), pkg.getId(), status)
-                    .ifPresent(shortage -> {
-                        shortage.setStatus(ShortageStatus.FOUND);
-                        shortage.setResolvedBy(session.worker());
-                        shortage.setResolvedAt(now);
-                        stagingShortageRepository.save(shortage);
-                    });
-        }
-        Map<String, Object> values = new LinkedHashMap<>();
-        values.put("packageId", pkg.getId());
-        values.put("tripId", session.trip().getId());
-        values.put("method", method.name());
-        lookup.audit(session.trip(), session.worker(), "WAREHOUSE_STAGED", "StagingConfirmation", confirmation.getId(), values);
     }
 
     private StagingResponse response(Session session, Long packageId, StagingMethod method, boolean alreadyStaged) {

@@ -55,6 +55,9 @@ import fu.se184491.loadmaster_be.service.monitoring.DeadlineStatusRule;
 import fu.se184491.loadmaster_be.service.monitoring.EtaCalculationService;
 import fu.se184491.loadmaster_be.service.monitoring.TripLookupHelper;
 import fu.se184491.loadmaster_be.service.trip.TripPackageResolver;
+import fu.se184491.loadmaster_be.constant.driver.ManualConfirmStep;
+import fu.se184491.loadmaster_be.constant.warehouse.StagingMethod;
+import fu.se184491.loadmaster_be.service.warehouse.StagingRecorder;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -98,6 +101,7 @@ public class DriverDeliveryServiceImpl implements DriverDeliveryService {
     private final DeliveryIssueRepository deliveryIssueRepository;
     private final ManualUnloadConfirmationRepository manualConfirmationRepository;
     private final StagingConfirmationRepository stagingConfirmationRepository;
+    private final StagingRecorder stagingRecorder;
     private final GpsTrackingRepository gpsTrackingRepository;
     private final EtaCalculationService etaCalculationService;
     private final AuditLogRepository auditLogRepository;
@@ -419,6 +423,11 @@ public class DriverDeliveryServiceImpl implements DriverDeliveryService {
         confirmation.setDecidedBy(dispatcher);
         confirmation.setDecidedAt(LocalDateTime.now());
         manualConfirmationRepository.save(confirmation);
+        // Xác nhận tay lúc soạn chỉ tính là đã soạn khi được duyệt: kiện vào khu chờ dưới tên người kho đã gửi.
+        if (confirmation.effectiveStep() == ManualConfirmStep.STAGING) {
+            stagingRecorder.record(confirmation.getTrip(), confirmation.getCargoPackage(), StagingMethod.MANUAL,
+                    confirmation.getRequestedBy(), dispatcher);
+        }
 
         Map<String, Object> values = new LinkedHashMap<>();
         values.put("packageId", confirmation.getCargoPackage().getId());

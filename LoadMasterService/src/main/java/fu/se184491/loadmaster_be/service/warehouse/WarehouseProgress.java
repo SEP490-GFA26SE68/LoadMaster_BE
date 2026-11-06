@@ -1,6 +1,7 @@
 package fu.se184491.loadmaster_be.service.warehouse;
 
 import fu.se184491.loadmaster_be.constant.driver.ManualConfirmStatus;
+import fu.se184491.loadmaster_be.constant.driver.ManualConfirmStep;
 import fu.se184491.loadmaster_be.constant.warehouse.DamageOutcome;
 import fu.se184491.loadmaster_be.constant.warehouse.ShortageStatus;
 import fu.se184491.loadmaster_be.entity.driver.ManualUnloadConfirmation;
@@ -101,11 +102,23 @@ public class WarehouseProgress {
         }
         Map<Long, ManualUnloadConfirmation> manual = new HashMap<>();
         for (ManualUnloadConfirmation entry : manualConfirmationRepository.findByTripIdOrderByRequestedAtAsc(tripId)) {
-            if (!entry.isUnloadingStep() && entry.getCargoPackage() != null) {
+            if (!entry.isUnloadingStep() && entry.getCargoPackage() != null && ofPlan(entry, loadPlanId)) {
                 manual.put(entry.getCargoPackage().getId(), entry);
             }
         }
         return new State(staged, shortages, leftOut, manual);
+    }
+
+    /**
+     * Xác nhận tay bước xếp thuộc phiên của phương án đang xếp: phiên cũ đã dừng (chuyến quay về lập kế hoạch rồi duyệt phương án mới) để
+     * lại xác nhận tay đã quyết của chỗ xếp cũ, không được lẫn vào phiên mới.
+     */
+    private static boolean ofPlan(ManualUnloadConfirmation entry, Long loadPlanId) {
+        if (loadPlanId == null || entry.getStep() != ManualConfirmStep.LOADING || entry.getPlacement() == null
+                || entry.getPlacement().getLoadPlan() == null) {
+            return true;
+        }
+        return loadPlanId.equals(entry.getPlacement().getLoadPlan().getId());
     }
 
     /** Vị trí của kiện hỏng đã bị bỏ lại kho: tính là đã xử lý, kiện không lên xe. */

@@ -1,6 +1,8 @@
 package fu.se184491.loadmaster_be.service.warehouse;
 
+import fu.se184491.loadmaster_be.constant.cargo.PackageFlag;
 import fu.se184491.loadmaster_be.constant.cargo.PackageStatus;
+import fu.se184491.loadmaster_be.constant.warehouse.ExecutionAbortReason;
 import fu.se184491.loadmaster_be.constant.driver.ManualConfirmStatus;
 import fu.se184491.loadmaster_be.constant.optimization.LoadingExecutionStatus;
 import fu.se184491.loadmaster_be.constant.trip.TripStatus;
@@ -16,9 +18,13 @@ import fu.se184491.loadmaster_be.repository.optimization.LoadPlanRepository;
 import fu.se184491.loadmaster_be.repository.planning.DeliveryRequirementRepository;
 import fu.se184491.loadmaster_be.repository.warehouse.LoadingExecutionRepository;
 import fu.se184491.loadmaster_be.service.trip.TripPackageResolver;
+import fu.se184491.loadmaster_be.service.trip.TripLifecycleService;
 import fu.se184491.loadmaster_be.service.trip.TripStatusService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
+
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * Bỏ một kiện khỏi chuyến khi kho không xếp được nó: kiện rời yêu cầu giao của chuyến và về kho kiện ({@code PENDING}). Khi phương án không
@@ -36,24 +42,38 @@ public class LoadingReplanService {
     private final ManualUnloadConfirmationRepository manualConfirmationRepository;
     private final TripPackageResolver tripPackageResolver;
     private final TripStatusService tripStatusService;
+    private final TripLifecycleService tripLifecycleService;
 
-    /** Kiện rời chuyến (rời yêu cầu giao của chuyến) và về kho kiện. Phương án đang xếp không đổi. */
-    public void leaveOut(Trip trip, CargoPackage pkg) {
+    /**
+     * Kiện rời chuyến (rời yêu cầu giao của chuyến), về kho kiện mang cờ {@code flag} và nhớ yêu cầu đã giữ nó (yêu cầu đó đọc là giao
+     * thiếu). Phương án đang xếp không đổi. Trả các yêu cầu giao vừa hết kiện.
+     */
+    public List<DeliveryRequirement> leaveOut(Trip trip, CargoPackage pkg, PackageFlag flag) {
+        List<DeliveryRequirement> emptied = new ArrayList<>();
         for (DeliveryRequirement requirement : deliveryRequirementRepository.findByTripId(trip.getId())) {
             if (requirement.getPackages().removeIf(entry -> pkg.getId().equals(entry.getId()))) {
                 deliveryRequirementRepository.save(requirement);
+                pkg.setDroppedRequirementId(requirement.getId());
+                if (requirement.getPackages().isEmpty()) {
+                    emptied.add(requirement);
+                }
             }
         }
         pkg.setStatus(PackageStatus.PENDING);
+        pkg.setFlag(flag);
         cargoPackageRepository.save(pkg);
+        return emptied;
     }
 
-    /** Kiện rời chuyến (khi có) và chuyến Đang xếp hàng quay về Đã lập kế hoạch, chờ điều phối viên tối ưu lại. */
-    public void returnToPlanning(Trip trip, LoadingExecution execution, CargoPackage pkg, User actor) {
-        if (pkg != null) {
-            leaveOut(trip, pkg);
-        }
+    /**
+     * Kiện rời chuyến mang cờ {@code flag} và chuyến Đang xếp hàng quay về Đã lập kế hoạch, chờ điều phối viên tối ưu lại. Yêu cầu giao vừa
+     * hết kiện rời chuyến luôn (điểm giao của nó bị xoá, chuyến về Nháp) để lần tối ưu sau không nhận điểm giao không có kiện.
+     */
+    public void returnToPlanning(Trip trip, LoadingExecution execution, CargoPackage pkg, PackageFlag flag, User actor) {
+        List<DeliveryRequirement> emptied = pkg != null ? leaveOut(trip, pkg, flag) : List.of();
         execution.setStatus(LoadingExecutionStatus.ABORTED);
+        execution.setAbortReason(flag == PackageFlag.NOT_FOUND
+                ? ExecutionAbortReason.STAGING_SHORTAGE : ExecutionAbortReason.DAMAGED_PACKAGE);
         loadingExecutionRepository.save(execution);
         for (ManualUnloadConfirmation entry : manualConfirmationRepository.findByTripIdOrderByRequestedAtAsc(trip.getId())) {
             if (!entry.isUnloadingStep() && entry.getStatus() == ManualConfirmStatus.PENDING) {
@@ -68,5 +88,8 @@ public class LoadingReplanService {
         }
         loadPlanRepository.markStaleByTripId(trip.getId());
         tripStatusService.transitionTo(trip.getId(), TripStatus.PLANNED, actor != null ? actor.getId() : null);
+        for (DeliveryRequirement requirement : emptied) {
+            tripLifecycleService.releaseRequirement(trip, requirement, actor, "NO_PACKAGES_LEFT");
+        }
     }
 }

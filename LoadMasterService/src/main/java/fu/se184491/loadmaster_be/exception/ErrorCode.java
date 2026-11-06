@@ -237,6 +237,8 @@ public enum ErrorCode {
     LOADING_MANUAL_CONFIRM_PENDING("Còn xác nhận tay của kho chờ điều phối viên duyệt, chưa hoàn tất xếp được", HttpStatus.CONFLICT),
     SEAL_INVALID("Số seal cần từ 1 đến 32 ký tự", HttpStatus.BAD_REQUEST),
     SEAL_NOT_ALLOWED("Chỉ ghi được số seal khi đã xếp xong và xe chưa xuất phát", HttpStatus.CONFLICT),
+    PACKAGE_FLAGGED("Kiện đang mang cờ không tìm thấy / hư hỏng: gỡ cờ trước khi đưa vào chuyến", HttpStatus.CONFLICT),
+    PACKAGE_NOT_FLAGGED("Kiện không mang cờ nào", HttpStatus.CONFLICT),
 
     // -------------------------------------------------------------------------
     // Driver & Unloading errors

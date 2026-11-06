@@ -1,5 +1,6 @@
 package fu.se184491.loadmaster_be.service.warehouse;
 
+import fu.se184491.loadmaster_be.constant.cargo.PackageFlag;
 import fu.se184491.loadmaster_be.constant.cargo.PackageStatus;
 import fu.se184491.loadmaster_be.constant.driver.ManualConfirmReason;
 import fu.se184491.loadmaster_be.constant.driver.ManualConfirmStep;
@@ -111,8 +112,8 @@ class WarehouseIncidentServiceImplTest {
         assertEquals(0, response.getRestingCount());
         assertEquals("LOADING", response.getTripStatus());
         assertEquals(73L, response.getNextPlacement().getPlacementId());
-        verify(loadingReplanService).leaveOut(trip, bottomPkg);
-        verify(loadingReplanService, never()).returnToPlanning(any(), any(), any(), any());
+        verify(loadingReplanService).leaveOut(trip, bottomPkg, PackageFlag.DAMAGED);
+        verify(loadingReplanService, never()).returnToPlanning(any(), any(), any(), any(), any());
     }
 
     @Test
@@ -127,7 +128,7 @@ class WarehouseIncidentServiceImplTest {
         ArgumentCaptor<LoadingDamage> damage = ArgumentCaptor.forClass(LoadingDamage.class);
         verify(loadingDamageRepository).save(damage.capture());
         assertEquals(DamageOutcome.REPLANNED, damage.getValue().getOutcome());
-        verify(loadingReplanService).returnToPlanning(trip, execution, bottomPkg, worker);
+        verify(loadingReplanService).returnToPlanning(trip, execution, bottomPkg, PackageFlag.DAMAGED, worker);
     }
 
     @Test

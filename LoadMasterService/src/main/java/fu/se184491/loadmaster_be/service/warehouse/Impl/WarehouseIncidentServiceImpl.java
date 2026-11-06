@@ -1,5 +1,6 @@
 package fu.se184491.loadmaster_be.service.warehouse.Impl;
 
+import fu.se184491.loadmaster_be.constant.cargo.PackageFlag;
 import fu.se184491.loadmaster_be.constant.cargo.PackageStatus;
 import fu.se184491.loadmaster_be.constant.driver.ManualConfirmReason;
 import fu.se184491.loadmaster_be.constant.driver.ManualConfirmStatus;
@@ -134,7 +135,7 @@ public class WarehouseIncidentServiceImpl implements WarehouseIncidentService {
                 .build());
         PlacementStepResponse next = null;
         if (outcome == DamageOutcome.LEFT_OUT) {
-            loadingReplanService.leaveOut(session.trip(), pkg);
+            loadingReplanService.leaveOut(session.trip(), pkg, PackageFlag.DAMAGED);
             next = session.placements().stream()
                     .filter(entry -> entry.getStepSequence() > placement.getStepSequence())
                     .filter(entry -> !lookup.handled(entry))
@@ -147,7 +148,7 @@ public class WarehouseIncidentServiceImpl implements WarehouseIncidentService {
                             .build())
                     .orElse(null);
         } else {
-            loadingReplanService.returnToPlanning(session.trip(), session.execution(), pkg, session.worker());
+            loadingReplanService.returnToPlanning(session.trip(), session.execution(), pkg, PackageFlag.DAMAGED, session.worker());
         }
         Map<String, Object> values = new LinkedHashMap<>();
         values.put("packageId", pkg.getId());

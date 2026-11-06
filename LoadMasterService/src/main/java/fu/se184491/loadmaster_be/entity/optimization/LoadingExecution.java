@@ -5,6 +5,7 @@ import fu.se184491.loadmaster_be.entity.account.User;
 
 
 import fu.se184491.loadmaster_be.constant.optimization.LoadingExecutionStatus;
+import fu.se184491.loadmaster_be.constant.warehouse.ExecutionAbortReason;
 import jakarta.persistence.*;
 import jakarta.validation.constraints.PositiveOrZero;
 import lombok.*;
@@ -45,4 +46,8 @@ public class LoadingExecution {
 
     @ManyToOne(fetch = FetchType.LAZY) @JoinColumn(name = "sealed_by")
     private User sealedBy;
+
+    /** Phiên dừng vì kiện thiếu / hỏng (chuyến quay về lập kế hoạch, chờ điều phối viên tối ưu lại); null với mọi phiên khác. */
+    @Enumerated(EnumType.STRING) @Column(name = "abort_reason", length = 30)
+    private ExecutionAbortReason abortReason;
 }

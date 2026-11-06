@@ -1,5 +1,8 @@
 package fu.se184491.loadmaster_be.service.warehouse;
 
+import fu.se184491.loadmaster_be.constant.warehouse.ExecutionAbortReason;
+import fu.se184491.loadmaster_be.dto.response.warehouse.WarehouseTaskResponse;
+import fu.se184491.loadmaster_be.repository.warehouse.LoadingDamageRepository;
 import fu.se184491.loadmaster_be.constant.cargo.PackageStatus;
 import fu.se184491.loadmaster_be.constant.optimization.LoadingExecutionStatus;
 import fu.se184491.loadmaster_be.constant.trip.TripStatus;
@@ -58,6 +61,7 @@ import java.util.Set;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.lenient;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -82,6 +86,7 @@ class WarehouseServiceImplTest {
     @Mock private DeliveryStopRepository deliveryStopRepository;
     @Mock private TripPackageResolver tripPackageResolver;
     @Mock private WarehouseProgress warehouseProgress;
+    @Mock private LoadingDamageRepository loadingDamageRepository;
 
     @InjectMocks
     private WarehouseServiceImpl service;
@@ -113,6 +118,79 @@ class WarehouseServiceImplTest {
 
         assertTrue(session.getStagingRequired());
         assertTrue(session.getStagingComplete());
+    }
+
+    @Test
+    void startingAgainOnAnAbortedSessionOfTheApprovedPlanReopensItFromScratch() {
+        LoadingExecution aborted = LoadingExecution.builder().id(60L).loadPlan(plan).status(LoadingExecutionStatus.ABORTED)
+                .abortReason(ExecutionAbortReason.DAMAGED_PACKAGE).sealNumber("S-1").totalDeviations(2).build();
+        PlacementConfirmation oldConfirm = PlacementConfirmation.builder().id(80L).build();
+        when(loadPlanRepository.findFirstByJobTripIdAndApprovedTrueOrderByIdDesc(10L)).thenReturn(Optional.of(plan));
+        when(loadingExecutionRepository.findByLoadPlanId(50L)).thenReturn(Optional.of(aborted));
+        when(loadingExecutionRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+        when(packagePlacementRepository.findByLoadPlanIdOrderByStepSequenceAsc(50L)).thenReturn(List.of());
+        when(placementConfirmationRepository.findByPlacementLoadPlanId(50L)).thenReturn(List.of(oldConfirm));
+
+        StartLoadingResponse session = service.startLoading(10L, null);
+
+        assertEquals(60L, session.getExecutionId());
+        assertEquals(LoadingExecutionStatus.IN_PROGRESS, aborted.getStatus());
+        assertNull(aborted.getAbortReason());
+        assertNull(aborted.getSealNumber());
+        assertEquals(0, aborted.getTotalDeviations());
+        verify(placementConfirmationRepository).deleteAll(List.of(oldConfirm));
+        verify(tripStatusService).transitionTo(10L, TripStatus.LOADING, 9L);
+    }
+
+    @Test
+    void startingWhileTheApprovedPlanStillHasALiveSessionIsRejected() {
+        when(loadPlanRepository.findFirstByJobTripIdAndApprovedTrueOrderByIdDesc(10L)).thenReturn(Optional.of(plan));
+        when(loadingExecutionRepository.findByLoadPlanId(50L)).thenReturn(Optional.of(LoadingExecution.builder()
+                .id(60L).loadPlan(plan).status(LoadingExecutionStatus.COMPLETED).build()));
+
+        AppException error = assertThrows(AppException.class, () -> service.startLoading(10L, null));
+
+        assertEquals(ErrorCode.TRIP_ALREADY_LOADING, error.getErrorCode());
+    }
+
+    @Test
+    void tripsWaitingForANewPlanAfterADropAreListedOnlyOnRequest() {
+        Trip draft = Trip.builder().id(11L).company(trip.getCompany()).tripCode("TRIP-11").status(TripStatus.DRAFT).build();
+        LoadPlan stalePlan = LoadPlan.builder().id(40L).build();
+        when(tripRepository.findByCompanyIdAndStatus(1L, TripStatus.PLANNED)).thenReturn(List.of(trip));
+        when(tripRepository.findByCompanyIdAndStatus(1L, TripStatus.LOADING)).thenReturn(List.of());
+        lenient().when(tripRepository.findByCompanyIdAndStatus(1L, TripStatus.DRAFT)).thenReturn(List.of(draft));
+        when(loadPlanRepository.findFirstByJobTripIdAndApprovedTrueOrderByIdDesc(10L)).thenReturn(Optional.empty());
+        lenient().when(loadingExecutionRepository.findAllByLoadPlanJobTripId(10L)).thenReturn(List.of(
+                LoadingExecution.builder().id(58L).loadPlan(stalePlan).status(LoadingExecutionStatus.ABORTED).build(),
+                LoadingExecution.builder().id(60L).loadPlan(stalePlan).status(LoadingExecutionStatus.ABORTED)
+                        .abortReason(ExecutionAbortReason.STAGING_SHORTAGE).build()));
+        lenient().when(loadingExecutionRepository.findAllByLoadPlanJobTripId(11L)).thenReturn(List.of(
+                LoadingExecution.builder().id(61L).loadPlan(stalePlan).status(LoadingExecutionStatus.ABORTED)
+                        .abortReason(ExecutionAbortReason.DAMAGED_PACKAGE).build()));
+
+        assertTrue(service.getTasks(null, null).isEmpty());
+
+        List<WarehouseTaskResponse> tasks = service.getTasks(null, null, true);
+
+        assertEquals(2, tasks.size());
+        assertEquals("TRIP-10", tasks.get(0).getTripCode());
+        assertTrue(tasks.get(0).getAwaitingReplan());
+        assertEquals("STAGING_SHORTAGE", tasks.get(0).getReplanReason());
+        assertEquals("DRAFT", tasks.get(1).getStatus());
+        assertEquals("DAMAGED_PACKAGE", tasks.get(1).getReplanReason());
+    }
+
+    @Test
+    void tripCancelledWhileLoadingIsNotWaitingForAReplan() {
+        when(tripRepository.findByCompanyIdAndStatus(1L, TripStatus.PLANNED)).thenReturn(List.of(trip));
+        when(tripRepository.findByCompanyIdAndStatus(1L, TripStatus.LOADING)).thenReturn(List.of());
+        when(tripRepository.findByCompanyIdAndStatus(1L, TripStatus.DRAFT)).thenReturn(List.of());
+        when(loadPlanRepository.findFirstByJobTripIdAndApprovedTrueOrderByIdDesc(10L)).thenReturn(Optional.empty());
+        when(loadingExecutionRepository.findAllByLoadPlanJobTripId(10L)).thenReturn(List.of(
+                LoadingExecution.builder().id(60L).status(LoadingExecutionStatus.ABORTED).build()));
+
+        assertTrue(service.getTasks(null, null, true).isEmpty());
     }
 
     @Test
