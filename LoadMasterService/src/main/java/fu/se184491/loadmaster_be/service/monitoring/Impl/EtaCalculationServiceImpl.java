@@ -13,6 +13,7 @@ import fu.se184491.loadmaster_be.entity.trip.Trip;
 import fu.se184491.loadmaster_be.exception.ServiceUnavailableException;
 import fu.se184491.loadmaster_be.repository.monitoring.EtaRiskAlertRepository;
 import fu.se184491.loadmaster_be.repository.trip.DeliveryStopRepository;
+import fu.se184491.loadmaster_be.service.monitoring.DeadlineStatusRule;
 import fu.se184491.loadmaster_be.service.monitoring.EtaCalculationService;
 import fu.se184491.loadmaster_be.service.monitoring.MonitoringTime;
 import lombok.RequiredArgsConstructor;
@@ -33,7 +34,6 @@ import java.util.Set;
 public class EtaCalculationServiceImpl implements EtaCalculationService {
 
     private static final double FALLBACK_SPEED_KMH = 30.0;
-    private static final long AT_RISK_MARGIN_MINUTES = 30;
 
     private final GoongMapsClient goongMapsClient;
     private final DeliveryStopRepository deliveryStopRepository;
@@ -133,14 +133,7 @@ public class EtaCalculationServiceImpl implements EtaCalculationService {
      * OK when ETA ≤ deadline − 30 min; AT_RISK when ETA ≤ deadline; otherwise MISSED.
      */
     private DeadlineStatus resolveDeadlineStatus(LocalDateTime eta, LocalDateTime deadline) {
-        LocalDateTime atRiskThreshold = deadline.minusMinutes(AT_RISK_MARGIN_MINUTES);
-        if (!eta.isAfter(atRiskThreshold)) {
-            return DeadlineStatus.OK;
-        }
-        if (!eta.isAfter(deadline)) {
-            return DeadlineStatus.AT_RISK;
-        }
-        return DeadlineStatus.MISSED;
+        return DeadlineStatusRule.resolve(eta, deadline);
     }
 
     private void upsertAlert(

@@ -36,8 +36,14 @@ public class PaymentWebhookController {
     public ResponseEntity<Void> handleVnPayReturn(@RequestParam Map<String, String> allParams) {
         log.info("Received VNPay Return redirect: {}", allParams);
         paymentCallbackHandler.handleVnPayCallback(allParams);
+
+        String txnRef = allParams.get("vnp_TxnRef");
+        String redirectUrl = (txnRef != null && txnRef.startsWith("REG_"))
+                ? "http://localhost:5173/dang-ky-thanh-cong"
+                : "http://localhost:5173/goi-cuoc";
+
         return ResponseEntity.status(HttpStatus.FOUND)
-                .location(URI.create("http://localhost:5173/goi-cuoc"))
+                .location(URI.create(redirectUrl))
                 .build();
     }
 

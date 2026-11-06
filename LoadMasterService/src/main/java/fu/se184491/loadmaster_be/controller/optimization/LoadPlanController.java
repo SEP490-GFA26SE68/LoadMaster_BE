@@ -1,6 +1,7 @@
 package fu.se184491.loadmaster_be.controller.optimization;
 
 import fu.se184491.loadmaster_be.dto.ApiResponse;
+import fu.se184491.loadmaster_be.dto.request.optimization.ApproveEditsRequest;
 import fu.se184491.loadmaster_be.dto.request.optimization.PinPlacementRequest;
 import fu.se184491.loadmaster_be.dto.request.optimization.RerunOptimizationRequest;
 import fu.se184491.loadmaster_be.dto.response.optimization.LoadPlanDetailResponse;
@@ -9,6 +10,7 @@ import fu.se184491.loadmaster_be.dto.response.optimization.PackagePlacementRespo
 import fu.se184491.loadmaster_be.dto.response.optimization.PlanComparisonResponse;
 import fu.se184491.loadmaster_be.service.optimization.LoadPlanQueryService;
 import fu.se184491.loadmaster_be.service.optimization.LoadPlanService;
+import fu.se184491.loadmaster_be.service.optimization.manual.ManualPlanApprovalService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -37,6 +39,7 @@ public class LoadPlanController {
 
     private final LoadPlanService loadPlanService;
     private final LoadPlanQueryService loadPlanQueryService;
+    private final ManualPlanApprovalService manualPlanApprovalService;
 
     @GetMapping("/{id}")
     @PreAuthorize("hasAnyRole('DISPATCHER', 'MANAGER')")
@@ -51,6 +54,17 @@ public class LoadPlanController {
     public ResponseEntity<ApiResponse<LoadPlanDetailResponse>> approvePlan(@PathVariable("id") Long id) {
         return ResponseEntity.ok(ApiResponse.success(
                 "Kế hoạch xếp hàng đã được phê duyệt thành công", loadPlanQueryService.approvePlan(id)));
+    }
+
+    @PostMapping("/{id}/approve-edits")
+    @PreAuthorize("hasRole('DISPATCHER')")
+    @Operation(summary = "Approve manual edits",
+            description = "Validate moved / rotated placements (cm) and save them as a new approved, manually edited plan")
+    public ResponseEntity<ApiResponse<LoadPlanDetailResponse>> approveEdits(
+            @PathVariable("id") Long id,
+            @RequestBody @Valid ApproveEditsRequest request) {
+        return ResponseEntity.ok(ApiResponse.success(
+                "Đã duyệt bản chỉnh tay", manualPlanApprovalService.approveEdits(id, request)));
     }
 
     @PostMapping("/{id}/pin")

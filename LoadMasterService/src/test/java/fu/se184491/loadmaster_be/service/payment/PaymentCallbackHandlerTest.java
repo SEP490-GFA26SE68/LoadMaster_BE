@@ -40,6 +40,9 @@ public class PaymentCallbackHandlerTest {
     @Mock
     private CreditService creditService;
 
+    @Mock
+    private fu.se184491.loadmaster_be.service.registration.GuestRegistrationService guestRegistrationService;
+
     @InjectMocks
     private PaymentCallbackHandler paymentCallbackHandler;
 
@@ -218,5 +221,18 @@ public class PaymentCallbackHandlerTest {
         assertNotNull(createdField.getAnnotation(org.hibernate.annotations.Check.class));
         assertNotNull(updatedField.getAnnotation(org.hibernate.annotations.Check.class));
         assertNotNull(PaymentTransaction.class.getAnnotation(org.hibernate.annotations.Check.class));
+    }
+
+    @Test
+    @DisplayName("Delegate to GuestRegistrationService when txnRef starts with REG_")
+    void testDelegateToGuestRegistrationService() {
+        Map<String, String> params = Map.of("vnp_TxnRef", "REG_ABC123");
+        when(guestRegistrationService.handlePaymentCallback(params)).thenReturn(Map.of("RspCode", "00", "Message", "Confirm Success"));
+
+        Map<String, String> result = paymentCallbackHandler.handleVnPayCallback(params);
+
+        assertEquals("00", result.get("RspCode"));
+        verify(guestRegistrationService).handlePaymentCallback(params);
+        verifyNoInteractions(paymentTransactionRepository);
     }
 }

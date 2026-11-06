@@ -30,9 +30,6 @@ import fu.se184491.loadmaster_be.repository.trip.TripRepository;
 import fu.se184491.loadmaster_be.repository.vehicle.VehicleRepository;
 import fu.se184491.loadmaster_be.repository.optimization.LoadPlanRepository;
 import fu.se184491.loadmaster_be.entity.cargo.CargoPackage;
-import fu.se184491.loadmaster_be.entity.vehicle.VehicleType;
-import java.math.BigDecimal;
-import java.util.Arrays;
 import fu.se184491.loadmaster_be.repository.warehouse.LoadingExecutionRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -154,8 +151,8 @@ public class TripLifecycleService {
         tripRepository.save(trip);
         audit("TRIP_UPDATED", trip, actor, before, after);
         if (vehicleChanged) {
-            // Phương án tính cho xe cũ: gỡ duyệt để kho không xếp theo nó; điều phối tối ưu lại rồi duyệt.
-            loadPlanRepository.unapproveAllByTripId(trip.getId());
+            // Phương án tính cho xe cũ: lỗi thời và thôi là bản duyệt; điều phối tối ưu lại rồi duyệt.
+            loadPlanRepository.markStaleByTripId(trip.getId());
         }
         if (routeStale) {
             tripStatusService.invalidateRoute(trip, actor.getId());
@@ -256,6 +253,8 @@ public class TripLifecycleService {
         after.put("requirementId", requirementId);
         after.put("removedStops", removedStops.stream().map(DeliveryStop::getId).toList());
         audit("TRIP_REQUIREMENT_REMOVED", trip, actor, Map.of(), after);
+        // Hàng của chuyến vừa bớt: phương án xếp đã có thành lỗi thời.
+        loadPlanRepository.markStaleByTripId(tripId);
 
         tripStatusService.invalidateRoute(trip, actor.getId());
     }
@@ -307,43 +306,13 @@ public class TripLifecycleService {
         return warehouse;
     }
 
-    /** Điều kiện cần trên tổng hàng (không xếp thử): tải trọng và từng kiện lọt lòng thùng ở một hướng nào đó. */
+    /** Điều kiện cần trên tổng hàng (không xếp thử): kích thước + cửa, thể tích, tải trọng, tải trục ({@link VehicleCargoFit}). */
     private void requireCarriesCargo(Vehicle vehicle, Long tripId) {
-        VehicleType type = vehicle.getVehicleType();
-        if (type == null) {
-            return;
+        List<VehicleCargoFit.Issue> issues =
+                VehicleCargoFit.issues(vehicle.getVehicleType(), tripPackageResolver.packagesOfTrip(tripId));
+        if (!issues.isEmpty()) {
+            throw new AppException(ErrorCode.VEHICLE_CANNOT_CARRY_CARGO, issues.get(0).message());
         }
-        List<CargoPackage> packages = tripPackageResolver.packagesOfTrip(tripId);
-        BigDecimal totalKg = packages.stream()
-                .map(CargoPackage::getActualWeightKg)
-                .filter(Objects::nonNull)
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
-        if (type.getMaxPayloadKg() != null && totalKg.compareTo(type.getMaxPayloadKg()) > 0) {
-            throw new AppException(ErrorCode.VEHICLE_CANNOT_CARRY_CARGO,
-                    "Hàng của chuyến nặng " + totalKg.stripTrailingZeros().toPlainString()
-                            + " kg, vượt tải trọng " + type.getMaxPayloadKg().stripTrailingZeros().toPlainString() + " kg của xe");
-        }
-        if (type.getInnerLength() == null || type.getInnerWidth() == null || type.getInnerHeight() == null) {
-            return;
-        }
-        double[] box = sortedDesc(type.getInnerLength(), type.getInnerWidth(), type.getInnerHeight());
-        for (CargoPackage pkg : packages) {
-            if (pkg.getActualLength() == null || pkg.getActualWidth() == null || pkg.getActualHeight() == null) {
-                continue;
-            }
-            double[] size = sortedDesc(pkg.getActualLength().doubleValue(), pkg.getActualWidth().doubleValue(),
-                    pkg.getActualHeight().doubleValue());
-            if (size[0] > box[0] || size[1] > box[1] || size[2] > box[2]) {
-                throw new AppException(ErrorCode.VEHICLE_CANNOT_CARRY_CARGO,
-                        "Kiện " + pkg.getTrackingBarcode() + " không lọt lòng thùng của xe");
-            }
-        }
-    }
-
-    private static double[] sortedDesc(double a, double b, double c) {
-        double[] values = {a, b, c};
-        Arrays.sort(values);
-        return new double[]{values[2], values[1], values[0]};
     }
 
     private Vehicle requireUsableVehicle(Long vehicleId, Long companyId) {
