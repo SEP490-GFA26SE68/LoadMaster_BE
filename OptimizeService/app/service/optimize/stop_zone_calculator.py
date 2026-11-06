@@ -25,6 +25,37 @@ class StopZoneCalculator:
 
     # Khoảng cách giữa các zone, đơn vị cm.
     ACCESSIBILITY_BUFFER_CM = 10.0
+    _EPSILON = 1e-6
+
+    @classmethod
+    def zone_at(cls, zones: List[ZoneData], x: float) -> Optional[ZoneData]:
+        """Vùng chứa toạ độ X (cm): trong khoảng đệm là vùng gần hơn, cách đều hai vùng thì vùng sâu hơn
+        (X nhỏ hơn). Cùng luật với StopZoneLayout.zoneAt của LoadMasterService."""
+        nearest: Optional[ZoneData] = None
+        nearest_gap = math.inf
+        for zone in zones:
+            gap = max(float(zone.zone_start_x) - x, x - float(zone.zone_end_x), 0.0)
+            closer = gap < nearest_gap - cls._EPSILON
+            tie_deeper = (
+                nearest is not None
+                and abs(gap - nearest_gap) <= cls._EPSILON
+                and float(zone.zone_start_x) < float(nearest.zone_start_x) - cls._EPSILON
+            )
+            if closer or tie_deeper:
+                nearest = zone
+                nearest_gap = gap
+        return nearest
+
+    @classmethod
+    def count_rehandling(cls, zones: List[ZoneData], placements: List[Any], package_stop: Dict[str, Any]) -> int:
+        """Số kiện có tâm theo X nằm trong vùng của điểm giao khác điểm giao của chính nó."""
+        count = 0
+        for placement in placements:
+            zone = cls.zone_at(zones, float(placement.x) + float(placement.packed_l) / 2.0)
+            own = package_stop.get(str(placement.package_id))
+            if zone is not None and str(zone.stop_id) != str(own):
+                count += 1
+        return count
 
     @classmethod
     def calculate_zones(

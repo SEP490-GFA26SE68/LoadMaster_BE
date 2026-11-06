@@ -144,4 +144,11 @@ class ManualLayoutValidatorTest {
         assertThat(ManualLayoutValidator.allowedRotations(true, true, true, true))
                 .containsExactlyInAnyOrder(0, 1, 2, 3, 4, 5);
     }
+
+    @Test
+    void aPackageThatMustStayUprightKeepsItsHeightVertical() {
+        assertThat(ManualLayoutValidator.allowedRotations(true, true, true, true, true)).containsExactlyInAnyOrder(0, 1);
+        assertThat(ManualLayoutValidator.allowedRotations(false, true, true, true, true)).containsExactly(0);
+        assertThat(ManualLayoutValidator.allowedRotations(true, true, true, true, false)).hasSize(6);
+    }
 }

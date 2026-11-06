@@ -8,6 +8,8 @@ import fu.se184491.loadmaster_be.dto.response.optimization.PlacementDetailRespon
 import fu.se184491.loadmaster_be.dto.response.optimization.TripLoadPlansResponse;
 import fu.se184491.loadmaster_be.dto.response.optimization.UnplacedPackageResponse;
 import fu.se184491.loadmaster_be.entity.account.User;
+import fu.se184491.loadmaster_be.entity.trip.Trip;
+import fu.se184491.loadmaster_be.entity.vehicle.VehicleType;
 import fu.se184491.loadmaster_be.exception.AppException;
 import fu.se184491.loadmaster_be.exception.ErrorCode;
 import fu.se184491.loadmaster_be.helpers.CurrentUserService;
@@ -16,11 +18,13 @@ import fu.se184491.loadmaster_be.repository.optimization.LoadPlanReadRepository.
 import fu.se184491.loadmaster_be.repository.optimization.LoadPlanReadRepository.PlanWithCompany;
 import fu.se184491.loadmaster_be.repository.trip.TripRepository;
 import fu.se184491.loadmaster_be.service.optimization.LoadPlanQueryService;
+import fu.se184491.loadmaster_be.service.optimization.manual.StopZoneResolver;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -34,6 +38,7 @@ public class LoadPlanQueryServiceImpl implements LoadPlanQueryService {
     private final TripRepository tripRepository;
     private final CurrentUserService currentUserService;
     private final OptimizationClient optimizationClient;
+    private final StopZoneResolver stopZoneResolver;
 
     @Override
     public TripLoadPlansResponse getTripLoadPlans(Long tripId) {
@@ -112,7 +117,10 @@ public class LoadPlanQueryServiceImpl implements LoadPlanQueryService {
                 .orElseThrow(() -> new AppException(ErrorCode.LOAD_PLAN_NOT_FOUND));
     }
 
-    /** Gắn kiện đã xếp và kiện không xếp được vào từng phương án (hai câu truy vấn cho cả danh sách). */
+    /**
+     * Gắn kiện đã xếp và kiện không xếp được vào từng phương án (hai câu truy vấn cho cả danh sách), rồi vùng theo điểm giao
+     * khi dựng lại được ({@link StopZoneResolver#attach}).
+     */
     private List<LoadPlanDetailResponse> withItems(List<LoadPlanDetailResponse> plans) {
         Map<Long, LoadPlanDetailResponse> byId = new LinkedHashMap<>();
         for (LoadPlanDetailResponse plan : plans) {
@@ -136,6 +144,21 @@ public class LoadPlanQueryServiceImpl implements LoadPlanQueryService {
                 List<UnplacedPackageResponse> unplaced = plan.getUnplaced();
                 unplaced.add(row.unplaced());
             }
+        }
+        Map<Long, Integer> innerLengthByTrip = new HashMap<>();
+        for (LoadPlanDetailResponse plan : plans) {
+            if (plan.getTripId() == null) {
+                continue;
+            }
+            if (!innerLengthByTrip.containsKey(plan.getTripId())) {
+                innerLengthByTrip.put(plan.getTripId(), tripRepository.findById(plan.getTripId())
+                        .map(Trip::getVehicle)
+                        .map(vehicle -> vehicle.getVehicleType())
+                        .map(VehicleType::getInnerLength)
+                        .orElse(null));
+            }
+            Integer innerLength = innerLengthByTrip.get(plan.getTripId());
+            stopZoneResolver.attach(plan, innerLength);
         }
         return plans;
     }

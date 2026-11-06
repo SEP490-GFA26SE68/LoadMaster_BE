@@ -10,11 +10,13 @@ import fu.se184491.loadmaster_be.entity.cargo.CargoPackage;
 import fu.se184491.loadmaster_be.entity.cargo.PackageType;
 import fu.se184491.loadmaster_be.entity.common.AuditLog;
 import fu.se184491.loadmaster_be.entity.optimization.LoadPlan;
+import fu.se184491.loadmaster_be.dto.response.optimization.UnplacedPackageResponse;
 import fu.se184491.loadmaster_be.entity.trip.Trip;
 import fu.se184491.loadmaster_be.entity.vehicle.VehicleType;
 import fu.se184491.loadmaster_be.exception.AppException;
 import fu.se184491.loadmaster_be.exception.ErrorCode;
 import fu.se184491.loadmaster_be.helpers.CurrentUserService;
+import fu.se184491.loadmaster_be.repository.cargo.CargoPackagePackingProfileRepository;
 import fu.se184491.loadmaster_be.repository.cargo.CargoPackageRepository;
 import fu.se184491.loadmaster_be.repository.common.AuditLogRepository;
 import fu.se184491.loadmaster_be.repository.optimization.LoadPlanRepository;
@@ -37,6 +39,7 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -46,6 +49,7 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 @Service
 @RequiredArgsConstructor
@@ -58,6 +62,8 @@ public class ManualPlanApprovalServiceImpl implements ManualPlanApprovalService 
     private final CargoPackageRepository cargoPackageRepository;
     private final AuditLogRepository auditLogRepository;
     private final CurrentUserService currentUserService;
+    private final StopZoneResolver stopZoneResolver;
+    private final CargoPackagePackingProfileRepository packingProfileRepository;
 
     @Override
     @Transactional
@@ -81,7 +87,7 @@ public class ManualPlanApprovalServiceImpl implements ManualPlanApprovalService 
                         (a, b) -> a, LinkedHashMap::new));
         Map<Long, EditedPlacement> edits = editsOf(request, byId);
         Set<Long> pins = pinsOf(request, byId);
-        Map<Long, CargoPackage> packages = packagesOf(source.getPlacements());
+        Map<Long, CargoPackage> packages = packagesOf(source.getPlacements(), source.getUnplaced());
 
         List<Box> before = new ArrayList<>();
         List<Box> after = new ArrayList<>();
@@ -98,11 +104,11 @@ public class ManualPlanApprovalServiceImpl implements ManualPlanApprovalService 
             }
             int oldRotation = rotationOf(placement);
             int rotation = edit.getRotationType() == null ? oldRotation : edit.getRotationType();
-            if (rotation != oldRotation && !rotationAllowed(packages.get(placement.getPackageId()), rotation)) {
-                throw new AppException(ErrorCode.MANUAL_EDIT_INVALID);
+            CargoPackage cargo = packages.get(placement.getPackageId());
+            if (rotation != oldRotation && !rotationAllowed(cargo, rotation)) {
+                throw new AppException(ErrorCode.MANUAL_EDIT_ROTATION_NOT_ALLOWED);
             }
-            double[] size = ManualLayoutValidator.orientedSize(
-                    ManualLayoutValidator.baseSize(sizeOf(placement), oldRotation), rotation);
+            double[] size = ManualLayoutValidator.orientedSize(baseSizeOf(placement, cargo, oldRotation), rotation);
             Box moved = new Box(placement.getId(), finite(edit.getPosX()), finite(edit.getPosY()),
                     finite(edit.getPosZ()), size[0], size[1], size[2], original.weightKg());
             if (rotation != oldRotation || differs(moved, original)) {
@@ -133,6 +139,9 @@ public class ManualPlanApprovalServiceImpl implements ManualPlanApprovalService 
         loadPlanRepository.unapproveAllByTripId(trip.getId());
         AxleLoads loads = ManualLayoutValidator.axleLoads(after, axles);
         CenterOfGravity cog = ManualLayoutValidator.centerOfGravity(after);
+        // Chỉ đổi ghim thì cách xếp giữ nguyên: giữ số của bộ tối ưu.
+        Integer rehandling = edited.isEmpty() ? sourcePlan.getRehandlingCount()
+                : rehandlingOf(trip, type, byId.values(), after, source.getUnplaced());
         LoadPlan approved = loadPlanRepository.saveAndFlush(LoadPlan.builder()
                 .job(sourcePlan.getJob())
                 .planName(sourcePlan.getPlanName())
@@ -148,8 +157,7 @@ public class ManualPlanApprovalServiceImpl implements ManualPlanApprovalService 
                 .cogZ(cog == null ? null : decimal(cog.z(), 3))
                 .frontAxleLoad(loads == null ? null : decimal(loads.frontKg(), 2))
                 .rearAxleLoad(loads == null ? null : decimal(loads.rearKg(), 2))
-                // Máy chủ chưa lưu ranh giới vùng điểm giao: không đếm lại được số dỡ-xếp lại của bản chỉnh.
-                .rehandlingCount(null)
+                .rehandlingCount(rehandling)
                 .objective(sourcePlan.getObjective())
                 .manuallyEdited(edited.isEmpty() ? sourcePlan.getManuallyEdited() : Boolean.TRUE)
                 .stale(false)
@@ -233,8 +241,10 @@ public class ManualPlanApprovalServiceImpl implements ManualPlanApprovalService 
                 .collect(Collectors.toSet());
     }
 
-    private Map<Long, CargoPackage> packagesOf(List<PlacementDetailResponse> placements) {
-        List<Long> ids = placements.stream().map(PlacementDetailResponse::getPackageId)
+    private Map<Long, CargoPackage> packagesOf(List<PlacementDetailResponse> placements,
+                                               List<UnplacedPackageResponse> unplaced) {
+        List<Long> ids = Stream.concat(placements.stream().map(PlacementDetailResponse::getPackageId),
+                        unplaced == null ? Stream.empty() : unplaced.stream().map(UnplacedPackageResponse::getPackageId))
                 .filter(Objects::nonNull).distinct().toList();
         Map<Long, CargoPackage> result = new HashMap<>();
         for (CargoPackage cargo : cargoPackageRepository.findAllById(ids)) {
@@ -243,15 +253,51 @@ public class ManualPlanApprovalServiceImpl implements ManualPlanApprovalService 
         return result;
     }
 
-    /** Như dịch vụ tối ưu: không có loại kiện thì không xoay. */
-    private static boolean rotationAllowed(CargoPackage cargo, int rotation) {
+    /**
+     * Số kiện nằm ngoài vùng điểm giao của mình trong cách xếp mới, trên vùng dựng như dịch vụ tối ưu ({@link StopZoneResolver};
+     * phương án chưa lỗi thời nên điểm giao và hàng chưa đổi). Thiếu dữ liệu để dựng vùng thì không đoán: {@code null}.
+     */
+    private Integer rehandlingOf(Trip trip, VehicleType type, Collection<PlacementDetailResponse> placements, List<Box> after,
+                                 List<UnplacedPackageResponse> unplaced) {
+        StopZoneResolver.ResolvedZones zones = stopZoneResolver.resolve(trip.getId(), type.getInnerLength(), placements, unplaced);
+        return zones == null ? null : StopZoneLayout.rehandlingCount(zones.zones(), after, zones.stopByPlacement());
+    }
+
+    /**
+     * Kích thước gốc (dài, rộng, cao) của kiện, như dịch vụ tối ưu đọc: kích thước thật của kiện, thiếu thì của loại kiện. Không khớp
+     * kích thước đã xếp ở hướng hiện tại (dữ liệu kiện đã đổi) thì suy ngược từ kích thước đã xếp.
+     */
+    private static double[] baseSizeOf(PlacementDetailResponse placement, CargoPackage cargo, int rotation) {
+        double[] packed = sizeOf(placement);
+        double[] real = StopZoneResolver.realSizeOf(cargo);
+        if (real != null) {
+            double[] oriented = ManualLayoutValidator.orientedSize(real, rotation);
+            boolean matches = true;
+            for (int i = 0; i < 3; i++) {
+                matches &= Math.abs(oriented[i] - packed[i]) <= 0.05;
+            }
+            if (matches) {
+                return real;
+            }
+        }
+        return ManualLayoutValidator.baseSize(packed, rotation);
+    }
+
+    /**
+     * Như dịch vụ tối ưu: không có loại kiện thì không xoay. Kiện phải giữ thẳng đứng ({@code upright_only}) chỉ nhận hướng giữ
+     * chiều cao gốc — cùng luật với {@code allowedRotations} của lối đọc phương án.
+     */
+    private boolean rotationAllowed(CargoPackage cargo, int rotation) {
         PackageType type = cargo == null ? null : cargo.getPackageType();
         if (type == null) {
             return false;
         }
+        boolean upright = packingProfileRepository.findByCargoPackageId(cargo.getId())
+                .map(profile -> Boolean.TRUE.equals(profile.getUprightOnly()))
+                .orElse(false);
         return ManualLayoutValidator.allowedRotations(Boolean.TRUE.equals(type.getRotationAllowed()),
                 Boolean.TRUE.equals(type.getAllowRotateX()), Boolean.TRUE.equals(type.getAllowRotateY()),
-                Boolean.TRUE.equals(type.getAllowRotateZ())).contains(rotation);
+                Boolean.TRUE.equals(type.getAllowRotateZ()), upright).contains(rotation);
     }
 
     private static Box boxOf(PlacementDetailResponse placement) {
