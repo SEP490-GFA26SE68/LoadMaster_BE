@@ -15,3 +15,4 @@ public class AcceptPolicyRequest {
     @NotBlank(message = "Token phiên đăng ký không được để trống")
     private String token;
 }
+

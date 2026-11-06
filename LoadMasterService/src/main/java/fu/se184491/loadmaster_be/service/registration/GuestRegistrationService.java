@@ -26,3 +26,4 @@ public interface GuestRegistrationService {
 
     GuestRegistrationSessionResponse getSessionStatus(String token);
 }
+

@@ -38,3 +38,4 @@ public class GuestRegistrationInitRequest {
     @Size(max = 50, message = "Mã số thuế tối đa 50 ký tự")
     private String taxCode;
 }
+

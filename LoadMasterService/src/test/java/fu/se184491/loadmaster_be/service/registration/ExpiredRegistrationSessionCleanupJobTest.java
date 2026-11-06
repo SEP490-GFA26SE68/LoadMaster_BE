@@ -56,3 +56,4 @@ class ExpiredRegistrationSessionCleanupJobTest {
         verify(sessionRepository).saveAll(List.of(session1, session2));
     }
 }
+

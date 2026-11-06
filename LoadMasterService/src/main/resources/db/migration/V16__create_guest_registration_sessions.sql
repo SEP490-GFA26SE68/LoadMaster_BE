@@ -28,3 +28,4 @@ CREATE TABLE IF NOT EXISTS guest_registration_sessions (
 CREATE INDEX IF NOT EXISTS idx_guest_reg_token ON guest_registration_sessions(token);
 CREATE INDEX IF NOT EXISTS idx_guest_reg_email ON guest_registration_sessions(email);
 CREATE INDEX IF NOT EXISTS idx_guest_reg_payment_ref ON guest_registration_sessions(payment_ref);
+
