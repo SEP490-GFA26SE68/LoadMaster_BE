@@ -24,6 +24,7 @@ import fu.se184491.loadmaster_be.repository.company.CompanyRepository;
 import fu.se184491.loadmaster_be.repository.order.OrderRepository;
 import fu.se184491.loadmaster_be.repository.planning.DeliveryRequirementRepository;
 import fu.se184491.loadmaster_be.service.import_.CsvExcelParserService;
+import fu.se184491.loadmaster_be.service.cargo.TrackingBarcodeAllocator;
 import fu.se184491.loadmaster_be.service.import_.PackageImportService;
 import fu.se184491.loadmaster_be.service.import_.PackageImportValidatorService;
 import fu.se184491.loadmaster_be.service.qr.QrCodeService;
@@ -184,6 +185,9 @@ public class PackageImportServiceImpl implements PackageImportService {
 
         List<Long> packageIds = new ArrayList<>();
         List<CargoPackage> importedPackages = new ArrayList<>();
+        // Mỗi kiện vật lý một mã vạch duy nhất để kho, tài xế gõ / quét được.
+        TrackingBarcodeAllocator barcodes =
+                new TrackingBarcodeAllocator(cargoPackageRepository::existsByTrackingBarcode);
 
         for (PackageImportRow row : preview.validRows()) {
 
@@ -235,6 +239,7 @@ public class PackageImportServiceImpl implements PackageImportService {
                         .order(savedOrder)
                         .packageType(packageType)
                         .packageCode(physicalCode)
+                        .trackingBarcode(barcodes.allocate(physicalCode))
                         .packageName(row.packageName())
                         .note(row.note())
                         .qrToken(qrCodeService.generateQrToken())
@@ -286,6 +291,7 @@ public class PackageImportServiceImpl implements PackageImportService {
         auditValues.put("deliveryRequirementId", deliveryRequirementId);
 
         AuditLog auditLog = AuditLog.builder()
+                .companyId(companyId)
                 .actionType("PACKAGE_IMPORT_CONFIRMED")
                 .entityName("PACKAGE")
                 .entityId("batch")

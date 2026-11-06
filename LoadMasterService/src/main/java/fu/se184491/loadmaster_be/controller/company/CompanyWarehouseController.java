@@ -54,8 +54,8 @@ public class CompanyWarehouseController {
     @PreAuthorize("""
     hasAnyAuthority(
         'ROLE_MANAGER',
-        'DISPATCHER',
-        'WAREHOUSE_WORKER'
+        'ROLE_DISPATCHER',
+        'ROLE_WAREHOUSE_WORKER'
     )
     """)
     public ResponseEntity<ApiResponse<CompanyWarehouseResponse>>

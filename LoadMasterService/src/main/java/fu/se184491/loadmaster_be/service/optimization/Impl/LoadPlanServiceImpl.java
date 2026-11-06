@@ -1,5 +1,6 @@
 package fu.se184491.loadmaster_be.service.optimization.Impl;
 
+import fu.se184491.loadmaster_be.service.audit.AuditCompany;
 import fu.se184491.loadmaster_be.constant.optimization.OptimizationAlgorithm;
 import fu.se184491.loadmaster_be.constant.optimization.OptimizationJobStatus;
 import fu.se184491.loadmaster_be.constant.optimization.OptimizationObjective;
@@ -18,6 +19,9 @@ import fu.se184491.loadmaster_be.entity.common.AuditLog;
 import fu.se184491.loadmaster_be.entity.optimization.LoadPlan;
 import fu.se184491.loadmaster_be.entity.optimization.OptimizationJob;
 import fu.se184491.loadmaster_be.entity.optimization.PackagePlacement;
+import fu.se184491.loadmaster_be.entity.trip.Trip;
+import fu.se184491.loadmaster_be.constant.trip.TripStatus;
+import fu.se184491.loadmaster_be.helpers.CurrentUserService;
 import fu.se184491.loadmaster_be.exception.AppException;
 import fu.se184491.loadmaster_be.exception.ErrorCode;
 import fu.se184491.loadmaster_be.repository.cargo.CargoPackageRepository;
@@ -56,11 +60,32 @@ public class LoadPlanServiceImpl implements LoadPlanService {
     private final UnplacedPackageRepository unplacedPackageRepository;
     private final OptimizationEngineClient optimizationEngineClient;
     private final fu.se184491.loadmaster_be.service.credit.CreditService creditService;
+    private final fu.se184491.loadmaster_be.repository.trip.DeliveryStopRepository deliveryStopRepository;
+    private final CurrentUserService currentUserService;
+
+    /**
+     * Phương án chỉ được ghim, bỏ ghim hay chạy lại khi nó thuộc công ty của người gọi và chuyến của
+     * nó còn Đã lập kế hoạch: từ lúc kho bắt đầu xếp, phương án đã chốt không đổi được nữa.
+     */
+    private LoadPlan editablePlan(Long loadPlanId) {
+        LoadPlan loadPlan = loadPlanRepository.findById(loadPlanId)
+                .orElseThrow(() -> new AppException(ErrorCode.LOAD_PLAN_NOT_FOUND));
+        Trip trip = loadPlan.getJob() != null ? loadPlan.getJob().getTrip() : null;
+        Long companyId = currentUserService.getCurrentCompanyId();
+        if (trip == null || trip.getCompany() == null || !Objects.equals(trip.getCompany().getId(), companyId)) {
+            throw new AppException(ErrorCode.LOAD_PLAN_NOT_FOUND);
+        }
+        if (trip.getStatus() != TripStatus.PLANNED) {
+            throw new AppException(ErrorCode.TRIP_LOCKED);
+        }
+        return loadPlan;
+    }
 
     @Override
     @Transactional
     public PackagePlacementResponse pinPlacement(Long loadPlanId, PinPlacementRequest request) {
         LoadPlan loadPlan = requireOwnedPlan(loadPlanId);
+        LoadPlan loadPlan = editablePlan(loadPlanId);
 
         PackagePlacement placement = packagePlacementRepository.findById(request.getPlacementId())
                 .orElseThrow(() -> new AppException(ErrorCode.PLACEMENT_NOT_FOUND));
@@ -71,7 +96,7 @@ public class LoadPlanServiceImpl implements LoadPlanService {
         placement.setPinned(true);
         PackagePlacement savedPlacement = packagePlacementRepository.save(placement);
 
-        saveAuditLog("PIN_PLACEMENT", savedPlacement.getId(), oldPinned, true);
+        saveAuditLog("PIN_PLACEMENT", loadPlan, savedPlacement.getId(), oldPinned, true);
         log.info("Pinned placement {} in load plan {}", savedPlacement.getId(), loadPlan.getId());
 
         return mapToResponse(savedPlacement);
@@ -81,6 +106,7 @@ public class LoadPlanServiceImpl implements LoadPlanService {
     @Transactional
     public PackagePlacementResponse unpinPlacement(Long loadPlanId, Long placementId) {
         LoadPlan loadPlan = requireOwnedPlan(loadPlanId);
+        LoadPlan loadPlan = editablePlan(loadPlanId);
 
         PackagePlacement placement = packagePlacementRepository.findById(placementId)
                 .orElseThrow(() -> new AppException(ErrorCode.PLACEMENT_NOT_FOUND));
@@ -91,7 +117,7 @@ public class LoadPlanServiceImpl implements LoadPlanService {
         placement.setPinned(false);
         PackagePlacement savedPlacement = packagePlacementRepository.save(placement);
 
-        saveAuditLog("UNPIN_PLACEMENT", savedPlacement.getId(), oldPinned, false);
+        saveAuditLog("UNPIN_PLACEMENT", loadPlan, savedPlacement.getId(), oldPinned, false);
         log.info("Unpinned placement {} in load plan {}", savedPlacement.getId(), loadPlan.getId());
 
         return mapToResponse(savedPlacement);
@@ -100,6 +126,181 @@ public class LoadPlanServiceImpl implements LoadPlanService {
     @Override
     @Transactional
     public LoadPlanResponse rerunOptimization(Long loadPlanId, RerunOptimizationRequest request) {
+        LoadPlan currentPlan = editablePlan(loadPlanId);
+
+        // 1. Load pinned placements from current plan
+        List<PackagePlacement> pinnedPlacements = packagePlacementRepository.findByLoadPlanIdAndPinnedTrue(loadPlanId);
+
+        // 2. Create new OptimizationJob with parentPlanId
+        int nextVersion = (currentPlan.getVersion() != null ? currentPlan.getVersion() : 1) + 1;
+        String jobUuid = UUID.randomUUID().toString();
+        OptimizationObjective objective = request.getObjective() != null
+                ? request.getObjective()
+                : (currentPlan.getJob() != null && currentPlan.getJob().getObjective() != null
+                    ? currentPlan.getJob().getObjective()
+                    : OptimizationObjective.MAX_VOLUME);
+        Integer timeLimit = request.getTimeLimitSec() != null ? request.getTimeLimitSec() : 60;
+
+        OptimizationJob newJob = OptimizationJob.builder()
+                .trip(currentPlan.getJob() != null ? currentPlan.getJob().getTrip() : null)
+                .jobUuid(jobUuid)
+                .algorithmName(currentPlan.getJob() != null && currentPlan.getJob().getAlgorithmName() != null
+                        ? currentPlan.getJob().getAlgorithmName()
+                        : OptimizationAlgorithm.GENETIC_ALGORITHM)
+                .objective(objective)
+                .timeLimitSec(timeLimit)
+                .seed(request.getSeed())
+                .parentPlanId(currentPlan.getId())
+                .status(OptimizationJobStatus.RUNNING)
+                .build();
+        newJob = optimizationJobRepository.save(newJob);
+
+        // 3. Prepare pinned list for Engine
+        List<PinnedPlacementDto> pinnedDtos = pinnedPlacements.stream()
+                .map(p -> PinnedPlacementDto.builder()
+                        .placementId(p.getId())
+                        .packageId(p.getCargoPackage() != null ? p.getCargoPackage().getId() : null)
+                        .posX(p.getPosX())
+                        .posY(p.getPosY())
+                        .posZ(p.getPosZ())
+                        .packedLength(p.getPackedLength())
+                        .packedWidth(p.getPackedWidth())
+                        .packedHeight(p.getPackedHeight())
+                        .rotationType(p.getRotationType())
+                        .stepSequence(p.getStepSequence())
+                        .build())
+                .collect(Collectors.toList());
+
+        RerunEngineRequest engineRequest = RerunEngineRequest.builder()
+                .jobUuid(jobUuid)
+                .tripId(newJob.getTrip() != null ? newJob.getTrip().getId() : null)
+                .parentPlanId(currentPlan.getId())
+                .objective(objective.name())
+                .timeLimitSec(timeLimit)
+                .seed(request.getSeed())
+                .pinnedPlacements(pinnedDtos)
+                .build();
+
+        // S8-08 Credit check & deduction before sending to Engine (Rerun = 1 credit)
+        if (newJob.getTrip() != null && newJob.getTrip().getCompany() != null) {
+            creditService.deductCredit(newJob.getTrip().getCompany().getId(), jobUuid, 1);
+        }
+
+        // 4. Send to Engine
+        OptimizationResultDto engineResult;
+        try {
+            engineResult = optimizationEngineClient.rerunOptimization(engineRequest);
+        } catch (Exception e) {
+            log.error("Optimization engine failed for job {}: {}", jobUuid, e.getMessage());
+            newJob.setStatus(OptimizationJobStatus.FAILED);
+            optimizationJobRepository.save(newJob);
+            if (newJob.getTrip() != null && newJob.getTrip().getCompany() != null) {
+                try {
+                    creditService.refundCredit(newJob.getTrip().getCompany().getId(), jobUuid);
+                } catch (Exception refundEx) {
+                    log.error("Failed to refund credit on engine failure for job {}: {}", jobUuid, refundEx.getMessage());
+                }
+            }
+            throw e;
+        }
+
+        // Update Job status
+        newJob.setStatus(OptimizationJobStatus.COMPLETED);
+        if (engineResult != null && engineResult.getComputationMs() != null) {
+            newJob.setComputationMs(engineResult.getComputationMs());
+        }
+        optimizationJobRepository.save(newJob);
+
+        // 5. Save new plan with version = old.version + 1 and parentPlanId
+        String baseName = currentPlan.getPlanName() != null
+                ? currentPlan.getPlanName().replaceAll(" \\(v\\d+\\)$", "")
+                : "Plan";
+        String newPlanName = baseName + " (v" + nextVersion + ")";
+
+        LoadPlan newPlan = LoadPlan.builder()
+                .job(newJob)
+                .planName(newPlanName)
+                .version(nextVersion)
+                .parentPlanId(currentPlan.getId())
+                .packedItemsCount(engineResult != null ? engineResult.getPackedItemsCount() : 0)
+                .volumeUtilization(engineResult != null ? engineResult.getVolumeUtilization() : BigDecimal.ZERO)
+                .weightUtilization(engineResult != null ? engineResult.getWeightUtilization() : BigDecimal.ZERO)
+                .approved(false)
+                .build();
+        newPlan = loadPlanRepository.save(newPlan);
+
+        // Save placements
+        List<PackagePlacement> savedPlacements = new ArrayList<>();
+        if (engineResult != null && engineResult.getPlacements() != null) {
+            for (PlacementResultDto pDto : engineResult.getPlacements()) {
+                CargoPackage pkg = null;
+                if (pDto.getPackageId() != null) {
+                    pkg = cargoPackageRepository.findById(pDto.getPackageId()).orElse(null);
+                }
+                fu.se184491.loadmaster_be.entity.trip.DeliveryStop stopZone = pDto.getStopZoneId() != null
+                        ? deliveryStopRepository.findById(pDto.getStopZoneId()).orElse(null)
+                        : null;
+                PackagePlacement placement = PackagePlacement.builder()
+                        .loadPlan(newPlan)
+                        .cargoPackage(pkg)
+                        .stopZone(stopZone)
+                        .posX(pDto.getPosX())
+                        .posY(pDto.getPosY())
+                        .posZ(pDto.getPosZ())
+                        .packedLength(pDto.getPackedLength())
+                        .packedWidth(pDto.getPackedWidth())
+                        .packedHeight(pDto.getPackedHeight())
+                        .rotationType(pDto.getRotationType())
+                        .stepSequence(pDto.getStepSequence())
+                        .pinned(Boolean.TRUE.equals(pDto.getPinned()))
+                        .build();
+                savedPlacements.add(packagePlacementRepository.save(placement));
+            }
+        }
+
+        // AuditLog for Rerun
+        Map<String, Object> oldValues = new HashMap<>();
+        oldValues.put("parentPlanId", currentPlan.getId());
+        oldValues.put("parentVersion", currentPlan.getVersion());
+
+        Map<String, Object> newValues = new HashMap<>();
+        newValues.put("newPlanId", newPlan.getId());
+        newValues.put("version", nextVersion);
+        newValues.put("pinnedCount", pinnedPlacements.size());
+
+        AuditLog auditLog = AuditLog.builder()
+                .actionType("RERUN_OPTIMIZATION")
+                .companyId(AuditCompany.ofJob(newJob))
+                .entityName("LoadPlan")
+                .entityId(String.valueOf(newPlan.getId()))
+                .oldValues(oldValues)
+                .newValues(newValues)
+                .createdAt(Instant.now())
+                .build();
+        auditLogRepository.save(auditLog);
+
+        log.info("Rerun optimization completed for plan {}, created new plan {} version {}",
+                currentPlan.getId(), newPlan.getId(), nextVersion);
+
+        return LoadPlanResponse.builder()
+                .id(newPlan.getId())
+                .jobId(newJob.getId())
+                .jobUuid(newJob.getJobUuid())
+                .planName(newPlan.getPlanName())
+                .version(newPlan.getVersion())
+                .parentPlanId(newPlan.getParentPlanId())
+                .packedItemsCount(newPlan.getPackedItemsCount())
+                .volumeUtilization(newPlan.getVolumeUtilization())
+                .weightUtilization(newPlan.getWeightUtilization())
+                .approved(newPlan.getApproved())
+                .cogX(newPlan.getCogX())
+                .cogY(newPlan.getCogY())
+                .cogZ(newPlan.getCogZ())
+                .frontAxleLoad(newPlan.getFrontAxleLoad())
+                .rearAxleLoad(newPlan.getRearAxleLoad())
+                .rehandlingCount(newPlan.getRehandlingCount())
+                .placements(savedPlacements.stream().map(this::mapToResponse).collect(Collectors.toList()))
+                .build();
         LoadPlan currentPlan = requireOwnedPlan(loadPlanId);
         entitlements.requireActive(currentPlan.getJob().getTrip().getCompany().getId());
         throw new AppException(ErrorCode.OPTIMIZATION_RERUN_UNAVAILABLE);
@@ -111,7 +312,7 @@ public class LoadPlanServiceImpl implements LoadPlanService {
         }
     }
 
-    private void saveAuditLog(String actionType, Long placementId, boolean oldPinned, boolean newPinned) {
+    private void saveAuditLog(String actionType, LoadPlan loadPlan, Long placementId, boolean oldPinned, boolean newPinned) {
         Map<String, Object> oldValues = new HashMap<>();
         oldValues.put("pinned", oldPinned);
 
@@ -120,6 +321,7 @@ public class LoadPlanServiceImpl implements LoadPlanService {
 
         AuditLog auditLog = AuditLog.builder()
                 .actionType(actionType)
+                .companyId(AuditCompany.ofPlan(loadPlan))
                 .entityName("PackagePlacement")
                 .entityId(String.valueOf(placementId))
                 .oldValues(oldValues)

@@ -2,6 +2,7 @@
 package fu.se184491.loadmaster_be.service.trip.impl;
 import fu.se184491.loadmaster_be.constant.account.UserRole;
 import fu.se184491.loadmaster_be.constant.account.UserStatus;
+import fu.se184491.loadmaster_be.constant.cargo.PackageStatus;
 import fu.se184491.loadmaster_be.constant.planning.DeliveryRequirementStatus;
 import fu.se184491.loadmaster_be.constant.trip.DeliveryStopStatus;
 import fu.se184491.loadmaster_be.constant.trip.TripStatus;
@@ -13,6 +14,7 @@ import fu.se184491.loadmaster_be.dto.response.trip.TripResponse;
 import fu.se184491.loadmaster_be.dto.response.trip.TripStopResponse;
 import fu.se184491.loadmaster_be.dto.response.trip.TripVehicleConfigResponse;
 import fu.se184491.loadmaster_be.entity.account.User;
+import fu.se184491.loadmaster_be.entity.cargo.CargoPackage;
 import fu.se184491.loadmaster_be.entity.company.CompanyWarehouse;
 import fu.se184491.loadmaster_be.entity.planning.DeliveryRequirement;
 import fu.se184491.loadmaster_be.entity.trip.DeliveryStop;
@@ -30,6 +32,7 @@ import fu.se184491.loadmaster_be.repository.trip.DeliveryStopRepository;
 import fu.se184491.loadmaster_be.repository.trip.TripRepository;
 import fu.se184491.loadmaster_be.repository.vehicle.VehicleRepository;
 import fu.se184491.loadmaster_be.service.trip.TripService;
+import fu.se184491.loadmaster_be.service.trip.TripStatusService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -54,6 +57,7 @@ public class TripServiceImpl implements TripService {
     private final DeliveryStopRepository deliveryStopRepository;
     private final DeliveryRequirementRepository deliveryRequirementRepository;
     private final RoutePlanRepository routePlanRepository;
+    private final TripStatusService tripStatusService;
 
     @Transactional
     public TripResponse createTrip(TripCreateRequest request) {
@@ -380,9 +384,11 @@ public class TripServiceImpl implements TripService {
                         new AppException(ErrorCode.TRIP_NOT_FOUND)
                 );
 
-        // 2. Chỉ phân chuyến khi Trip còn DRAFT.
-        if (trip.getStatus() != TripStatus.DRAFT) {
-            throw new AppException(ErrorCode.INVALID_INPUT);
+        // 2. Chỉ phân chuyến khi Trip còn Nháp hoặc Đã lập kế hoạch
+        //    (thêm điểm vào chuyến Đã lập kế hoạch đưa chuyến về Nháp, xem bước 9).
+        if (trip.getStatus() != TripStatus.DRAFT
+                && trip.getStatus() != TripStatus.PLANNED) {
+            throw new AppException(ErrorCode.TRIP_NOT_EDITABLE);
         }
 
         // 3. Khóa yêu cầu để tránh hai Dispatcher gán trùng.
@@ -415,9 +421,12 @@ public class TripServiceImpl implements TripService {
             throw new AppException(ErrorCode.INVALID_INPUT);
         }
 
-        // 6. Đề phòng yêu cầu đã có điểm giao.
+        // 6. Đề phòng yêu cầu đã có điểm giao (bỏ qua điểm của chuyến đã huỷ).
         if (deliveryStopRepository
-                .existsByDeliveryRequirementId(requirementId)) {
+                .existsByDeliveryRequirementIdAndTrip_StatusNot(
+                        requirementId,
+                        TripStatus.CANCELLED
+                )) {
             throw new AppException(ErrorCode.INVALID_INPUT);
         }
 
@@ -443,6 +452,21 @@ public class TripServiceImpl implements TripService {
 
         requirement.setTrip(trip);
         requirement.setStatus(DeliveryRequirementStatus.ASSIGNED);
+
+        // 9. Kiện của yêu cầu vào kế hoạch chuyến.
+        for (CargoPackage cargoPackage : requirement.getPackages()) {
+            if (cargoPackage.getStatus() == PackageStatus.PENDING) {
+                cargoPackage.setStatus(PackageStatus.PLANNED);
+            }
+        }
+
+        // 10. Thêm điểm giao làm tuyến đã tối ưu không còn đúng: bỏ tuyến, chuyến về Nháp.
+        if (trip.getStatus() == TripStatus.PLANNED || trip.getRoutePlan() != null) {
+            tripStatusService.invalidateRoute(
+                    trip,
+                    currentUserService.getCurrentUser().getId()
+            );
+        }
 
         return TripStopResponse.fromEntity(savedStop);
     }

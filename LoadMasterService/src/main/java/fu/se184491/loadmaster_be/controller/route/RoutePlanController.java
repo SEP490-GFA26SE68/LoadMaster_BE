@@ -33,7 +33,7 @@ public class RoutePlanController {
     private final GoongMapsClient goongMapsClient;
 
     @PostMapping("/trips/{tripId}/route-plans")
-    @PreAuthorize("hasAnyAuthority('TRIP_MANAGE', 'ROLE_DISPATCHER', 'COMPANY_ADMIN')")
+    @PreAuthorize("hasRole('DISPATCHER')")
     public ResponseEntity<ApiResponse<RoutePlanDetailResponse>> createRoutePlan(
             @PathVariable String tripId,
             @Valid @RequestBody CreateRoutePlanRequest request
@@ -46,7 +46,7 @@ public class RoutePlanController {
     }
 
     @GetMapping("/trips/{tripId}/route-plans/active")
-    @PreAuthorize("hasAnyAuthority('TRIP_MANAGE', 'ROLE_DISPATCHER', 'COMPANY_ADMIN', 'DRIVER')")
+    @PreAuthorize("hasAnyRole('DISPATCHER', 'MANAGER', 'DRIVER')")
     public ResponseEntity<ApiResponse<RoutePlanDetailResponse>> getActiveRoutePlan(
             @PathVariable String tripId
     ) {
@@ -57,7 +57,7 @@ public class RoutePlanController {
     }
 
     @GetMapping("/trips/{tripId}/route-plans")
-    @PreAuthorize("hasAnyAuthority('TRIP_MANAGE', 'ROLE_DISPATCHER', 'COMPANY_ADMIN')")
+    @PreAuthorize("hasAnyRole('DISPATCHER', 'MANAGER')")
     public PageResponse<RoutePlanSummaryResponse> getRoutePlans(
             @PathVariable String tripId,
             Pageable pageable
@@ -68,7 +68,7 @@ public class RoutePlanController {
     }
 
     @GetMapping("/route-plans/{planId}/legs")
-    @PreAuthorize("hasAnyAuthority('TRIP_MANAGE', 'ROLE_DISPATCHER', 'COMPANY_ADMIN', 'DRIVER')")
+    @PreAuthorize("hasAnyRole('DISPATCHER', 'MANAGER', 'DRIVER')")
     public PageResponse<RouteLegResponse> getRouteLegs(
             @PathVariable Long planId,
             Pageable pageable
@@ -78,7 +78,7 @@ public class RoutePlanController {
     }
 
     @PostMapping("/route-legs/{legId}/suggestions")
-    @PreAuthorize("hasAnyAuthority('TRIP_MANAGE', 'ROLE_DISPATCHER', 'DRIVER')")
+    @PreAuthorize("hasAnyRole('DISPATCHER', 'DRIVER')")
     public ResponseEntity<ApiResponse<RouteSuggestionResponse>> createSuggestion(
             @PathVariable Long legId,
             @Valid @RequestBody CreateRouteSuggestionRequest request
@@ -90,7 +90,7 @@ public class RoutePlanController {
     }
 
     @GetMapping("/route-legs/{legId}/suggestions")
-    @PreAuthorize("hasAnyAuthority('TRIP_MANAGE', 'ROLE_DISPATCHER', 'COMPANY_ADMIN')")
+    @PreAuthorize("hasAnyRole('DISPATCHER', 'MANAGER')")
     public PageResponse<RouteSuggestionResponse> getSuggestions(
             @PathVariable Long legId,
             Pageable pageable
@@ -100,7 +100,7 @@ public class RoutePlanController {
     }
 
     @PatchMapping("/route-suggestions/{id}/accept")
-    @PreAuthorize("hasAnyAuthority('TRIP_MANAGE', 'ROLE_DISPATCHER', 'COMPANY_ADMIN')")
+    @PreAuthorize("hasRole('DISPATCHER')")
     public ResponseEntity<ApiResponse<RouteSuggestionResponse>> acceptSuggestion(
             @PathVariable Long id
     ) {
@@ -111,7 +111,7 @@ public class RoutePlanController {
 
 
     @GetMapping("/places/autocomplete")
-    @PreAuthorize("hasAnyAuthority('TRIP_MANAGE', 'ROLE_DISPATCHER', 'COMPANY_ADMIN')")
+    @PreAuthorize("hasAnyRole('DISPATCHER', 'MANAGER')")
     public ResponseEntity<ApiResponse<PlaceAutocompleteResponse>> autocompletePlaces(
             @RequestParam("input") String input
     ) {
@@ -128,7 +128,7 @@ public class RoutePlanController {
     }
 
     @GetMapping("/places/detail")
-    @PreAuthorize("hasAnyAuthority('TRIP_MANAGE', 'ROLE_DISPATCHER', 'COMPANY_ADMIN')")
+    @PreAuthorize("hasAnyRole('DISPATCHER', 'MANAGER')")
     public ResponseEntity<ApiResponse<PlaceDetailResponse>> getPlaceDetail(
             @RequestParam("placeId") String placeId
     ) {

@@ -21,6 +21,10 @@ class LoadPlan(Base):
     front_axle_load = Column(Numeric(10, 2), nullable=True)
     rear_axle_load = Column(Numeric(10, 2), nullable=True)
     rehandling_count = Column(Integer, nullable=True, default=0)
+    # Phương án ứng viên của job: mục tiêu (MAX_VOLUME | AXLE_BALANCE | MIN_REHANDLING) và nhãn (A | B | C).
+    # Phương án cũ và phương án của lần chạy lại để trống.
+    objective = Column(String(30), nullable=True)
+    candidate_label = Column(String(1), nullable=True)
 
     job = relationship("OptimizationJob")
     placements = relationship("PackagePlacement", back_populates="load_plan", cascade="all, delete-orphan")

@@ -14,6 +14,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -29,6 +30,7 @@ import java.util.List;
 @org.springframework.security.access.prepost.PreAuthorize("hasAnyRole('WAREHOUSE_WORKER','DISPATCHER','MANAGER','ADMIN','COMPANY_ADMIN')")
 @RequiredArgsConstructor
 @Tag(name = "Warehouse", description = "APIs for warehouse loading tasks and execution")
+@PreAuthorize("hasRole('WAREHOUSE_WORKER')")
 public class WarehouseController {
 
     private final WarehouseService warehouseService;
@@ -43,6 +45,14 @@ public class WarehouseController {
         if (workerId != null) optimizationAccess.canReadUser(workerId);
         List<WarehouseTaskResponse> tasks = warehouseService.getTasks(currentCompany, workerId);
         return ResponseEntity.ok(ApiResponse.success("Lấy danh sách nhiệm vụ bốc xếp thành công", tasks));
+    }
+
+    @GetMapping("/tasks/{tripId}")
+    @Operation(summary = "Get loading session", description = "Reopen the loading session of a LOADING trip: placements in step order with CONFIRMED / DEVIATION / PENDING status")
+    public ResponseEntity<ApiResponse<StartLoadingResponse>> getSession(
+            @PathVariable("tripId") Long tripId) {
+        StartLoadingResponse response = warehouseService.getSession(tripId);
+        return ResponseEntity.ok(ApiResponse.success("Lấy phiên bốc xếp thành công", response));
     }
 
     @PostMapping("/tasks/{tripId}/start")

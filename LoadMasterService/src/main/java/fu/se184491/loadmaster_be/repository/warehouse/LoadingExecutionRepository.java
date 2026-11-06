@@ -15,6 +15,8 @@ public interface LoadingExecutionRepository extends JpaRepository<LoadingExecuti
 
     Optional<LoadingExecution> findByLoadPlanJobTripId(Long tripId);
 
+    List<LoadingExecution> findAllByLoadPlanJobTripId(Long tripId);
+
     List<LoadingExecution> findByWorkerId(Long workerId);
 
     boolean existsByLoadPlanIdAndStatus(Long loadPlanId, LoadingExecutionStatus status);

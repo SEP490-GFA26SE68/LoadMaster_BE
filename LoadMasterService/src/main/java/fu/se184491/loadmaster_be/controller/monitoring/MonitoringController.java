@@ -1,6 +1,7 @@
 package fu.se184491.loadmaster_be.controller.monitoring;
 
 import fu.se184491.loadmaster_be.dto.ApiResponse;
+import fu.se184491.loadmaster_be.dto.request.monitoring.RenegotiateDeadlineRequest;
 import fu.se184491.loadmaster_be.dto.request.monitoring.ReportExceptionRequest;
 import fu.se184491.loadmaster_be.dto.request.monitoring.ResolveExceptionRequest;
 import fu.se184491.loadmaster_be.dto.response.monitoring.LocationPointResponse;
@@ -31,7 +32,6 @@ import java.util.List;
 @RestController
 @RequiredArgsConstructor
 @Tag(name = "Monitoring", description = "APIs for live trip monitoring, GPS, exceptions and reroute")
-@PreAuthorize("hasAuthority('TRIP_MANAGE')")
 public class MonitoringController {
 
     private final GpsTrackingService gpsTrackingService;
@@ -41,6 +41,7 @@ public class MonitoringController {
     private final CurrentUserService currentUserService;
 
     @GetMapping("/api/trips/{id}/location/latest")
+    @PreAuthorize("hasAnyRole('DISPATCHER', 'MANAGER')")
     @Operation(summary = "Latest GPS location for a trip")
     public ResponseEntity<ApiResponse<LocationPointResponse>> getLatestLocation(@PathVariable("id") String id) {
         LocationPointResponse location = gpsTrackingService.getLatestLocation(id, currentUserService.getCurrentCompanyId());
@@ -48,6 +49,7 @@ public class MonitoringController {
     }
 
     @GetMapping("/api/trips/{id}/location/history")
+    @PreAuthorize("hasAnyRole('DISPATCHER', 'MANAGER')")
     @Operation(summary = "GPS location history for a trip")
     public ResponseEntity<ApiResponse<List<LocationPointResponse>>> getLocationHistory(@PathVariable("id") String id) {
         List<LocationPointResponse> history = gpsTrackingService.getLocationHistory(id, currentUserService.getCurrentCompanyId());
@@ -55,6 +57,7 @@ public class MonitoringController {
     }
 
     @GetMapping("/api/trips/{id}/monitoring")
+    @PreAuthorize("hasAnyRole('DISPATCHER', 'MANAGER')")
     @Operation(summary = "Live monitoring snapshot for a trip")
     public ResponseEntity<ApiResponse<TripMonitoringResponse>> getTripMonitoring(@PathVariable("id") String id) {
         TripMonitoringResponse monitoring = tripMonitoringService.getMonitoring(id, currentUserService.getCurrentCompanyId());
@@ -62,6 +65,7 @@ public class MonitoringController {
     }
 
     @GetMapping("/api/trips/monitoring")
+    @PreAuthorize("hasAnyRole('DISPATCHER', 'MANAGER')")
     @Operation(summary = "Fleet monitoring list for IN_TRANSIT trips")
     public ResponseEntity<ApiResponse<List<TripMonitoringResponse>>> listFleetMonitoring() {
         List<TripMonitoringResponse> fleet = tripMonitoringService.listFleetMonitoring(currentUserService.getCurrentCompanyId());
@@ -69,6 +73,7 @@ public class MonitoringController {
     }
 
     @GetMapping("/api/dispatcher/dashboard")
+    @PreAuthorize("hasAnyRole('DISPATCHER', 'MANAGER')")
     @Operation(summary = "Dispatcher monitoring board")
     public ResponseEntity<ApiResponse<MonitoringBoardResponse>> getDashboard() {
         MonitoringBoardResponse board = tripMonitoringService.getDashboard(currentUserService.getCurrentCompanyId());
@@ -76,6 +81,7 @@ public class MonitoringController {
     }
 
     @PostMapping("/api/trips/{id}/exceptions")
+    @PreAuthorize("hasRole('DISPATCHER')")
     @Operation(summary = "Report a trip-level exception")
     public ResponseEntity<ApiResponse<TripExceptionResponse>> reportException(
             @PathVariable("id") String id,
@@ -88,6 +94,7 @@ public class MonitoringController {
     }
 
     @GetMapping("/api/trips/{id}/exceptions")
+    @PreAuthorize("hasAnyRole('DISPATCHER', 'MANAGER')")
     @Operation(summary = "List trip exceptions")
     public ResponseEntity<ApiResponse<List<TripExceptionResponse>>> listExceptions(@PathVariable("id") String id) {
         List<TripExceptionResponse> exceptions = tripExceptionService.list(id, currentUserService.getCurrentCompanyId());
@@ -95,6 +102,7 @@ public class MonitoringController {
     }
 
     @PostMapping("/api/trips/{id}/exceptions/{exceptionId}/resolve")
+    @PreAuthorize("hasRole('DISPATCHER')")
     @Operation(summary = "Resolve a trip exception")
     public ResponseEntity<ApiResponse<TripExceptionResponse>> resolveException(
             @PathVariable("id") String id,
@@ -108,6 +116,7 @@ public class MonitoringController {
     }
 
     @PostMapping("/api/trips/{id}/exceptions/{exceptionId}/escalate")
+    @PreAuthorize("hasRole('DISPATCHER')")
     @Operation(summary = "Escalate a trip exception to the company manager")
     public ResponseEntity<ApiResponse<TripExceptionResponse>> escalateException(
             @PathVariable("id") String id,
@@ -119,7 +128,22 @@ public class MonitoringController {
         return ResponseEntity.ok(ApiResponse.success("Chuyển sự cố cho quản lý thành công", response));
     }
 
+    @PostMapping("/api/trips/{tripId}/exceptions/{exceptionId}/renegotiate")
+    @PreAuthorize("hasRole('MANAGER')")
+    @Operation(summary = "Renegotiate the deadline of a delivery requirement for an escalated exception")
+    public ResponseEntity<ApiResponse<TripExceptionResponse>> renegotiateDeadline(
+            @PathVariable("tripId") String tripId,
+            @PathVariable("exceptionId") String exceptionId,
+            @Valid @RequestBody RenegotiateDeadlineRequest request
+    ) {
+        Long userId = currentUserService.getCurrentUser().getId();
+        TripExceptionResponse response = tripExceptionService.renegotiateDeadline(
+                tripId, exceptionId, currentUserService.getCurrentCompanyId(), request, userId);
+        return ResponseEntity.ok(ApiResponse.success("Gia hạn giao thành công", response));
+    }
+
     @PostMapping("/api/trips/{id}/reroute")
+    @PreAuthorize("hasRole('DISPATCHER')")
     @Operation(summary = "Propose alternative routes to the next stop")
     public ResponseEntity<ApiResponse<RerouteProposalResponse>> proposeReroute(@PathVariable("id") String id) {
         RerouteProposalResponse proposal = rerouteService.propose(id, currentUserService.getCurrentCompanyId());
@@ -127,6 +151,7 @@ public class MonitoringController {
     }
 
     @PostMapping("/api/trips/{id}/reroute/{routeIndex}/confirm")
+    @PreAuthorize("hasRole('DISPATCHER')")
     @Operation(summary = "Confirm a proposed reroute option")
     public ResponseEntity<ApiResponse<TripRerouteResponse>> confirmReroute(
             @PathVariable("id") String id,

@@ -1,5 +1,6 @@
 package fu.se184491.loadmaster_be.controller.internal;
 
+import org.springframework.security.access.prepost.PreAuthorize;
 import fu.se184491.loadmaster_be.dto.ApiResponse;
 import fu.se184491.loadmaster_be.dto.request.credit.CreditInternalRequest;
 import fu.se184491.loadmaster_be.service.credit.CreditService;
@@ -11,7 +12,9 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
+// Chỉ dịch vụ tối ưu (service account có realm role OPTIMIZATION_CREDIT) gọi được.
 @RequestMapping("/api/internal/credits")
+@PreAuthorize("hasAuthority('ROLE_OPTIMIZATION_CREDIT')")
 @RequiredArgsConstructor
 @Slf4j
 @PreAuthorize("@creditServiceAuthorization.isAllowed(authentication)")

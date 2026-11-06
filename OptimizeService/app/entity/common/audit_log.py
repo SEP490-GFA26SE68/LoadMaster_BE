@@ -15,4 +15,6 @@ class AuditLog(Base):
     old_values = Column(JSON, nullable=True)
     new_values = Column(JSON, nullable=True)
     ip_address = Column(String(50), nullable=True)
+    # Công ty của sự kiện (Java thêm cột này); null khi không thuộc công ty nào.
+    company_id = Column(Integer().with_variant(BigInteger, "postgresql"), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)

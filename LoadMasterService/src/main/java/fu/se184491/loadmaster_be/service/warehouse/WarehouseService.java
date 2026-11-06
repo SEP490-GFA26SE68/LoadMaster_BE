@@ -16,6 +16,9 @@ public interface WarehouseService {
 
     StartLoadingResponse startLoading(Long tripId, StartLoadingRequest request);
 
+    /** Phiên xếp của chuyến Đang xếp hàng, cùng dạng với lúc bắt đầu xếp, kèm trạng thái từng kiện. */
+    StartLoadingResponse getSession(Long tripId);
+
     ConfirmPlacementResponse confirmPlacement(Long placementId, Long workerId);
 
     DeviationResponse recordDeviation(Long placementId, RecordDeviationRequest request);

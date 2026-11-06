@@ -1,13 +1,15 @@
 package fu.se184491.loadmaster_be.exception;
 
 import fu.se184491.loadmaster_be.constant.trip.TripStatus;
-import org.springframework.http.HttpStatus;
-import org.springframework.web.bind.annotation.ResponseStatus;
 
-@ResponseStatus(HttpStatus.BAD_REQUEST)
-public class InvalidTripStatusTransitionException extends RuntimeException {
+/**
+ * Chuyển trạng thái chuyến sai bảng. Là {@link AppException} để GlobalExceptionHandler
+ * trả mã {@code INVALID_TRIP_STATUS_TRANSITION} (409) thay vì rơi vào lỗi 500 chung.
+ */
+public class InvalidTripStatusTransitionException extends AppException {
 
     public InvalidTripStatusTransitionException(TripStatus currentStatus, TripStatus newStatus) {
-        super("Cannot transition trip from " + currentStatus + " to " + newStatus);
+        super(ErrorCode.INVALID_TRIP_STATUS_TRANSITION,
+                "Cannot transition trip from " + currentStatus + " to " + newStatus);
     }
 }

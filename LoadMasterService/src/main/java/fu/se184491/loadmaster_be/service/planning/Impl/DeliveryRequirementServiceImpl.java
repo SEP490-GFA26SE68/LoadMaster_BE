@@ -426,6 +426,7 @@ public class DeliveryRequirementServiceImpl implements DeliveryRequirementServic
         }
 
         AuditLog auditLog = AuditLog.builder()
+                .companyId(companyId)
                 .user(user)
                 .actionType("DELIVERY_DEADLINE_EXTENDED")
                 .entityName("DeliveryRequirement")

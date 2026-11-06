@@ -7,6 +7,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
 
 @Data
 @Builder
@@ -32,4 +33,16 @@ public class StopPackageResponse {
 
     @Schema(description = "Thứ tự dỡ hàng đề xuất (LIFO - ngược với thứ tự xếp)")
     private Integer unloadOrder;
+
+    @Schema(description = "Mã kiện của bên gửi")
+    private String packageCode;
+
+    @Schema(description = "Mã QR in trên nhãn kiện")
+    private String qrToken;
+
+    @Schema(description = "Kiện đã được dỡ chưa")
+    private Boolean unloaded;
+
+    @Schema(description = "Thời điểm dỡ (giờ Việt Nam, không múi giờ); null khi chưa dỡ")
+    private LocalDateTime unloadedAt;
 }

@@ -28,7 +28,7 @@ public class PackageScanController {
      * @return package detail response
      */
     @GetMapping("/scan/{qrToken}")
-    @PreAuthorize("hasAnyAuthority('ROLE_DISPATCHER', 'WAREHOUSE_WORKER')")
+    @PreAuthorize("hasAnyAuthority('PACKAGE_MANAGE', 'ROLE_DISPATCHER', 'ROLE_WAREHOUSE_WORKER')")
     public ResponseEntity<ApiResponse<PackageDetailResponse>> scanPackage(@PathVariable String qrToken) {
         CargoPackage pkg = qrCodeService.lookupByToken(qrToken, currentUserService.getCurrentCompanyId());
 

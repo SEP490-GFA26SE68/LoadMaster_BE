@@ -145,8 +145,8 @@ class TripStatusServiceIntegrationTest {
     }
 
     @Test
-    void anyNonCancelledTripCanBeCancelled() {
-        Trip trip = persistTrip(TripStatus.DELIVERED, Map.of("orderedStops", java.util.List.of(1L)));
+    void unfinishedTripCanBeCancelled() {
+        Trip trip = persistTrip(TripStatus.LOADING, Map.of("orderedStops", java.util.List.of(1L)));
 
         Trip transitioned = tripStatusService.transitionTo(trip.getId(), TripStatus.CANCELLED, actor.getId());
 

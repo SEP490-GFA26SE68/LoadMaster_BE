@@ -6,6 +6,16 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
+import java.math.BigDecimal;
+
+/**
+ * Một bước xếp của phiên xếp. Toạ độ và kích thước: cm, đã áp hướng xoay.
+ *
+ * <p>{@code qrToken}, {@code packageCode}, {@code trackingBarcode} để kho đối chiếu kiện bằng quét
+ * hoặc gõ mã; {@code stopId} / {@code stopSequence} / {@code stopName} là điểm giao thật của kiện
+ * (qua yêu cầu giao). {@code status}: {@code CONFIRMED} (đã xác nhận), {@code DEVIATION} (đã ghi sai
+ * lệch) hoặc {@code PENDING} (chưa xử lý).</p>
+ */
 @Getter
 @Setter
 @NoArgsConstructor
@@ -13,10 +23,16 @@ import lombok.Setter;
 @Builder
 public class PlacementStepResponse {
 
+    public static final String STATUS_CONFIRMED = "CONFIRMED";
+    public static final String STATUS_DEVIATION = "DEVIATION";
+    public static final String STATUS_PENDING = "PENDING";
+
     private Long placementId;
     private Long packageId;
     private String packageName;
+    private String packageCode;
     private String trackingBarcode;
+    private String qrToken;
     private Integer posX;
     private Integer posY;
     private Integer posZ;
@@ -24,5 +40,11 @@ public class PlacementStepResponse {
     private Integer packedWidth;
     private Integer packedHeight;
     private Integer rotation;
+    /** Khối lượng kiện (kg): khối lượng thực tế, không có thì khối lượng của loại kiện. */
+    private BigDecimal weightKg;
     private Integer sequence;
+    private Long stopId;
+    private Integer stopSequence;
+    private String stopName;
+    private String status;
 }

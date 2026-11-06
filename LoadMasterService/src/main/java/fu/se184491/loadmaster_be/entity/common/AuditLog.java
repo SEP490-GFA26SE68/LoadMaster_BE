@@ -23,6 +23,13 @@ public class AuditLog {
     @ManyToOne(fetch = FetchType.LAZY) @JoinColumn(name = "user_id")
     private User user;
 
+    /**
+     * Công ty của sự kiện: việc trên một tài khoản thuộc công ty của tài khoản đó, việc vận hành
+     * thuộc công ty của bản ghi (chuyến, kiện…); {@code null} khi không thuộc công ty nào.
+     * Bản ghi cũ chưa có cột này thì lúc đọc lấy công ty của người làm.
+     */
+    @Column(name = "company_id") private Long companyId;
+
     @Column(name = "action_type", length = 50) private String actionType;
     @Column(name = "entity_name", length = 50) private String entityName;
     @Column(name = "entity_id", length = 50) private String entityId;

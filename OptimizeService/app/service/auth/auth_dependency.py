@@ -146,3 +146,39 @@ def require_optimization_service(
         raise AppException(ErrorCode.UNAUTHORIZED)
 
     return payload
+
+
+def is_backend_service(payload: dict[str, Any]) -> bool:
+    """Token là service token của Spring Boot (client role + azp đúng)."""
+    return (
+        settings.KEYCLOAK_REQUIRED_ROLE.upper() in extract_roles(payload)
+        and payload.get("azp") == settings.KEYCLOAK_ALLOWED_CLIENT_ID
+    )
+
+
+def require_plan_approver(
+        credentials: Optional[
+            HTTPAuthorizationCredentials
+        ] = Depends(security),
+) -> dict[str, Any]:
+    """
+    Người được duyệt phương án:
+    - service token của Spring Boot (Java đã kiểm vai trò và công ty, người duyệt gửi trong thân), hoặc
+    - token người dùng có client role DISPATCHER / ADMIN.
+    """
+    if (
+            credentials is None
+            or credentials.scheme.lower() != "bearer"
+            or not credentials.credentials
+    ):
+        raise AppException(ErrorCode.UNAUTHENTICATED)
+
+    payload = decode_token(credentials.credentials)
+
+    if is_backend_service(payload):
+        return payload
+
+    if extract_roles(payload).intersection({"DISPATCHER", "ADMIN"}):
+        return payload
+
+    raise AppException(ErrorCode.UNAUTHORIZED)

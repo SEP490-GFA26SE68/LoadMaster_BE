@@ -50,17 +50,18 @@ public class RolePermissionMapping {
                         Permission.USERS_UPDATE,
                         Permission.USERS_LOCK,
                         Permission.USERS_DELETE,
-                        Permission.AUDIT_READ,
-                        Permission.TRIP_MANAGE
+                        Permission.AUDIT_READ
                 )
         );
 
+        // Quản lý công ty chỉ đọc. Kiện, chuyến, giám sát, phương án xếp hàng
+        // mở cho MANAGER bằng ROLE_MANAGER ở từng endpoint đọc.
         map.put(
                 UserRole.MANAGER,
                 Set.of(
-                        Permission.TRIP_MANAGE,
+                        Permission.VEHICLES_READ,
+                        Permission.VEHICLE_TYPES_READ,
                         Permission.DELIVERY_READ
-
                 )
         );
 
@@ -77,6 +78,7 @@ public class RolePermissionMapping {
                         Permission.VEHICLES_UPDATE,
                         Permission.TRIP_MANAGE,
                         Permission.DELIVERY_READ,
+                        Permission.DELIVERY_DEMAND_MANAGE,
                         Permission.CUSTOMER_MANAGE
                 )
 

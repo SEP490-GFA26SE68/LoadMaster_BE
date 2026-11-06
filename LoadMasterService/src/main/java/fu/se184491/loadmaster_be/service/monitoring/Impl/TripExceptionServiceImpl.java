@@ -4,18 +4,24 @@ import fu.se184491.loadmaster_be.constant.monitoring.ExceptionEscalationReason;
 import fu.se184491.loadmaster_be.constant.monitoring.TripExceptionStatus;
 import fu.se184491.loadmaster_be.constant.trip.DeliveryStopStatus;
 import fu.se184491.loadmaster_be.constant.trip.TripStatus;
+import fu.se184491.loadmaster_be.dto.request.monitoring.RenegotiateDeadlineRequest;
 import fu.se184491.loadmaster_be.dto.request.monitoring.ReportExceptionRequest;
 import fu.se184491.loadmaster_be.dto.request.monitoring.ResolveExceptionRequest;
 import fu.se184491.loadmaster_be.dto.response.monitoring.TripExceptionResponse;
 import fu.se184491.loadmaster_be.entity.account.User;
+import fu.se184491.loadmaster_be.entity.common.AuditLog;
 import fu.se184491.loadmaster_be.entity.monitoring.TripException;
+import fu.se184491.loadmaster_be.entity.planning.DeliveryRequirement;
 import fu.se184491.loadmaster_be.entity.trip.DeliveryStop;
 import fu.se184491.loadmaster_be.entity.trip.Trip;
 import fu.se184491.loadmaster_be.exception.AppException;
 import fu.se184491.loadmaster_be.exception.ErrorCode;
 import fu.se184491.loadmaster_be.repository.account.UserRepository;
+import fu.se184491.loadmaster_be.repository.common.AuditLogRepository;
 import fu.se184491.loadmaster_be.repository.monitoring.TripExceptionRepository;
+import fu.se184491.loadmaster_be.repository.planning.DeliveryRequirementRepository;
 import fu.se184491.loadmaster_be.repository.trip.DeliveryStopRepository;
+import fu.se184491.loadmaster_be.service.audit.AuditCompany;
 import fu.se184491.loadmaster_be.service.monitoring.MonitoringTime;
 import fu.se184491.loadmaster_be.service.monitoring.TripExceptionService;
 import fu.se184491.loadmaster_be.service.monitoring.TripLookupHelper;
@@ -23,8 +29,13 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Instant;
+import java.time.LocalDateTime;
 import java.util.EnumSet;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 
 @Service
@@ -35,6 +46,81 @@ public class TripExceptionServiceImpl implements TripExceptionService {
     private final DeliveryStopRepository deliveryStopRepository;
     private final UserRepository userRepository;
     private final TripLookupHelper tripLookupHelper;
+    private final DeliveryRequirementRepository deliveryRequirementRepository;
+    private final AuditLogRepository auditLogRepository;
+
+    @Override
+    @Transactional
+    public TripExceptionResponse renegotiateDeadline(
+            String tripIdOrCode,
+            String exceptionIdOrCode,
+            Long companyId,
+            RenegotiateDeadlineRequest request,
+            Long managerUserId
+    ) {
+        Trip trip = tripLookupHelper.requireTrip(tripIdOrCode, companyId);
+        TripException exception = tripExceptionRepository.findByIdAndTripId(parseExceptionId(exceptionIdOrCode), trip.getId())
+                .orElseThrow(() -> new AppException(ErrorCode.TRIP_EXCEPTION_NOT_FOUND));
+        if (exception.getStatus() != TripExceptionStatus.ESCALATED) {
+            throw new AppException(ErrorCode.EXCEPTION_STATUS_INVALID);
+        }
+        if (request == null || request.getRequirementId() == null) {
+            throw new AppException(ErrorCode.INVALID_INPUT);
+        }
+        String contactNote = request.getContactNote() == null ? "" : request.getContactNote().trim();
+        if (contactNote.isEmpty()) {
+            throw new AppException(ErrorCode.CONTACT_NOTE_REQUIRED);
+        }
+        LocalDateTime newDeadline = request.getNewDeadline();
+        if (newDeadline == null) {
+            throw new AppException(ErrorCode.INVALID_INPUT);
+        }
+        if (!newDeadline.isAfter(MonitoringTime.now())) {
+            throw new AppException(ErrorCode.REQUIREMENT_DEADLINE_PAST);
+        }
+
+        DeliveryRequirement requirement = deliveryRequirementRepository
+                .findByIdAndCompanyId(request.getRequirementId(), companyId)
+                .orElseThrow(() -> new AppException(ErrorCode.DELIVERY_REQUIREMENT_NOT_FOUND));
+        if (requirement.getTrip() == null || !Objects.equals(requirement.getTrip().getId(), trip.getId())) {
+            throw new AppException(ErrorCode.DELIVERY_REQUIREMENT_NOT_IN_TRIP);
+        }
+
+        LocalDateTime oldDeadline = requirement.getDeadline();
+        requirement.setDeadline(newDeadline);
+        deliveryRequirementRepository.save(requirement);
+
+        // Giám sát đọc hạn của điểm giao ở giờ đến kế hoạch: điểm chưa giao của yêu cầu này nhận hạn mới.
+        for (DeliveryStop stop : deliveryStopRepository.findByTripIdAndDeliveryRequirementId(trip.getId(), requirement.getId())) {
+            if (stop.getStatus() != DeliveryStopStatus.COMPLETED) {
+                stop.setPlannedArrival(newDeadline);
+                deliveryStopRepository.save(stop);
+            }
+        }
+
+        User manager = managerUserId != null ? userRepository.findById(managerUserId).orElse(null) : null;
+        Map<String, Object> oldValues = new LinkedHashMap<>();
+        oldValues.put("deadline", oldDeadline != null ? oldDeadline.toString() : null);
+        Map<String, Object> newValues = new LinkedHashMap<>();
+        newValues.put("tripId", trip.getId());
+        newValues.put("exceptionId", exception.getId());
+        newValues.put("requirementId", requirement.getId());
+        newValues.put("oldDeadline", oldDeadline != null ? oldDeadline.toString() : null);
+        newValues.put("newDeadline", newDeadline.toString());
+        newValues.put("contactNote", contactNote);
+        auditLogRepository.save(AuditLog.builder()
+                .companyId(AuditCompany.ofTrip(trip))
+                .user(manager)
+                .actionType("DEADLINE_RENEGOTIATED")
+                .entityName("TripException")
+                .entityId(String.valueOf(exception.getId()))
+                .oldValues(oldValues)
+                .newValues(newValues)
+                .createdAt(Instant.now())
+                .build());
+
+        return toResponse(exception);
+    }
 
     @Override
     @Transactional

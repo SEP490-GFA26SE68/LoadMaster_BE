@@ -22,5 +22,10 @@ public class WarehouseTaskResponse {
     private Integer totalPackages;
     private Long loadPlanId;
     private LocalDateTime departureTime;
+    /** Trạng thái chuyến: {@code PLANNED} (chờ soạn) hoặc {@code LOADING} (đang xếp / xếp xong). */
     private String status;
+    /** Phiên xếp của chuyến Đang xếp hàng; null khi chưa bắt đầu xếp. */
+    private Long executionId;
+    /** {@code IN_PROGRESS} | {@code COMPLETED}; null khi chưa bắt đầu xếp. */
+    private String executionStatus;
 }

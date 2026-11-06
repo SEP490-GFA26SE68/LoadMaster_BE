@@ -69,7 +69,7 @@ public class OrderControllerTest {
     }
 
     @Test
-    @WithMockUser(authorities = "ORDER_MANAGE")
+    @WithMockUser(roles = "DISPATCHER")
     void createOrder_Success() throws Exception {
         when(orderService.createOrder(eq(1L), any(OrderRequest.class))).thenReturn(response);
 
@@ -85,7 +85,7 @@ public class OrderControllerTest {
     }
 
     @Test
-    @WithMockUser(authorities = "ORDER_MANAGE")
+    @WithMockUser(roles = "DISPATCHER")
     void createOrder_ValidationError_MissingCustomerId() throws Exception {
         OrderRequest invalidRequest = OrderRequest.builder().build();
 
@@ -97,7 +97,7 @@ public class OrderControllerTest {
     }
 
     @Test
-    @WithMockUser(authorities = "ORDER_MANAGE")
+    @WithMockUser(roles = "DISPATCHER")
     void updateOrder_Success() throws Exception {
         when(orderService.updateOrder(eq(1L), eq(100L), any(OrderRequest.class))).thenReturn(response);
 
@@ -111,7 +111,7 @@ public class OrderControllerTest {
     }
 
     @Test
-    @WithMockUser(authorities = "ORDER_MANAGE")
+    @WithMockUser(roles = "DISPATCHER")
     void getOrderById_Success() throws Exception {
         when(orderService.getOrderById(eq(1L), eq(100L))).thenReturn(response);
 
@@ -122,7 +122,7 @@ public class OrderControllerTest {
     }
 
     @Test
-    @WithMockUser(authorities = "ORDER_MANAGE")
+    @WithMockUser(roles = "DISPATCHER")
     void getAllOrders_Success() throws Exception {
         Page<OrderResponse> page = new PageImpl<>(Collections.singletonList(response));
         when(orderService.getAllOrders(eq(1L), any(), any(), any(Pageable.class))).thenReturn(page);

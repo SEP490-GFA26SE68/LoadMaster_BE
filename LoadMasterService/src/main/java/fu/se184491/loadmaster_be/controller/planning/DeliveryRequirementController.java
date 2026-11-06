@@ -111,7 +111,8 @@ public class DeliveryRequirementController {
 
 
     @PatchMapping("/{id}/extend-deadline")
-    @PreAuthorize("hasAuthority('DELIVERY_DEMAND_MANAGE')")
+    // Gia hạn sau khi liên hệ khách là việc của quản lý công ty (sự cố đã chuyển lên).
+    @PreAuthorize("hasAuthority('DELIVERY_DEMAND_MANAGE') or hasRole('MANAGER')")
     public ApiResponse<DeliveryRequirementResponse> extendDeadline(
             @PathVariable Long id,
             @Valid @RequestBody ExtendDeliveryDeadlineRequest request

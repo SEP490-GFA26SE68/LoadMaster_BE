@@ -1,5 +1,6 @@
 package fu.se184491.loadmaster_be.service.route;
 
+import fu.se184491.loadmaster_be.service.audit.AuditCompany;
 import fu.se184491.loadmaster_be.client.GoongMapsClient;
 import fu.se184491.loadmaster_be.constant.trip.TripStatus;
 import fu.se184491.loadmaster_be.dto.goong.DirectionsResponse;
@@ -22,6 +23,8 @@ import fu.se184491.loadmaster_be.repository.cargo.CargoPackageRepository;
 import fu.se184491.loadmaster_be.repository.common.AuditLogRepository;
 import fu.se184491.loadmaster_be.repository.trip.DeliveryStopRepository;
 import fu.se184491.loadmaster_be.repository.trip.TripRepository;
+import fu.se184491.loadmaster_be.service.trip.TripPackageResolver;
+import fu.se184491.loadmaster_be.service.trip.TripStatusService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -46,6 +49,8 @@ public class RouteOptimizationService {
     private final AuditLogRepository auditLogRepository;
     private final GoongMapsClient goongMapsClient;
     private final RoutePlanWriter routePlanWriter;
+    private final TripPackageResolver tripPackageResolver;
+    private final TripStatusService tripStatusService;
     private final StopSequenceOptimizer stopSequenceOptimizer = new StopSequenceOptimizer();
 
     public RouteOptimizationService(
@@ -54,7 +59,9 @@ public class RouteOptimizationService {
             CargoPackageRepository cargoPackageRepository,
             AuditLogRepository auditLogRepository,
             GoongMapsClient goongMapsClient,
-            RoutePlanWriter routePlanWriter
+            RoutePlanWriter routePlanWriter,
+            TripPackageResolver tripPackageResolver,
+            TripStatusService tripStatusService
     ) {
         this.tripRepository = tripRepository;
         this.deliveryStopRepository = deliveryStopRepository;
@@ -62,12 +69,29 @@ public class RouteOptimizationService {
         this.auditLogRepository = auditLogRepository;
         this.goongMapsClient = goongMapsClient;
         this.routePlanWriter = routePlanWriter;
+        this.tripPackageResolver = tripPackageResolver;
+        this.tripStatusService = tripStatusService;
     }
 
     @Transactional
     public RouteOptimizationResult optimizeRoute(
             Long companyId,
             Long tripId
+    ) {
+        return optimizeRoute(companyId, tripId, null);
+    }
+
+    /**
+     * Tối ưu thứ tự điểm giao và lưu tuyến. Chuyến Nháp tối ưu xong thành Đã lập kế hoạch;
+     * chuyến Đã lập kế hoạch tối ưu lại vẫn giữ trạng thái.
+     *
+     * @param actorUserId người bấm tối ưu (ghi nhật ký), {@code null} nếu không có
+     */
+    @Transactional
+    public RouteOptimizationResult optimizeRoute(
+            Long companyId,
+            Long tripId,
+            Long actorUserId
     ) {
         Trip trip = tripRepository
                 .findByIdAndCompanyId(tripId, companyId)
@@ -77,19 +101,24 @@ public class RouteOptimizationService {
         if (trip.getStatus() != TripStatus.DRAFT
                 && trip.getStatus() != TripStatus.PLANNED) {
             throw new AppException(
-                    ErrorCode.INVALID_INPUT
+                    ErrorCode.TRIP_NOT_EDITABLE
             );
         }
         List<DeliveryStop> stops = deliveryStopRepository.findByTripIdOrderByStopSequenceAsc(tripId);
+        if (stops.isEmpty()) {
+            throw new AppException(ErrorCode.TRIP_HAS_NO_STOPS);
+        }
         stops.stream()
                 .filter(stop -> stop.getLatitude() == null || stop.getLongitude() == null)
                 .findFirst()
                 .ifPresent(stop -> {
                     throw new MissingCoordinatesException(stop.getId());
                 });
-        Map<Long, List<CargoPackage>> packagesByStop = cargoPackageRepository
-                .findByOrderDeliveryStopTripIdOrderByIdAsc(tripId).stream()
-                .collect(Collectors.groupingBy(cargoPackage -> cargoPackage.getOrder().getDeliveryStop().getId()));
+        // Kiện của từng điểm theo liên kết yêu cầu giao (và đơn vận chuyển cũ).
+        Map<Long, List<CargoPackage>> packagesByStop = new HashMap<>();
+        for (DeliveryStop stop : stops) {
+            packagesByStop.put(stop.getId(), tripPackageResolver.packagesOfStop(stop.getId()));
+        }
 
         LatLng origin = resolveOrigin(trip, stops);
         Map<Long, DeliveryStop> stopsById = stops.stream()
@@ -185,13 +214,35 @@ public class RouteOptimizationService {
         trip.setRoutePlan(routePlanCache);
         tripRepository.save(trip);
         auditLogRepository.save(AuditLog.builder()
+                .companyId(AuditCompany.ofTrip(trip))
                 .actionType("ROUTE_OPTIMIZED")
                 .entityName("Trip")
                 .entityId(tripId.toString())
-                .newValues(routePlanCache)
+                .newValues(routeAuditSummary(schedules.size(), distanceMeters, elapsedSeconds,
+                        sequence.getDeadlineMissedStops(), persisted.getId(), persisted.getPlanVersion()))
                 .createdAt(Instant.now())
                 .build());
+        if (trip.getStatus() == TripStatus.DRAFT) {
+            tripStatusService.transitionTo(tripId, TripStatus.PLANNED, actorUserId);
+        }
         return result;
+    }
+
+    /**
+     * Nhật ký chỉ giữ tóm tắt của lần tối ưu tuyến (số điểm, km, phút); tuyến đầy đủ nằm ở
+     * {@code trips.route_plan} và bảng route_plans.
+     */
+    static Map<String, Object> routeAuditSummary(int stopCount, long distanceMeters, int elapsedSeconds,
+                                                 List<Long> deadlineMissedStops,
+                                                 Long routePlanId, Integer planVersion) {
+        Map<String, Object> summary = new java.util.LinkedHashMap<>();
+        summary.put("stopCount", stopCount);
+        summary.put("distanceKm", Math.round(distanceMeters / 100.0) / 10.0);
+        summary.put("durationMinutes", Math.round(elapsedSeconds / 60.0));
+        summary.put("deadlineMissedCount", deadlineMissedStops == null ? 0 : deadlineMissedStops.size());
+        summary.put("routePlanId", routePlanId);
+        summary.put("planVersion", planVersion);
+        return summary;
     }
 
     private DistanceMatrixResponse getDistanceMatrix(List<LatLng> points) {

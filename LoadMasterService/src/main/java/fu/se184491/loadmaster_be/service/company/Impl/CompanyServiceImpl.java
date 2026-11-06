@@ -156,6 +156,12 @@ public class CompanyServiceImpl implements CompanyService {
         if (request.getCompanyName() != null && !request.getCompanyName().isBlank()) {
             company.setCompanyName(request.getCompanyName());
         }
+        if (request.getTaxCode() != null && !request.getTaxCode().isBlank()) {
+            if (companyRepository.existsByTaxCodeAndIdNot(request.getTaxCode(), companyId)) {
+                throw new AppException(ErrorCode.TAX_CODE_ALREADY_EXISTS);
+            }
+            company.setTaxCode(request.getTaxCode());
+        }
         if (request.getContactEmail() != null && !request.getContactEmail().isBlank()) {
             company.setBillingEmail(request.getContactEmail());
         }
