@@ -14,8 +14,6 @@ public interface SubscriptionPlanRepository extends JpaRepository<SubscriptionPl
     List<SubscriptionPlan> findByActiveTrue();
     Optional<SubscriptionPlan> findByTierAndActiveTrue(SubscriptionTier tier);
     boolean existsByPlanCode(String planCode);
-
-    Optional<SubscriptionPlan> findByPlanCode(String planCode);
     boolean existsByTierAndActiveTrue(SubscriptionTier tier);
     boolean existsByTierAndActiveTrueAndIdNot(SubscriptionTier tier, Long id);
 }
