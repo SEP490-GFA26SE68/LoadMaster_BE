@@ -92,6 +92,17 @@ public final class ManualLayoutValidator {
      * chỉ hướng gốc; bật thì mọi hướng sinh ra từ các phép xoay 90° được phép quanh X, Y, Z.
      */
     public static Set<Integer> allowedRotations(boolean rotationEnabled, boolean allowX, boolean allowY,
+                                                boolean allowZ, boolean uprightOnly) {
+        Set<Integer> codes = allowedRotations(rotationEnabled, allowX, allowY, allowZ);
+        if (uprightOnly) {
+            // Kiện phải giữ thẳng đứng (upright_only của kiện): chiều cao gốc luôn là chiều cao khi xếp.
+            codes.removeIf(code -> ORIENTATIONS[code][2] != 'H');
+        }
+        return codes;
+    }
+
+    /** Như {@link #allowedRotations(boolean, boolean, boolean, boolean, boolean)} cho kiện không bắt giữ thẳng đứng. */
+    public static Set<Integer> allowedRotations(boolean rotationEnabled, boolean allowX, boolean allowY,
                                                 boolean allowZ) {
         Set<String> seen = new LinkedHashSet<>();
         List<String> pending = new ArrayList<>();

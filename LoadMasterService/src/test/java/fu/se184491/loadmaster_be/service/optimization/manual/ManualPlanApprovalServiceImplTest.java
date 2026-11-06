@@ -7,6 +7,7 @@ import fu.se184491.loadmaster_be.dto.response.optimization.LoadPlanDetailRespons
 import fu.se184491.loadmaster_be.dto.response.optimization.PlacementDetailResponse;
 import fu.se184491.loadmaster_be.entity.account.User;
 import fu.se184491.loadmaster_be.entity.cargo.CargoPackage;
+import fu.se184491.loadmaster_be.entity.cargo.CargoPackagePackingProfile;
 import fu.se184491.loadmaster_be.entity.cargo.PackageType;
 import fu.se184491.loadmaster_be.entity.common.AuditLog;
 import fu.se184491.loadmaster_be.entity.optimization.LoadPlan;
@@ -19,6 +20,7 @@ import fu.se184491.loadmaster_be.entity.vehicle.VehicleType;
 import fu.se184491.loadmaster_be.exception.AppException;
 import fu.se184491.loadmaster_be.exception.ErrorCode;
 import fu.se184491.loadmaster_be.helpers.CurrentUserService;
+import fu.se184491.loadmaster_be.repository.cargo.CargoPackagePackingProfileRepository;
 import fu.se184491.loadmaster_be.repository.cargo.CargoPackageRepository;
 import fu.se184491.loadmaster_be.repository.common.AuditLogRepository;
 import fu.se184491.loadmaster_be.repository.optimization.LoadPlanRepository;
@@ -31,7 +33,6 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
@@ -64,8 +65,9 @@ class ManualPlanApprovalServiceImplTest {
     @Mock CargoPackageRepository cargoPackageRepository;
     @Mock AuditLogRepository auditLogRepository;
     @Mock CurrentUserService currentUserService;
+    @Mock CargoPackagePackingProfileRepository packingProfileRepository;
 
-    @InjectMocks ManualPlanApprovalServiceImpl service;
+    ManualPlanApprovalServiceImpl service;
 
     private Trip trip;
     private LoadPlanDetailResponse source;
@@ -73,6 +75,10 @@ class ManualPlanApprovalServiceImplTest {
 
     @BeforeEach
     void setUp() {
+        // Vùng dựng bằng bộ dựng thật trên hai kho giả: cùng một chỗ với lối đọc phương án.
+        service = new ManualPlanApprovalServiceImpl(loadPlanQueryService, loadPlanRepository, writeRepository,
+                tripRepository, cargoPackageRepository, auditLogRepository, currentUserService,
+                new StopZoneResolver(deliveryStopRepository, cargoPackageRepository), packingProfileRepository);
         VehicleType type = VehicleType.builder().innerLength(600).innerWidth(240).innerHeight(240)
                 .obstacles(new ArrayList<>()).build();
         trip = Trip.builder().id(10L).status(TripStatus.PLANNED)
@@ -189,6 +195,22 @@ class ManualPlanApprovalServiceImplTest {
         assertThatThrownBy(() -> service.approveEdits(5L, move(101L, 0, 100, 2)))
                 .extracting(ManualPlanApprovalServiceImplTest::codeOf)
                 .isEqualTo(ErrorCode.MANUAL_EDIT_ROTATION_NOT_ALLOWED);
+    }
+
+    @Test
+    void aPackageThatMustStayUprightIsNotLaidOnItsSide() {
+        PackageType free = PackageType.builder().rotationAllowed(true)
+                .allowRotateX(true).allowRotateY(true).allowRotateZ(true).build();
+        when(cargoPackageRepository.findAllById(anyList())).thenReturn(List.of(
+                CargoPackage.builder().id(1L).packageType(free).build(), CargoPackage.builder().id(2L).build()));
+        when(packingProfileRepository.findByCargoPackageId(1L))
+                .thenReturn(Optional.of(CargoPackagePackingProfile.builder().uprightOnly(true).build()));
+
+        assertThatThrownBy(() -> service.approveEdits(5L, move(101L, 0, 100, 2)))
+                .extracting(ManualPlanApprovalServiceImplTest::codeOf)
+                .isEqualTo(ErrorCode.MANUAL_EDIT_ROTATION_NOT_ALLOWED);
+        service.approveEdits(5L, move(101L, 0, 100, 1));
+        verify(loadPlanRepository).saveAndFlush(any());
     }
 
     @Test

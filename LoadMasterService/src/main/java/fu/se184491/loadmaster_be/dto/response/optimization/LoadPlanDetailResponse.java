@@ -51,4 +51,9 @@ public class LoadPlanDetailResponse {
     private Boolean stale;
     private List<PlacementDetailResponse> placements;
     private List<UnplacedPackageResponse> unplaced;
+    /**
+     * Vùng theo điểm giao, theo thứ tự điểm giao. Chỉ có khi vùng dựng lại từ chuyến cho ra đúng {@code rehandlingCount} đã
+     * lưu; không thì null (phương án lỗi thời, chưa có số, hay đếm theo luật cũ).
+     */
+    private List<StopZoneResponse> stopZones;
 }

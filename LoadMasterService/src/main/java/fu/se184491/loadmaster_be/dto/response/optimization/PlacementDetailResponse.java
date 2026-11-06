@@ -42,4 +42,9 @@ public class PlacementDetailResponse {
      * không có loại kiện hoặc tắt xoay thì chỉ hướng gốc. Luôn gồm hướng đang xếp.
      */
     private List<Integer> allowedRotations;
+    /**
+     * Vùng chứa tâm kiện theo X (mã ở {@code LoadPlanDetailResponse.stopZones}); khác vùng của điểm giao mình là một lần
+     * dỡ-xếp lại. Null khi phương án không trả vùng.
+     */
+    private String stopZoneId;
 }

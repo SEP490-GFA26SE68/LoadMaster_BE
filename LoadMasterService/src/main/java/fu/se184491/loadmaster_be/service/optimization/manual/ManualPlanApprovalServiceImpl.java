@@ -11,18 +11,17 @@ import fu.se184491.loadmaster_be.entity.cargo.PackageType;
 import fu.se184491.loadmaster_be.entity.common.AuditLog;
 import fu.se184491.loadmaster_be.entity.optimization.LoadPlan;
 import fu.se184491.loadmaster_be.dto.response.optimization.UnplacedPackageResponse;
-import fu.se184491.loadmaster_be.entity.trip.DeliveryStop;
 import fu.se184491.loadmaster_be.entity.trip.Trip;
 import fu.se184491.loadmaster_be.entity.vehicle.VehicleType;
 import fu.se184491.loadmaster_be.exception.AppException;
 import fu.se184491.loadmaster_be.exception.ErrorCode;
 import fu.se184491.loadmaster_be.helpers.CurrentUserService;
+import fu.se184491.loadmaster_be.repository.cargo.CargoPackagePackingProfileRepository;
 import fu.se184491.loadmaster_be.repository.cargo.CargoPackageRepository;
 import fu.se184491.loadmaster_be.repository.common.AuditLogRepository;
 import fu.se184491.loadmaster_be.repository.optimization.LoadPlanRepository;
 import fu.se184491.loadmaster_be.repository.optimization.LoadPlanWriteRepository;
 import fu.se184491.loadmaster_be.repository.optimization.LoadPlanWriteRepository.NewPlacement;
-import fu.se184491.loadmaster_be.repository.trip.DeliveryStopRepository;
 import fu.se184491.loadmaster_be.repository.trip.TripRepository;
 import fu.se184491.loadmaster_be.service.audit.AuditCompany;
 import fu.se184491.loadmaster_be.service.optimization.LoadPlanQueryService;
@@ -60,10 +59,11 @@ public class ManualPlanApprovalServiceImpl implements ManualPlanApprovalService 
     private final LoadPlanRepository loadPlanRepository;
     private final LoadPlanWriteRepository writeRepository;
     private final TripRepository tripRepository;
-    private final DeliveryStopRepository deliveryStopRepository;
     private final CargoPackageRepository cargoPackageRepository;
     private final AuditLogRepository auditLogRepository;
     private final CurrentUserService currentUserService;
+    private final StopZoneResolver stopZoneResolver;
+    private final CargoPackagePackingProfileRepository packingProfileRepository;
 
     @Override
     @Transactional
@@ -141,7 +141,7 @@ public class ManualPlanApprovalServiceImpl implements ManualPlanApprovalService 
         CenterOfGravity cog = ManualLayoutValidator.centerOfGravity(after);
         // Chỉ đổi ghim thì cách xếp giữ nguyên: giữ số của bộ tối ưu.
         Integer rehandling = edited.isEmpty() ? sourcePlan.getRehandlingCount()
-                : rehandlingOf(trip, type, byId.values(), after, source.getUnplaced(), packages);
+                : rehandlingOf(trip, type, byId.values(), after, source.getUnplaced());
         LoadPlan approved = loadPlanRepository.saveAndFlush(LoadPlan.builder()
                 .job(sourcePlan.getJob())
                 .planName(sourcePlan.getPlanName())
@@ -254,52 +254,13 @@ public class ManualPlanApprovalServiceImpl implements ManualPlanApprovalService 
     }
 
     /**
-     * Số kiện nằm ngoài vùng điểm giao của mình trong cách xếp mới. Vùng dựng lại như dịch vụ tối ưu: mọi điểm giao của chuyến và
-     * thể tích mọi kiện của lần tối ưu (đã xếp và không xếp được — phương án chưa lỗi thời nên điểm giao và hàng chưa đổi). Thiếu
-     * dữ liệu để dựng vùng (kiện không có điểm giao, kiện không xếp được không rõ kích thước) thì không đoán: {@code null}.
+     * Số kiện nằm ngoài vùng điểm giao của mình trong cách xếp mới, trên vùng dựng như dịch vụ tối ưu ({@link StopZoneResolver};
+     * phương án chưa lỗi thời nên điểm giao và hàng chưa đổi). Thiếu dữ liệu để dựng vùng thì không đoán: {@code null}.
      */
     private Integer rehandlingOf(Trip trip, VehicleType type, Collection<PlacementDetailResponse> placements, List<Box> after,
-                                 List<UnplacedPackageResponse> unplaced, Map<Long, CargoPackage> packages) {
-        List<DeliveryStop> stops = deliveryStopRepository.findByTripIdOrderByStopSequenceAsc(trip.getId());
-        if (stops == null || stops.isEmpty()) {
-            return null;
-        }
-        Map<Long, Integer> sequenceOf = new LinkedHashMap<>();
-        for (int i = 0; i < stops.size(); i++) {
-            Integer sequence = stops.get(i).getStopSequence();
-            sequenceOf.put(stops.get(i).getId(), sequence == null ? i + 1 : sequence);
-        }
-        Map<Long, Double> volume = new HashMap<>();
-        Map<Long, Long> stopByBox = new HashMap<>();
-        for (PlacementDetailResponse placement : placements) {
-            if (placement.getStopId() == null || !sequenceOf.containsKey(placement.getStopId())) {
-                return null;
-            }
-            stopByBox.put(placement.getId(), placement.getStopId());
-            double[] size = sizeOf(placement);
-            volume.merge(placement.getStopId(), size[0] * size[1] * size[2], Double::sum);
-        }
-        for (UnplacedPackageResponse item : unplaced == null ? List.<UnplacedPackageResponse>of() : unplaced) {
-            Long stopId = item.getPackageId() == null ? null : deliveryStopRepository
-                    .findRequirementStopsByPackageId(item.getPackageId()).stream()
-                    .filter(stop -> stop.getTrip() != null && Objects.equals(stop.getTrip().getId(), trip.getId()))
-                    .map(DeliveryStop::getId).findFirst().orElse(null);
-            double[] size = realSizeOf(packages.get(item.getPackageId()));
-            if (size == null && item.getLengthCm() != null && item.getWidthCm() != null && item.getHeightCm() != null) {
-                size = new double[]{item.getLengthCm().doubleValue(), item.getWidthCm().doubleValue(),
-                        item.getHeightCm().doubleValue()};
-            }
-            if (stopId == null || !sequenceOf.containsKey(stopId) || size == null) {
-                return null;
-            }
-            volume.merge(stopId, size[0] * size[1] * size[2], Double::sum);
-        }
-        List<StopZoneLayout.StopLoad> loads = sequenceOf.entrySet().stream()
-                .map(entry -> new StopZoneLayout.StopLoad(entry.getKey(), entry.getValue(),
-                        volume.getOrDefault(entry.getKey(), 0.0)))
-                .toList();
-        List<StopZoneLayout.Zone> zones = StopZoneLayout.zones(type.getInnerLength(), loads);
-        return StopZoneLayout.rehandlingCount(zones, after, stopByBox);
+                                 List<UnplacedPackageResponse> unplaced) {
+        StopZoneResolver.ResolvedZones zones = stopZoneResolver.resolve(trip.getId(), type.getInnerLength(), placements, unplaced);
+        return zones == null ? null : StopZoneLayout.rehandlingCount(zones.zones(), after, zones.stopByPlacement());
     }
 
     /**
@@ -308,7 +269,7 @@ public class ManualPlanApprovalServiceImpl implements ManualPlanApprovalService 
      */
     private static double[] baseSizeOf(PlacementDetailResponse placement, CargoPackage cargo, int rotation) {
         double[] packed = sizeOf(placement);
-        double[] real = realSizeOf(cargo);
+        double[] real = StopZoneResolver.realSizeOf(cargo);
         if (real != null) {
             double[] oriented = ManualLayoutValidator.orientedSize(real, rotation);
             boolean matches = true;
@@ -322,33 +283,21 @@ public class ManualPlanApprovalServiceImpl implements ManualPlanApprovalService 
         return ManualLayoutValidator.baseSize(packed, rotation);
     }
 
-    private static double[] realSizeOf(CargoPackage cargo) {
-        if (cargo == null) {
-            return null;
-        }
-        PackageType type = cargo.getPackageType();
-        Double length = dimension(cargo.getActualLength(), type == null ? null : type.getLength());
-        Double width = dimension(cargo.getActualWidth(), type == null ? null : type.getWidth());
-        Double height = dimension(cargo.getActualHeight(), type == null ? null : type.getHeight());
-        return length == null || width == null || height == null ? null : new double[]{length, width, height};
-    }
-
-    private static Double dimension(BigDecimal actual, Integer fallback) {
-        if (actual != null && actual.signum() > 0) {
-            return actual.doubleValue();
-        }
-        return fallback != null && fallback > 0 ? fallback.doubleValue() : null;
-    }
-
-    /** Như dịch vụ tối ưu: không có loại kiện thì không xoay. */
-    private static boolean rotationAllowed(CargoPackage cargo, int rotation) {
+    /**
+     * Như dịch vụ tối ưu: không có loại kiện thì không xoay. Kiện phải giữ thẳng đứng ({@code upright_only}) chỉ nhận hướng giữ
+     * chiều cao gốc — cùng luật với {@code allowedRotations} của lối đọc phương án.
+     */
+    private boolean rotationAllowed(CargoPackage cargo, int rotation) {
         PackageType type = cargo == null ? null : cargo.getPackageType();
         if (type == null) {
             return false;
         }
+        boolean upright = packingProfileRepository.findByCargoPackageId(cargo.getId())
+                .map(profile -> Boolean.TRUE.equals(profile.getUprightOnly()))
+                .orElse(false);
         return ManualLayoutValidator.allowedRotations(Boolean.TRUE.equals(type.getRotationAllowed()),
                 Boolean.TRUE.equals(type.getAllowRotateX()), Boolean.TRUE.equals(type.getAllowRotateY()),
-                Boolean.TRUE.equals(type.getAllowRotateZ())).contains(rotation);
+                Boolean.TRUE.equals(type.getAllowRotateZ()), upright).contains(rotation);
     }
 
     private static Box boxOf(PlacementDetailResponse placement) {

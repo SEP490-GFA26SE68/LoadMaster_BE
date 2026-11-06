@@ -144,10 +144,11 @@ public class LoadPlanReadRepository {
                                pp.rotation_type, pp.step_sequence, pp.pinned,
                                pp.stop_zone_id, ds.stop_name, ds.stop_sequence,
                                pt.id AS package_type_id, pt.rotation_allowed,
-                               pt.allow_rotate_x, pt.allow_rotate_y, pt.allow_rotate_z
+                               pt.allow_rotate_x, pt.allow_rotate_y, pt.allow_rotate_z, cpp.upright_only
                         FROM package_placements pp
                         LEFT JOIN packages p ON p.id = pp.package_id
                         LEFT JOIN package_types pt ON pt.id = p.package_type_id
+                        LEFT JOIN cargo_package_packing_profiles cpp ON cpp.package_id = p.id
                         LEFT JOIN delivery_stops ds ON ds.id = pp.stop_zone_id
                         WHERE pp.load_plan_id IN (:ids)
                         ORDER BY pp.load_plan_id, pp.step_sequence, pp.id
@@ -175,11 +176,15 @@ public class LoadPlanReadRepository {
                         .build()));
     }
 
-    /** Hướng kiện được nhận khi chỉnh tay: như dịch vụ tối ưu đọc loại kiện (không có loại kiện thì không xoay), cộng hướng đang xếp. */
+    /**
+     * Hướng kiện được nhận khi chỉnh tay: như dịch vụ tối ưu đọc loại kiện (không có loại kiện thì không xoay), bỏ hướng nằm
+     * nghiêng khi kiện phải giữ thẳng đứng, cộng hướng đang xếp.
+     */
     private static List<Integer> allowedRotations(ResultSet rs) throws SQLException {
         boolean typed = nullableLong(rs, "package_type_id") != null;
         Set<Integer> codes = new TreeSet<>(ManualLayoutValidator.allowedRotations(typed && rs.getBoolean("rotation_allowed"),
-                rs.getBoolean("allow_rotate_x"), rs.getBoolean("allow_rotate_y"), rs.getBoolean("allow_rotate_z")));
+                rs.getBoolean("allow_rotate_x"), rs.getBoolean("allow_rotate_y"), rs.getBoolean("allow_rotate_z"),
+                rs.getBoolean("upright_only")));
         Integer current = nullableInt(rs, "rotation_type");
         codes.add(current == null || current < 0 || current > 5 ? 0 : current);
         return List.copyOf(codes);
