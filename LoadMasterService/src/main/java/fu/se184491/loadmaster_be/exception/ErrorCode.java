@@ -211,6 +211,7 @@ public enum ErrorCode {
     OPTIMIZATION_JOB_NOT_FOUND("Không tìm thấy yêu cầu tối ưu", HttpStatus.NOT_FOUND),
     OPTIMIZATION_SERVICE_UNAVAILABLE("Dịch vụ tối ưu xếp hàng không khả dụng", HttpStatus.SERVICE_UNAVAILABLE),
     INSUFFICIENT_CREDITS("Công ty không đủ credit để chạy tối ưu xếp hàng", HttpStatus.PAYMENT_REQUIRED),
+    PINNED_SET_INVALID("Bộ kiện đã ghim không đứng vững; chưa chạy tối ưu và không trừ credit", HttpStatus.BAD_REQUEST),
     PLAN_STALE("Phương án lỗi thời: hàng, xe hoặc điểm giao của chuyến đã đổi sau khi tối ưu", HttpStatus.CONFLICT),
     MANUAL_EDIT_INVALID("Bản chỉnh tay không hợp lệ", HttpStatus.BAD_REQUEST),
     MANUAL_EDIT_OUT_OF_BOUNDS("Có kiện nằm ngoài lòng thùng", HttpStatus.UNPROCESSABLE_ENTITY),

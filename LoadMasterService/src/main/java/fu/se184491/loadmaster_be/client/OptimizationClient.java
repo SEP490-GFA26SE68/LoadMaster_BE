@@ -39,7 +39,8 @@ public class OptimizationClient {
             "TRIP_NOT_FOUND",
             "VEHICLE_NOT_FOUND",
             "PACKAGE_NOT_FOUND",
-            "INSUFFICIENT_CREDITS"
+            "INSUFFICIENT_CREDITS",
+            "PINNED_SET_INVALID"
     );
 
     private final RestClient optimizationRestClient;

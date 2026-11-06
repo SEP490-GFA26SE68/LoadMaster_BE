@@ -1,6 +1,7 @@
 package fu.se184491.loadmaster_be.controller.optimization;
 
 import fu.se184491.loadmaster_be.dto.ApiResponse;
+import fu.se184491.loadmaster_be.dto.request.optimization.OptimizeLoadingRequest;
 import fu.se184491.loadmaster_be.dto.response.optimization.LoadPlanDetailResponse;
 import fu.se184491.loadmaster_be.dto.response.optimization.OptimizationJobStartResponse;
 import fu.se184491.loadmaster_be.dto.response.optimization.OptimizationJobStatusResponse;
@@ -14,6 +15,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -35,9 +37,11 @@ public class LoadingOptimizationController {
     @PostMapping("/{tripId}/optimize-loading")
     @PreAuthorize("hasRole('DISPATCHER')")
     public ResponseEntity<ApiResponse<OptimizationJobStartResponse>> optimizeLoading(
-            @PathVariable Long tripId
+            @PathVariable Long tripId,
+            @RequestBody(required = false) OptimizeLoadingRequest request
     ) {
-        OptimizationJobStartResponse response = loadingOptimizationService.startLoadingOptimization(tripId);
+        OptimizationJobStartResponse response = loadingOptimizationService.startLoadingOptimization(
+                tripId, request == null ? null : request.keepPinsFromPlanId());
         return ResponseEntity
                 .status(HttpStatus.ACCEPTED)
                 .body(ApiResponse.success("Tác vụ tối ưu đã được khởi tạo", response));

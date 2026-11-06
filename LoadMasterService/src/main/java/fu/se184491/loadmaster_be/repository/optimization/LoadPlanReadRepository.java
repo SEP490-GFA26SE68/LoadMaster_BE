@@ -104,7 +104,12 @@ public class LoadPlanReadRepository {
                         SELECT j.id, j.job_uuid, j.trip_id, j.objective, j.time_limit_sec, j.status,
                                j.computation_ms, j.created_at,
                                (SELECT COUNT(*) FROM load_plans lp
-                                WHERE lp.job_id = j.id AND COALESCE(lp.packed_items_count, 0) > 0) AS packed_plans
+                                WHERE lp.job_id = j.id AND COALESCE(lp.packed_items_count, 0) > 0) AS packed_plans,
+                               (SELECT COALESCE(MAX(per_plan.pins), 0) FROM (
+                                    SELECT COUNT(*) AS pins FROM package_placements pp
+                                    JOIN load_plans lp ON lp.id = pp.load_plan_id
+                                    WHERE lp.job_id = j.id AND pp.pinned = TRUE
+                                    GROUP BY lp.id) per_plan) AS pinned_count
                         FROM optimization_jobs j
                         WHERE j.id = :id
                         """,
@@ -122,6 +127,7 @@ public class LoadPlanReadRepository {
                             // Dịch vụ tối ưu ghi created_at theo giờ UTC (không múi giờ).
                             .createdAt(createdAt == null ? null : createdAt.toInstant())
                             .packedPlanCount(rs.getInt("packed_plans"))
+                            .pinnedCount(rs.getInt("pinned_count"))
                             .build();
                 });
         return rows.stream().findFirst();
