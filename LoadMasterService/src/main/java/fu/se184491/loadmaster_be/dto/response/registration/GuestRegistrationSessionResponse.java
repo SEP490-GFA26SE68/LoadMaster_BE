@@ -30,3 +30,4 @@ public class GuestRegistrationSessionResponse {
     private String paymentRef;
     private String message;
 }
+

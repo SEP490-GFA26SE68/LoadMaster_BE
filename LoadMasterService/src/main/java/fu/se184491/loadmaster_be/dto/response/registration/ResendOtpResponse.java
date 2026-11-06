@@ -16,3 +16,4 @@ public class ResendOtpResponse {
     private LocalDateTime otpExpiresAt;
     private LocalDateTime otpResendAllowedAt;
 }
+

@@ -22,3 +22,4 @@ public class InitPaymentRequest {
     @NotNull(message = "Vui lòng chọn chu kỳ thanh toán")
     private BillingCycle billingCycle;
 }
+

@@ -26,3 +26,4 @@ public interface GuestRegistrationSessionRepository extends JpaRepository<GuestR
             RegistrationStatus status
     );
 }
+
