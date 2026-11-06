@@ -299,6 +299,12 @@ public enum ErrorCode {
     AGREEMENT_DEADLINE_EXPIRED("Đã quá thời hạn 3 ngày ký thỏa thuận dịch vụ. Tài khoản đã bị khóa", HttpStatus.FORBIDDEN),
 
     // -------------------------------------------------------------------------
+    // Guest Self-Registration errors
+    // -------------------------------------------------------------------------
+    REGISTRATION_SESSION_NOT_FOUND("Không tìm thấy phiên đăng ký tài khoản", HttpStatus.NOT_FOUND),
+    REGISTRATION_SESSION_EXPIRED("Phiên đăng ký đã hết hạn. Vui lòng thực hiện lại từ đầu", HttpStatus.BAD_REQUEST),
+    REGISTRATION_INVALID_STATUS("Trạng thái phiên đăng ký không hợp lệ cho thao tác này", HttpStatus.BAD_REQUEST),
+    REGISTRATION_RESEND_COOLDOWN("Vui lòng đợi 60 giây trước khi yêu cầu mã OTP mới", HttpStatus.BAD_REQUEST),
     // Driver delivery: sự cố theo kiện, xác nhận tay khi dỡ, phương án đã xếp
     // -------------------------------------------------------------------------
     DELIVERY_STOP_NOT_ARRIVED("Chưa báo đến điểm giao này", HttpStatus.CONFLICT),

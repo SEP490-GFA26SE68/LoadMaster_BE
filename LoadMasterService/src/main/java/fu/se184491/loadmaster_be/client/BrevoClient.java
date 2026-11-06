@@ -281,4 +281,51 @@ public class BrevoClient {
             // Log exception or handle in dev when Brevo credentials aren't configured
         }
     }
+
+    public void sendEmailWithAttachment(String recipientEmail, String subject, String content, String attachmentName, byte[] attachmentBytes) {
+        String htmlContent = """
+                <div style="font-family: Arial, sans-serif; padding: 24px; color: #1f2937; max-width: 600px; margin: 0 auto; border: 1px solid #e5e7eb; border-radius: 8px;">
+                    <div style="margin-bottom: 20px;">
+                        <h2 style="color: #0284c7; margin: 0;">LoadMaster</h2>
+                        <p style="color: #6b7280; font-size: 13px; margin: 4px 0 0 0;">Hệ thống tối ưu xếp hàng và lộ trình vận tải</p>
+                    </div>
+                    <div style="white-space: pre-wrap; font-size: 15px; line-height: 1.6; margin-bottom: 24px;">
+                        %s
+                    </div>
+                    <hr style="margin-top: 30px; border: none; border-top: 1px solid #e5e7eb;" />
+                    <p style="font-size: 12px; color: #9ca3af; margin: 8px 0 0 0;">© 2026 LoadMaster. All rights reserved.</p>
+                </div>
+                """.formatted(content != null ? content : "");
+
+        java.util.Map<String, Object> body = new java.util.HashMap<>();
+        body.put("sender", java.util.Map.of(
+                "name", senderName != null ? senderName : "LoadMaster",
+                "email", senderEmail != null ? senderEmail : "no-reply@loadmaster.vn"
+        ));
+        body.put("to", List.of(java.util.Map.of("email", recipientEmail)));
+        body.put("subject", subject != null ? subject : "Thông báo từ LoadMaster");
+        body.put("htmlContent", htmlContent);
+
+        if (attachmentBytes != null && attachmentBytes.length > 0) {
+            String base64Content = java.util.Base64.getEncoder().encodeToString(attachmentBytes);
+            body.put("attachment", List.of(
+                    java.util.Map.of(
+                            "name", attachmentName != null ? attachmentName : "invoice.pdf",
+                            "content", base64Content
+                    )
+            ));
+        }
+
+        try {
+            brevoRestClient
+                    .post()
+                    .uri("/v3/smtp/email")
+                    .header("api-key", apiKey)
+                    .body(body)
+                    .retrieve()
+                    .toBodilessEntity();
+        } catch (Exception e) {
+            // Log exception or handle in dev when Brevo credentials aren't configured
+        }
+    }
 }
