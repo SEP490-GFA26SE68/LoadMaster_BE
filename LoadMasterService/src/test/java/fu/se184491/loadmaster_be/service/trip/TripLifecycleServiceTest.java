@@ -137,6 +137,7 @@ class TripLifecycleServiceTest {
         assertEquals(DeliveryRequirementStatus.PENDING, requirement.getStatus());
         assertNull(requirement.getTrip());
         verify(tripStatusService).invalidateRoute(trip, 7L);
+        verify(loadPlanRepository).markStaleByTripId(10L);
     }
 
     @Test
@@ -172,7 +173,7 @@ class TripLifecycleServiceTest {
     }
 
     @Test
-    void changingVehicleUnapprovesPlansButKeepsRoute() {
+    void changingVehicleMarksPlansStaleButKeepsRoute() {
         Vehicle bigger = vehicle(4L, 1000, 600, 240, 240);
         when(vehicleRepository.findById(4L)).thenReturn(Optional.of(bigger));
         when(tripPackageResolver.packagesOfTrip(10L)).thenReturn(List.of(box("PK-1", 120, 80, 60, 300)));
@@ -180,7 +181,7 @@ class TripLifecycleServiceTest {
         service.updateTrip(10L, new TripUpdateRequest(null, null, 4L, null, null, null));
 
         assertEquals(bigger, trip.getVehicle());
-        verify(loadPlanRepository).unapproveAllByTripId(10L);
+        verify(loadPlanRepository).markStaleByTripId(10L);
         verify(tripStatusService, never()).invalidateRoute(any(), any());
     }
 
@@ -193,7 +194,7 @@ class TripLifecycleServiceTest {
                 () -> service.updateTrip(10L, new TripUpdateRequest(null, null, 4L, null, null, null)));
 
         assertEquals(ErrorCode.VEHICLE_CANNOT_CARRY_CARGO, error.getErrorCode());
-        verify(loadPlanRepository, never()).unapproveAllByTripId(any());
+        verify(loadPlanRepository, never()).markStaleByTripId(any());
     }
 
     @Test

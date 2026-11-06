@@ -218,13 +218,31 @@ public class RouteOptimizationService {
                 .actionType("ROUTE_OPTIMIZED")
                 .entityName("Trip")
                 .entityId(tripId.toString())
-                .newValues(routePlanCache)
+                .newValues(routeAuditSummary(schedules.size(), distanceMeters, elapsedSeconds,
+                        sequence.getDeadlineMissedStops(), persisted.getId(), persisted.getPlanVersion()))
                 .createdAt(Instant.now())
                 .build());
         if (trip.getStatus() == TripStatus.DRAFT) {
             tripStatusService.transitionTo(tripId, TripStatus.PLANNED, actorUserId);
         }
         return result;
+    }
+
+    /**
+     * Nhật ký chỉ giữ tóm tắt của lần tối ưu tuyến (số điểm, km, phút); tuyến đầy đủ nằm ở
+     * {@code trips.route_plan} và bảng route_plans.
+     */
+    static Map<String, Object> routeAuditSummary(int stopCount, long distanceMeters, int elapsedSeconds,
+                                                 List<Long> deadlineMissedStops,
+                                                 Long routePlanId, Integer planVersion) {
+        Map<String, Object> summary = new java.util.LinkedHashMap<>();
+        summary.put("stopCount", stopCount);
+        summary.put("distanceKm", Math.round(distanceMeters / 100.0) / 10.0);
+        summary.put("durationMinutes", Math.round(elapsedSeconds / 60.0));
+        summary.put("deadlineMissedCount", deadlineMissedStops == null ? 0 : deadlineMissedStops.size());
+        summary.put("routePlanId", routePlanId);
+        summary.put("planVersion", planVersion);
+        return summary;
     }
 
     private DistanceMatrixResponse getDistanceMatrix(List<LatLng> points) {

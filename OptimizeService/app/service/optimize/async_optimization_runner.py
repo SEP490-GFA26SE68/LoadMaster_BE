@@ -401,6 +401,7 @@ class AsyncOptimizationRunner:
             stops=stops_items,
             objective=job.objective or "MAX_VOLUME_UTIL",
             time_limit_sec=job.time_limit_sec or 60,
+            algorithm_name=job.algorithm_name,
         )
 
     async def run(

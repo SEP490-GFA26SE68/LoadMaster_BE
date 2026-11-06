@@ -205,11 +205,18 @@ public enum ErrorCode {
     PLACEMENT_NOT_IN_PLAN("Vị trí kiện hàng không thuộc về kế hoạch xếp hàng này", HttpStatus.BAD_REQUEST),
     PLAN_ALREADY_APPROVED("Kế hoạch xếp hàng này đã được phê duyệt", HttpStatus.BAD_REQUEST),
     PLAN_TRIP_NOT_PLANNED("Chỉ duyệt được phương án khi chuyến ở trạng thái Đã lập kế hoạch", HttpStatus.CONFLICT),
+    TRIP_LOCKED("Chuyến không ở trạng thái Đã lập kế hoạch nên không sửa được phương án", HttpStatus.CONFLICT),
     PLAN_HAS_NO_PLACEMENTS("Kế hoạch xếp hàng không có kiện hàng nào", HttpStatus.BAD_REQUEST),
     PLAN_LIFO_INVALID("Thứ tự dỡ hàng LIFO không hợp lệ", HttpStatus.BAD_REQUEST),
     OPTIMIZATION_JOB_NOT_FOUND("Không tìm thấy yêu cầu tối ưu", HttpStatus.NOT_FOUND),
     OPTIMIZATION_SERVICE_UNAVAILABLE("Dịch vụ tối ưu xếp hàng không khả dụng", HttpStatus.SERVICE_UNAVAILABLE),
     INSUFFICIENT_CREDITS("Công ty không đủ credit để chạy tối ưu xếp hàng", HttpStatus.PAYMENT_REQUIRED),
+    PLAN_STALE("Phương án lỗi thời: hàng, xe hoặc điểm giao của chuyến đã đổi sau khi tối ưu", HttpStatus.CONFLICT),
+    MANUAL_EDIT_INVALID("Bản chỉnh tay không hợp lệ", HttpStatus.BAD_REQUEST),
+    MANUAL_EDIT_OUT_OF_BOUNDS("Có kiện nằm ngoài lòng thùng", HttpStatus.UNPROCESSABLE_ENTITY),
+    MANUAL_EDIT_OVERLAP("Có kiện chồng lấn kiện khác hoặc vật cản", HttpStatus.UNPROCESSABLE_ENTITY),
+    MANUAL_EDIT_UNSUPPORTED("Có kiện không đủ diện tích đỡ bên dưới", HttpStatus.UNPROCESSABLE_ENTITY),
+    MANUAL_EDIT_AXLE_OVERLOAD("Bản chỉnh làm tải trục vượt giới hạn", HttpStatus.UNPROCESSABLE_ENTITY),
 
     // -------------------------------------------------------------------------
     // Warehouse & Loading errors
@@ -221,6 +228,7 @@ public enum ErrorCode {
     DEVIATION_ALREADY_RECORDED("Sai lệch cho vị trí kiện hàng này đã được ghi nhận", HttpStatus.BAD_REQUEST),
     INVALID_SEQUENCE_ORDER("Thứ tự bốc xếp không hợp lệ, vui lòng xử lý các kiện hàng trước", HttpStatus.BAD_REQUEST),
     INCOMPLETE_LOADING("Quá trình bốc xếp chưa hoàn tất", HttpStatus.BAD_REQUEST),
+    TRIP_NOT_LOADING("Chuyến không ở trạng thái Đang xếp hàng", HttpStatus.CONFLICT),
 
     // -------------------------------------------------------------------------
     // Driver & Unloading errors
@@ -230,6 +238,9 @@ public enum ErrorCode {
     DUPLICATE_UNLOAD("Kiện hàng này đã được dỡ trước đó", HttpStatus.CONFLICT),
     WRONG_DELIVERY_STOP("Kiện hàng không thuộc điểm dừng hiện tại", HttpStatus.BAD_REQUEST),
     INCOMPLETE_STOP_UNLOAD("Điểm dừng chưa hoàn tất dỡ hàng", HttpStatus.BAD_REQUEST),
+    DELIVERY_STOP_ALREADY_COMPLETED("Điểm giao đã hoàn tất", HttpStatus.CONFLICT),
+    DELIVERY_STOP_ALREADY_ARRIVED("Đã báo đến điểm giao này trước đó", HttpStatus.CONFLICT),
+    DELIVERY_STOP_NOT_CURRENT("Chưa tới lượt điểm giao này: còn điểm giao trước chưa hoàn tất", HttpStatus.CONFLICT),
 
     // -------------------------------------------------------------------------
     // Subscription & Payment errors (Sprint 8)
@@ -246,6 +257,8 @@ public enum ErrorCode {
     GPS_TRIP_NOT_IN_TRANSIT("Chuyến đi không ở trạng thái đang vận chuyển", HttpStatus.BAD_REQUEST),
     TRIP_EXCEPTION_NOT_FOUND("Không tìm thấy sự cố chuyến đi", HttpStatus.NOT_FOUND),
     EXCEPTION_STATUS_INVALID("Sự cố chuyến đi không ở trạng thái cho phép thao tác này", HttpStatus.CONFLICT),
+    CONTACT_NOTE_REQUIRED("Phải ghi lại nội dung đã liên hệ khách trước khi gia hạn", HttpStatus.BAD_REQUEST),
+    REQUIREMENT_DEADLINE_PAST("Hạn giao mới phải ở tương lai", HttpStatus.BAD_REQUEST),
     INVALID_REROUTE_INDEX("Chỉ số tuyến thay thế không hợp lệ", HttpStatus.BAD_REQUEST),
     NO_GPS_LOCATION("Chuyến đi chưa có vị trí GPS", HttpStatus.BAD_REQUEST),
 
@@ -280,6 +293,15 @@ public enum ErrorCode {
     REGISTRATION_SESSION_EXPIRED("Phiên đăng ký đã hết hạn. Vui lòng thực hiện lại từ đầu", HttpStatus.BAD_REQUEST),
     REGISTRATION_INVALID_STATUS("Trạng thái phiên đăng ký không hợp lệ cho thao tác này", HttpStatus.BAD_REQUEST),
     REGISTRATION_RESEND_COOLDOWN("Vui lòng đợi 60 giây trước khi yêu cầu mã OTP mới", HttpStatus.BAD_REQUEST);
+    // Driver delivery: sự cố theo kiện, xác nhận tay khi dỡ, phương án đã xếp
+    // -------------------------------------------------------------------------
+    DELIVERY_STOP_NOT_ARRIVED("Chưa báo đến điểm giao này", HttpStatus.CONFLICT),
+    DELIVERY_ISSUE_NOTE_REQUIRED("Sự cố loại Khác phải có ghi chú", HttpStatus.BAD_REQUEST),
+    MANUAL_CONFIRM_NOTE_REQUIRED("Xác nhận tay với lý do Khác phải có ghi chú", HttpStatus.BAD_REQUEST),
+    MANUAL_CONFIRM_PENDING("Còn xác nhận tay chờ điều phối viên duyệt", HttpStatus.CONFLICT),
+    MANUAL_CONFIRM_NOT_FOUND("Không tìm thấy xác nhận tay", HttpStatus.NOT_FOUND),
+    MANUAL_CONFIRM_NOT_PENDING("Xác nhận tay này đã được xử lý", HttpStatus.CONFLICT),
+    NO_LOADED_PLAN("Chuyến chưa có phương án kho đã xếp", HttpStatus.NOT_FOUND);
 
     private final String message;
     private final HttpStatus httpStatus;

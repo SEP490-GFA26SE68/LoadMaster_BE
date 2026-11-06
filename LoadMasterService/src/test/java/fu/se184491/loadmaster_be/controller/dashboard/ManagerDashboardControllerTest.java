@@ -48,7 +48,7 @@ class ManagerDashboardControllerTest {
     @WithMockUser(roles = "MANAGER")
     void managerReadsDashboardOfOwnCompany() throws Exception {
         when(currentUserService.getCurrentCompanyId()).thenReturn(1L);
-        when(managerDashboardService.get(1L, FROM, TO))
+        when(managerDashboardService.get(1L, FROM, TO, 10))
                 .thenReturn(ManagerDashboardCalculator.compute(FROM, TO, List.of(), List.of()));
 
         mockMvc.perform(get("/api/manager/dashboard").param("from", "2026-11-01").param("to", "2026-11-05"))
@@ -60,17 +60,29 @@ class ManagerDashboardControllerTest {
                 .andExpect(jsonPath("$.data.fill.planCount").value(0))
                 .andExpect(jsonPath("$.data.vehicles.total").value(0))
                 .andExpect(jsonPath("$.data.recentTrips").isArray());
-        verify(managerDashboardService).get(1L, FROM, TO);
+        verify(managerDashboardService).get(1L, FROM, TO, 10);
     }
 
     @Test
     @WithMockUser(roles = "DISPATCHER")
     void dispatcherIsAllowed() throws Exception {
         when(currentUserService.getCurrentCompanyId()).thenReturn(1L);
-        when(managerDashboardService.get(1L, FROM, TO))
+        when(managerDashboardService.get(1L, FROM, TO, 10))
                 .thenReturn(ManagerDashboardCalculator.compute(FROM, TO, List.of(), List.of()));
         mockMvc.perform(get("/api/manager/dashboard").param("from", "2026-11-01").param("to", "2026-11-05"))
                 .andExpect(status().isOk());
+    }
+
+    @Test
+    @WithMockUser(roles = "DISPATCHER")
+    void limitIsPassedToService() throws Exception {
+        when(currentUserService.getCurrentCompanyId()).thenReturn(1L);
+        when(managerDashboardService.get(1L, FROM, TO, 30))
+                .thenReturn(ManagerDashboardCalculator.compute(FROM, TO, List.of(), List.of()));
+        mockMvc.perform(get("/api/manager/dashboard")
+                        .param("from", "2026-11-01").param("to", "2026-11-05").param("limit", "30"))
+                .andExpect(status().isOk());
+        verify(managerDashboardService).get(1L, FROM, TO, 30);
     }
 
     @Test

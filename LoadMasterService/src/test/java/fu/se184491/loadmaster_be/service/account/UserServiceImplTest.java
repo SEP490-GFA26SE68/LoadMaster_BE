@@ -20,7 +20,9 @@ import fu.se184491.loadmaster_be.exception.AppException;
 import fu.se184491.loadmaster_be.exception.ErrorCode;
 import fu.se184491.loadmaster_be.helpers.CurrentUserService;
 import fu.se184491.loadmaster_be.helpers.TemporaryPasswordGenerator;
+import fu.se184491.loadmaster_be.entity.common.AuditLog;
 import fu.se184491.loadmaster_be.repository.account.UserRepository;
+import fu.se184491.loadmaster_be.repository.common.AuditLogRepository;
 import fu.se184491.loadmaster_be.repository.company.CompanyAgreementRepository;
 import fu.se184491.loadmaster_be.repository.company.CompanyRepository;
 import fu.se184491.loadmaster_be.service.account.Impl.UserServiceImpl;
@@ -75,6 +77,9 @@ class UserServiceImplTest {
 
     @Mock
     private BrevoClient brevoClient;
+
+    @Mock
+    private AuditLogRepository auditLogRepository;
 
     @InjectMocks
     private UserServiceImpl userService;
@@ -590,5 +595,118 @@ class UserServiceImplTest {
         assertEquals(100L, response.userId());
         assertEquals("NewTmp#999", response.temporaryPassword());
         verify(keycloakAdminClient).setPassword("kc-100", "NewTmp#999", true);
+    }
+
+    private AuditLog savedAuditLog() {
+        ArgumentCaptor<AuditLog> captor = ArgumentCaptor.forClass(AuditLog.class);
+        verify(auditLogRepository).save(captor.capture());
+        return captor.getValue();
+    }
+
+    @Test
+    @DisplayName("Nhật ký - khoá tài khoản ghi USER_LOCKED thuộc công ty của tài khoản bị khoá")
+    void lockingUser_logsEventInCompanyOfTheAccount() {
+        when(currentUserService.getCurrentUser()).thenReturn(companyAdminCaller);
+        when(userRepository.findById(100L)).thenReturn(Optional.of(targetEmployeeInCompany10));
+        when(userRepository.save(any(User.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        userService.updateUserStatus(100L, new UpdateUserStatusRequest(UserStatus.LOCKED));
+
+        AuditLog log = savedAuditLog();
+        assertEquals("USER_LOCKED", log.getActionType());
+        assertEquals("User", log.getEntityName());
+        assertEquals("100", log.getEntityId());
+        assertEquals(10L, log.getCompanyId());
+        assertEquals(companyAdminCaller, log.getUser());
+        assertEquals("ACTIVE", log.getOldValues().get("status"));
+        assertEquals("LOCKED", log.getNewValues().get("status"));
+    }
+
+    @Test
+    @DisplayName("Nhật ký - quản trị hệ thống mở khoá quản trị công ty: sự kiện vẫn thuộc công ty đó")
+    void platformAdminUnlockingCompanyAdmin_logsEventInThatCompany() {
+        companyAdminCaller.setStatus(UserStatus.LOCKED);
+        when(currentUserService.getCurrentUser()).thenReturn(systemAdminCaller);
+        when(userRepository.findById(2L)).thenReturn(Optional.of(companyAdminCaller));
+        when(userRepository.save(any(User.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        userService.updateUserStatus(2L, new UpdateUserStatusRequest(UserStatus.ACTIVE));
+
+        AuditLog log = savedAuditLog();
+        assertEquals("USER_UNLOCKED", log.getActionType());
+        assertEquals(10L, log.getCompanyId());
+        assertEquals(systemAdminCaller, log.getUser());
+    }
+
+    @Test
+    @DisplayName("Nhật ký - đặt lại mật khẩu không ghi mật khẩu")
+    void resettingPassword_logsEventWithoutPassword() {
+        when(currentUserService.getCurrentUser()).thenReturn(companyAdminCaller);
+        when(userRepository.findById(100L)).thenReturn(Optional.of(targetEmployeeInCompany10));
+        when(temporaryPasswordGenerator.generate()).thenReturn("NewTmp#999");
+
+        userService.resetPassword(100L);
+
+        AuditLog log = savedAuditLog();
+        assertEquals("USER_PASSWORD_RESET", log.getActionType());
+        assertEquals(10L, log.getCompanyId());
+        assertEquals(null, log.getOldValues());
+        assertEquals(null, log.getNewValues());
+    }
+
+    @Test
+    @DisplayName("Nhật ký - sửa tài khoản chỉ ghi trường đã đổi; không đổi gì thì không ghi")
+    void updatingUser_logsOnlyChangedFields() {
+        when(currentUserService.getCurrentUser()).thenReturn(companyAdminCaller);
+        when(userRepository.findById(100L)).thenReturn(Optional.of(targetEmployeeInCompany10));
+        when(userRepository.save(any(User.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        userService.updateUser(100L, new UpdateUserRequest("Old Driver", "0909999999", null, null));
+
+        AuditLog log = savedAuditLog();
+        assertEquals("USER_UPDATED", log.getActionType());
+        assertEquals(10L, log.getCompanyId());
+        assertEquals(java.util.Map.of("phoneNumber", "0901111111"), log.getOldValues());
+        assertEquals(java.util.Map.of("phoneNumber", "0909999999"), log.getNewValues());
+
+        userService.updateUser(100L, new UpdateUserRequest("Old Driver", "0909999999", null, null));
+        verify(auditLogRepository).save(any(AuditLog.class));
+    }
+
+    @Test
+    @DisplayName("Nhật ký - tạo và xoá tài khoản ghi USER_CREATED / USER_DELETED")
+    void creatingAndDeletingUser_logsEvents() {
+        when(currentUserService.getCurrentUser()).thenReturn(companyAdminCaller);
+        when(userRepository.existsByEmail("dispatcher@acme.vn")).thenReturn(false);
+        when(companyRepository.findById(10L)).thenReturn(Optional.of(company10));
+        when(temporaryPasswordGenerator.generate()).thenReturn("Tmp#654321");
+        when(keycloakAdminClient.createUser("dispatcher@acme.vn", "Acme Dispatcher")).thenReturn("kc-disp");
+        when(userRepository.save(any(User.class))).thenAnswer(inv -> {
+            User u = inv.getArgument(0);
+            if (u.getId() == null) {
+                u.setId(51L);
+            }
+            return u;
+        });
+
+        userService.createUser(new CreateUserRequest(
+                "dispatcher@acme.vn", "Acme Dispatcher", "0908888888", 10L, UserRole.DISPATCHER));
+
+        AuditLog created = savedAuditLog();
+        assertEquals("USER_CREATED", created.getActionType());
+        assertEquals("51", created.getEntityId());
+        assertEquals(10L, created.getCompanyId());
+        assertEquals("DISPATCHER", created.getNewValues().get("role"));
+        assertFalse(created.getNewValues().containsValue("Tmp#654321"));
+
+        when(userRepository.findById(100L)).thenReturn(Optional.of(targetEmployeeInCompany10));
+        userService.deleteUser(100L);
+
+        ArgumentCaptor<AuditLog> captor = ArgumentCaptor.forClass(AuditLog.class);
+        verify(auditLogRepository, org.mockito.Mockito.times(2)).save(captor.capture());
+        AuditLog deleted = captor.getAllValues().get(1);
+        assertEquals("USER_DELETED", deleted.getActionType());
+        assertEquals(10L, deleted.getCompanyId());
+        assertEquals("INACTIVE", deleted.getNewValues().get("status"));
     }
 }

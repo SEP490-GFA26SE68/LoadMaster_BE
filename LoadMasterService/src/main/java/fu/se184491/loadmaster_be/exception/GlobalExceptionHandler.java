@@ -89,9 +89,10 @@ public class GlobalExceptionHandler {
         log.warn("Incomplete loading exception at {}: {}", request.getRequestURI(), ex.getMessage());
 
         return ResponseEntity
-                .status(HttpStatus.BAD_REQUEST)
+                .status(ErrorCode.INCOMPLETE_LOADING.getHttpStatus())
                 .body(ApiResponse.<Void>builder()
                         .success(false)
+                        .code(ErrorCode.INCOMPLETE_LOADING.name())
                         .message(ex.getMessage())
                         .data(null)
                         .build());

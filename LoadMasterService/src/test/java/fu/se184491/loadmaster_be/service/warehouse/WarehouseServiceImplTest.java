@@ -10,8 +10,17 @@ import fu.se184491.loadmaster_be.entity.company.Company;
 import fu.se184491.loadmaster_be.entity.optimization.LoadPlan;
 import fu.se184491.loadmaster_be.entity.optimization.LoadingExecution;
 import fu.se184491.loadmaster_be.entity.optimization.PackagePlacement;
+import fu.se184491.loadmaster_be.dto.response.warehouse.PlacementStepResponse;
+import fu.se184491.loadmaster_be.dto.response.warehouse.StartLoadingResponse;
+import fu.se184491.loadmaster_be.entity.trip.DeliveryStop;
 import fu.se184491.loadmaster_be.entity.trip.Trip;
+import fu.se184491.loadmaster_be.entity.vehicle.Vehicle;
+import fu.se184491.loadmaster_be.entity.vehicle.VehicleType;
+import fu.se184491.loadmaster_be.entity.warehouse.Deviation;
+import fu.se184491.loadmaster_be.entity.warehouse.PlacementConfirmation;
 import fu.se184491.loadmaster_be.exception.AppException;
+import fu.se184491.loadmaster_be.repository.trip.DeliveryStopRepository;
+import fu.se184491.loadmaster_be.service.trip.TripPackageResolver;
 import fu.se184491.loadmaster_be.exception.ErrorCode;
 import fu.se184491.loadmaster_be.helpers.CurrentUserService;
 import fu.se184491.loadmaster_be.repository.account.UserRepository;
@@ -31,6 +40,7 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.math.BigDecimal;
 import java.util.List;
 import java.util.Optional;
 
@@ -54,6 +64,8 @@ class WarehouseServiceImplTest {
     @Mock private AuditLogRepository auditLogRepository;
     @Mock private CurrentUserService currentUserService;
     @Mock private TripStatusService tripStatusService;
+    @Mock private DeliveryStopRepository deliveryStopRepository;
+    @Mock private TripPackageResolver tripPackageResolver;
 
     @InjectMocks
     private WarehouseServiceImpl service;
@@ -115,5 +127,101 @@ class WarehouseServiceImplTest {
         assertEquals("LOADING", response.getTripStatus());
         assertEquals(PackageStatus.LOADED, pkg.getStatus());
         verify(tripStatusService, never()).transitionTo(any(), any(), any());
+    }
+
+    @Test
+    void reopeningSessionReturnsStatusStopAndCargoSpace() {
+        trip.setStatus(TripStatus.LOADING);
+        trip.setVehicle(Vehicle.builder().id(3L).licensePlate("51C-123.45")
+                .vehicleType(VehicleType.builder().name("Xe 8 tấn")
+                        .innerLength(720).innerWidth(235).innerHeight(240)
+                        .doorWidth(230).doorHeight(230).maxPayloadKg(new BigDecimal("8000")).build())
+                .build());
+        CargoPackage first = CargoPackage.builder().id(1L).packageCode("DH-001-001")
+                .trackingBarcode("DH-001-001").qrToken("token-1").actualWeightKg(new BigDecimal("12.5")).build();
+        CargoPackage second = CargoPackage.builder().id(2L).packageCode("DH-001-002").qrToken("token-2")
+                .packageType(fu.se184491.loadmaster_be.entity.cargo.PackageType.builder()
+                        .name("Thùng carton").weightKg(new BigDecimal("7")).build())
+                .build();
+        CargoPackage third = CargoPackage.builder().id(3L).packageCode("DH-001-003").qrToken("token-3").build();
+        PackagePlacement p1 = PackagePlacement.builder().id(71L).loadPlan(plan).cargoPackage(first).stepSequence(1).build();
+        PackagePlacement p2 = PackagePlacement.builder().id(72L).loadPlan(plan).cargoPackage(second).stepSequence(2).build();
+        PackagePlacement p3 = PackagePlacement.builder().id(73L).loadPlan(plan).cargoPackage(third).stepSequence(3).build();
+        DeliveryStop stopOne = DeliveryStop.builder().id(201L).stopSequence(1).stopName("Biên Hoà").build();
+        DeliveryStop stopTwo = DeliveryStop.builder().id(202L).stopSequence(2).stopName("Thủ Đức").build();
+        LoadingExecution execution = LoadingExecution.builder()
+                .id(60L).loadPlan(plan).status(LoadingExecutionStatus.IN_PROGRESS).build();
+
+        when(loadPlanRepository.findFirstByJobTripIdAndApprovedTrueOrderByIdDesc(10L)).thenReturn(Optional.of(plan));
+        when(loadingExecutionRepository.findByLoadPlanId(50L)).thenReturn(Optional.of(execution));
+        when(packagePlacementRepository.findByLoadPlanIdOrderByStepSequenceAsc(50L)).thenReturn(List.of(p1, p2, p3));
+        when(placementConfirmationRepository.findByPlacementLoadPlanId(50L))
+                .thenReturn(List.of(PlacementConfirmation.builder().placement(p1).build()));
+        when(deviationRepository.findByPlacementLoadPlanId(50L))
+                .thenReturn(List.of(Deviation.builder().placement(p2).build()));
+        when(deliveryStopRepository.findByTripIdOrderByStopSequenceAsc(10L)).thenReturn(List.of(stopOne, stopTwo));
+        when(tripPackageResolver.packagesOfStop(201L)).thenReturn(List.of(first));
+        when(tripPackageResolver.packagesOfStop(202L)).thenReturn(List.of(second, third));
+
+        StartLoadingResponse session = service.getSession(10L);
+
+        assertEquals(60L, session.getExecutionId());
+        assertEquals("IN_PROGRESS", session.getStatus());
+        assertEquals(720, session.getInnerLength());
+        assertEquals(235, session.getInnerWidth());
+        assertEquals(240, session.getInnerHeight());
+        assertEquals(230, session.getDoorWidth());
+        assertEquals(230, session.getDoorHeight());
+        assertEquals("51C-123.45", session.getLicensePlate());
+        assertEquals(3, session.getTotalPackages());
+        assertEquals(1, session.getConfirmedCount());
+        assertEquals(1, session.getDeviationCount());
+        assertEquals(1, session.getPendingCount());
+        List<PlacementStepResponse> steps = session.getPlacements();
+        assertEquals(List.of("CONFIRMED", "DEVIATION", "PENDING"),
+                steps.stream().map(PlacementStepResponse::getStatus).toList());
+        assertEquals("token-1", steps.get(0).getQrToken());
+        assertEquals("DH-001-001", steps.get(0).getPackageCode());
+        assertEquals("DH-001-001", steps.get(0).getTrackingBarcode());
+        assertEquals(1, steps.get(0).getStopSequence());
+        assertEquals(202L, steps.get(2).getStopId());
+        assertEquals(2, steps.get(2).getStopSequence());
+        assertEquals("Thủ Đức", steps.get(2).getStopName());
+        assertEquals(new BigDecimal("8000"), session.getMaxPayloadKg());
+        assertEquals(new BigDecimal("12.5"), steps.get(0).getWeightKg());
+        assertEquals(new BigDecimal("7"), steps.get(1).getWeightKg());
+        assertEquals(null, steps.get(2).getWeightKg());
+    }
+
+    @Test
+    void reopeningSessionOfTripNotLoadingIsRejected() {
+        AppException error = assertThrows(AppException.class, () -> service.getSession(10L));
+
+        assertEquals(ErrorCode.TRIP_NOT_LOADING, error.getErrorCode());
+    }
+
+    @Test
+    void reopeningSessionWithoutExecutionIsNotFound() {
+        trip.setStatus(TripStatus.LOADING);
+        when(loadPlanRepository.findFirstByJobTripIdAndApprovedTrueOrderByIdDesc(10L)).thenReturn(Optional.of(plan));
+        when(loadingExecutionRepository.findByLoadPlanId(50L)).thenReturn(Optional.empty());
+
+        AppException error = assertThrows(AppException.class, () -> service.getSession(10L));
+
+        assertEquals(ErrorCode.LOADING_EXECUTION_NOT_FOUND, error.getErrorCode());
+    }
+
+    @Test
+    void completingWithUnhandledPlacementThrowsIncompleteLoading() {
+        trip.setStatus(TripStatus.LOADING);
+        PackagePlacement placement = PackagePlacement.builder().id(70L).loadPlan(plan).build();
+        LoadingExecution execution = LoadingExecution.builder()
+                .id(60L).loadPlan(plan).status(LoadingExecutionStatus.IN_PROGRESS).build();
+        when(loadPlanRepository.findFirstByJobTripIdAndApprovedTrueOrderByIdDesc(10L)).thenReturn(Optional.of(plan));
+        when(loadingExecutionRepository.findByLoadPlanId(50L)).thenReturn(Optional.of(execution));
+        when(packagePlacementRepository.findByLoadPlanId(50L)).thenReturn(List.of(placement));
+
+        assertThrows(fu.se184491.loadmaster_be.exception.IncompleteLoadingException.class,
+                () -> service.completeLoading(10L));
     }
 }
