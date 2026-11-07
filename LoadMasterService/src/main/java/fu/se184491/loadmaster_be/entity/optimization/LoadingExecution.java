@@ -5,6 +5,7 @@ import fu.se184491.loadmaster_be.entity.account.User;
 
 
 import fu.se184491.loadmaster_be.constant.optimization.LoadingExecutionStatus;
+import fu.se184491.loadmaster_be.constant.warehouse.ExecutionAbortReason;
 import jakarta.persistence.*;
 import jakarta.validation.constraints.PositiveOrZero;
 import lombok.*;
@@ -36,4 +37,17 @@ public class LoadingExecution {
 
     @Column(name = "started_at") private LocalDateTime startedAt;
     @Column(name = "completed_at") private LocalDateTime completedAt;
+
+    /** Phiên có bước soạn hàng: chưa soạn đủ (hoặc còn báo thiếu chờ quyết) thì chưa xếp được. null là phiên không soạn hàng. */
+    @Column(name = "staging_required") private Boolean stagingRequired;
+
+    /** Lúc kho ghi số seal (sau khi xếp xong, trước khi tài xế xuất phát) và người ghi. */
+    @Column(name = "sealed_at") private LocalDateTime sealedAt;
+
+    @ManyToOne(fetch = FetchType.LAZY) @JoinColumn(name = "sealed_by")
+    private User sealedBy;
+
+    /** Phiên dừng vì kiện thiếu / hỏng (chuyến quay về lập kế hoạch, chờ điều phối viên tối ưu lại); null với mọi phiên khác. */
+    @Enumerated(EnumType.STRING) @Column(name = "abort_reason", length = 30)
+    private ExecutionAbortReason abortReason;
 }

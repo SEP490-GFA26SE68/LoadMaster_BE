@@ -23,6 +23,8 @@ import fu.se184491.loadmaster_be.service.driver.DriverDeliveryService;
 import fu.se184491.loadmaster_be.service.driver.DriverService;
 import fu.se184491.loadmaster_be.service.monitoring.GpsTrackingService;
 import fu.se184491.loadmaster_be.service.monitoring.TripExceptionService;
+import fu.se184491.loadmaster_be.service.pickup.PickupDriverService;
+import fu.se184491.loadmaster_be.dto.response.pickup.PickupRequestResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -50,6 +52,7 @@ public class DriverController {
     private final GpsTrackingService gpsTrackingService;
     private final TripExceptionService tripExceptionService;
     private final DriverDeliveryService driverDeliveryService;
+    private final PickupDriverService pickupDriverService;
 
     @GetMapping("/trips")
     @Operation(summary = "List driver trips", description = "Retrieve trips assigned to the driver, newest departure first")
@@ -73,6 +76,12 @@ public class DriverController {
             @RequestParam(value = "driverId", required = false) Long driverId) {
         ConfirmUnloadResponse response = driverService.confirmUnload(id, driverId);
         return ResponseEntity.ok(ApiResponse.success("Xác nhận dỡ kiện hàng thành công", response));
+    }
+
+    @PostMapping("/pickup-packages/{id}/pick")
+    @Operation(summary = "Confirm pickup package", description = "Driver confirms (QR or code) that an en-route pickup package is on the truck at the current pickup stop")
+    public ResponseEntity<ApiResponse<PickupRequestResponse>> pickPackage(@PathVariable("id") Long id) {
+        return ResponseEntity.ok(ApiResponse.success("Đã nhận kiện lên xe", pickupDriverService.pick(id)));
     }
 
     @PostMapping("/stops/{id}/arrive")

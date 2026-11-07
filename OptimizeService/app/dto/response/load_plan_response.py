@@ -20,4 +20,5 @@ class LoadPlanResponse(BaseModel):
     front_axle_load: Optional[float] = Field(default=None, alias="frontAxleLoad")
     rear_axle_load: Optional[float] = Field(default=None, alias="rearAxleLoad")
     rehandling_count: Optional[int] = Field(default=0, alias="rehandlingCount")
+    algorithm_name: Optional[str] = Field(default=None, alias="algorithmName")
     placements: List[PackagePlacementResponse] = []

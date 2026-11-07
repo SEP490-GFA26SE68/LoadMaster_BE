@@ -19,6 +19,9 @@ import fu.se184491.loadmaster_be.repository.optimization.LoadPlanReadRepository.
 import fu.se184491.loadmaster_be.repository.optimization.LoadPlanReadRepository.UnplacedRow;
 import fu.se184491.loadmaster_be.repository.trip.TripRepository;
 import fu.se184491.loadmaster_be.service.optimization.Impl.LoadPlanQueryServiceImpl;
+import fu.se184491.loadmaster_be.service.optimization.manual.StopZoneResolver;
+import fu.se184491.loadmaster_be.entity.vehicle.Vehicle;
+import fu.se184491.loadmaster_be.entity.vehicle.VehicleType;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -37,6 +40,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -51,6 +55,7 @@ class LoadPlanQueryServiceImplTest {
     @Mock TripRepository tripRepository;
     @Mock CurrentUserService currentUserService;
     @Mock OptimizationClient optimizationClient;
+    @Mock StopZoneResolver stopZoneResolver;
 
     @InjectMocks LoadPlanQueryServiceImpl service;
 
@@ -114,6 +119,23 @@ class LoadPlanQueryServiceImplTest {
 
         assertThat(result.getPlacements()).extracting(PlacementDetailResponse::getPackageId).containsExactly(7L);
         assertThat(result.getUnplaced()).extracting(UnplacedPackageResponse::getReason).containsExactly("OUT_OF_SPACE");
+    }
+
+    @Test
+    void zonesAreAttachedWithTheInnerLengthOfTheTripLookedUpOncePerTrip() {
+        when(tripRepository.findByIdAndCompanyId(10L, COMPANY)).thenReturn(Optional.of(new Trip()));
+        LoadPlanDetailResponse first = plan(4L, true);
+        LoadPlanDetailResponse second = plan(6L, false);
+        when(readRepository.findPlansByTrip(10L)).thenReturn(List.of(first, second));
+        Trip trip = new Trip();
+        trip.setVehicle(Vehicle.builder().vehicleType(VehicleType.builder().innerLength(600).build()).build());
+        when(tripRepository.findById(10L)).thenReturn(Optional.of(trip));
+
+        service.getTripLoadPlans(10L);
+
+        verify(stopZoneResolver).attach(first, 600);
+        verify(stopZoneResolver).attach(second, 600);
+        verify(tripRepository, times(1)).findById(10L);
     }
 
     @Test

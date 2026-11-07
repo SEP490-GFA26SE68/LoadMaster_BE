@@ -7,7 +7,14 @@ import fu.se184491.loadmaster_be.dto.response.credit.CreditBalanceResponse;
 import fu.se184491.loadmaster_be.dto.response.optimization.OptimizationJobStartResponse;
 import fu.se184491.loadmaster_be.entity.billing.CompanySubscription;
 import fu.se184491.loadmaster_be.entity.billing.SubscriptionPlan;
+import fu.se184491.loadmaster_be.constant.trip.TripStatus;
+import fu.se184491.loadmaster_be.entity.cargo.CargoPackage;
+import fu.se184491.loadmaster_be.entity.optimization.LoadPlan;
+import fu.se184491.loadmaster_be.entity.optimization.OptimizationJob;
+import fu.se184491.loadmaster_be.entity.optimization.PackagePlacement;
 import fu.se184491.loadmaster_be.entity.trip.Trip;
+import fu.se184491.loadmaster_be.repository.optimization.LoadPlanRepository;
+import fu.se184491.loadmaster_be.repository.optimization.PackagePlacementRepository;
 import fu.se184491.loadmaster_be.exception.AppException;
 import fu.se184491.loadmaster_be.exception.ErrorCode;
 import fu.se184491.loadmaster_be.helpers.CurrentUserService;
@@ -25,6 +32,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
 
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
@@ -47,6 +55,8 @@ class LoadingOptimizationServiceImplTest {
     @Mock CreditService creditService;
     @Mock OptimizationClient optimizationClient;
     @Mock LoadPlanQueryService loadPlanQueryService;
+    @Mock LoadPlanRepository loadPlanRepository;
+    @Mock PackagePlacementRepository packagePlacementRepository;
 
     @InjectMocks LoadingOptimizationServiceImpl service;
 
@@ -126,6 +136,84 @@ class LoadingOptimizationServiceImplTest {
         service.startLoadingOptimization(10L);
 
         assertThat(sentRequest()).containsEntry("subscription_tier", "BASIC");
+    }
+
+    private Trip plannedTrip(long id, TripStatus status) {
+        Trip trip = new Trip();
+        trip.setId(id);
+        trip.setStatus(status);
+        when(tripRepository.findByIdAndCompanyId(id, COMPANY)).thenReturn(Optional.of(trip));
+        return trip;
+    }
+
+    private void planOf(long planId, Trip trip) {
+        OptimizationJob job = new OptimizationJob();
+        job.setTrip(trip);
+        LoadPlan plan = new LoadPlan();
+        plan.setId(planId);
+        plan.setJob(job);
+        when(loadPlanRepository.findById(planId)).thenReturn(Optional.of(plan));
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void keepsThePinsOfTheSourcePlan() {
+        subscription(SubscriptionTier.PRO, SubscriptionStatus.ACTIVE);
+        balance(5);
+        Trip trip = plannedTrip(20L, TripStatus.PLANNED);
+        planOf(7L, trip);
+        CargoPackage pkg = new CargoPackage();
+        pkg.setId(55L);
+        PackagePlacement pin = PackagePlacement.builder().cargoPackage(pkg)
+                .posX(250).posY(70).posZ(0).packedLength(100).packedWidth(100).packedHeight(100)
+                .rotationType(1).pinned(true).build();
+        when(packagePlacementRepository.findByLoadPlanIdAndPinnedTrue(7L)).thenReturn(List.of(pin));
+
+        OptimizationJobStartResponse result = service.startLoadingOptimization(20L, 7L);
+
+        List<Map<String, Object>> pins = (List<Map<String, Object>>) sentRequest().get("pinned_placements");
+        assertThat(pins).hasSize(1);
+        assertThat(pins.get(0))
+                .containsEntry("package_id", 55L)
+                .containsEntry("pos_x", 250)
+                .containsEntry("rotation_type", 1)
+                .containsEntry("packed_length", 100);
+        assertThat(result.getPinnedCount()).isEqualTo(1);
+    }
+
+    @Test
+    void noSourcePlanMeansAnOrdinaryRun() {
+        subscription(SubscriptionTier.PRO, SubscriptionStatus.ACTIVE);
+        balance(5);
+
+        OptimizationJobStartResponse result = service.startLoadingOptimization(10L, null);
+
+        assertThat(sentRequest()).doesNotContainKey("pinned_placements");
+        assertThat(result.getPinnedCount()).isZero();
+    }
+
+    @Test
+    void sourcePlanOfAnotherTripIsNotFound() {
+        plannedTrip(20L, TripStatus.PLANNED);
+        planOf(7L, plannedTrip(21L, TripStatus.PLANNED));
+
+        assertThatThrownBy(() -> service.startLoadingOptimization(20L, 7L))
+                .isInstanceOf(AppException.class)
+                .extracting(LoadingOptimizationServiceImplTest::codeOf)
+                .isEqualTo(ErrorCode.LOAD_PLAN_NOT_FOUND);
+        verify(optimizationClient, never()).createJob(any());
+    }
+
+    @Test
+    void keepingPinsNeedsAPlannedTrip() {
+        Trip trip = plannedTrip(20L, TripStatus.DRAFT);
+        planOf(7L, trip);
+
+        assertThatThrownBy(() -> service.startLoadingOptimization(20L, 7L))
+                .isInstanceOf(AppException.class)
+                .extracting(LoadingOptimizationServiceImplTest::codeOf)
+                .isEqualTo(ErrorCode.TRIP_LOCKED);
+        verify(optimizationClient, never()).createJob(any());
     }
 
     @Test

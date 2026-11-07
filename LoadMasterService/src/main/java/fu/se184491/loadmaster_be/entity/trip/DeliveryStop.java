@@ -3,6 +3,7 @@ package fu.se184491.loadmaster_be.entity.trip;
 
 
 import fu.se184491.loadmaster_be.constant.trip.DeliveryStopStatus;
+import fu.se184491.loadmaster_be.constant.trip.DeliveryStopType;
 import fu.se184491.loadmaster_be.entity.planning.DeliveryRequirement;
 import jakarta.persistence.*;
 import jakarta.validation.constraints.Positive;
@@ -55,4 +56,15 @@ public class DeliveryStop {
 
     @Column(name = "actual_arrival")
     private LocalDateTime actualArrival;
+
+    /**
+     * Điểm giao hàng, hoặc điểm nhận hàng dọc đường (chèn khi điều phối viên duyệt một yêu cầu nhận). Dòng cũ để trống là điểm giao.
+     */
+    @Enumerated(EnumType.STRING) @Column(name = "stop_type", length = 20)
+    private DeliveryStopType stopType;
+
+    /** Loại điểm; dòng cũ không ghi loại là điểm giao. */
+    public DeliveryStopType kind() {
+        return stopType == null ? DeliveryStopType.DELIVERY : stopType;
+    }
 }

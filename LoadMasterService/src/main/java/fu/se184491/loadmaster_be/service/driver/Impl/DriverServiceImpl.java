@@ -43,6 +43,7 @@ import fu.se184491.loadmaster_be.repository.trip.TripRepository;
 import fu.se184491.loadmaster_be.repository.warehouse.LoadingExecutionRepository;
 import fu.se184491.loadmaster_be.service.driver.DriverService;
 import fu.se184491.loadmaster_be.service.monitoring.TripLookupHelper;
+import fu.se184491.loadmaster_be.service.pickup.PickupDriverService;
 import fu.se184491.loadmaster_be.service.trip.TripPackageResolver;
 import fu.se184491.loadmaster_be.service.trip.TripStatusService;
 import lombok.RequiredArgsConstructor;
@@ -87,6 +88,7 @@ public class DriverServiceImpl implements DriverService {
     private final TripLookupHelper tripLookupHelper;
     private final DeliveryIssueRepository deliveryIssueRepository;
     private final ManualUnloadConfirmationRepository manualConfirmationRepository;
+    private final PickupDriverService pickupDriverService;
 
     @Override
     @Transactional(readOnly = true)
@@ -151,7 +153,8 @@ public class DriverServiceImpl implements DriverService {
         }
         Map<Long, ManualUnloadConfirmation> manualById = new HashMap<>();
         for (ManualUnloadConfirmation manual : manualConfirmationRepository.findByDeliveryStopIdOrderByRequestedAtAsc(currentStop.getId())) {
-            if (manual.getCargoPackage() != null) {
+            // Xác nhận tay của kho (soạn, xếp) với cùng kiện không phải việc của điểm giao
+            if (manual.getCargoPackage() != null && manual.isUnloadingStep()) {
                 manualById.put(manual.getCargoPackage().getId(), manual);
             }
         }
@@ -188,6 +191,15 @@ public class DriverServiceImpl implements DriverService {
                 packageResponses.add(stopPackage(pkg, null, order++, state));
             }
         }
+        // Kiện nhận dọc đường giao ở điểm này không có trong phương án: dỡ sau kiện của phương án
+        Set<Long> listed = packageResponses.stream().map(StopPackageResponse::getPackageId).collect(Collectors.toSet());
+        int nextOrder = packageResponses.size() + 1;
+        for (StopPackageResponse pickup : pickupDriverService.pickupDeliveriesAt(stopPackages, listed)) {
+            CargoPackage pkg = stopPackages.stream().filter(p -> p.getId().equals(pickup.getPackageId())).findFirst().orElse(null);
+            StopPackageResponse row = stopPackage(pkg, null, nextOrder++, state);
+            row.setPickupRequestId(pickup.getPickupRequestId());
+            packageResponses.add(row);
+        }
 
         log.info("Current stop for tripId {}: stopId {} ({}), with {} packages to unload",
                 trip.getId(), currentStop.getId(), currentStop.getStopName(), packageResponses.size());
@@ -201,6 +213,8 @@ public class DriverServiceImpl implements DriverService {
                 .status(currentStop.getStatus() != null ? currentStop.getStatus().name() : null)
                 .actualArrival(currentStop.getActualArrival())
                 .packages(packageResponses)
+                .stopType(currentStop.kind().name())
+                .pickupPackages(pickupDriverService.pickupPackagesAt(currentStop))
                 .build();
     }
 
@@ -358,12 +372,17 @@ public class DriverServiceImpl implements DriverService {
             }
         }
 
+        pickupDriverService.requireComplete(stop);
         if (unconfirmedCount > 0) {
             throw new IncompleteStopException("Điểm dừng chưa hoàn tất: còn " + unconfirmedCount + " kiện hàng chưa được dỡ");
         }
         for (DeliveryIssue issue : returnedIssues) {
             issue.setReturned(Boolean.TRUE);
             deliveryIssueRepository.save(issue);
+            // Kiện ở lại xe, được chở về kho: hoàn trả
+            CargoPackage returned = issue.getCargoPackage();
+            returned.setStatus(PackageStatus.RETURNED);
+            cargoPackageRepository.save(returned);
         }
 
         if (stop.getActualArrival() == null) {
@@ -371,6 +390,7 @@ public class DriverServiceImpl implements DriverService {
         }
         stop.setStatus(DeliveryStopStatus.COMPLETED);
         deliveryStopRepository.save(stop);
+        pickupDriverService.onStopCompleted(stop, driver);
 
         AuditLog stopAuditLog = AuditLog.builder()
                 .companyId(AuditCompany.ofTrip(trip))
@@ -402,6 +422,8 @@ public class DriverServiceImpl implements DriverService {
             nextStopId = nextStop.getId();
             log.info("Next stop {} ({}) for trip {}", nextStop.getId(), nextStop.getStopName(), trip.getId());
         } else {
+            trip.setCompletedAt(LocalDateTime.now());
+            tripRepository.save(trip);
             tripStatus = tripStatusService.transitionTo(trip.getId(), TripStatus.DELIVERED, driver.getId()).getStatus();
             tripCompleted = true;
 
@@ -531,7 +553,23 @@ public class DriverServiceImpl implements DriverService {
                 .status(trip.getStatus() != null ? trip.getStatus().name() : null)
                 .loadingCompleted(loadingExecutionRepository
                         .existsByLoadPlanJobTripIdAndStatus(trip.getId(), LoadingExecutionStatus.COMPLETED))
+                .completedAt(completedAtOf(trip))
                 .build();
+    }
+
+    /** Giờ giao xong của chuyến đã giao; chuyến giao xong trước khi có cột completed_at thì lấy giờ đến muộn nhất của các điểm. */
+    private LocalDateTime completedAtOf(Trip trip) {
+        if (trip.getStatus() != TripStatus.DELIVERED) {
+            return null;
+        }
+        if (trip.getCompletedAt() != null) {
+            return trip.getCompletedAt();
+        }
+        return deliveryStopRepository.findByTripIdOrderByStopSequenceAsc(trip.getId()).stream()
+                .map(DeliveryStop::getActualArrival)
+                .filter(java.util.Objects::nonNull)
+                .max(LocalDateTime::compareTo)
+                .orElse(null);
     }
 
     private static boolean isPlacementForStop(PackagePlacement placement, Long stopId, Set<Long> stopPackageIds) {

@@ -18,6 +18,8 @@ public interface CargoPackageRepository extends JpaRepository<CargoPackage, Long
 
     boolean existsByTrackingBarcode(String trackingBarcode);
 
+    boolean existsByPackageCode(String packageCode);
+
     List<CargoPackage> findByOrderDeliveryStopId(Long stopId);
 
     List<CargoPackage> findAllByIdInAndOrderCompanyId(List<Long> ids, Long companyId);
@@ -44,4 +46,7 @@ public interface CargoPackageRepository extends JpaRepository<CargoPackage, Long
             ORDER BY p.id
             """)
     List<CargoPackage> findByRequirementTripId(@Param("tripId") Long tripId);
+
+    /** Số kiện kho đã bỏ khỏi chuyến (thiếu, hỏng) khi chúng còn thuộc yêu cầu giao này. */
+    long countByDroppedRequirementId(Long requirementId);
 }

@@ -60,4 +60,13 @@ public class StopPackageResponse {
 
     @Schema(description = "Lý do điều phối viên từ chối xác nhận tay gần nhất")
     private String manualRejectReason;
+
+    @Schema(description = "Kiện nhận dọc đường: mã yêu cầu nhận; null với kiện thường")
+    private Long pickupRequestId;
+
+    @Schema(description = "Kiện nhận ở điểm nhận: đã đối chiếu lên xe")
+    private Boolean picked;
+
+    @Schema(description = "Giờ kiện nhận lên xe (giờ Việt Nam, không múi giờ)")
+    private LocalDateTime pickedAt;
 }

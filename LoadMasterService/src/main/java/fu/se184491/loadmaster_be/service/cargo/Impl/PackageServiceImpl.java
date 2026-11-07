@@ -10,11 +10,14 @@ import fu.se184491.loadmaster_be.entity.cargo.PackageType;
 import fu.se184491.loadmaster_be.entity.company.Company;
 import fu.se184491.loadmaster_be.entity.order.TransportOrder;
 import fu.se184491.loadmaster_be.entity.planning.DeliveryRequirement;
+import fu.se184491.loadmaster_be.entity.common.AuditLog;
 import fu.se184491.loadmaster_be.exception.AppException;
 import fu.se184491.loadmaster_be.exception.ErrorCode;
 import fu.se184491.loadmaster_be.repository.cargo.CargoPackagePackingProfileRepository;
 import fu.se184491.loadmaster_be.repository.cargo.PackageRepository;
 import fu.se184491.loadmaster_be.repository.cargo.PackageTypeRepository;
+import fu.se184491.loadmaster_be.helpers.CurrentUserService;
+import fu.se184491.loadmaster_be.repository.common.AuditLogRepository;
 import fu.se184491.loadmaster_be.repository.company.CompanyRepository;
 import fu.se184491.loadmaster_be.repository.order.OrderRepository;
 import fu.se184491.loadmaster_be.repository.planning.DeliveryRequirementRepository;
@@ -32,6 +35,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.util.*;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -47,6 +51,8 @@ public class PackageServiceImpl implements PackageService {
     private final EntityManager entityManager;
     private final CargoPackagePackingProfileRepository packingProfileRepository;
     private final DeliveryRequirementRepository deliveryRequirementRepository;
+    private final AuditLogRepository auditLogRepository;
+    private final CurrentUserService currentUserService;
 
     // =====================================================
     // MAPPING
@@ -87,6 +93,7 @@ public class PackageServiceImpl implements PackageService {
                         .destination(entity.getDestination())
                         .note(entity.getNote())
                         .status(entity.getStatus())
+                        .flag(entity.getFlag())
                         .isPinned(entity.getIsPinned());
 
         // Kiện cũ có thể chưa có packing profile.
@@ -564,6 +571,7 @@ public class PackageServiceImpl implements PackageService {
         // Không cho sửa kiện đã xếp, đã giao hoặc đã hủy.
         if (cargoPackage.getStatus() == PackageStatus.LOADED
                 || cargoPackage.getStatus() == PackageStatus.DELIVERED
+                || cargoPackage.getStatus() == PackageStatus.RETURNED
                 || cargoPackage.getStatus() == PackageStatus.CANCELLED) {
             throw new IllegalStateException(
                     "Không thể chỉnh sửa kiện ở trạng thái hiện tại"
@@ -581,6 +589,12 @@ public class PackageServiceImpl implements PackageService {
                 companyId,
                 request.getPackageTypeId()
         );
+
+        // Kiện mang cờ thiếu / hỏng không vào đơn (lối vào chuyến) mới khi chưa gỡ cờ.
+        if (cargoPackage.getFlag() != null && newOrder != null
+                && (oldOrder == null || !newOrder.getId().equals(oldOrder.getId()))) {
+            throw new AppException(ErrorCode.PACKAGE_FLAGGED);
+        }
 
         cargoPackage.setOrder(newOrder);
         cargoPackage.setPackageType(packageType);
@@ -700,6 +714,43 @@ public class PackageServiceImpl implements PackageService {
     }
 
     // =====================================================
+    // FLAG
+    // =====================================================
+
+    @Override
+    @Transactional
+    public PackageResponse clearFlag(
+            Long companyId,
+            Long id
+    ) {
+        CargoPackage cargoPackage = getOwnedPackage(
+                companyId,
+                id
+        );
+        if (cargoPackage.getFlag() == null) {
+            throw new AppException(ErrorCode.PACKAGE_NOT_FLAGGED);
+        }
+        String flag = cargoPackage.getFlag().name();
+        cargoPackage.setFlag(null);
+        packageRepository.save(cargoPackage);
+        if (auditLogRepository != null) {
+            Map<String, Object> values = new LinkedHashMap<>();
+            values.put("packageId", cargoPackage.getId());
+            values.put("flag", flag);
+            auditLogRepository.save(AuditLog.builder()
+                    .companyId(companyId)
+                    .actionType("PACKAGE_FLAG_CLEARED")
+                    .entityName("CargoPackage")
+                    .entityId(String.valueOf(cargoPackage.getId()))
+                    .user(currentUserService != null ? currentUserService.getCurrentUser() : null)
+                    .newValues(values)
+                    .createdAt(Instant.now())
+                    .build());
+        }
+        return mapToResponse(cargoPackage);
+    }
+
+    // =====================================================
     // DELETE
     // =====================================================
 
@@ -716,6 +767,7 @@ public class PackageServiceImpl implements PackageService {
 
         if (cargoPackage.getStatus() == PackageStatus.LOADED
                 || cargoPackage.getStatus() == PackageStatus.DELIVERED
+                || cargoPackage.getStatus() == PackageStatus.RETURNED
                 || cargoPackage.getStatus() == PackageStatus.CANCELLED) {
             throw new IllegalStateException(
                     "Không thể xóa kiện ở trạng thái hiện tại"

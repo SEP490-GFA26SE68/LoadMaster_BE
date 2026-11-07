@@ -211,12 +211,14 @@ public enum ErrorCode {
     OPTIMIZATION_JOB_NOT_FOUND("Không tìm thấy yêu cầu tối ưu", HttpStatus.NOT_FOUND),
     OPTIMIZATION_SERVICE_UNAVAILABLE("Dịch vụ tối ưu xếp hàng không khả dụng", HttpStatus.SERVICE_UNAVAILABLE),
     INSUFFICIENT_CREDITS("Công ty không đủ credit để chạy tối ưu xếp hàng", HttpStatus.PAYMENT_REQUIRED),
+    PINNED_SET_INVALID("Bộ kiện đã ghim không đứng vững; chưa chạy tối ưu và không trừ credit", HttpStatus.BAD_REQUEST),
     PLAN_STALE("Phương án lỗi thời: hàng, xe hoặc điểm giao của chuyến đã đổi sau khi tối ưu", HttpStatus.CONFLICT),
     MANUAL_EDIT_INVALID("Bản chỉnh tay không hợp lệ", HttpStatus.BAD_REQUEST),
     MANUAL_EDIT_OUT_OF_BOUNDS("Có kiện nằm ngoài lòng thùng", HttpStatus.UNPROCESSABLE_ENTITY),
     MANUAL_EDIT_OVERLAP("Có kiện chồng lấn kiện khác hoặc vật cản", HttpStatus.UNPROCESSABLE_ENTITY),
     MANUAL_EDIT_UNSUPPORTED("Có kiện không đủ diện tích đỡ bên dưới", HttpStatus.UNPROCESSABLE_ENTITY),
     MANUAL_EDIT_AXLE_OVERLOAD("Bản chỉnh làm tải trục vượt giới hạn", HttpStatus.UNPROCESSABLE_ENTITY),
+    MANUAL_EDIT_ROTATION_NOT_ALLOWED("Loại kiện không cho xoay kiện theo hướng này", HttpStatus.UNPROCESSABLE_ENTITY),
 
     // -------------------------------------------------------------------------
     // Warehouse & Loading errors
@@ -229,6 +231,16 @@ public enum ErrorCode {
     INVALID_SEQUENCE_ORDER("Thứ tự bốc xếp không hợp lệ, vui lòng xử lý các kiện hàng trước", HttpStatus.BAD_REQUEST),
     INCOMPLETE_LOADING("Quá trình bốc xếp chưa hoàn tất", HttpStatus.BAD_REQUEST),
     TRIP_NOT_LOADING("Chuyến không ở trạng thái Đang xếp hàng", HttpStatus.CONFLICT),
+    STAGING_INCOMPLETE("Còn kiện chưa soạn hoặc báo thiếu chờ điều phối viên quyết, chưa xếp được", HttpStatus.CONFLICT),
+    PACKAGE_NOT_IN_LOADING_PLAN("Kiện không thuộc phương án đang xếp của chuyến", HttpStatus.NOT_FOUND),
+    PACKAGE_ALREADY_STAGED("Kiện đã được soạn vào khu chờ", HttpStatus.CONFLICT),
+    STAGING_SHORTAGE_NOT_FOUND("Không tìm thấy báo thiếu", HttpStatus.NOT_FOUND),
+    STAGING_SHORTAGE_NOT_OPEN("Báo thiếu này đã được xử lý", HttpStatus.CONFLICT),
+    LOADING_MANUAL_CONFIRM_PENDING("Còn xác nhận tay của kho chờ điều phối viên duyệt, chưa hoàn tất xếp được", HttpStatus.CONFLICT),
+    SEAL_INVALID("Số seal cần từ 1 đến 32 ký tự", HttpStatus.BAD_REQUEST),
+    SEAL_NOT_ALLOWED("Chỉ ghi được số seal khi đã xếp xong và xe chưa xuất phát", HttpStatus.CONFLICT),
+    PACKAGE_FLAGGED("Kiện đang mang cờ không tìm thấy / hư hỏng: gỡ cờ trước khi đưa vào chuyến", HttpStatus.CONFLICT),
+    PACKAGE_NOT_FLAGGED("Kiện không mang cờ nào", HttpStatus.CONFLICT),
 
     // -------------------------------------------------------------------------
     // Driver & Unloading errors
@@ -301,7 +313,21 @@ public enum ErrorCode {
     MANUAL_CONFIRM_PENDING("Còn xác nhận tay chờ điều phối viên duyệt", HttpStatus.CONFLICT),
     MANUAL_CONFIRM_NOT_FOUND("Không tìm thấy xác nhận tay", HttpStatus.NOT_FOUND),
     MANUAL_CONFIRM_NOT_PENDING("Xác nhận tay này đã được xử lý", HttpStatus.CONFLICT),
-    NO_LOADED_PLAN("Chuyến chưa có phương án kho đã xếp", HttpStatus.NOT_FOUND);
+    NO_LOADED_PLAN("Chuyến chưa có phương án kho đã xếp", HttpStatus.NOT_FOUND),
+
+    // -------------------------------------------------------------------------
+    // Nhận hàng dọc đường
+    // -------------------------------------------------------------------------
+    PICKUP_REQUEST_NOT_FOUND("Không tìm thấy yêu cầu nhận hàng dọc đường", HttpStatus.NOT_FOUND),
+    PICKUP_INVALID("Yêu cầu nhận hàng dọc đường thiếu hoặc sai dữ liệu", HttpStatus.BAD_REQUEST),
+    PICKUP_PACKAGES_REQUIRED("Yêu cầu nhận hàng phải có ít nhất một kiện", HttpStatus.BAD_REQUEST),
+    PICKUP_TRIP_NOT_IN_TRANSIT("Chỉ nhận hàng dọc đường khi chuyến đang vận chuyển", HttpStatus.CONFLICT),
+    INVALID_PICKUP_STATUS_TRANSITION("Yêu cầu nhận hàng không ở trạng thái cho phép thao tác này", HttpStatus.CONFLICT),
+    PICKUP_ROUTE_UNAVAILABLE("Chưa kiểm được luật nhận hàng: thiếu toạ độ điểm, vị trí xe hoặc kích thước thùng", HttpStatus.CONFLICT),
+    PICKUP_REASON_REQUIRED("Phải ghi lý do", HttpStatus.BAD_REQUEST),
+    PICKUP_PACKAGE_NOT_AT_STOP("Kiện nhận không thuộc điểm nhận hiện tại", HttpStatus.CONFLICT),
+    PICKUP_PACKAGE_ALREADY_PICKED("Kiện nhận này đã lên xe", HttpStatus.CONFLICT),
+    PICKUP_STOP_INCOMPLETE("Còn kiện nhận chưa đối chiếu ở điểm nhận", HttpStatus.CONFLICT);
 
     private final String message;
     private final HttpStatus httpStatus;

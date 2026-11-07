@@ -1,5 +1,6 @@
 package fu.se184491.loadmaster_be.service.cargo;
 
+import fu.se184491.loadmaster_be.constant.cargo.PackageFlag;
 import fu.se184491.loadmaster_be.dto.request.cargo.PackageRequest;
 import fu.se184491.loadmaster_be.dto.response.cargo.PackageResponse;
 import fu.se184491.loadmaster_be.entity.cargo.CargoPackage;
@@ -195,6 +196,39 @@ public class PackageServiceTest {
         assertNotNull(response);
         assertEquals(new BigDecimal("25.00"), response.getActualWeightKg());
         verify(orderRepository).save(any(TransportOrder.class));
+    }
+
+    @Test
+    void updatePackage_FlaggedPackageCannotJoinAnotherOrder() {
+        cargoPackage.setOrder(null);
+        cargoPackage.setFlag(PackageFlag.NOT_FOUND);
+        when(packageRepository.findByIdAndCompany_Id(100L, 1L)).thenReturn(Optional.of(cargoPackage));
+        when(orderRepository.findById(10L)).thenReturn(Optional.of(order));
+        lenient().when(packageTypeRepository.findById(20L)).thenReturn(Optional.of(packageType));
+
+        AppException ex = assertThrows(AppException.class, () -> packageService.updatePackage(1L, 100L, request));
+        assertEquals(ErrorCode.PACKAGE_FLAGGED, ex.getErrorCode());
+        verify(packageRepository, never()).save(any(CargoPackage.class));
+    }
+
+    @Test
+    void clearFlag_RemovesTheFlag() {
+        cargoPackage.setFlag(PackageFlag.DAMAGED);
+        when(packageRepository.findByIdAndCompany_Id(100L, 1L)).thenReturn(Optional.of(cargoPackage));
+
+        PackageResponse response = packageService.clearFlag(1L, 100L);
+
+        assertNull(response.getFlag());
+        assertNull(cargoPackage.getFlag());
+        verify(packageRepository).save(cargoPackage);
+    }
+
+    @Test
+    void clearFlag_PackageWithoutFlagIsRejected() {
+        when(packageRepository.findByIdAndCompany_Id(100L, 1L)).thenReturn(Optional.of(cargoPackage));
+
+        AppException ex = assertThrows(AppException.class, () -> packageService.clearFlag(1L, 100L));
+        assertEquals(ErrorCode.PACKAGE_NOT_FLAGGED, ex.getErrorCode());
     }
 
     @Test

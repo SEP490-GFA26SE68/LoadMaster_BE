@@ -25,6 +25,9 @@ class LoadPlan(Base):
     # Phương án cũ và phương án của lần chạy lại để trống.
     objective = Column(String(30), nullable=True)
     candidate_label = Column(String(1), nullable=True)
+    # Thuật toán đã thật sự sinh ra phương án (EP_DBLF | GA | SA | EP_LUMO_R1_1 | LUMO_R1 | LUMO_R1_1 | LUMO_R2).
+    # Khác optimization_jobs.algorithm_name (hạng của gói). Phương án cũ / engine ngoài để trống.
+    algorithm_name = Column(String(60), nullable=True)
 
     job = relationship("OptimizationJob")
     placements = relationship("PackagePlacement", back_populates="load_plan", cascade="all, delete-orphan")

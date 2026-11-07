@@ -4,13 +4,17 @@ from sqlalchemy.orm import Session
 
 from app.config.database import get_db
 from app.dto.api_response import ApiResponse
+from app.dto.optimization.engine.problem_request import PinnedData
 from app.dto.request.optimization_request import OptimizationJobRequest
+from app.exception.app_exception import AppException
+from app.exception.error_code import ErrorCode
 from app.dto.response.load_plan_response import LoadPlanResponse
 from app.dto.response.optimization_job_response import OptimizationJobResponse
 from app.service.auth.auth_dependency import require_optimization_service
 from app.service.optimize.async_optimization_runner import AsyncOptimizationRunner
 from app.service.optimize.load_plan_service import LoadPlanService
 from app.service.optimize.optimization_job_service import OptimizationJobService
+from app.service.optimize.pinned_set_validator import pinned_set_issues
 
 router = APIRouter(prefix="/api/v1/optimization", tags=["Optimization"])
 
@@ -44,12 +48,40 @@ async def submit_job(
     Tạo và khởi chạy tác vụ tối ưu xếp hàng (bất đồng bộ).
     Trả về 202 Accepted kèm job_id.
     """
-    job = job_service.create_job(trip_id=request.trip_id, config=request, db=db)
+    problem = None
+    if request.pinned_placements:
+        # Giữ kiện đã ghim: kiểm bộ ghim trước khi tạo job, hỏng thì không chạy và không trừ credit
+        objective = request.objective.value if hasattr(request.objective, "value") else str(request.objective)
+        problem = runner.build_problem_request_for_trip(request.trip_id, objective, request.time_limit_sec, db)
+        problem.pinned = [
+            PinnedData(
+                package_id=str(pin.package_id),
+                pos_x=pin.pos_x,
+                pos_y=pin.pos_y,
+                pos_z=pin.pos_z,
+                rotation_type=pin.rotation_type,
+                packed_l=pin.packed_length,
+                packed_w=pin.packed_width,
+                packed_h=pin.packed_height,
+            )
+            for pin in request.pinned_placements
+        ]
+        issues = pinned_set_issues(problem)
+        if issues:
+            raise AppException(
+                ErrorCode.PINNED_SET_INVALID,
+                errors=[issue.as_dict() for issue in issues],
+            )
 
-    background_tasks.add_task(
-        runner.run,
-        job.job_uuid,
-    )
+    job = job_service.create_job(trip_id=request.trip_id, config=request, db=db)
+    if problem is not None:
+        # Bài có kiện ghim dựng trước khi có job: gắn mã thuật toán theo gói như job.
+        problem.algorithm_name = getattr(job, "algorithm_name", None)
+
+    if problem is None:
+        background_tasks.add_task(runner.run, job.job_uuid)
+    else:
+        background_tasks.add_task(runner.run, job.job_uuid, problem)
 
     return ApiResponse.ok(
         data={"job_id": job.job_uuid},

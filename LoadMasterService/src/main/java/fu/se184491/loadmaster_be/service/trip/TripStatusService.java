@@ -32,6 +32,8 @@ import java.util.Map;
  * PLANNED    → DRAFT       điểm giao / kho xuất phát / giờ xuất phát đổi: tuyến cũ không còn đúng
  * PLANNED    → LOADING     kho đã mở phiên xếp (loading execution IN_PROGRESS)
  * LOADING    → IN_TRANSIT  kho đã xếp xong (loading execution COMPLETED), tài xế xuất phát
+ * LOADING    → PLANNED     phiên xếp dừng (ABORTED) vì kiện bị bỏ khỏi chuyến: thiếu lúc soạn, hoặc hỏng mà có kiện tựa lên;
+ *                          không còn phiên IN_PROGRESS / COMPLETED, chuyến chờ tối ưu lại
  * IN_TRANSIT → DELIVERED   mọi điểm giao COMPLETED
  * mọi trạng thái trừ DELIVERED, CANCELLED → CANCELLED
  * </pre>
@@ -65,6 +67,12 @@ public class TripStatusService {
 
         trip.setStatus(newStatus);
         Trip savedTrip = tripRepository.save(trip);
+        Map<String, Object> newValues = new java.util.HashMap<>();
+        newValues.put("status", newStatus.name());
+        // Tài xế lúc chuyển: chuông của tài xế đọc đúng người của chuyến khi đó
+        if (trip.getDriver() != null) {
+            newValues.put("driverId", trip.getDriver().getId());
+        }
         auditLogRepository.save(AuditLog.builder()
                 .companyId(AuditCompany.ofTrip(trip))
                 .actionType("TRIP_STATUS_TRANSITION")
@@ -72,7 +80,7 @@ public class TripStatusService {
                 .entityId(tripId.toString())
                 .user(actor)
                 .oldValues(Map.of("status", currentStatus.name()))
-                .newValues(Map.of("status", newStatus.name()))
+                .newValues(newValues)
                 .createdAt(Instant.now())
                 .build());
         return savedTrip;
@@ -112,6 +120,10 @@ public class TripStatusService {
         if (currentStatus == TripStatus.LOADING && newStatus == TripStatus.IN_TRANSIT) {
             return loadingExecutionRepository.existsByLoadPlanJobTripIdAndStatus(
                     tripId, LoadingExecutionStatus.COMPLETED);
+        }
+        if (currentStatus == TripStatus.LOADING && newStatus == TripStatus.PLANNED) {
+            return !loadingExecutionRepository.existsByLoadPlanJobTripIdAndStatus(tripId, LoadingExecutionStatus.IN_PROGRESS)
+                    && !loadingExecutionRepository.existsByLoadPlanJobTripIdAndStatus(tripId, LoadingExecutionStatus.COMPLETED);
         }
         if (currentStatus == TripStatus.IN_TRANSIT && newStatus == TripStatus.DELIVERED) {
             return deliveryStopRepository.countByTripId(tripId) > 0

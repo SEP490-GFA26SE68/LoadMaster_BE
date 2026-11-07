@@ -28,7 +28,10 @@ public class LoadPlanDetailResponse {
     private String objective;
     /** Nhãn phương án ứng viên của lần chạy ("A" | "B" | "C"); phương án cũ và bản chạy lại: null. */
     private String candidateLabel;
+    /** Thuật toán đã tạo ra phương án (EP_DBLF | GA | SA | EP_LUMO_R1_1 | LUMO_R1…); phương án cũ: thuật toán của job. */
     private String algorithmName;
+    /** Thuật toán của lần chạy (job) — hạng của gói: EP_DBLF | EP_DBLF_GA | EP_DBLF_GA_AI. */
+    private String runAlgorithm;
     private Long computationMs;
     private String planName;
     private Integer version;
@@ -51,4 +54,9 @@ public class LoadPlanDetailResponse {
     private Boolean stale;
     private List<PlacementDetailResponse> placements;
     private List<UnplacedPackageResponse> unplaced;
+    /**
+     * Vùng theo điểm giao, theo thứ tự điểm giao. Chỉ có khi vùng dựng lại từ chuyến cho ra đúng {@code rehandlingCount} đã
+     * lưu; không thì null (phương án lỗi thời, chưa có số, hay đếm theo luật cũ).
+     */
+    private List<StopZoneResponse> stopZones;
 }

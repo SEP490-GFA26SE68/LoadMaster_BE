@@ -32,5 +32,9 @@ public class LoadPlanResponse {
     private BigDecimal frontAxleLoad;
     private BigDecimal rearAxleLoad;
     private Integer rehandlingCount;
+    /** Thuật toán đã tạo ra phương án; dịch vụ tối ưu không báo thì là thuật toán của job. */
+    private String algorithmName;
+    /** Thuật toán của lần chạy (job) — hạng của gói. */
+    private String runAlgorithm;
     private List<PackagePlacementResponse> placements;
 }

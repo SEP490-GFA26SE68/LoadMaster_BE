@@ -6,12 +6,15 @@ import fu.se184491.loadmaster_be.constant.trip.DeliveryStopStatus;
 import fu.se184491.loadmaster_be.dto.goong.DirectionsResponse;
 import fu.se184491.loadmaster_be.dto.goong.LatLng;
 import fu.se184491.loadmaster_be.dto.response.monitoring.TripLiveStopResponse;
+import fu.se184491.loadmaster_be.entity.common.AuditLog;
 import fu.se184491.loadmaster_be.entity.monitoring.EtaRiskAlert;
 import fu.se184491.loadmaster_be.entity.monitoring.GpsTracking;
 import fu.se184491.loadmaster_be.entity.trip.DeliveryStop;
 import fu.se184491.loadmaster_be.entity.trip.Trip;
 import fu.se184491.loadmaster_be.exception.ServiceUnavailableException;
+import fu.se184491.loadmaster_be.repository.common.AuditLogRepository;
 import fu.se184491.loadmaster_be.repository.monitoring.EtaRiskAlertRepository;
+import fu.se184491.loadmaster_be.service.audit.AuditCompany;
 import fu.se184491.loadmaster_be.repository.trip.DeliveryStopRepository;
 import fu.se184491.loadmaster_be.service.monitoring.DeadlineStatusRule;
 import fu.se184491.loadmaster_be.service.monitoring.EtaCalculationService;
@@ -25,6 +28,8 @@ import java.time.Instant;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.EnumSet;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.List;
 import java.util.Set;
 
@@ -38,6 +43,7 @@ public class EtaCalculationServiceImpl implements EtaCalculationService {
     private final GoongMapsClient goongMapsClient;
     private final DeliveryStopRepository deliveryStopRepository;
     private final EtaRiskAlertRepository etaRiskAlertRepository;
+    private final AuditLogRepository auditLogRepository;
 
     @Override
     @Transactional
@@ -157,6 +163,22 @@ public class EtaCalculationServiceImpl implements EtaCalculationService {
                 .eta(eta)
                 .deadline(deadline)
                 .createdAt(MonitoringTime.now())
+                .build());
+        // Sự kiện của hệ thống: nguồn của thông báo "nguy cơ trễ hạn" cho điều phối viên
+        Map<String, Object> values = new LinkedHashMap<>();
+        values.put("tripId", trip.getId());
+        values.put("stopId", stop.getId());
+        values.put("stopNumber", stop.getStopSequence());
+        values.put("deadlineStatus", status.name());
+        values.put("eta", eta == null ? null : eta.toString());
+        values.put("deadline", deadline == null ? null : deadline.toString());
+        auditLogRepository.save(AuditLog.builder()
+                .companyId(AuditCompany.ofTrip(trip))
+                .actionType("DELIVERY_ETA_RISK")
+                .entityName("Trip")
+                .entityId(String.valueOf(trip.getId()))
+                .newValues(values)
+                .createdAt(Instant.now())
                 .build());
     }
 }

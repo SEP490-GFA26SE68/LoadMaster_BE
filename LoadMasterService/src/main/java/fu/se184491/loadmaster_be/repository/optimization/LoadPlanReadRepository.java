@@ -4,6 +4,7 @@ import fu.se184491.loadmaster_be.dto.response.optimization.LoadPlanDetailRespons
 import fu.se184491.loadmaster_be.dto.response.optimization.OptimizationJobStatusResponse;
 import fu.se184491.loadmaster_be.dto.response.optimization.PlacementDetailResponse;
 import fu.se184491.loadmaster_be.dto.response.optimization.UnplacedPackageResponse;
+import fu.se184491.loadmaster_be.service.optimization.manual.ManualLayoutValidator;
 import lombok.RequiredArgsConstructor;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
@@ -17,6 +18,8 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
+import java.util.TreeSet;
 import java.util.TimeZone;
 
 /**
@@ -51,6 +54,7 @@ public class LoadPlanReadRepository {
                    lp.is_approved, lp.approved_by, u.full_name AS approved_by_name,
                    lp.cog_x, lp.cog_y, lp.cog_z, lp.front_axle_load, lp.rear_axle_load,
                    lp.rehandling_count, lp.objective AS plan_objective, lp.candidate_label,
+                   lp.algorithm_name AS plan_algorithm,
                    COALESCE(lp.manually_edited, FALSE) AS manually_edited,
                    COALESCE(lp.is_stale, FALSE) AS is_stale,
                    j.job_uuid, j.trip_id, j.status AS job_status, j.objective,
@@ -99,9 +103,14 @@ public class LoadPlanReadRepository {
     public Optional<OptimizationJobStatusResponse> findJobStatus(Long jobId) {
         List<OptimizationJobStatusResponse> rows = jdbc.query("""
                         SELECT j.id, j.job_uuid, j.trip_id, j.objective, j.time_limit_sec, j.status,
-                               j.computation_ms, j.created_at,
+                               j.computation_ms, j.created_at, j.algorithm_name,
                                (SELECT COUNT(*) FROM load_plans lp
-                                WHERE lp.job_id = j.id AND COALESCE(lp.packed_items_count, 0) > 0) AS packed_plans
+                                WHERE lp.job_id = j.id AND COALESCE(lp.packed_items_count, 0) > 0) AS packed_plans,
+                               (SELECT COALESCE(MAX(per_plan.pins), 0) FROM (
+                                    SELECT COUNT(*) AS pins FROM package_placements pp
+                                    JOIN load_plans lp ON lp.id = pp.load_plan_id
+                                    WHERE lp.job_id = j.id AND pp.pinned = TRUE
+                                    GROUP BY lp.id) per_plan) AS pinned_count
                         FROM optimization_jobs j
                         WHERE j.id = :id
                         """,
@@ -116,9 +125,11 @@ public class LoadPlanReadRepository {
                             .timeLimitSec(nullableInt(rs, "time_limit_sec"))
                             .status(rs.getString("status"))
                             .computationMs(nullableLong(rs, "computation_ms"))
+                            .runAlgorithm(rs.getString("algorithm_name"))
                             // Dịch vụ tối ưu ghi created_at theo giờ UTC (không múi giờ).
                             .createdAt(createdAt == null ? null : createdAt.toInstant())
                             .packedPlanCount(rs.getInt("packed_plans"))
+                            .pinnedCount(rs.getInt("pinned_count"))
                             .build();
                 });
         return rows.stream().findFirst();
@@ -139,9 +150,13 @@ public class LoadPlanReadRepository {
                                p.actual_weight_kg, pp.pos_x, pp.pos_y, pp.pos_z,
                                pp.packed_length, pp.packed_width, pp.packed_height,
                                pp.rotation_type, pp.step_sequence, pp.pinned,
-                               pp.stop_zone_id, ds.stop_name, ds.stop_sequence
+                               pp.stop_zone_id, ds.stop_name, ds.stop_sequence,
+                               pt.id AS package_type_id, pt.rotation_allowed,
+                               pt.allow_rotate_x, pt.allow_rotate_y, pt.allow_rotate_z, cpp.upright_only
                         FROM package_placements pp
                         LEFT JOIN packages p ON p.id = pp.package_id
+                        LEFT JOIN package_types pt ON pt.id = p.package_type_id
+                        LEFT JOIN cargo_package_packing_profiles cpp ON cpp.package_id = p.id
                         LEFT JOIN delivery_stops ds ON ds.id = pp.stop_zone_id
                         WHERE pp.load_plan_id IN (:ids)
                         ORDER BY pp.load_plan_id, pp.step_sequence, pp.id
@@ -165,7 +180,22 @@ public class LoadPlanReadRepository {
                         .stopId(nullableLong(rs, "stop_zone_id"))
                         .stopName(rs.getString("stop_name"))
                         .stopSequence(nullableInt(rs, "stop_sequence"))
+                        .allowedRotations(allowedRotations(rs))
                         .build()));
+    }
+
+    /**
+     * Hướng kiện được nhận khi chỉnh tay: như dịch vụ tối ưu đọc loại kiện (không có loại kiện thì không xoay), bỏ hướng nằm
+     * nghiêng khi kiện phải giữ thẳng đứng, cộng hướng đang xếp.
+     */
+    private static List<Integer> allowedRotations(ResultSet rs) throws SQLException {
+        boolean typed = nullableLong(rs, "package_type_id") != null;
+        Set<Integer> codes = new TreeSet<>(ManualLayoutValidator.allowedRotations(typed && rs.getBoolean("rotation_allowed"),
+                rs.getBoolean("allow_rotate_x"), rs.getBoolean("allow_rotate_y"), rs.getBoolean("allow_rotate_z"),
+                rs.getBoolean("upright_only")));
+        Integer current = nullableInt(rs, "rotation_type");
+        codes.add(current == null || current < 0 || current > 5 ? 0 : current);
+        return List.copyOf(codes);
     }
 
     public List<UnplacedRow> findUnplaced(Collection<Long> planIds) {
@@ -204,7 +234,9 @@ public class LoadPlanReadRepository {
                 // Mục tiêu của phương án ứng viên; phương án cũ không có thì lấy của job.
                 .objective(Optional.ofNullable(rs.getString("plan_objective")).orElse(rs.getString("objective")))
                 .candidateLabel(rs.getString("candidate_label"))
-                .algorithmName(rs.getString("algorithm_name"))
+                // Thuật toán đã tạo ra phương án; phương án cũ không có thì lấy của job.
+                .algorithmName(Optional.ofNullable(rs.getString("plan_algorithm")).orElse(rs.getString("algorithm_name")))
+                .runAlgorithm(rs.getString("algorithm_name"))
                 // Bản chỉnh tay không chạy bộ tối ưu: thời gian chạy của job không phải của nó.
                 .computationMs(rs.getBoolean("manually_edited") ? null : nullableLong(rs, "computation_ms"))
                 .planName(rs.getString("plan_name"))

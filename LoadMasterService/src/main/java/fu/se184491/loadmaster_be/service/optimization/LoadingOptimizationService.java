@@ -12,6 +12,12 @@ public interface LoadingOptimizationService {
      */
     OptimizationJobStartResponse startLoadingOptimization(Long tripId);
 
+    /**
+     * Như trên, giữ nguyên các kiện đã ghim của phương án {@code keepPinsFromPlanId} (cùng chuyến, chuyến Đã lập
+     * kế hoạch) trong cả ba phương án. Vắng là lần chạy bình thường.
+     */
+    OptimizationJobStartResponse startLoadingOptimization(Long tripId, Long keepPinsFromPlanId);
+
     /** Trạng thái job (đọc từ DB), sau khi kiểm job thuộc công ty của phiên. */
     OptimizationJobStatusResponse getJobStatus(String jobUuid);
 }
