@@ -110,8 +110,23 @@ public class TrialAccountRequestServiceImpl implements TrialAccountRequestServic
     @Override
     @Transactional(readOnly = true)
     public PageResponse<TrialAccountRequestResponse> getTrialRequests(String search, TrialRequestStatus status, Pageable pageable) {
+        org.springframework.security.core.Authentication auth = org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
+        boolean isAdminOnly = false;
+        if (auth != null) {
+            boolean hasAdmin = auth.getAuthorities().stream().anyMatch(a -> a.getAuthority().equals("ROLE_SYSTEM_ADMIN") || a.getAuthority().equals("SYSTEM_ADMIN"));
+            boolean hasManager = auth.getAuthorities().stream().anyMatch(a -> a.getAuthority().equals("ROLE_SYSTEM_MANAGER") || a.getAuthority().equals("SYSTEM_MANAGER"));
+            if (hasAdmin && !hasManager) {
+                isAdminOnly = true;
+            }
+        }
+        final boolean enforceManagerApproved = isAdminOnly;
+
         Specification<TrialAccountRequest> spec = (root, query, cb) -> {
             List<Predicate> predicates = new ArrayList<>();
+            if (enforceManagerApproved) {
+                // System Admin chỉ được xem các đơn đã được duyệt bởi System Manager (khác PENDING)
+                predicates.add(cb.notEqual(root.get("status"), TrialRequestStatus.PENDING));
+            }
             if (status != null) {
                 predicates.add(cb.equal(root.get("status"), status));
             }
