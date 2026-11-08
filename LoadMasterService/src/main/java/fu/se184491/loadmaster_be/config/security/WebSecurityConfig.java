@@ -50,7 +50,8 @@ public class WebSecurityConfig {
                                 "/api/auth/password-reset/**",
                                 "/webhook/**",
                                 "/api/payment/**",
-                                "/api/guest-registration/**"
+                                "/api/guest-registration/**",
+                                "/api/trial-registration/**"
                         )
                         .permitAll()
 

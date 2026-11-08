@@ -1,5 +1,6 @@
 package fu.se184491.loadmaster_be.entity.support;
 
+import fu.se184491.loadmaster_be.constant.support.AiPrecheckStatus;
 import fu.se184491.loadmaster_be.constant.support.TrialRequestStatus;
 import fu.se184491.loadmaster_be.entity.account.User;
 import fu.se184491.loadmaster_be.entity.billing.SubscriptionPlan;
@@ -44,14 +45,30 @@ public class TrialAccountRequest {
     @Column(name = "tax_code", length = 50)
     private String taxCode;
 
+    @Column(name = "company_address", columnDefinition = "TEXT")
+    private String companyAddress;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "interested_plan_id")
     private SubscriptionPlan interestedPlan;
 
     @Enumerated(EnumType.STRING)
-    @Column(name = "status", nullable = false, length = 20)
+    @Column(name = "status", nullable = false, length = 30)
     @Builder.Default
     private TrialRequestStatus status = TrialRequestStatus.PENDING;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "ai_precheck_status", length = 30)
+    private AiPrecheckStatus aiPrecheckStatus;
+
+    @Column(name = "ai_precheck_reason", columnDefinition = "TEXT")
+    private String aiPrecheckReason;
+
+    @Column(name = "handled_by_name", length = 100)
+    private String handledByName;
+
+    @Column(name = "rejection_reason", columnDefinition = "TEXT")
+    private String rejectionReason;
 
     @Column(name = "note", columnDefinition = "TEXT")
     private String note;
@@ -59,6 +76,10 @@ public class TrialAccountRequest {
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "requested_by_id")
     private User requestedBy;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "manager_reviewed_by_id")
+    private User managerReviewedBy;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "approved_by_id")

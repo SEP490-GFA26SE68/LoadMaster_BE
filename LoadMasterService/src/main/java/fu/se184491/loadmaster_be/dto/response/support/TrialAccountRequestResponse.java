@@ -1,5 +1,6 @@
 package fu.se184491.loadmaster_be.dto.response.support;
 
+import fu.se184491.loadmaster_be.constant.support.AiPrecheckStatus;
 import fu.se184491.loadmaster_be.constant.support.TrialRequestStatus;
 import lombok.*;
 
@@ -24,27 +25,31 @@ public class TrialAccountRequestResponse {
     private String companyName;
     private String companyCode;
     private String taxCode;
-    private Long interestedPlanId;
+    private String companyAddress;
 
+    private Long interestedPlanId;
     private String interestedPlanName;
 
     private TrialRequestStatus status;
+    private AiPrecheckStatus aiPrecheckStatus;
+    private String aiPrecheckReason;
+    private String handledByName;
+    private String rejectionReason;
 
     private String note;
 
     private Long requestedById;
-
     private String requestedByName;
 
-    private Long approvedById;
+    private Long managerReviewedById;
+    private String managerReviewedByName;
 
+    private Long approvedById;
     private String approvedByName;
 
     private Long createdCompanyId;
-
     private String createdCompanyName;
 
     private Instant createdAt;
-
     private Instant resolvedAt;
 }

@@ -321,4 +321,32 @@ class TrialAccountRequestServiceTest {
         verify(brevoClient).sendEmail(eq("khach@logistics.vn"), anyString(), emailCaptor.capture());
         assertThat(emailCaptor.getValue()).contains("Thông tin mã số thuế không thể xác minh");
     }
+
+    @Test
+    @DisplayName("managerApprove updates status to PENDING_ADMIN_CREATION and sets reviewer")
+    void managerApprove_success() {
+        when(trialAccountRequestRepository.findById(1L)).thenReturn(Optional.of(trialRequest));
+        when(trialAccountRequestRepository.save(any(TrialAccountRequest.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        TrialAccountRequestResponse response = trialAccountRequestService.managerApprove(1L, systemManager);
+
+        assertThat(response.getStatus()).isEqualTo(TrialRequestStatus.PENDING_ADMIN_CREATION);
+        assertThat(trialRequest.getStatus()).isEqualTo(TrialRequestStatus.PENDING_ADMIN_CREATION);
+        assertThat(trialRequest.getManagerReviewedBy()).isEqualTo(systemManager);
+    }
+
+    @Test
+    @DisplayName("managerReject updates status to REJECTED and sends refusal email")
+    void managerReject_success() {
+        when(trialAccountRequestRepository.findById(1L)).thenReturn(Optional.of(trialRequest));
+        when(trialAccountRequestRepository.save(any(TrialAccountRequest.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        TrialAccountRequestResponse response = trialAccountRequestService.managerReject(
+                1L, "Doanh nghiệp không đạt tiêu chuẩn.", systemManager);
+
+        assertThat(response.getStatus()).isEqualTo(TrialRequestStatus.REJECTED);
+        assertThat(trialRequest.getStatus()).isEqualTo(TrialRequestStatus.REJECTED);
+        assertThat(trialRequest.getRejectionReason()).isEqualTo("Doanh nghiệp không đạt tiêu chuẩn.");
+        verify(brevoClient).sendEmail(eq("khach@logistics.vn"), anyString(), anyString());
+    }
 }

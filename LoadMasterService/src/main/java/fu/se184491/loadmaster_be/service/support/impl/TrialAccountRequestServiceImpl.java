@@ -154,7 +154,7 @@ public class TrialAccountRequestServiceImpl implements TrialAccountRequestServic
         TrialAccountRequest trial = trialAccountRequestRepository.findById(id)
                 .orElseThrow(() -> new AppException(ErrorCode.TRIAL_REQUEST_NOT_FOUND));
 
-        if (trial.getStatus() != TrialRequestStatus.PENDING) {
+        if (trial.getStatus() != TrialRequestStatus.PENDING && trial.getStatus() != TrialRequestStatus.PENDING_ADMIN_CREATION) {
             throw new AppException(ErrorCode.TRIAL_REQUEST_ALREADY_PROCESSED);
         }
 
@@ -376,11 +376,77 @@ public class TrialAccountRequestServiceImpl implements TrialAccountRequestServic
     }
 
     @Override
-    public TrialAccountRequestResponse rejectTrialRequest(Long id, String reason, User rejectedBy) {
+    public TrialAccountRequestResponse managerApprove(Long id, User manager) {
         TrialAccountRequest trial = trialAccountRequestRepository.findById(id)
                 .orElseThrow(() -> new AppException(ErrorCode.TRIAL_REQUEST_NOT_FOUND));
 
         if (trial.getStatus() != TrialRequestStatus.PENDING) {
+            throw new AppException(ErrorCode.TRIAL_REQUEST_ALREADY_PROCESSED);
+        }
+
+        trial.setStatus(TrialRequestStatus.PENDING_ADMIN_CREATION);
+        trial.setManagerReviewedBy(manager);
+        trial.setHandledByName(manager != null ? manager.getFullName() : "System Manager");
+        TrialAccountRequest saved = trialAccountRequestRepository.save(trial);
+        return mapToResponse(saved);
+    }
+
+    @Override
+    public TrialAccountRequestResponse managerReject(Long id, String reason, User manager) {
+        TrialAccountRequest trial = trialAccountRequestRepository.findById(id)
+                .orElseThrow(() -> new AppException(ErrorCode.TRIAL_REQUEST_NOT_FOUND));
+
+        if (trial.getStatus() != TrialRequestStatus.PENDING) {
+            throw new AppException(ErrorCode.TRIAL_REQUEST_ALREADY_PROCESSED);
+        }
+
+        trial.setStatus(TrialRequestStatus.REJECTED);
+        trial.setManagerReviewedBy(manager);
+        trial.setHandledByName(manager != null ? manager.getFullName() : "System Manager");
+        trial.setRejectionReason(reason);
+        trial.setResolvedAt(Instant.now());
+        if (reason != null && !reason.trim().isEmpty()) {
+            trial.setNote(trial.getNote() != null ? trial.getNote() + "\n[Manager từ chối]: " + reason : "[Manager từ chối]: " + reason);
+        }
+
+        if (trial.getContact() != null) {
+            ContactOfGuest contact = trial.getContact();
+            contact.setStatus(ContactStatus.CLOSED);
+            contact.setResolvedAt(Instant.now());
+            contactOfGuestRepository.save(contact);
+        }
+
+        String emailContent = """
+                Xin chào %s,
+
+                Cảm ơn bạn đã quan tâm và gửi yêu cầu đăng ký trải nghiệm giải pháp tối ưu logistics LoadMaster.
+
+                Sau khi thẩm định thông tin doanh nghiệp, System Manager xin thông báo yêu cầu của bạn chưa thể được phê duyệt vào thời điểm hiện tại.
+
+                CHI TIẾT LÝ DO:
+                %s
+
+                Nếu bạn cần cung cấp bổ sung thông tin hoặc muốn được tư vấn giải pháp phù hợp hơn, xin vui lòng liên hệ lại với đội ngũ hỗ trợ của chúng tôi qua hotline hoặc phản hồi trực tiếp email này.
+
+                Trân trọng,
+                Đội ngũ Quản lý Nền tảng LoadMaster
+                """.formatted(
+                trial.getFullName(),
+                (reason != null && !reason.trim().isEmpty()) ? reason.trim() : "Thông tin đăng ký chưa đáp ứng đủ tiêu chuẩn phê duyệt tài khoản doanh nghiệp."
+        );
+
+        brevoClient.sendEmail(trial.getEmail(), "LoadMaster - Thông báo về yêu cầu dùng thử", emailContent);
+
+        TrialAccountRequest saved = trialAccountRequestRepository.save(trial);
+        return mapToResponse(saved);
+    }
+
+    @Override
+    public TrialAccountRequestResponse rejectTrialRequest(Long id, String reason, User rejectedBy) {
+        TrialAccountRequest trial = trialAccountRequestRepository.findById(id)
+                .orElseThrow(() -> new AppException(ErrorCode.TRIAL_REQUEST_NOT_FOUND));
+
+        if (trial.getStatus() != TrialRequestStatus.PENDING && trial.getStatus() != TrialRequestStatus.PENDING_ADMIN_CREATION) {
             throw new AppException(ErrorCode.TRIAL_REQUEST_ALREADY_PROCESSED);
         }
 
@@ -434,12 +500,19 @@ public class TrialAccountRequestServiceImpl implements TrialAccountRequestServic
                 .companyName(entity.getCompanyName())
                 .companyCode(entity.getCompanyCode())
                 .taxCode(entity.getTaxCode())
+                .companyAddress(entity.getCompanyAddress())
                 .interestedPlanId(entity.getInterestedPlan() != null ? entity.getInterestedPlan().getId() : null)
                 .interestedPlanName(entity.getInterestedPlan() != null ? entity.getInterestedPlan().getName() : null)
                 .status(entity.getStatus())
+                .aiPrecheckStatus(entity.getAiPrecheckStatus())
+                .aiPrecheckReason(entity.getAiPrecheckReason())
+                .handledByName(entity.getHandledByName())
+                .rejectionReason(entity.getRejectionReason())
                 .note(entity.getNote())
                 .requestedById(entity.getRequestedBy() != null ? entity.getRequestedBy().getId() : null)
                 .requestedByName(entity.getRequestedBy() != null ? entity.getRequestedBy().getFullName() : null)
+                .managerReviewedById(entity.getManagerReviewedBy() != null ? entity.getManagerReviewedBy().getId() : null)
+                .managerReviewedByName(entity.getManagerReviewedBy() != null ? entity.getManagerReviewedBy().getFullName() : null)
                 .approvedById(entity.getApprovedBy() != null ? entity.getApprovedBy().getId() : null)
                 .approvedByName(entity.getApprovedBy() != null ? entity.getApprovedBy().getFullName() : null)
                 .createdCompanyId(entity.getCreatedCompany() != null ? entity.getCreatedCompany().getId() : null)

@@ -24,6 +24,7 @@ public class CreateTrialAccountRequest {
     private String companyName;
     private String companyCode;
     private String taxCode;
+    private String companyAddress;
     private Long interestedPlanId;
 
     private String note;

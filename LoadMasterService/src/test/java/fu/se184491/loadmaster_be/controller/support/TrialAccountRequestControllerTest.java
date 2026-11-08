@@ -1,5 +1,7 @@
 package fu.se184491.loadmaster_be.controller.support;
 
+import fu.se184491.loadmaster_be.constant.support.TrialRequestStatus;
+
 import fu.se184491.loadmaster_be.config.security.RestAccessDeniedHandler;
 import fu.se184491.loadmaster_be.config.security.RestAuthenticationEntryPoint;
 import fu.se184491.loadmaster_be.config.security.RolePermissionMapping;
@@ -77,11 +79,19 @@ class TrialAccountRequestControllerTest {
     }
 
     @Test
-    @DisplayName("GET /api/trial-requests & POST /api/trial-requests/{id}/approve - Denies SYSTEM_MANAGER with 403 Forbidden")
+    @DisplayName("GET /api/trial-requests & POST /api/trial-requests/{id}/manager-approve - Allows SYSTEM_MANAGER, denies admin approve")
     @WithMockUser(roles = "SYSTEM_MANAGER")
-    void trialRequests_whenCallerIsSystemManager_returnsForbidden() throws Exception {
+    void trialRequests_whenCallerIsSystemManager_behavior() throws Exception {
+        when(trialAccountRequestService.getTrialRequests(any(), any(), any()))
+                .thenReturn(PageResponse.<TrialAccountRequestResponse>builder().data(List.of()).build());
+        when(trialAccountRequestService.managerApprove(any(), any()))
+                .thenReturn(TrialAccountRequestResponse.builder().id(1L).status(TrialRequestStatus.PENDING_ADMIN_CREATION).build());
+
         mockMvc.perform(get("/api/trial-requests"))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isOk());
+
+        mockMvc.perform(post("/api/trial-requests/1/manager-approve"))
+                .andExpect(status().isOk());
 
         mockMvc.perform(post("/api/trial-requests/1/approve")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -89,6 +99,14 @@ class TrialAccountRequestControllerTest {
                 .andExpect(status().isForbidden());
 
         verify(trialAccountRequestService, never()).approveTrialRequest(any(), any(), any());
+    }
+
+    @Test
+    @DisplayName("GET /api/trial-requests - Denies SYSTEM_SUPPORTER with 403 Forbidden")
+    @WithMockUser(roles = "SYSTEM_SUPPORTER")
+    void trialRequests_whenCallerIsSystemSupporter_returnsForbidden() throws Exception {
+        mockMvc.perform(get("/api/trial-requests"))
+                .andExpect(status().isForbidden());
     }
 
     @Test

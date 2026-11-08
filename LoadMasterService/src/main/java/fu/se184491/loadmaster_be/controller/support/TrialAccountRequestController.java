@@ -41,7 +41,7 @@ public class TrialAccountRequestController {
     }
 
     @GetMapping
-    @PreAuthorize("hasRole('SYSTEM_ADMIN') or hasAuthority('SYSTEM_ADMIN')")
+    @PreAuthorize("hasAnyRole('SYSTEM_MANAGER', 'SYSTEM_ADMIN') or hasAnyAuthority('SYSTEM_MANAGER', 'SYSTEM_ADMIN')")
     public ResponseEntity<PageResponse<TrialAccountRequestResponse>> getTrialRequests(
             @RequestParam(required = false) String search,
             @RequestParam(required = false) TrialRequestStatus status,
@@ -54,9 +54,33 @@ public class TrialAccountRequestController {
     }
 
     @GetMapping("/{id}")
-    @PreAuthorize("hasRole('SYSTEM_ADMIN') or hasAuthority('SYSTEM_ADMIN')")
+    @PreAuthorize("hasAnyRole('SYSTEM_MANAGER', 'SYSTEM_ADMIN') or hasAnyAuthority('SYSTEM_MANAGER', 'SYSTEM_ADMIN')")
     public ResponseEntity<TrialAccountRequestResponse> getTrialRequestById(@PathVariable Long id) {
         TrialAccountRequestResponse response = trialAccountRequestService.getTrialRequestById(id);
+        return ResponseEntity.ok(response);
+    }
+
+    @PostMapping("/{id}/manager-approve")
+    @PreAuthorize("hasRole('SYSTEM_MANAGER') or hasAuthority('SYSTEM_MANAGER')")
+    public ResponseEntity<TrialAccountRequestResponse> managerApprove(
+            @PathVariable Long id,
+            @AuthenticationPrincipal Jwt jwt
+    ) {
+        User manager = resolveUser(jwt);
+        TrialAccountRequestResponse response = trialAccountRequestService.managerApprove(id, manager);
+        return ResponseEntity.ok(response);
+    }
+
+    @PostMapping("/{id}/manager-reject")
+    @PreAuthorize("hasRole('SYSTEM_MANAGER') or hasAuthority('SYSTEM_MANAGER')")
+    public ResponseEntity<TrialAccountRequestResponse> managerReject(
+            @PathVariable Long id,
+            @RequestBody(required = false) RejectTrialAccountRequest request,
+            @AuthenticationPrincipal Jwt jwt
+    ) {
+        User manager = resolveUser(jwt);
+        String reason = (request != null) ? request.getReason() : null;
+        TrialAccountRequestResponse response = trialAccountRequestService.managerReject(id, reason, manager);
         return ResponseEntity.ok(response);
     }
 

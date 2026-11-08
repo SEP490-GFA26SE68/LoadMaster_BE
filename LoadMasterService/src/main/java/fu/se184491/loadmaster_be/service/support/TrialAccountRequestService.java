@@ -16,6 +16,10 @@ public interface TrialAccountRequestService {
 
     TrialAccountRequestResponse getTrialRequestById(Long id);
 
+    TrialAccountRequestResponse managerApprove(Long id, User manager);
+
+    TrialAccountRequestResponse managerReject(Long id, String reason, User manager);
+
     TrialAccountRequestResponse approveTrialRequest(Long id, ApproveTrialAccountRequest request, User approvedBy);
 
     TrialAccountRequestResponse rejectTrialRequest(Long id, String reason, User rejectedBy);
