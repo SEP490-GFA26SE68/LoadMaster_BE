@@ -54,8 +54,11 @@ public class TrialPreValidationServiceImpl implements TrialPreValidationService 
             return false;
         }
 
-        // 3. Kiểm tra trùng lặp MST trong các đơn dùng thử đang chờ hoặc đã cấp
-        if (trialAccountRequestRepository.existsByTaxCodeAndStatusIn(taxCode, ACTIVE_TRIAL_STATUSES)) {
+        // 3. Kiểm tra trùng lặp MST trong các đơn dùng thử đang chờ hoặc đã cấp (loại trừ chính bản ghi hiện tại)
+        boolean taxDuplicate = request.getId() != null
+                ? trialAccountRequestRepository.existsByTaxCodeAndStatusInAndIdNot(taxCode, ACTIVE_TRIAL_STATUSES, request.getId())
+                : trialAccountRequestRepository.existsByTaxCodeAndStatusIn(taxCode, ACTIVE_TRIAL_STATUSES);
+        if (taxDuplicate) {
             rejectByAi(request, "Mã số thuế này đã được đăng ký hoặc đang trong quá trình xét duyệt dùng thử.");
             return false;
         }
@@ -66,8 +69,11 @@ public class TrialPreValidationServiceImpl implements TrialPreValidationService 
             return false;
         }
 
-        // 5. Kiểm tra Email trong các đơn dùng thử đang chờ hoặc đã cấp
-        if (trialAccountRequestRepository.existsByEmailAndStatusIn(email, ACTIVE_TRIAL_STATUSES)) {
+        // 5. Kiểm tra Email trong các đơn dùng thử đang chờ hoặc đã cấp (loại trừ chính bản ghi hiện tại)
+        boolean emailDuplicate = request.getId() != null
+                ? trialAccountRequestRepository.existsByEmailAndStatusInAndIdNot(email, ACTIVE_TRIAL_STATUSES, request.getId())
+                : trialAccountRequestRepository.existsByEmailAndStatusIn(email, ACTIVE_TRIAL_STATUSES);
+        if (emailDuplicate) {
             rejectByAi(request, "Email này đã gửi yêu cầu dùng thử gần đây và đang được xử lý.");
             return false;
         }

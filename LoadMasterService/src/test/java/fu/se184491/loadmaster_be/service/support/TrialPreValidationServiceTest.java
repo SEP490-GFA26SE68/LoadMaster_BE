@@ -92,7 +92,7 @@ class TrialPreValidationServiceTest {
     @DisplayName("Tax code already exists in pending/approved trial requests -> REJECTED, handled by AI")
     void validateAndProcess_WhenTaxCodeAlreadyInTrialRequest_ShouldRejectWithAiHandled() {
         when(companyRepository.existsByTaxCode("0123456789")).thenReturn(false);
-        when(trialAccountRequestRepository.existsByTaxCodeAndStatusIn(eq("0123456789"), anyList())).thenReturn(true);
+        when(trialAccountRequestRepository.existsByTaxCodeAndStatusInAndIdNot(eq("0123456789"), anyCollection(), eq(1L))).thenReturn(true);
 
         boolean result = trialPreValidationService.validateAndProcess(testRequest);
 
@@ -108,7 +108,7 @@ class TrialPreValidationServiceTest {
     @DisplayName("Email already exists in users table -> REJECTED, handled by AI")
     void validateAndProcess_WhenEmailAlreadyInUsers_ShouldRejectWithAiHandled() {
         when(companyRepository.existsByTaxCode("0123456789")).thenReturn(false);
-        when(trialAccountRequestRepository.existsByTaxCodeAndStatusIn(eq("0123456789"), anyList())).thenReturn(false);
+        when(trialAccountRequestRepository.existsByTaxCodeAndStatusInAndIdNot(eq("0123456789"), anyCollection(), eq(1L))).thenReturn(false);
         when(userRepository.existsByEmail("test@example.com")).thenReturn(true);
 
         boolean result = trialPreValidationService.validateAndProcess(testRequest);
@@ -126,9 +126,9 @@ class TrialPreValidationServiceTest {
     @DisplayName("All valid -> PASSED, PENDING for System Manager review")
     void validateAndProcess_WhenAllValid_ShouldPassAndSetPending() {
         when(companyRepository.existsByTaxCode("0123456789")).thenReturn(false);
-        when(trialAccountRequestRepository.existsByTaxCodeAndStatusIn(eq("0123456789"), anyList())).thenReturn(false);
+        when(trialAccountRequestRepository.existsByTaxCodeAndStatusInAndIdNot(eq("0123456789"), anyCollection(), eq(1L))).thenReturn(false);
         when(userRepository.existsByEmail("test@example.com")).thenReturn(false);
-        when(trialAccountRequestRepository.existsByEmailAndStatusIn(eq("test@example.com"), anyList())).thenReturn(false);
+        when(trialAccountRequestRepository.existsByEmailAndStatusInAndIdNot(eq("test@example.com"), anyCollection(), eq(1L))).thenReturn(false);
 
         boolean result = trialPreValidationService.validateAndProcess(testRequest);
 
