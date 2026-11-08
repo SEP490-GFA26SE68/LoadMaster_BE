@@ -368,8 +368,10 @@ public class GuestRegistrationServiceImpl implements GuestRegistrationService {
             keycloakUserId = keycloakAdminClient.findUserIdByEmail(session.getEmail());
             if (keycloakUserId == null) {
                 keycloakUserId = keycloakAdminClient.createUser(session.getEmail(), session.getFullName());
+            } else {
+                keycloakAdminClient.updateUserProfile(keycloakUserId, session.getFullName());
             }
-            keycloakAdminClient.setPassword(keycloakUserId, temporaryPassword, true);
+            keycloakAdminClient.setPassword(keycloakUserId, temporaryPassword, false);
             keycloakAdminClient.assignRealmRole(keycloakUserId, fu.se184491.loadmaster_be.constant.account.UserRole.ADMIN.name());
         } catch (Exception ex) {
             log.error("Failed to provision Keycloak account for email: {}", session.getEmail(), ex);

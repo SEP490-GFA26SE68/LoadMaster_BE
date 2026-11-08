@@ -251,12 +251,13 @@ public class TrialAccountRequestServiceImpl implements TrialAccountRequestServic
                 }
                 log.info("Reusing orphaned Keycloak user {} for email {}", existingKeycloakId, trial.getEmail());
                 keycloakUserId = existingKeycloakId;
+                keycloakAdminClient.updateUserProfile(keycloakUserId, trial.getFullName());
             } else {
                 keycloakUserId = keycloakAdminClient.createUser(trial.getEmail(), trial.getFullName());
                 newlyCreatedInKeycloak = true;
             }
 
-            keycloakAdminClient.setPassword(keycloakUserId, temporaryPassword, true);
+            keycloakAdminClient.setPassword(keycloakUserId, temporaryPassword, false);
             keycloakAdminClient.assignRealmRole(keycloakUserId, UserRole.ADMIN.name());
 
             User user = User.builder()

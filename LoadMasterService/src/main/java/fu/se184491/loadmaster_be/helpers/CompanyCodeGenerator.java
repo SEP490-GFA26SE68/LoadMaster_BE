@@ -128,3 +128,4 @@ public class CompanyCodeGenerator {
         return baseCode + "_" + System.currentTimeMillis() % 10000;
     }
 }
+

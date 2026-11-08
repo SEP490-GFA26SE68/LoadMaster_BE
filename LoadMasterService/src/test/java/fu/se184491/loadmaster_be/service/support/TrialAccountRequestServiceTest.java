@@ -202,7 +202,7 @@ class TrialAccountRequestServiceTest {
 
         // Verify Keycloak user creation with role ADMIN
         verify(keycloakAdminClient).createUser("khach@logistics.vn", "Nguyen Van Khach");
-        verify(keycloakAdminClient).setPassword("kc-user-50", "TempSecure#123", true);
+        verify(keycloakAdminClient).setPassword("kc-user-50", "TempSecure#123", false);
         verify(keycloakAdminClient).assignRealmRole("kc-user-50", UserRole.ADMIN.name());
 
         // Verify Postgres user creation with ADMIN
@@ -300,7 +300,7 @@ class TrialAccountRequestServiceTest {
         // Verify keycloak createUser was NOT called (reused existing)
         verify(keycloakAdminClient, never()).createUser(anyString(), anyString());
         // Password and role must still be set
-        verify(keycloakAdminClient).setPassword("kc-existing-50", "TempSecure#123", true);
+        verify(keycloakAdminClient).setPassword("kc-existing-50", "TempSecure#123", false);
         verify(keycloakAdminClient).assignRealmRole("kc-existing-50", UserRole.ADMIN.name());
 
         // Verify DB user saved with the existing keycloak ID

@@ -35,11 +35,28 @@ public class KeycloakAdminClient {
     ) {
         String token = serviceTokenProvider.getKeycloakAdminToken();
 
+        String firstName = "";
+        String lastName = "";
+        if (fullName != null && !fullName.trim().isEmpty()) {
+            String trimmed = fullName.trim();
+            int lastSpace = trimmed.lastIndexOf(' ');
+            if (lastSpace > 0) {
+                lastName = trimmed.substring(0, lastSpace);
+                firstName = trimmed.substring(lastSpace + 1);
+            } else {
+                firstName = trimmed;
+                lastName = trimmed;
+            }
+        }
+
         Map<String, Object> body = new java.util.HashMap<>();
         body.put("username", email);
         body.put("email", email);
+        body.put("firstName", firstName);
+        body.put("lastName", lastName);
         body.put("emailVerified", true);
         body.put("enabled", true);
+        body.put("requiredActions", java.util.List.of());
 
         ResponseEntity<Void> response =
                 keycloakAdminRestClient
@@ -61,6 +78,40 @@ public class KeycloakAdminClient {
         String path = location.getPath();
 
         return path.substring(path.lastIndexOf("/") + 1);
+    }
+
+    public void updateUserProfile(String keycloakUserId, String fullName) {
+        String token = serviceTokenProvider.getKeycloakAdminToken();
+        String firstName = "";
+        String lastName = "";
+        if (fullName != null && !fullName.trim().isEmpty()) {
+            String trimmed = fullName.trim();
+            int lastSpace = trimmed.lastIndexOf(' ');
+            if (lastSpace > 0) {
+                lastName = trimmed.substring(0, lastSpace);
+                firstName = trimmed.substring(lastSpace + 1);
+            } else {
+                firstName = trimmed;
+                lastName = trimmed;
+            }
+        }
+
+        Map<String, Object> body = new java.util.HashMap<>();
+        body.put("firstName", firstName);
+        body.put("lastName", lastName);
+        body.put("requiredActions", java.util.List.of());
+
+        keycloakAdminRestClient
+                .put()
+                .uri(
+                        "/admin/realms/{realm}/users/{userId}",
+                        REALM,
+                        keycloakUserId
+                )
+                .headers(headers -> headers.setBearerAuth(token))
+                .body(body)
+                .retrieve()
+                .toBodilessEntity();
     }
 
     /**

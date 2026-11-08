@@ -11,12 +11,15 @@ import org.springframework.web.client.RestClient;
 
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
+import static org.springframework.http.HttpMethod.POST;
 import static org.springframework.http.HttpMethod.PUT;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.header;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.jsonPath;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.method;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.requestTo;
+import static org.springframework.test.web.client.response.MockRestResponseCreators.withCreatedEntity;
 import static org.springframework.test.web.client.response.MockRestResponseCreators.withNoContent;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 class KeycloakAdminClientTest {
 
@@ -70,6 +73,28 @@ class KeycloakAdminClientTest {
 
         client.clearRequiredActions("kc-99");
 
+        server.verify();
+    }
+
+    @Test
+    @DisplayName("createUser gửi đầy đủ firstName, lastName từ fullName và requiredActions rỗng")
+    void createUserSendsNamesAndEmptyRequiredActions() {
+        server.expect(requestTo("http://keycloak.test/admin/realms/loadmaster/users"))
+                .andExpect(method(POST))
+                .andExpect(header("Authorization", "Bearer admin-token"))
+                .andExpect(jsonPath("$.username").value("an.nguyen@test.vn"))
+                .andExpect(jsonPath("$.email").value("an.nguyen@test.vn"))
+                .andExpect(jsonPath("$.firstName").value("An"))
+                .andExpect(jsonPath("$.lastName").value("Nguyễn Văn"))
+                .andExpect(jsonPath("$.emailVerified").value(true))
+                .andExpect(jsonPath("$.enabled").value(true))
+                .andExpect(jsonPath("$.requiredActions").isArray())
+                .andExpect(jsonPath("$.requiredActions.length()").value(0))
+                .andRespond(withCreatedEntity(java.net.URI.create("http://keycloak.test/admin/realms/loadmaster/users/kc-an-123")));
+
+        String userId = client.createUser("an.nguyen@test.vn", "Nguyễn Văn An");
+
+        assertEquals("kc-an-123", userId);
         server.verify();
     }
 }
