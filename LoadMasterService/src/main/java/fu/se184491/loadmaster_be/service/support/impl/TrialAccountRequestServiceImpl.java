@@ -64,6 +64,7 @@ public class TrialAccountRequestServiceImpl implements TrialAccountRequestServic
     private final CreditService creditService;
     private final KeycloakAdminClient keycloakAdminClient;
     private final TemporaryPasswordGenerator temporaryPasswordGenerator;
+    private final fu.se184491.loadmaster_be.helpers.CompanyCodeGenerator companyCodeGenerator;
     private final BrevoClient brevoClient;
     private final fu.se184491.loadmaster_be.service.company.CompanyAgreementService companyAgreementService;
 
@@ -88,13 +89,19 @@ public class TrialAccountRequestServiceImpl implements TrialAccountRequestServic
             plan = contact.getInterestedPlan();
         }
 
+        String initialCompCode = request.getCompanyCode() != null ? request.getCompanyCode() : (contact != null ? contact.getCompanyCode() : null);
+        String finalCompName = request.getCompanyName() != null ? request.getCompanyName() : (contact != null ? contact.getCompanyName() : null);
+        if (initialCompCode == null || initialCompCode.trim().isEmpty()) {
+            initialCompCode = companyCodeGenerator.generateUniqueCode(finalCompName != null ? finalCompName : request.getFullName(), companyRepository::existsByCompanyCode);
+        }
+
         TrialAccountRequest trial = TrialAccountRequest.builder()
                 .contact(contact)
                 .fullName(request.getFullName())
                 .email(request.getEmail())
                 .phoneNumber(request.getPhoneNumber())
-                .companyName(request.getCompanyName() != null ? request.getCompanyName() : (contact != null ? contact.getCompanyName() : null))
-                .companyCode(request.getCompanyCode() != null ? request.getCompanyCode() : (contact != null ? contact.getCompanyCode() : null))
+                .companyName(finalCompName)
+                .companyCode(initialCompCode)
                 .taxCode(request.getTaxCode() != null ? request.getTaxCode() : (contact != null ? contact.getTaxCode() : null))
                 .interestedPlan(plan)
                 .status(TrialRequestStatus.PENDING)
@@ -189,18 +196,20 @@ public class TrialAccountRequestServiceImpl implements TrialAccountRequestServic
             throw new AppException(ErrorCode.EMAIL_ALREADY_EXISTS, "Email '" + trial.getEmail() + "' đã được sử dụng cho một tài khoản khác trong hệ thống.");
         }
 
-        // 2. Chuẩn bị và kiểm tra thông tin công ty
+        // 2. Chuẩn bị và kiểm tra thông tin công ty (Mã công ty tự sinh tự động từ BE, không nhập tay)
         String compName = (request.getCompanyName() != null && !request.getCompanyName().trim().isEmpty())
                 ? request.getCompanyName().trim()
                 : (trial.getCompanyName() != null && !trial.getCompanyName().trim().isEmpty()
                         ? trial.getCompanyName().trim()
                         : "Công ty " + trial.getFullName());
 
-        String compCode = (request.getCompanyCode() != null && !request.getCompanyCode().trim().isEmpty())
-                ? request.getCompanyCode().trim()
-                : (trial.getCompanyCode() != null && !trial.getCompanyCode().trim().isEmpty() && !companyRepository.existsByCompanyCode(trial.getCompanyCode().trim())
-                        ? trial.getCompanyCode().trim()
-                        : "COMP-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase());
+        String compCode = trial.getCompanyCode();
+        if (compCode == null || compCode.trim().isEmpty() || companyRepository.existsByCompanyCode(compCode.trim())) {
+            compCode = companyCodeGenerator.generateUniqueCode(compName, companyRepository::existsByCompanyCode);
+            trial.setCompanyCode(compCode);
+        } else {
+            compCode = compCode.trim();
+        }
 
         String taxCode = (request.getTaxCode() != null && !request.getTaxCode().trim().isEmpty())
                 ? request.getTaxCode().trim()
@@ -539,6 +548,11 @@ public class TrialAccountRequestServiceImpl implements TrialAccountRequestServic
     }
 
     private TrialAccountRequestResponse mapToResponse(TrialAccountRequest entity) {
+        String compCode = entity.getCompanyCode();
+        if ((compCode == null || compCode.trim().isEmpty()) && entity.getCompanyName() != null) {
+            compCode = companyCodeGenerator.generateUniqueCode(entity.getCompanyName(), companyRepository::existsByCompanyCode);
+        }
+
         return TrialAccountRequestResponse.builder()
                 .id(entity.getId())
                 .contactId(entity.getContact() != null ? entity.getContact().getId() : null)
@@ -546,7 +560,7 @@ public class TrialAccountRequestServiceImpl implements TrialAccountRequestServic
                 .email(entity.getEmail())
                 .phoneNumber(entity.getPhoneNumber())
                 .companyName(entity.getCompanyName())
-                .companyCode(entity.getCompanyCode())
+                .companyCode(compCode)
                 .taxCode(entity.getTaxCode())
                 .companyAddress(entity.getCompanyAddress())
                 .interestedPlanId(entity.getInterestedPlan() != null ? entity.getInterestedPlan().getId() : null)

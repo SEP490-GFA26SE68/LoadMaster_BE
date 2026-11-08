@@ -94,6 +94,31 @@ public class KeycloakAdminClient {
                 .body(body)
                 .retrieve()
                 .toBodilessEntity();
+
+        if (!temporary) {
+            clearRequiredActions(keycloakUserId);
+        }
+    }
+
+    /**
+     * Xóa sạch các requiredActions (như UPDATE_PASSWORD) trên user Keycloak để tránh bị bắt đổi mật khẩu lặp lại
+     * khi đăng nhập qua Direct Access Grants.
+     */
+    public void clearRequiredActions(String keycloakUserId) {
+        String token = serviceTokenProvider.getKeycloakAdminToken();
+        Map<String, Object> body = Map.of("requiredActions", List.of());
+
+        keycloakAdminRestClient
+                .put()
+                .uri(
+                        "/admin/realms/{realm}/users/{userId}",
+                        REALM,
+                        keycloakUserId
+                )
+                .headers(headers -> headers.setBearerAuth(token))
+                .body(body)
+                .retrieve()
+                .toBodilessEntity();
     }
 
     public void deleteUser(String keycloakUserId) {

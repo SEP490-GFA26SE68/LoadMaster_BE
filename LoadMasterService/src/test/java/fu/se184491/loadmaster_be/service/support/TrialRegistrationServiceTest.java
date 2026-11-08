@@ -51,6 +51,12 @@ class TrialRegistrationServiceTest {
     private SubscriptionPlanRepository subscriptionPlanRepository;
 
     @Mock
+    private fu.se184491.loadmaster_be.repository.company.CompanyRepository companyRepository;
+
+    @Mock
+    private fu.se184491.loadmaster_be.helpers.CompanyCodeGenerator companyCodeGenerator;
+
+    @Mock
     private OtpHasher otpHasher;
 
     @Mock

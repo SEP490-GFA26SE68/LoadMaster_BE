@@ -43,6 +43,8 @@ public class TrialRegistrationServiceImpl implements TrialRegistrationService {
     private final TrialRegistrationSessionRepository sessionRepository;
     private final TrialAccountRequestRepository trialAccountRequestRepository;
     private final SubscriptionPlanRepository subscriptionPlanRepository;
+    private final fu.se184491.loadmaster_be.repository.company.CompanyRepository companyRepository;
+    private final fu.se184491.loadmaster_be.helpers.CompanyCodeGenerator companyCodeGenerator;
     private final OtpHasher otpHasher;
     private final BrevoClient brevoClient;
     private final TrialPreValidationService trialPreValidationService;
@@ -132,12 +134,19 @@ public class TrialRegistrationServiceImpl implements TrialRegistrationService {
         session.setVerified(true);
         sessionRepository.save(session);
 
+        // Tự động sinh mã công ty chuẩn hóa và duy nhất từ Backend
+        String generatedCompanyCode = companyCodeGenerator.generateUniqueCode(
+                session.getCompanyName(),
+                companyRepository::existsByCompanyCode
+        );
+
         // Chuyển session thành TrialAccountRequest chính thức (đã qua thẩm định sơ bộ đạt)
         TrialAccountRequest trialRequest = TrialAccountRequest.builder()
                 .fullName(session.getFullName())
                 .email(session.getEmail())
                 .phoneNumber(session.getPhoneNumber())
                 .companyName(session.getCompanyName())
+                .companyCode(generatedCompanyCode)
                 .taxCode(session.getTaxCode())
                 .companyAddress(session.getCompanyAddress())
                 .interestedPlan(session.getInterestedPlan())

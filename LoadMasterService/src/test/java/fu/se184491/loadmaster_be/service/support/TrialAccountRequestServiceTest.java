@@ -82,6 +82,9 @@ class TrialAccountRequestServiceTest {
     private TemporaryPasswordGenerator temporaryPasswordGenerator;
 
     @Mock
+    private fu.se184491.loadmaster_be.helpers.CompanyCodeGenerator companyCodeGenerator;
+
+    @Mock
     private BrevoClient brevoClient;
 
     @Mock
