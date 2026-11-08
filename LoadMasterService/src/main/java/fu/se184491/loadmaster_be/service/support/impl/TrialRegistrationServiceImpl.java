@@ -1,6 +1,8 @@
 package fu.se184491.loadmaster_be.service.support.impl;
 
 import fu.se184491.loadmaster_be.client.BrevoClient;
+import fu.se184491.loadmaster_be.constant.billing.SubscriptionTier;
+import fu.se184491.loadmaster_be.constant.support.AiPrecheckStatus;
 import fu.se184491.loadmaster_be.constant.support.TrialRequestStatus;
 import fu.se184491.loadmaster_be.dto.request.support.GuestTrialInitRequest;
 import fu.se184491.loadmaster_be.dto.request.support.GuestTrialResendOtpRequest;
@@ -49,21 +51,24 @@ public class TrialRegistrationServiceImpl implements TrialRegistrationService {
     @Transactional
     public GuestTrialInitResponse initTrialRegistration(GuestTrialInitRequest request) {
         String email = request.getEmail().trim().toLowerCase();
+        String taxCode = request.getTaxCode().trim();
+
+        // 1. Kiểm tra thông tin sơ bộ trước khi sinh OTP (Bắt buộc hợp lệ mới cho gửi OTP)
+        trialPreValidationService.checkEligibility(taxCode, email);
+
+        // 2. Gói dùng thử bắt buộc là gói Basic
+        SubscriptionPlan basicPlan = subscriptionPlanRepository.findByTierAndActiveTrue(SubscriptionTier.BASIC)
+                .orElseGet(() -> subscriptionPlanRepository.findByActiveTrue().stream().findFirst().orElse(null));
+
         Instant now = Instant.now();
 
-        // 1. Sinh OTP 6 số ngẫu nhiên
+        // 3. Sinh OTP 6 số ngẫu nhiên
         String otp = String.format("%06d", RANDOM.nextInt(1_000_000));
         String hashedOtp = otpHasher.hash(email, otp);
         Instant otpExpiresAt = now.plus(OTP_EXPIRY_MINUTES, ChronoUnit.MINUTES);
         Instant otpResendAllowedAt = now.plus(OTP_RESEND_COOLDOWN_SECONDS, ChronoUnit.SECONDS);
 
-        // 2. Tìm kiếm gói đăng ký quan tâm nếu có
-        SubscriptionPlan interestedPlan = null;
-        if (request.getInterestedPlanId() != null) {
-            interestedPlan = subscriptionPlanRepository.findById(request.getInterestedPlanId()).orElse(null);
-        }
-
-        // 3. Tạo session lưu trữ tạm thời
+        // 4. Tạo session lưu trữ tạm thời
         String token = UUID.randomUUID().toString();
         TrialRegistrationSession session = TrialRegistrationSession.builder()
                 .token(token)
@@ -71,9 +76,9 @@ public class TrialRegistrationServiceImpl implements TrialRegistrationService {
                 .fullName(request.getFullName().trim())
                 .phoneNumber(request.getPhoneNumber() != null ? request.getPhoneNumber().trim() : null)
                 .companyName(request.getCompanyName().trim())
-                .taxCode(request.getTaxCode().trim())
+                .taxCode(taxCode)
                 .companyAddress(request.getCompanyAddress() != null ? request.getCompanyAddress().trim() : null)
-                .interestedPlan(interestedPlan)
+                .interestedPlan(basicPlan)
                 .note(request.getNote())
                 .otpHash(hashedOtp)
                 .otpExpiresAt(otpExpiresAt)
@@ -85,7 +90,7 @@ public class TrialRegistrationServiceImpl implements TrialRegistrationService {
 
         sessionRepository.save(session);
 
-        // 4. Gửi email chứa mã OTP
+        // 5. Gửi email chứa mã OTP
         sendOtpEmail(email, request.getFullName(), otp);
 
         return GuestTrialInitResponse.builder()
@@ -127,7 +132,7 @@ public class TrialRegistrationServiceImpl implements TrialRegistrationService {
         session.setVerified(true);
         sessionRepository.save(session);
 
-        // Chuyển session thành TrialAccountRequest chính thức
+        // Chuyển session thành TrialAccountRequest chính thức (đã qua thẩm định sơ bộ đạt)
         TrialAccountRequest trialRequest = TrialAccountRequest.builder()
                 .fullName(session.getFullName())
                 .email(session.getEmail())
@@ -138,24 +143,20 @@ public class TrialRegistrationServiceImpl implements TrialRegistrationService {
                 .interestedPlan(session.getInterestedPlan())
                 .note(session.getNote())
                 .status(TrialRequestStatus.PENDING)
+                .aiPrecheckStatus(AiPrecheckStatus.PASSED)
+                .aiPrecheckReason("Thông tin hợp lệ, vượt qua bước kiểm tra tự động")
+                .handledByName(null)
                 .createdAt(now)
                 .build();
 
         TrialAccountRequest savedRequest = trialAccountRequestRepository.save(trialRequest);
-
-        // Kích hoạt AI Pre-validation tự động kiểm tra
-        trialPreValidationService.validateAndProcess(savedRequest);
-
-        String message = savedRequest.getStatus() == TrialRequestStatus.REJECTED
-                ? "Yêu cầu trải nghiệm đã được tiếp nhận nhưng thông tin chưa hợp lệ theo đối soát sơ bộ. Chi tiết đã gửi về email của bạn."
-                : "Xác thực email thành công! Đơn đăng ký trải nghiệm của bạn đã được chuyển đến System Manager để thẩm định và cấp tài khoản.";
 
         return GuestTrialVerifyResponse.builder()
                 .requestId(savedRequest.getId())
                 .status(savedRequest.getStatus())
                 .aiPrecheckStatus(savedRequest.getAiPrecheckStatus())
                 .aiPrecheckReason(savedRequest.getAiPrecheckReason())
-                .message(message)
+                .message("Xác thực email thành công! Đơn đăng ký trải nghiệm của bạn đã được chuyển đến System Manager để thẩm định và cấp tài khoản.")
                 .build();
     }
 

@@ -37,6 +37,48 @@ public class TrialPreValidationServiceImpl implements TrialPreValidationService 
     private final BrevoClient brevoClient;
 
     @Override
+    @Transactional(readOnly = true)
+    public void checkEligibility(String taxCode, String email) {
+        String cleanTax = taxCode != null ? taxCode.trim() : "";
+        String cleanEmail = email != null ? email.trim().toLowerCase() : "";
+
+        // 1. Kiểm tra cấu trúc Mã số thuế (10 hoặc 13 số)
+        if (!TAX_CODE_PATTERN.matcher(cleanTax).matches()) {
+            throw new fu.se184491.loadmaster_be.exception.AppException(
+                    fu.se184491.loadmaster_be.exception.ErrorCode.INVALID_INPUT,
+                    "Mã số thuế không đúng cấu trúc quy định (yêu cầu 10 chữ số hoặc 13 chữ số có/không có dấu gạch ngang).");
+        }
+
+        // 2. Kiểm tra trùng lặp MST trong bảng companies
+        if (companyRepository.existsByTaxCode(cleanTax)) {
+            throw new fu.se184491.loadmaster_be.exception.AppException(
+                    fu.se184491.loadmaster_be.exception.ErrorCode.TAX_CODE_ALREADY_EXISTS,
+                    "Doanh nghiệp với Mã số thuế này đã hoạt động trên hệ thống LoadMaster.");
+        }
+
+        // 3. Kiểm tra trùng lặp MST trong các đơn dùng thử đang chờ hoặc đã cấp
+        if (trialAccountRequestRepository.existsByTaxCodeAndStatusIn(cleanTax, ACTIVE_TRIAL_STATUSES)) {
+            throw new fu.se184491.loadmaster_be.exception.AppException(
+                    fu.se184491.loadmaster_be.exception.ErrorCode.TAX_CODE_ALREADY_EXISTS,
+                    "Mã số thuế này đã được đăng ký hoặc đang trong quá trình xét duyệt dùng thử.");
+        }
+
+        // 4. Kiểm tra Email đã có tài khoản người dùng chưa
+        if (userRepository.existsByEmail(cleanEmail)) {
+            throw new fu.se184491.loadmaster_be.exception.AppException(
+                    fu.se184491.loadmaster_be.exception.ErrorCode.EMAIL_ALREADY_EXISTS,
+                    "Email này đã được sử dụng cho một tài khoản khác trên hệ thống.");
+        }
+
+        // 5. Kiểm tra Email trong các đơn dùng thử đang chờ hoặc đã cấp
+        if (trialAccountRequestRepository.existsByEmailAndStatusIn(cleanEmail, ACTIVE_TRIAL_STATUSES)) {
+            throw new fu.se184491.loadmaster_be.exception.AppException(
+                    fu.se184491.loadmaster_be.exception.ErrorCode.EMAIL_ALREADY_EXISTS,
+                    "Email này đã gửi yêu cầu dùng thử gần đây và đang được xử lý.");
+        }
+    }
+
+    @Override
     @Transactional
     public boolean validateAndProcess(TrialAccountRequest request) {
         String taxCode = request.getTaxCode() != null ? request.getTaxCode().trim() : "";

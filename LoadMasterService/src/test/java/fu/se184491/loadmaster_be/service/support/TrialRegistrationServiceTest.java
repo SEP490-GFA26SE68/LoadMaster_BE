@@ -12,6 +12,7 @@ import fu.se184491.loadmaster_be.entity.billing.SubscriptionPlan;
 import fu.se184491.loadmaster_be.entity.support.TrialAccountRequest;
 import fu.se184491.loadmaster_be.entity.support.TrialRegistrationSession;
 import fu.se184491.loadmaster_be.exception.AppException;
+import fu.se184491.loadmaster_be.exception.ErrorCode;
 import fu.se184491.loadmaster_be.repository.billing.SubscriptionPlanRepository;
 import fu.se184491.loadmaster_be.repository.support.TrialAccountRequestRepository;
 import fu.se184491.loadmaster_be.repository.support.TrialRegistrationSessionRepository;
@@ -97,8 +98,8 @@ class TrialRegistrationServiceTest {
     @Test
     @DisplayName("initTrialRegistration - generates session with hashed OTP and sends email")
     void initTrialRegistration_ShouldCreateSessionAndSendOtp() {
-        when(subscriptionPlanRepository.findById(1L))
-                .thenReturn(Optional.of(SubscriptionPlan.builder().id(1L).name("Standard").build()));
+        when(subscriptionPlanRepository.findByTierAndActiveTrue(fu.se184491.loadmaster_be.constant.billing.SubscriptionTier.BASIC))
+                .thenReturn(Optional.of(SubscriptionPlan.builder().id(1L).name("Basic").build()));
         when(otpHasher.hash(eq("test@example.com"), anyString())).thenReturn("hashed-otp");
         when(sessionRepository.save(any(TrialRegistrationSession.class))).thenAnswer(inv -> inv.getArgument(0));
 
@@ -110,8 +111,23 @@ class TrialRegistrationServiceTest {
         assertThat(response.getMaskedEmail()).isNotBlank();
         assertThat(response.getOtpExpiresAt()).isNotNull();
 
+        verify(trialPreValidationService).checkEligibility(initRequest.getTaxCode(), initRequest.getEmail());
         verify(sessionRepository).save(any(TrialRegistrationSession.class));
         verify(brevoClient).sendEmail(eq("test@example.com"), anyString(), anyString());
+    }
+
+    @Test
+    @DisplayName("initTrialRegistration - fails immediately when taxCode or email is not eligible")
+    void initTrialRegistration_WhenNotEligible_ShouldThrowAndNotSendOtp() {
+        doThrow(new AppException(ErrorCode.TAX_CODE_ALREADY_EXISTS, "Mã số thuế này đã được đăng ký hoặc đang trong quá trình xét duyệt dùng thử."))
+                .when(trialPreValidationService).checkEligibility(anyString(), anyString());
+
+        assertThatThrownBy(() -> trialRegistrationService.initTrialRegistration(initRequest))
+                .isInstanceOf(AppException.class)
+                .hasMessageContaining("Mã số thuế này đã được đăng ký");
+
+        verify(sessionRepository, never()).save(any());
+        verify(brevoClient, never()).sendEmail(anyString(), anyString(), anyString());
     }
 
     @Test
@@ -160,7 +176,6 @@ class TrialRegistrationServiceTest {
                 .build();
 
         when(trialAccountRequestRepository.save(any(TrialAccountRequest.class))).thenReturn(createdRequest);
-        when(trialPreValidationService.validateAndProcess(any(TrialAccountRequest.class))).thenReturn(true);
 
         GuestTrialVerifyOtpRequest verifyRequest = GuestTrialVerifyOtpRequest.builder()
                 .token("test-session-token")
@@ -172,8 +187,9 @@ class TrialRegistrationServiceTest {
         assertThat(response).isNotNull();
         assertThat(response.getRequestId()).isEqualTo(100L);
         assertThat(response.getStatus()).isEqualTo(TrialRequestStatus.PENDING);
+        assertThat(response.getAiPrecheckStatus()).isEqualTo(AiPrecheckStatus.PASSED);
         assertThat(session.getVerified()).isTrue();
-        verify(trialPreValidationService).validateAndProcess(any(TrialAccountRequest.class));
+        verify(trialAccountRequestRepository).save(any(TrialAccountRequest.class));
     }
 
     @Test
