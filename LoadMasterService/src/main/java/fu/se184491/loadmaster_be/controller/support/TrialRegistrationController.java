@@ -43,3 +43,4 @@ public class TrialRegistrationController {
         return ResponseEntity.ok(response);
     }
 }
+

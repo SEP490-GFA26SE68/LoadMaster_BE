@@ -140,3 +140,4 @@ class TrialPreValidationServiceTest {
         verify(brevoClient, never()).sendEmail(anyString(), anyString(), anyString());
     }
 }
+

@@ -17,3 +17,4 @@ public class GuestTrialInitResponse {
     private Instant otpResendAllowedAt;
     private String message;
 }
+

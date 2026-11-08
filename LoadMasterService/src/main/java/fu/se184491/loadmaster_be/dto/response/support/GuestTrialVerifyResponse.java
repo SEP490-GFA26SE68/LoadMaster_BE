@@ -16,3 +16,4 @@ public class GuestTrialVerifyResponse {
     private String aiPrecheckReason;
     private String message;
 }
+

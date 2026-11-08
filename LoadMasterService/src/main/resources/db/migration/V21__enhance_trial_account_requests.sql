@@ -33,3 +33,4 @@ ALTER TABLE trial_account_requests ADD COLUMN IF NOT EXISTS manager_reviewed_by_
 
 -- Ensure contact_id is nullable for direct guest trial requests
 ALTER TABLE trial_account_requests ALTER COLUMN contact_id DROP NOT NULL;
+

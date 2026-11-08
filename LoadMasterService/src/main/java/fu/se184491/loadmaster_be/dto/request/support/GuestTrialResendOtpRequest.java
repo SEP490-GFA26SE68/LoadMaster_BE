@@ -12,3 +12,4 @@ public class GuestTrialResendOtpRequest {
     @NotBlank(message = "Token không được để trống")
     private String token;
 }
+

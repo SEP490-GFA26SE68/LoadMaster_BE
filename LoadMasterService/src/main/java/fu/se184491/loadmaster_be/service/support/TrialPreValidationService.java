@@ -14,3 +14,4 @@ public interface TrialPreValidationService {
      */
     boolean validateAndProcess(TrialAccountRequest request);
 }
+

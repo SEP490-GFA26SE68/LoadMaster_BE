@@ -190,3 +190,4 @@ class TrialRegistrationServiceTest {
                 .isInstanceOf(AppException.class);
     }
 }
+

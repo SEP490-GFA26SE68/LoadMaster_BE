@@ -13,3 +13,4 @@ public interface TrialRegistrationSessionRepository extends JpaRepository<TrialR
     Optional<TrialRegistrationSession> findFirstByEmailOrderByCreatedAtDesc(String email);
     void deleteByExpiresAtBefore(Instant now);
 }
+

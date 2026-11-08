@@ -11,3 +11,4 @@ public interface TrialRegistrationService {
     GuestTrialVerifyResponse verifyOtp(GuestTrialVerifyOtpRequest request);
     GuestTrialInitResponse resendOtp(GuestTrialResendOtpRequest request);
 }
+
