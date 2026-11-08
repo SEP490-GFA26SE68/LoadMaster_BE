@@ -73,6 +73,15 @@ public class TrialAccountRequest {
     @Column(name = "note", columnDefinition = "TEXT")
     private String note;
 
+    @Column(name = "manager_note", columnDefinition = "TEXT")
+    private String managerNote;
+
+    @Column(name = "trial_days")
+    private Integer trialDays;
+
+    @Column(name = "trial_credits")
+    private Integer trialCredits;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "requested_by_id")
     private User requestedBy;

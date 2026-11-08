@@ -87,6 +87,7 @@ public class UserServiceImpl implements UserService {
                                 : null
                 )
                 .userRoleType(user.getUserRoleType())
+                .userType(user.getUserType() != null ? user.getUserType() : fu.se184491.loadmaster_be.constant.account.UserType.OFFICIAL)
                 .status(user.getStatus())
                 .build();
     }
@@ -812,6 +813,7 @@ public class UserServiceImpl implements UserService {
                 user.getFullName(),
                 user.getPhoneNumber(),
                 user.getUserRoleType(),
+                user.getUserType() != null ? user.getUserType() : fu.se184491.loadmaster_be.constant.account.UserType.OFFICIAL,
                 user.getStatus(),
                 user.getCompany() != null
                         ? user.getCompany().getId()

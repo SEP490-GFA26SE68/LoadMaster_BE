@@ -4,6 +4,7 @@ import fu.se184491.loadmaster_be.constant.support.TrialRequestStatus;
 import fu.se184491.loadmaster_be.dto.PageResponse;
 import fu.se184491.loadmaster_be.dto.request.support.ApproveTrialAccountRequest;
 import fu.se184491.loadmaster_be.dto.request.support.CreateTrialAccountRequest;
+import fu.se184491.loadmaster_be.dto.request.support.ManagerApproveTrialRequest;
 import fu.se184491.loadmaster_be.dto.request.support.RejectTrialAccountRequest;
 import fu.se184491.loadmaster_be.dto.response.support.TrialAccountRequestResponse;
 import fu.se184491.loadmaster_be.entity.account.User;
@@ -64,10 +65,11 @@ public class TrialAccountRequestController {
     @PreAuthorize("hasRole('SYSTEM_MANAGER') or hasAuthority('SYSTEM_MANAGER')")
     public ResponseEntity<TrialAccountRequestResponse> managerApprove(
             @PathVariable Long id,
+            @Valid @RequestBody(required = false) ManagerApproveTrialRequest request,
             @AuthenticationPrincipal Jwt jwt
     ) {
         User manager = resolveUser(jwt);
-        TrialAccountRequestResponse response = trialAccountRequestService.managerApprove(id, manager);
+        TrialAccountRequestResponse response = trialAccountRequestService.managerApprove(id, request, manager);
         return ResponseEntity.ok(response);
     }
 

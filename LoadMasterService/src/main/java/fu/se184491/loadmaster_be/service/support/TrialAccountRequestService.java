@@ -4,6 +4,7 @@ import fu.se184491.loadmaster_be.constant.support.TrialRequestStatus;
 import fu.se184491.loadmaster_be.dto.PageResponse;
 import fu.se184491.loadmaster_be.dto.request.support.ApproveTrialAccountRequest;
 import fu.se184491.loadmaster_be.dto.request.support.CreateTrialAccountRequest;
+import fu.se184491.loadmaster_be.dto.request.support.ManagerApproveTrialRequest;
 import fu.se184491.loadmaster_be.dto.response.support.TrialAccountRequestResponse;
 import fu.se184491.loadmaster_be.entity.account.User;
 import org.springframework.data.domain.Pageable;
@@ -16,7 +17,7 @@ public interface TrialAccountRequestService {
 
     TrialAccountRequestResponse getTrialRequestById(Long id);
 
-    TrialAccountRequestResponse managerApprove(Long id, User manager);
+    TrialAccountRequestResponse managerApprove(Long id, ManagerApproveTrialRequest request, User manager);
 
     TrialAccountRequestResponse managerReject(Long id, String reason, User manager);
 

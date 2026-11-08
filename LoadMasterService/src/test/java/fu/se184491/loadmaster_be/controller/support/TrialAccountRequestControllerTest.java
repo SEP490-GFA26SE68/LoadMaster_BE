@@ -84,7 +84,7 @@ class TrialAccountRequestControllerTest {
     void trialRequests_whenCallerIsSystemManager_behavior() throws Exception {
         when(trialAccountRequestService.getTrialRequests(any(), any(), any()))
                 .thenReturn(PageResponse.<TrialAccountRequestResponse>builder().data(List.of()).build());
-        when(trialAccountRequestService.managerApprove(any(), any()))
+        when(trialAccountRequestService.managerApprove(any(), any(), any()))
                 .thenReturn(TrialAccountRequestResponse.builder().id(1L).status(TrialRequestStatus.PENDING_ADMIN_CREATION).build());
 
         mockMvc.perform(get("/api/trial-requests"))

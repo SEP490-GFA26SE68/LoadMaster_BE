@@ -4,6 +4,7 @@ import fu.se184491.loadmaster_be.client.BrevoClient;
 import fu.se184491.loadmaster_be.client.KeycloakAdminClient;
 import fu.se184491.loadmaster_be.constant.account.UserRole;
 import fu.se184491.loadmaster_be.constant.account.UserStatus;
+import fu.se184491.loadmaster_be.constant.account.UserType;
 import fu.se184491.loadmaster_be.constant.billing.SubscriptionStatus;
 import fu.se184491.loadmaster_be.constant.billing.SubscriptionTier;
 import fu.se184491.loadmaster_be.constant.company.CompanyStatus;
@@ -11,6 +12,7 @@ import fu.se184491.loadmaster_be.constant.support.ContactRequestType;
 import fu.se184491.loadmaster_be.constant.support.ContactStatus;
 import fu.se184491.loadmaster_be.constant.support.TrialRequestStatus;
 import fu.se184491.loadmaster_be.dto.request.support.ApproveTrialAccountRequest;
+import fu.se184491.loadmaster_be.dto.request.support.ManagerApproveTrialRequest;
 import fu.se184491.loadmaster_be.dto.response.support.TrialAccountRequestResponse;
 import fu.se184491.loadmaster_be.entity.account.User;
 import fu.se184491.loadmaster_be.entity.billing.CompanySubscription;
@@ -206,6 +208,7 @@ class TrialAccountRequestServiceTest {
         User createdUser = userCaptor.getValue();
         assertThat(createdUser.getEmail()).isEqualTo("khach@logistics.vn");
         assertThat(createdUser.getUserRoleType()).isEqualTo(UserRole.ADMIN);
+        assertThat(createdUser.getUserType()).isEqualTo(UserType.TRIAL);
         assertThat(createdUser.getCompany().getId()).isEqualTo(50L);
 
         // Verify Subscription creation with trial duration (7 days)
@@ -328,11 +331,23 @@ class TrialAccountRequestServiceTest {
         when(trialAccountRequestRepository.findById(1L)).thenReturn(Optional.of(trialRequest));
         when(trialAccountRequestRepository.save(any(TrialAccountRequest.class))).thenAnswer(inv -> inv.getArgument(0));
 
-        TrialAccountRequestResponse response = trialAccountRequestService.managerApprove(1L, systemManager);
+        ManagerApproveTrialRequest approveReq = ManagerApproveTrialRequest.builder()
+                .companyName("Logistics Khach VN")
+                .companyCode("KHACH_LOG")
+                .trialDays(14)
+                .trialCredits(100)
+                .managerNote("Đã xác minh MST qua cổng thuế")
+                .build();
+
+        TrialAccountRequestResponse response = trialAccountRequestService.managerApprove(1L, approveReq, systemManager);
 
         assertThat(response.getStatus()).isEqualTo(TrialRequestStatus.PENDING_ADMIN_CREATION);
         assertThat(trialRequest.getStatus()).isEqualTo(TrialRequestStatus.PENDING_ADMIN_CREATION);
         assertThat(trialRequest.getManagerReviewedBy()).isEqualTo(systemManager);
+        assertThat(trialRequest.getCompanyCode()).isEqualTo("KHACH_LOG");
+        assertThat(trialRequest.getTrialDays()).isEqualTo(14);
+        assertThat(trialRequest.getTrialCredits()).isEqualTo(100);
+        assertThat(trialRequest.getManagerNote()).isEqualTo("Đã xác minh MST qua cổng thuế");
     }
 
     @Test

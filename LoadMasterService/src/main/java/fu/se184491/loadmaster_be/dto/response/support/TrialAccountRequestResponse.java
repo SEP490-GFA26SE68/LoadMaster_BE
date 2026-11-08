@@ -37,15 +37,20 @@ public class TrialAccountRequestResponse {
     private String rejectionReason;
 
     private String note;
+    private String managerNote;
+    private Integer trialDays;
+    private Integer trialCredits;
 
     private Long requestedById;
     private String requestedByName;
 
     private Long managerReviewedById;
     private String managerReviewedByName;
+    private String managerReviewedByEmail;
 
     private Long approvedById;
     private String approvedByName;
+    private String approvedByEmail;
 
     private Long createdCompanyId;
     private String createdCompanyName;
