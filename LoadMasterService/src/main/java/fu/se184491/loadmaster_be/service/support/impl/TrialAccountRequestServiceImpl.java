@@ -124,8 +124,18 @@ public class TrialAccountRequestServiceImpl implements TrialAccountRequestServic
         Specification<TrialAccountRequest> spec = (root, query, cb) -> {
             List<Predicate> predicates = new ArrayList<>();
             if (enforceManagerApproved) {
-                // System Admin chỉ được xem các đơn đã được duyệt bởi System Manager (khác PENDING)
+                // System Admin chỉ được xem các đơn đã được duyệt bởi System Manager:
+                // 1. Không hiển thị đơn PENDING (chưa duyệt của Manager)
                 predicates.add(cb.notEqual(root.get("status"), TrialRequestStatus.PENDING));
+                // 2. Không hiển thị đơn bị AI từ chối (aiPrecheckStatus == FAILED hoặc handledByName chứa AI)
+                predicates.add(cb.or(
+                        cb.isNull(root.get("aiPrecheckStatus")),
+                        cb.notEqual(root.get("aiPrecheckStatus"), fu.se184491.loadmaster_be.constant.support.AiPrecheckStatus.FAILED)
+                ));
+                predicates.add(cb.or(
+                        cb.isNull(root.get("handledByName")),
+                        cb.notLike(cb.lower(root.get("handledByName")), "ai%")
+                ));
             }
             if (status != null) {
                 predicates.add(cb.equal(root.get("status"), status));
