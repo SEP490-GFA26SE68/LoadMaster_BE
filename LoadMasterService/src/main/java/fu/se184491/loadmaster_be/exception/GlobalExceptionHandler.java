@@ -195,27 +195,83 @@ public class GlobalExceptionHandler {
             if (cause instanceof org.hibernate.exception.ConstraintViolationException constraintEx) {
 
                 String constraintName = constraintEx.getConstraintName();
-
-                if ("uk_package_types_company_code".equalsIgnoreCase(constraintName)) {
-                    return ResponseEntity
-                            .status(HttpStatus.CONFLICT)
-                            .body(ApiResponse.<Void>builder()
-                                    .success(false)
-                                    .code("PACKAGE_TYPE_CODE_ALREADY_EXISTS")
-                                    .message("Mã loại kiện đã tồn tại trong công ty")
-                                    .data(null)
-                                    .build());
+                if (constraintName != null) {
+                    String lower = constraintName.toLowerCase();
+                    if (lower.contains("uk_package_types_company_code")) {
+                        return ResponseEntity
+                                .status(HttpStatus.CONFLICT)
+                                .body(ApiResponse.<Void>builder()
+                                        .success(false)
+                                        .code("PACKAGE_TYPE_CODE_ALREADY_EXISTS")
+                                        .message("Mã loại kiện đã tồn tại trong công ty")
+                                        .data(null)
+                                        .build());
+                    }
+                    if (lower.contains("tax_code")) {
+                        return ResponseEntity
+                                .status(HttpStatus.CONFLICT)
+                                .body(ApiResponse.<Void>builder()
+                                        .success(false)
+                                        .code("TAX_CODE_ALREADY_EXISTS")
+                                        .message("Mã số thuế này đã tồn tại trong hệ thống")
+                                        .data(null)
+                                        .build());
+                    }
+                    if (lower.contains("company_code")) {
+                        return ResponseEntity
+                                .status(HttpStatus.CONFLICT)
+                                .body(ApiResponse.<Void>builder()
+                                        .success(false)
+                                        .code("COMPANY_CODE_ALREADY_EXISTS")
+                                        .message("Mã định danh công ty này đã tồn tại trong hệ thống")
+                                        .data(null)
+                                        .build());
+                    }
+                    if (lower.contains("email")) {
+                        return ResponseEntity
+                                .status(HttpStatus.CONFLICT)
+                                .body(ApiResponse.<Void>builder()
+                                        .success(false)
+                                        .code("EMAIL_ALREADY_EXISTS")
+                                        .message("Email này đã được sử dụng cho một tài khoản khác trong hệ thống")
+                                        .data(null)
+                                        .build());
+                    }
+                    if (lower.contains("keycloak_id")) {
+                        return ResponseEntity
+                                .status(HttpStatus.CONFLICT)
+                                .body(ApiResponse.<Void>builder()
+                                        .success(false)
+                                        .code("KEYCLOAK_ID_ALREADY_EXISTS")
+                                        .message("Tài khoản định danh Keycloak đã được liên kết với người dùng khác")
+                                        .data(null)
+                                        .build());
+                    }
                 }
             }
 
             cause = cause.getCause();
         }
 
+        String userFriendlyMessage = "Dữ liệu đang vi phạm ràng buộc hoặc được sử dụng bởi dữ liệu khác";
+        if (causeMsg != null) {
+            String lowerCause = causeMsg.toLowerCase();
+            if (lowerCause.contains("tax_code") && lowerCause.contains("already exists")) {
+                userFriendlyMessage = "Mã số thuế này đã tồn tại trong hệ thống";
+            } else if (lowerCause.contains("company_code") && lowerCause.contains("already exists")) {
+                userFriendlyMessage = "Mã định danh công ty này đã tồn tại trong hệ thống";
+            } else if (lowerCause.contains("email") && lowerCause.contains("already exists")) {
+                userFriendlyMessage = "Email này đã được sử dụng cho một tài khoản khác trong hệ thống";
+            } else if (lowerCause.contains("foreign key") || lowerCause.contains("violates foreign key constraint")) {
+                userFriendlyMessage = "Dữ liệu tham chiếu không hợp lệ hoặc đối tượng liên quan không tồn tại";
+            }
+        }
+
         return ResponseEntity
                 .status(HttpStatus.CONFLICT)
                 .body(ApiResponse.<Void>builder()
                         .success(false)
-                        .message("Dữ liệu đang vi phạm ràng buộc hoặc được sử dụng bởi dữ liệu khác")
+                        .message(userFriendlyMessage)
                         .data(null)
                         .build());
     }

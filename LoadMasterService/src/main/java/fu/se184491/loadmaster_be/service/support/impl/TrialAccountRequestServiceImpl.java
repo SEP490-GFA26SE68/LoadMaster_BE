@@ -388,39 +388,18 @@ public class TrialAccountRequestServiceImpl implements TrialAccountRequestServic
         }
 
         // 1. Double check ràng buộc trước khi gửi lên System Admin
-        if (companyRepository.existsByTaxCode(trial.getTaxCode())) {
+        if (trial.getTaxCode() != null && companyRepository.existsByTaxCode(trial.getTaxCode())) {
             throw new AppException(ErrorCode.TAX_CODE_ALREADY_EXISTS,
                     "Doanh nghiệp với Mã số thuế này đã hoạt động trên hệ thống.");
         }
-        if (userRepository.existsByEmail(trial.getEmail())) {
+        if (trial.getEmail() != null && userRepository.existsByEmail(trial.getEmail())) {
             throw new AppException(ErrorCode.EMAIL_ALREADY_EXISTS,
                     "Email người đại diện đã được sử dụng cho một tài khoản khác trong hệ thống.");
         }
 
-        // 2. Chuẩn hóa dữ liệu theo thẩm định của Manager
-        if (request != null) {
-            if (request.getCompanyName() != null && !request.getCompanyName().trim().isEmpty()) {
-                trial.setCompanyName(request.getCompanyName().trim());
-            }
-            if (request.getCompanyCode() != null && !request.getCompanyCode().trim().isEmpty()) {
-                String cleanCode = request.getCompanyCode().trim().toUpperCase();
-                if (companyRepository.existsByCompanyCode(cleanCode)) {
-                    throw new AppException(ErrorCode.COMPANY_ALREADY_EXISTS,
-                            "Mã định danh công ty '" + cleanCode + "' đã tồn tại trong hệ thống. Vui lòng chọn mã khác.");
-                }
-                trial.setCompanyCode(cleanCode);
-            }
-            if (request.getCompanyAddress() != null && !request.getCompanyAddress().trim().isEmpty()) {
-                trial.setCompanyAddress(request.getCompanyAddress().trim());
-            }
-            trial.setTrialDays(request.getTrialDays() != null && request.getTrialDays() > 0 ? request.getTrialDays() : 14);
-            trial.setTrialCredits(request.getTrialCredits() != null && request.getTrialCredits() >= 0 ? request.getTrialCredits() : 100);
-            if (request.getManagerNote() != null && !request.getManagerNote().trim().isEmpty()) {
-                trial.setManagerNote(request.getManagerNote().trim());
-            }
-        } else {
-            trial.setTrialDays(14);
-            trial.setTrialCredits(100);
+        // System Manager không sửa thông tin Guest, chỉ lưu ghi chú nội bộ chuyển tiếp nếu có
+        if (request != null && request.getManagerNote() != null && !request.getManagerNote().trim().isEmpty()) {
+            trial.setManagerNote(request.getManagerNote().trim());
         }
 
         // 3. Cập nhật trạng thái chuyển giao cho System Admin
@@ -428,8 +407,8 @@ public class TrialAccountRequestServiceImpl implements TrialAccountRequestServic
         trial.setManagerReviewedBy(manager);
         trial.setHandledByName(manager != null ? manager.getFullName() : "System Manager");
 
-        log.info("System Manager {} approved trial request id={} and forwarded to System Admin with companyCode={}",
-                manager != null ? manager.getEmail() : "unknown", trial.getId(), trial.getCompanyCode());
+        log.info("System Manager {} approved trial request id={} and forwarded to System Admin",
+                manager != null ? manager.getEmail() : "unknown", trial.getId());
 
         TrialAccountRequest saved = trialAccountRequestRepository.save(trial);
         return mapToResponse(saved);

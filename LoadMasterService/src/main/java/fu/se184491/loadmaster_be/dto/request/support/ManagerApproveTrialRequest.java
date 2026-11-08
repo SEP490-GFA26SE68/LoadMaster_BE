@@ -33,3 +33,4 @@ public class ManagerApproveTrialRequest {
     @Size(max = 1000, message = "Ghi chú thẩm định không được vượt quá 1000 ký tự")
     private String managerNote;
 }
+

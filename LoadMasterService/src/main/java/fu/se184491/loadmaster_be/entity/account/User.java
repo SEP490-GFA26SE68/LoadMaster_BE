@@ -90,8 +90,7 @@ public class User {
     @Enumerated(EnumType.STRING)
     @Column(
             name = "user_type",
-            length = 20,
-            nullable = false
+            length = 20
     )
     @Builder.Default
     private fu.se184491.loadmaster_be.constant.account.UserType userType = fu.se184491.loadmaster_be.constant.account.UserType.OFFICIAL;

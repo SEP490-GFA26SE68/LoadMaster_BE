@@ -332,10 +332,6 @@ class TrialAccountRequestServiceTest {
         when(trialAccountRequestRepository.save(any(TrialAccountRequest.class))).thenAnswer(inv -> inv.getArgument(0));
 
         ManagerApproveTrialRequest approveReq = ManagerApproveTrialRequest.builder()
-                .companyName("Logistics Khach VN")
-                .companyCode("KHACH_LOG")
-                .trialDays(14)
-                .trialCredits(100)
                 .managerNote("Đã xác minh MST qua cổng thuế")
                 .build();
 
@@ -344,9 +340,6 @@ class TrialAccountRequestServiceTest {
         assertThat(response.getStatus()).isEqualTo(TrialRequestStatus.PENDING_ADMIN_CREATION);
         assertThat(trialRequest.getStatus()).isEqualTo(TrialRequestStatus.PENDING_ADMIN_CREATION);
         assertThat(trialRequest.getManagerReviewedBy()).isEqualTo(systemManager);
-        assertThat(trialRequest.getCompanyCode()).isEqualTo("KHACH_LOG");
-        assertThat(trialRequest.getTrialDays()).isEqualTo(14);
-        assertThat(trialRequest.getTrialCredits()).isEqualTo(100);
         assertThat(trialRequest.getManagerNote()).isEqualTo("Đã xác minh MST qua cổng thuế");
     }
 
