@@ -111,17 +111,26 @@ public class CompanyAgreementServiceImpl implements CompanyAgreementService {
 
         LocalDateTime now = LocalDateTime.now();
 
-        // Kiểm tra xem đã quá hạn 3 ngày chưa
-        if (agreement.getDeadlineAt().isBefore(now)) {
-            log.warn("User {} attempted to sign agreement {} past deadline {}", currentUser.getEmail(), agreement.getId(), agreement.getDeadlineAt());
+        // Kiểm tra xem đã quá hạn 30 ngày kể từ deadline chưa (sau 30 ngày tài khoản sẽ bị xóa cứng)
+        LocalDateTime hardDeleteLimit = agreement.getDeadlineAt().plusDays(30);
+        if (now.isAfter(hardDeleteLimit)) {
+            log.warn("User {} attempted to sign agreement {} past 30-day limit {}", currentUser.getEmail(), agreement.getId(), hardDeleteLimit);
             agreement.setStatus(AgreementStatus.EXPIRED);
             agreementRepository.save(agreement);
 
-            currentUser.setStatus(UserStatus.LOCKED);
+            currentUser.setStatus(UserStatus.FLAGGED);
             currentUser.preUpdate();
             userRepository.save(currentUser);
 
             throw new AppException(ErrorCode.AGREEMENT_DEADLINE_EXPIRED);
+        }
+
+        // Nếu user đang bị FLAGGED thì mở khóa phục hồi về ACTIVE khi ký
+        if (currentUser.getStatus() == UserStatus.FLAGGED) {
+            currentUser.setStatus(UserStatus.ACTIVE);
+            currentUser.preUpdate();
+            userRepository.save(currentUser);
+            log.info("User {} un-flagged to ACTIVE upon signing agreement {}", currentUser.getEmail(), agreement.getId());
         }
 
         agreement.setStatus(AgreementStatus.SIGNED);
@@ -165,25 +174,25 @@ public class CompanyAgreementServiceImpl implements CompanyAgreementService {
     public void processExpiredTrialAgreements() {
         LocalDateTime now = LocalDateTime.now();
 
-        // 1. Quá 3 ngày chưa ký thỏa thuận: chuyển thỏa thuận sang EXPIRED và xóa mềm (INACTIVE) tài khoản dùng thử
+        // 1. Quá 72 giờ chưa ký thỏa thuận: chuyển thỏa thuận sang EXPIRED và gắn cờ (FLAGGED) tài khoản dùng thử
         List<CompanyAgreement> pendingPastDeadline =
                 agreementRepository.findByStatusAndDeadlineAtBefore(AgreementStatus.PENDING, now);
         for (CompanyAgreement agreement : pendingPastDeadline) {
             agreement.setStatus(AgreementStatus.EXPIRED);
             User trialUser = agreement.getUser();
             if (trialUser != null) {
-                trialUser.setStatus(UserStatus.INACTIVE);
+                trialUser.setStatus(UserStatus.FLAGGED);
                 trialUser.preUpdate();
                 userRepository.save(trialUser);
             }
             agreementRepository.save(agreement);
         }
 
-        // 2. Sau 3 tháng kể từ hạn hết 3 ngày dùng thử: xóa vĩnh viễn tài khoản khỏi Keycloak và DB
-        LocalDateTime hardDeleteCutoff = now.minusMonths(3);
-        List<CompanyAgreement> expiredPastThreeMonths =
+        // 2. Sau 30 ngày kể từ hạn hết 72 giờ: xóa vĩnh viễn tài khoản khỏi Keycloak và DB
+        LocalDateTime hardDeleteCutoff = now.minusDays(30);
+        List<CompanyAgreement> expiredPastThirtyDays =
                 agreementRepository.findByStatusAndDeadlineAtBefore(AgreementStatus.EXPIRED, hardDeleteCutoff);
-        for (CompanyAgreement agreement : expiredPastThreeMonths) {
+        for (CompanyAgreement agreement : expiredPastThirtyDays) {
             User expiredTrialUser = agreement.getUser();
             if (expiredTrialUser != null) {
                 if (keycloakAdminClient != null
@@ -192,7 +201,7 @@ public class CompanyAgreementServiceImpl implements CompanyAgreementService {
                     try {
                         keycloakAdminClient.deleteUser(expiredTrialUser.getKeycloakId());
                     } catch (Exception ex) {
-                        log.warn("Keycloak user {} already absent during 3-month trial cleanup", expiredTrialUser.getKeycloakId());
+                        log.warn("Keycloak user {} already absent during 30-day trial cleanup", expiredTrialUser.getKeycloakId());
                     }
                 }
                 agreement.setUser(null);

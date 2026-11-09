@@ -274,6 +274,23 @@ public class UserServiceImpl implements UserService {
             }
         }
 
+        // Nếu người gọi là Company Admin (ADMIN), bắt buộc công ty phải ký thỏa thuận dịch vụ trước khi tạo nhân viên
+        if (currentUser.getUserRoleType() == UserRole.ADMIN
+                && company != null
+                && companyAgreementRepository != null) {
+            Optional<CompanyAgreement> agreementOpt =
+                    companyAgreementRepository.findFirstByCompanyIdOrderByCreatedAtDesc(company.getId());
+            if (agreementOpt.isPresent()) {
+                CompanyAgreement agreement = agreementOpt.get();
+                if (agreement.getStatus() != AgreementStatus.SIGNED) {
+                    throw new AppException(
+                            ErrorCode.AGREEMENT_REQUIRED,
+                            "Vui lòng hoàn tất ký thỏa thuận dịch vụ thử nghiệm trước khi tạo tài khoản nhân viên."
+                    );
+                }
+            }
+        }
+
         if (userRepository.existsByEmail(targetEmail)) {
             throw new AppException(
                     ErrorCode.EMAIL_ALREADY_EXISTS

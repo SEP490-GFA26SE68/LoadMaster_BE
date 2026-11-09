@@ -30,7 +30,8 @@ public class WebSecurityConfig {
             HttpSecurity http,
             JwtAuthenticationConverter jwtAuthenticationConverter,
             RestAuthenticationEntryPoint authenticationEntryPoint,
-            RestAccessDeniedHandler accessDeniedHandler
+            RestAccessDeniedHandler accessDeniedHandler,
+            FlaggedUserEnforcementFilter flaggedUserEnforcementFilter
     ) throws Exception {
 
         http
@@ -71,6 +72,11 @@ public class WebSecurityConfig {
                         .jwt(jwt -> jwt
                                 .jwtAuthenticationConverter(jwtAuthenticationConverter)
                         )
+                )
+
+                .addFilterAfter(
+                        flaggedUserEnforcementFilter,
+                        org.springframework.security.oauth2.server.resource.web.authentication.BearerTokenAuthenticationFilter.class
                 );
 
         return http.build();
