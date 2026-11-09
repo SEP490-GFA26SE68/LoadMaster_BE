@@ -113,6 +113,26 @@ public class PackageController {
         );
     }
 
+    // ==================== FLAG ====================
+
+    @DeleteMapping("/{id}/flag")
+    @PreAuthorize("hasAuthority('ROLE_DISPATCHER')")
+    public ResponseEntity<ApiResponse<PackageResponse>> clearFlag(
+            @PathVariable Long id
+    ) {
+        PackageResponse result = packageService.clearFlag(
+                getCurrentCompanyId(),
+                id
+        );
+
+        return ResponseEntity.ok(
+                ApiResponse.success(
+                        "Gỡ cờ kiện hàng thành công",
+                        result
+                )
+        );
+    }
+
     // ==================== GET BY ID ====================
 
     @GetMapping("/{id}")

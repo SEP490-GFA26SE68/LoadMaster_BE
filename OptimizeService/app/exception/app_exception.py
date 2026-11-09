@@ -2,8 +2,10 @@ from app.exception.error_code import ErrorCode
 
 
 class AppException(Exception):
-    def __init__(self, error_code: ErrorCode, custom_message: str | None = None):
+    def __init__(self, error_code: ErrorCode, custom_message: str | None = None, errors=None):
         self.error_code = error_code
+        # Chi tiết theo mục (ví dụ từng kiện ghim hỏng), đưa vào trường errors của phong bì
+        self.errors = errors
         self.message = custom_message or error_code.message
         self.http_status = error_code.http_status
         super().__init__(self.message)

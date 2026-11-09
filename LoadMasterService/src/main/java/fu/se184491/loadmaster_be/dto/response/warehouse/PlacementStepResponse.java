@@ -26,6 +26,8 @@ public class PlacementStepResponse {
     public static final String STATUS_CONFIRMED = "CONFIRMED";
     public static final String STATUS_DEVIATION = "DEVIATION";
     public static final String STATUS_PENDING = "PENDING";
+    /** Kiện hỏng bị bỏ lại kho: vị trí này tính là đã xử lý, kiện không lên xe. */
+    public static final String STATUS_DAMAGED = "DAMAGED";
 
     private Long placementId;
     private Long packageId;
@@ -47,4 +49,17 @@ public class PlacementStepResponse {
     private Integer stopSequence;
     private String stopName;
     private String status;
+
+    /** Kiện đã vào khu chờ (soạn hàng) của chuyến. */
+    private Boolean staged;
+    /** {@code QR}, {@code CODE} hoặc {@code MANUAL}; null khi chưa soạn. */
+    private String stagingMethod;
+    /** Báo thiếu mới nhất còn hiệu lực: {@code OPEN} (chờ điều phối) hoặc {@code KEEP_SEARCHING}; null khi không có. */
+    private String shortageStatus;
+    /** Xác nhận tay của kho mới nhất với kiện này ({@code PENDING}, {@code APPROVED}, {@code REJECTED}); null khi không có. */
+    private String manualStatus;
+    /** Bước của xác nhận tay đó: {@code STAGING} hoặc {@code LOADING}. */
+    private String manualStep;
+    /** Lý do từ chối của điều phối viên, khi {@code manualStatus} là {@code REJECTED}. */
+    private String manualRejectReason;
 }

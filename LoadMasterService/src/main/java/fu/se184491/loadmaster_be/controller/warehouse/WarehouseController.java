@@ -27,23 +27,20 @@ import java.util.List;
 
 @RestController
 @RequestMapping("/api/warehouse")
-@org.springframework.security.access.prepost.PreAuthorize("hasAnyRole('WAREHOUSE_WORKER','DISPATCHER','MANAGER','ADMIN','COMPANY_ADMIN')")
 @RequiredArgsConstructor
 @Tag(name = "Warehouse", description = "APIs for warehouse loading tasks and execution")
 @PreAuthorize("hasRole('WAREHOUSE_WORKER')")
 public class WarehouseController {
 
     private final WarehouseService warehouseService;
-    private final fu.se184491.loadmaster_be.service.optimization.OptimizationAccess optimizationAccess;
 
     @GetMapping("/tasks")
     @Operation(summary = "Get warehouse tasks", description = "Retrieve list of trips with approved load plans that are ready for loading")
     public ResponseEntity<ApiResponse<List<WarehouseTaskResponse>>> getTasks(
             @RequestParam(value = "companyId", required = false) Long companyId,
-            @RequestParam(value = "workerId", required = false) Long workerId) {
-        Long currentCompany = optimizationAccess.requireCompanyId(companyId);
-        if (workerId != null) optimizationAccess.canReadUser(workerId);
-        List<WarehouseTaskResponse> tasks = warehouseService.getTasks(currentCompany, workerId);
+            @RequestParam(value = "workerId", required = false) Long workerId,
+            @RequestParam(value = "includeAwaitingReplan", defaultValue = "false") boolean includeAwaitingReplan) {
+        List<WarehouseTaskResponse> tasks = warehouseService.getTasks(companyId, workerId, includeAwaitingReplan);
         return ResponseEntity.ok(ApiResponse.success("Lấy danh sách nhiệm vụ bốc xếp thành công", tasks));
     }
 
@@ -60,8 +57,6 @@ public class WarehouseController {
     public ResponseEntity<ApiResponse<StartLoadingResponse>> startLoading(
             @PathVariable("tripId") Long tripId,
             @RequestBody(required = false) StartLoadingRequest request) {
-        optimizationAccess.canReadTrip(tripId);
-        if (request != null && request.getWorkerId() != null) optimizationAccess.canReadUser(request.getWorkerId());
         StartLoadingResponse response = warehouseService.startLoading(tripId, request);
         return ResponseEntity.ok(ApiResponse.success("Bắt đầu quá trình bốc xếp thành công", response));
     }
@@ -71,8 +66,6 @@ public class WarehouseController {
     public ResponseEntity<ApiResponse<ConfirmPlacementResponse>> confirmPlacement(
             @PathVariable("id") Long id,
             @RequestParam(value = "workerId", required = false) Long workerId) {
-        optimizationAccess.canReadPlacement(id);
-        if (workerId != null) optimizationAccess.canReadUser(workerId);
         ConfirmPlacementResponse response = warehouseService.confirmPlacement(id, workerId);
         return ResponseEntity.ok(ApiResponse.success("Xác nhận vị trí kiện hàng thành công", response));
     }
@@ -82,8 +75,6 @@ public class WarehouseController {
     public ResponseEntity<ApiResponse<DeviationResponse>> recordDeviation(
             @PathVariable("id") Long id,
             @RequestBody @Valid RecordDeviationRequest request) {
-        optimizationAccess.canReadPlacement(id);
-        if (request.getReportedBy() != null) optimizationAccess.canReadUser(request.getReportedBy());
         DeviationResponse response = warehouseService.recordDeviation(id, request);
         return ResponseEntity.ok(ApiResponse.success("Ghi nhận sai lệch vị trí kiện hàng thành công", response));
     }
@@ -92,7 +83,6 @@ public class WarehouseController {
     @Operation(summary = "Complete loading", description = "Complete the loading execution once all placements have been confirmed or recorded as deviated")
     public ResponseEntity<ApiResponse<CompleteLoadingResponse>> completeLoading(
             @PathVariable("id") Long id) {
-        optimizationAccess.canReadTrip(id);
         CompleteLoadingResponse response = warehouseService.completeLoading(id);
         return ResponseEntity.ok(ApiResponse.success("Hoàn tất quá trình bốc xếp hàng thành công", response));
     }

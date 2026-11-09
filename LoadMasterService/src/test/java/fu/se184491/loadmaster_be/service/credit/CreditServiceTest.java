@@ -47,9 +47,8 @@ public class CreditServiceTest {
     @Mock
     private CompanySubscriptionRepository companySubscriptionRepository;
 
-    @Mock private fu.se184491.loadmaster_be.repository.company.CompanyRepository companyRepository;
-    @Mock private fu.se184491.loadmaster_be.repository.optimization.OptimizationJobRepository optimizationJobs;
-    @Mock private fu.se184491.loadmaster_be.service.optimization.OptimizationEntitlementService entitlements;
+    @Mock
+    private fu.se184491.loadmaster_be.repository.common.AuditLogRepository auditLogRepository;
 
     @InjectMocks
     private CreditServiceImpl creditService;
@@ -67,14 +66,6 @@ public class CreditServiceTest {
 
         proPlan = SubscriptionPlan.builder().id(1L).tier(SubscriptionTier.PRO).build();
         ultimatePlan = SubscriptionPlan.builder().id(2L).tier(SubscriptionTier.ULTIMATE).build();
-
-        lenient().when(companyRepository.findByIdForUpdate(1L)).thenReturn(Optional.of(company));
-        lenient().when(optimizationJobs.findByJobUuidForUpdate(anyString())).thenAnswer(i -> {
-            String ref = i.getArgument(0);
-            return Optional.of(fu.se184491.loadmaster_be.entity.optimization.OptimizationJob.builder()
-                    .companyId("1").trip(fu.se184491.loadmaster_be.entity.trip.Trip.builder().company(company).build())
-                    .parentPlanId(ref.contains("rerun") ? 47L : null).build());
-        });
 
         subscription = CompanySubscription.builder()
                 .id(1L)
@@ -278,13 +269,18 @@ public class CreditServiceTest {
     }
 
     @Test
-    void expiredSubscriptionRejectsDeductionWithoutBalanceMutation() {
-        doThrow(new fu.se184491.loadmaster_be.exception.AppException(
-                fu.se184491.loadmaster_be.exception.ErrorCode.OPTIMIZATION_ENTITLEMENT_REQUIRED))
-                .when(entitlements).requireActive(1L);
-        assertThrows(fu.se184491.loadmaster_be.exception.AppException.class,
-                () -> creditService.deductCredit(1L,"job-expired"));
-        assertEquals(5,creditAccount.getBalance());
-        verify(creditAccountRepository,never()).save(any());
+    @DisplayName("Deduct credit when subscription is EXPIRED should reset balance to 0 and throw InsufficientCreditsException")
+    void deductCredit_whenSubscriptionExpired_resetsBalanceAndThrowsInsufficientCredits() {
+        creditAccount.setBalance(6000);
+        subscription.setStatus(SubscriptionStatus.EXPIRED);
+        when(creditAccountRepository.findByCompanyIdForUpdate(1L)).thenReturn(Optional.of(creditAccount));
+        when(companySubscriptionRepository.findByCompanyId(1L)).thenReturn(Optional.of(subscription));
+
+        assertThrows(InsufficientCreditsException.class, () ->
+                creditService.deductCredit(1L, "job-uuid-expired")
+        );
+
+        assertEquals(0, creditAccount.getBalance());
+        verify(creditAccountRepository).save(creditAccount);
     }
 }

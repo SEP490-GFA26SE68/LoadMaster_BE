@@ -3,6 +3,7 @@ package fu.se184491.loadmaster_be.entity.cargo;
 import fu.se184491.loadmaster_be.entity.company.Company;
 import fu.se184491.loadmaster_be.entity.order.TransportOrder;
 import fu.se184491.loadmaster_be.constant.cargo.HandlingClass;
+import fu.se184491.loadmaster_be.constant.cargo.PackageFlag;
 import fu.se184491.loadmaster_be.constant.cargo.PackageStatus;
 import fu.se184491.loadmaster_be.service.qr.Impl.AesQrTokenServiceImpl;
 import jakarta.persistence.*;
@@ -82,6 +83,17 @@ public class CargoPackage {
     @Column(name = "status", length = 30, nullable = false)
     private PackageStatus status = PackageStatus.PENDING;
 
+    /** Cờ của kiện kho bỏ khỏi chuyến (thiếu lúc soạn, hỏng lúc xếp); null là không cờ. Điều phối viên gỡ cờ. */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "flag", length = 20)
+    private PackageFlag flag;
+
+    /**
+     * Yêu cầu giao đã giữ kiện trước khi kho bỏ kiện khỏi chuyến: yêu cầu đó đọc là giao thiếu. Không phải khoá ngoại — yêu cầu xoá được
+     * độc lập với kiện.
+     */
+    @Column(name = "dropped_requirement_id")
+    private Long droppedRequirementId;
 
     @PrePersist
     public void prePersist() {

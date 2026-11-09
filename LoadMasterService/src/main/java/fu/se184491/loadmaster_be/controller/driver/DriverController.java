@@ -1,21 +1,30 @@
 package fu.se184491.loadmaster_be.controller.driver;
 
 import fu.se184491.loadmaster_be.dto.ApiResponse;
+import fu.se184491.loadmaster_be.dto.request.driver.ManualUnloadRequest;
+import fu.se184491.loadmaster_be.dto.request.driver.ReportDeliveryIssueRequest;
 import fu.se184491.loadmaster_be.dto.request.monitoring.DriverLocationRequest;
 import fu.se184491.loadmaster_be.dto.request.monitoring.ReportExceptionRequest;
 import fu.se184491.loadmaster_be.dto.response.driver.ArriveStopResponse;
 import fu.se184491.loadmaster_be.dto.response.driver.CompleteStopResponse;
 import fu.se184491.loadmaster_be.dto.response.driver.ConfirmUnloadResponse;
 import fu.se184491.loadmaster_be.dto.response.driver.CurrentStopResponse;
+import fu.se184491.loadmaster_be.dto.response.driver.DeliveryIssueResponse;
+import fu.se184491.loadmaster_be.dto.response.driver.DriverLoadPlanResponse;
+import fu.se184491.loadmaster_be.dto.response.driver.DriverTripStopsResponse;
+import fu.se184491.loadmaster_be.dto.response.driver.ManualConfirmationResponse;
 import fu.se184491.loadmaster_be.dto.response.driver.DriverTripResponse;
 import fu.se184491.loadmaster_be.dto.response.monitoring.LocationPointResponse;
 import fu.se184491.loadmaster_be.dto.response.monitoring.TripExceptionResponse;
 import fu.se184491.loadmaster_be.entity.trip.Trip;
 import fu.se184491.loadmaster_be.exception.AppException;
 import fu.se184491.loadmaster_be.exception.ErrorCode;
+import fu.se184491.loadmaster_be.service.driver.DriverDeliveryService;
 import fu.se184491.loadmaster_be.service.driver.DriverService;
 import fu.se184491.loadmaster_be.service.monitoring.GpsTrackingService;
 import fu.se184491.loadmaster_be.service.monitoring.TripExceptionService;
+import fu.se184491.loadmaster_be.service.pickup.PickupDriverService;
+import fu.se184491.loadmaster_be.dto.response.pickup.PickupRequestResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -43,6 +52,8 @@ public class DriverController {
     private final fu.se184491.loadmaster_be.service.optimization.OptimizationAccess optimizationAccess;
     private final GpsTrackingService gpsTrackingService;
     private final TripExceptionService tripExceptionService;
+    private final DriverDeliveryService driverDeliveryService;
+    private final PickupDriverService pickupDriverService;
 
     @org.springframework.security.access.prepost.PreAuthorize("hasAnyRole('DRIVER','DISPATCHER','MANAGER','ADMIN','COMPANY_ADMIN')")
     @GetMapping("/trips")
@@ -70,6 +81,12 @@ public class DriverController {
             @RequestParam(value = "driverId", required = false) Long driverId) {
         ConfirmUnloadResponse response = driverService.confirmUnload(id, driverId);
         return ResponseEntity.ok(ApiResponse.success("Xác nhận dỡ kiện hàng thành công", response));
+    }
+
+    @PostMapping("/pickup-packages/{id}/pick")
+    @Operation(summary = "Confirm pickup package", description = "Driver confirms (QR or code) that an en-route pickup package is on the truck at the current pickup stop")
+    public ResponseEntity<ApiResponse<PickupRequestResponse>> pickPackage(@PathVariable("id") Long id) {
+        return ResponseEntity.ok(ApiResponse.success("Đã nhận kiện lên xe", pickupDriverService.pick(id)));
     }
 
     @PostMapping("/stops/{id}/arrive")
@@ -121,5 +138,38 @@ public class DriverController {
         TripExceptionResponse response = tripExceptionService.report(
                 String.valueOf(trip.getId()), trip.getCompany().getId(), request, trip.getDriver().getId());
         return ResponseEntity.ok(ApiResponse.success("Báo cáo sự cố thành công", response));
+    }
+
+    @GetMapping("/trips/{id}/load-plan")
+    @Operation(summary = "Loaded plan for the 3D cargo view",
+            description = "Approved plan the warehouse loaded onto the driver's own trip: cargo space, door, placements actually on the truck (cm), stops")
+    public ResponseEntity<ApiResponse<DriverLoadPlanResponse>> getLoadPlan(@PathVariable("id") String id) {
+        return ResponseEntity.ok(ApiResponse.success("Lấy phương án đã xếp thành công", driverDeliveryService.getLoadPlan(id)));
+    }
+
+    @GetMapping("/trips/{id}/stops")
+    @Operation(summary = "Stops with arrival times",
+            description = "Stops of the driver's own trip with planned arrival, deadline and an ETA computed from the latest GPS fix")
+    public ResponseEntity<ApiResponse<DriverTripStopsResponse>> getStops(@PathVariable("id") String id) {
+        return ResponseEntity.ok(ApiResponse.success("Lấy giờ đến các điểm giao thành công", driverDeliveryService.getStops(id)));
+    }
+
+    @PostMapping("/packages/{id}/issues")
+    @Operation(summary = "Report a package delivery issue",
+            description = "Damaged, missing, refused by the customer (stays on the truck, returned when the stop completes) or other with a note")
+    public ResponseEntity<ApiResponse<DeliveryIssueResponse>> reportIssue(
+            @PathVariable("id") Long id,
+            @Valid @RequestBody ReportDeliveryIssueRequest request) {
+        return ResponseEntity.ok(ApiResponse.success("Đã ghi nhận sự cố của kiện", driverDeliveryService.reportIssue(id, request)));
+    }
+
+    @PostMapping("/packages/{id}/manual-unload")
+    @Operation(summary = "Manually confirm a package unload",
+            description = "Package is recorded as unloaded and waits for a dispatcher to approve or reject the manual confirmation")
+    public ResponseEntity<ApiResponse<ManualConfirmationResponse>> requestManualUnload(
+            @PathVariable("id") Long id,
+            @Valid @RequestBody ManualUnloadRequest request) {
+        return ResponseEntity.ok(ApiResponse.success("Đã gửi xác nhận tay, chờ điều phối viên duyệt",
+                driverDeliveryService.requestManualUnload(id, request)));
     }
 }

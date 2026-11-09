@@ -45,4 +45,28 @@ public class StopPackageResponse {
 
     @Schema(description = "Thời điểm dỡ (giờ Việt Nam, không múi giờ); null khi chưa dỡ")
     private LocalDateTime unloadedAt;
+
+    @Schema(description = "Sự cố tài xế báo gần nhất cho kiện ở điểm này: DAMAGED, MISSING, REFUSED, OTHER; null khi không có")
+    private String issueKind;
+
+    @Schema(description = "Ghi chú của sự cố gần nhất")
+    private String issueNote;
+
+    @Schema(description = "Xác nhận tay gần nhất của kiện ở điểm này: PENDING, APPROVED, REJECTED; null khi không có")
+    private String manualStatus;
+
+    @Schema(description = "Lý do tài xế xác nhận tay gần nhất: LABEL_DAMAGED, QR_UNREADABLE, OTHER")
+    private String manualReason;
+
+    @Schema(description = "Lý do điều phối viên từ chối xác nhận tay gần nhất")
+    private String manualRejectReason;
+
+    @Schema(description = "Kiện nhận dọc đường: mã yêu cầu nhận; null với kiện thường")
+    private Long pickupRequestId;
+
+    @Schema(description = "Kiện nhận ở điểm nhận: đã đối chiếu lên xe")
+    private Boolean picked;
+
+    @Schema(description = "Giờ kiện nhận lên xe (giờ Việt Nam, không múi giờ)")
+    private LocalDateTime pickedAt;
 }

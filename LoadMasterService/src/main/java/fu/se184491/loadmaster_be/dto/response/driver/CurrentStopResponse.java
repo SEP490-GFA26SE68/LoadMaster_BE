@@ -39,4 +39,10 @@ public class CurrentStopResponse {
 
     @Schema(description = "Danh sách kiện hàng cần dỡ theo thứ tự khuyến nghị LIFO")
     private List<StopPackageResponse> packages;
+
+    @Schema(description = "Loại điểm: DELIVERY (giao) hoặc PICKUP (nhận hàng dọc đường)")
+    private String stopType;
+
+    @Schema(description = "Kiện phải nhận ở điểm nhận (rỗng với điểm giao)")
+    private List<StopPackageResponse> pickupPackages;
 }

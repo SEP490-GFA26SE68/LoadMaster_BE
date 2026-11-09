@@ -1,8 +1,11 @@
 package fu.se184491.loadmaster_be.service.optimization;
 
+import fu.se184491.loadmaster_be.constant.optimization.OptimizationAlgorithm;
 import fu.se184491.loadmaster_be.constant.trip.TripStatus;
 import fu.se184491.loadmaster_be.dto.request.optimization.PinPlacementRequest;
 import fu.se184491.loadmaster_be.dto.request.optimization.RerunOptimizationRequest;
+import fu.se184491.loadmaster_be.dto.response.optimization.LoadPlanResponse;
+import fu.se184491.loadmaster_be.dto.response.optimization.OptimizationResultDto;
 import fu.se184491.loadmaster_be.dto.response.optimization.PackagePlacementResponse;
 import fu.se184491.loadmaster_be.entity.company.Company;
 import fu.se184491.loadmaster_be.entity.optimization.LoadPlan;
@@ -24,10 +27,12 @@ import fu.se184491.loadmaster_be.service.optimization.Impl.LoadPlanServiceImpl;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.math.BigDecimal;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -53,6 +58,7 @@ class LoadPlanServiceImplTest {
     @Mock private CreditService creditService;
     @Mock private DeliveryStopRepository deliveryStopRepository;
     @Mock private CurrentUserService currentUserService;
+    @Mock private fu.se184491.loadmaster_be.repository.billing.CompanySubscriptionRepository companySubscriptionRepository;
 
     @InjectMocks
     private LoadPlanServiceImpl service;
@@ -120,5 +126,52 @@ class LoadPlanServiceImplTest {
         assertEquals(ErrorCode.TRIP_LOCKED, error.getErrorCode());
         verify(creditService, never()).deductCredit(anyLong(), any(), anyInt());
         verify(optimizationEngineClient, never()).rerunOptimization(any());
+    }
+
+    private LoadPlanResponse rerunWith(String engineAlgorithm) {
+        // Lần chạy trước theo Basic, công ty nay đã lên Pro: chạy lại theo hạng hiện tại
+        plan.getJob().setAlgorithmName(OptimizationAlgorithm.EP_DBLF);
+        when(companySubscriptionRepository.findByCompanyId(1L)).thenReturn(Optional.of(
+                fu.se184491.loadmaster_be.entity.billing.CompanySubscription.builder()
+                        .status(fu.se184491.loadmaster_be.constant.billing.SubscriptionStatus.ACTIVE)
+                        .plan(fu.se184491.loadmaster_be.entity.billing.SubscriptionPlan.builder()
+                                .tier(fu.se184491.loadmaster_be.constant.billing.SubscriptionTier.PRO).build())
+                        .build()));
+        when(optimizationJobRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+        when(loadPlanRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+        when(optimizationEngineClient.rerunOptimization(any())).thenReturn(OptimizationResultDto.builder()
+                .packedItemsCount(3).volumeUtilization(BigDecimal.ONE).weightUtilization(BigDecimal.ONE)
+                .algorithmName(engineAlgorithm).build());
+        return service.rerunOptimization(50L, new RerunOptimizationRequest());
+    }
+
+    @Test
+    void rerunKeepsTheAlgorithmTheEngineReportsBesideTheRunTier() {
+        LoadPlanResponse response = rerunWith("SA");
+
+        assertEquals("SA", response.getAlgorithmName());
+        assertEquals("EP_DBLF_GA", response.getRunAlgorithm());
+        ArgumentCaptor<LoadPlan> saved = ArgumentCaptor.forClass(LoadPlan.class);
+        verify(loadPlanRepository).save(saved.capture());
+        assertEquals("SA", saved.getValue().getAlgorithmName());
+    }
+
+    @Test
+    void rerunSendsTheCompanyTierToTheEngine() {
+        rerunWith("GA");
+
+        ArgumentCaptor<fu.se184491.loadmaster_be.dto.request.optimization.RerunEngineRequest> sent =
+                ArgumentCaptor.forClass(fu.se184491.loadmaster_be.dto.request.optimization.RerunEngineRequest.class);
+        verify(optimizationEngineClient).rerunOptimization(sent.capture());
+        assertEquals("PRO", sent.getValue().getSubscriptionTier());
+        assertEquals("EP_DBLF_GA", sent.getValue().getAlgorithmName());
+    }
+
+    @Test
+    void rerunWithoutAnEngineAlgorithmFallsBackToTheRunTier() {
+        LoadPlanResponse response = rerunWith(null);
+
+        assertEquals("EP_DBLF_GA", response.getAlgorithmName());
+        assertEquals("EP_DBLF_GA", response.getRunAlgorithm());
     }
 }

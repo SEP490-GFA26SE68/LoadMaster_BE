@@ -20,6 +20,7 @@ def register_exception_handlers(app: FastAPI):
             content=ApiResponse.error(
                 code=exc.error_code.code,
                 message=exc.message,
+                errors=getattr(exc, "errors", None),
             ).model_dump(),
         )
 

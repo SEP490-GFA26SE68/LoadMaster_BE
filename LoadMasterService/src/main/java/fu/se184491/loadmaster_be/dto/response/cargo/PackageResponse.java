@@ -1,6 +1,7 @@
 package fu.se184491.loadmaster_be.dto.response.cargo;
 
 import fu.se184491.loadmaster_be.constant.cargo.HandlingClass;
+import fu.se184491.loadmaster_be.constant.cargo.PackageFlag;
 import fu.se184491.loadmaster_be.constant.cargo.PackageStatus;
 import lombok.*;
 
@@ -33,6 +34,8 @@ public class PackageResponse {
     private String destination;
     private String note;
     private PackageStatus status;
+    /** Cờ kho đặt khi bỏ kiện khỏi chuyến (NOT_FOUND, DAMAGED); null là không cờ. */
+    private PackageFlag flag;
     private Boolean isPinned;
 
     // Thông số xếp hàng

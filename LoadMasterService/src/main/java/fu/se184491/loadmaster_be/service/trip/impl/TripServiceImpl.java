@@ -58,6 +58,7 @@ public class TripServiceImpl implements TripService {
     private final DeliveryRequirementRepository deliveryRequirementRepository;
     private final RoutePlanRepository routePlanRepository;
     private final TripStatusService tripStatusService;
+    private final fu.se184491.loadmaster_be.repository.optimization.LoadPlanRepository loadPlanRepository;
 
     @Transactional
     public TripResponse createTrip(TripCreateRequest request) {
@@ -459,6 +460,9 @@ public class TripServiceImpl implements TripService {
                 cargoPackage.setStatus(PackageStatus.PLANNED);
             }
         }
+
+        // Hàng của chuyến vừa thêm: phương án xếp đã có tính cho hàng cũ, thành lỗi thời.
+        loadPlanRepository.markStaleByTripId(tripId);
 
         // 10. Thêm điểm giao làm tuyến đã tối ưu không còn đúng: bỏ tuyến, chuyến về Nháp.
         if (trip.getStatus() == TripStatus.PLANNED || trip.getRoutePlan() != null) {

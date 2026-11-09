@@ -199,6 +199,7 @@ class LoadPlanService:
             front_axle_load=float(plan.front_axle_load) if getattr(plan, "front_axle_load", None) is not None else None,
             rear_axle_load=float(plan.rear_axle_load) if getattr(plan, "rear_axle_load", None) is not None else None,
             rehandling_count=int(plan.rehandling_count or 0) if getattr(plan, "rehandling_count", None) is not None else 0,
+            algorithm_name=getattr(plan, "algorithm_name", None),
             placements=placement_dtos,
         )
 

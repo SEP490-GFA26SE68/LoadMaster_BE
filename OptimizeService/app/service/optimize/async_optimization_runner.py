@@ -85,6 +85,7 @@ class AsyncOptimizationRunner:
             job.objective,
             job.time_limit_sec,
             db,
+            algorithm_name=getattr(job, "algorithm_name", None),
         )
 
     def build_problem_request_for_trip(
@@ -93,6 +94,7 @@ class AsyncOptimizationRunner:
         objective: Optional[str],
         time_limit_sec: Optional[int],
         db: Session,
+        algorithm_name: Optional[str] = None,
     ) -> ProblemRequest:
         """
         Xây dựng ProblemRequest từ chuyến, không cần job trong DB.
@@ -110,6 +112,8 @@ class AsyncOptimizationRunner:
             trip_id=trip_id,
             objective=objective,
             time_limit_sec=time_limit_sec,
+            # Mã thuật toán của job (EP_DBLF | EP_DBLF_GA | EP_DBLF_GA_AI): quyết định bộ giải chạy những gì.
+            algorithm_name=algorithm_name,
         )
         trip = db.query(Trip).filter(Trip.id == job.trip_id).first()
         if not trip:
@@ -428,6 +432,7 @@ class AsyncOptimizationRunner:
             stops=stops_items,
             objective=job.objective or "MAX_VOLUME_UTIL",
             time_limit_sec=job.time_limit_sec or 60,
+            algorithm_name=job.algorithm_name,
         )
 
     async def run(

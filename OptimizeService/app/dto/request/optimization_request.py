@@ -1,17 +1,26 @@
 
-from typing import Optional
+from typing import List, Optional
 
 from pydantic import BaseModel, Field
 
 from app.constant.optimization.objective import OptimizationObjective
 
 
+class JobPinnedPlacement(BaseModel):
+    """Kiện ghim giữ nguyên vị trí và hướng trong mọi phương án của lần chạy (cm)."""
+    package_id: int
+    pos_x: float
+    pos_y: float
+    pos_z: float
+    rotation_type: int = 0
+    packed_length: Optional[float] = None
+    packed_width: Optional[float] = None
+    packed_height: Optional[float] = None
+
+
 class OptimizationJobRequest(BaseModel):
     # Khớp với trips.id BIGINT trong PostgreSQL
     trip_id: int = Field(gt=0)
-
-    # Required by the submit endpoint; optional in this shared DTO for old read/unit fixtures.
-    job_uuid: Optional[str] = None
 
     objective: OptimizationObjective = OptimizationObjective.MAX_VOLUME
 
@@ -25,8 +34,5 @@ class OptimizationJobRequest(BaseModel):
 
     subscription_tier: Optional[str] = "BASIC"
 
-
-class OptimizationDispatchRequest(OptimizationJobRequest):
-    # The HTTP admission contract requires the identity reserved by Spring.
-    # Shared legacy fixtures may still use OptimizationJobRequest for non-submit calls.
-    job_uuid: str = Field(min_length=1, max_length=64)
+    # Giữ kiện đã ghim của một phương án: vắng hoặc rỗng là lần chạy bình thường
+    pinned_placements: List[JobPinnedPlacement] = Field(default_factory=list)

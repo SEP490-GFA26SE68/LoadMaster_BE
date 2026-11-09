@@ -35,4 +35,7 @@ public class DriverTripResponse {
 
     @Schema(description = "Kho đã xếp xong hàng (có phiên xếp COMPLETED): chuyến LOADING thì tài xế xuất phát được")
     private Boolean loadingCompleted;
+
+    @Schema(description = "Giờ giao xong chuyến (DELIVERED): giờ hoàn tất điểm cuối; chuyến cũ chưa ghi thì giờ đến điểm cuối. Chuyến chưa giao xong: null")
+    private LocalDateTime completedAt;
 }

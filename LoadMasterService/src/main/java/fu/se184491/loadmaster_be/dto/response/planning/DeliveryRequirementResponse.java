@@ -37,6 +37,10 @@ public class DeliveryRequirementResponse {
     private String note;
     private DeliveryRequirementStatus status;
 
+    // Kiện kho đã bỏ khỏi chuyến lúc soạn / xếp (thiếu, hỏng): còn kiện như vậy thì yêu cầu giao thiếu
+    private Integer droppedPackageCount;
+    private Boolean shortDelivered;
+
     // Chuyến xe được gán (null nếu chưa gán)
     private Long tripId;
     private String tripCode;

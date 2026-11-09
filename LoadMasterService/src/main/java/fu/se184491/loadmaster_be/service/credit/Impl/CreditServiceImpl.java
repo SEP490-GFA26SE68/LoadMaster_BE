@@ -7,6 +7,7 @@ import fu.se184491.loadmaster_be.dto.response.credit.CreditBalanceResponse;
 import fu.se184491.loadmaster_be.dto.response.credit.CreditTransactionResponse;
 import fu.se184491.loadmaster_be.entity.billing.CreditAccount;
 import fu.se184491.loadmaster_be.entity.billing.CreditTransaction;
+import fu.se184491.loadmaster_be.entity.common.AuditLog;
 import fu.se184491.loadmaster_be.entity.company.Company;
 import fu.se184491.loadmaster_be.exception.AppException;
 import fu.se184491.loadmaster_be.exception.ErrorCode;
@@ -14,6 +15,7 @@ import fu.se184491.loadmaster_be.exception.InsufficientCreditsException;
 import fu.se184491.loadmaster_be.repository.billing.CompanySubscriptionRepository;
 import fu.se184491.loadmaster_be.repository.billing.CreditAccountRepository;
 import fu.se184491.loadmaster_be.repository.billing.CreditTransactionRepository;
+import fu.se184491.loadmaster_be.repository.common.AuditLogRepository;
 import fu.se184491.loadmaster_be.repository.company.CompanyRepository;
 import fu.se184491.loadmaster_be.service.credit.CreditService;
 import lombok.RequiredArgsConstructor;
@@ -23,8 +25,11 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.Optional;
 
 @Service
@@ -35,13 +40,14 @@ public class CreditServiceImpl implements CreditService {
     /** Một lần chạy tối ưu 3D (ba phương án ứng viên) dùng đúng 1 credit, như lần chạy lại. */
     public static final int INITIAL_OPTIMIZATION_CREDIT_COST = 1;
     public static final int RERUN_OPTIMIZATION_CREDIT_COST = 1;
+    /** Số dư sau một lần trừ xuống tới mức này thì báo "Sắp hết credit" cho quản trị công ty (đề xuất, chờ chốt). */
+    public static final int LOW_CREDIT_THRESHOLD = 10;
 
     private final CreditAccountRepository creditAccountRepository;
     private final CreditTransactionRepository creditTransactionRepository;
     private final CompanySubscriptionRepository companySubscriptionRepository;
     private final CompanyRepository companyRepository;
-    private final fu.se184491.loadmaster_be.repository.optimization.OptimizationJobRepository optimizationJobs;
-    private final fu.se184491.loadmaster_be.service.optimization.OptimizationEntitlementService entitlements;
+    private final AuditLogRepository auditLogRepository;
 
     @Override
     @Transactional
@@ -68,54 +74,92 @@ public class CreditServiceImpl implements CreditService {
     @Override
     @Transactional
     public void deductCredit(Long companyId, String reference) {
-        deductCredit(companyId, reference, 0); // zero means derive cost from server job, never from caller.
+        deductCredit(companyId, reference, INITIAL_OPTIMIZATION_CREDIT_COST);
     }
 
     @Override
     @Transactional
     public void deductCredit(Long companyId, String reference, int amount) {
-        if (companyId == null || reference == null || reference.isBlank()) {
-            throw new IllegalArgumentException("Company and job reference are required");
+
+        if (reference == null || reference.isBlank()) {
+            throw new IllegalArgumentException(
+                    "Credit transaction reference must not be blank"
+            );
         }
-        companyRepository.findByIdForUpdate(companyId)
-                .orElseThrow(() -> new AppException(ErrorCode.COMPANY_NOT_FOUND));
-        var job = optimizationJobs.findByJobUuidForUpdate(reference)
-                .orElseThrow(() -> new IllegalArgumentException("Credit deduction requires a persisted server job"));
-        if (!companyId.toString().equals(job.getCompanyId()) || job.getTrip() == null
-                || job.getTrip().getCompany() == null
-                || !companyId.equals(job.getTrip().getCompany().getId())) {
-            throw new org.springframework.security.access.AccessDeniedException("Job belongs to another company");
-        }
-        int creditsToDeduct = job.getParentPlanId() == null
-                ? INITIAL_OPTIMIZATION_CREDIT_COST : RERUN_OPTIMIZATION_CREDIT_COST;
-        if (amount != 0 && amount != creditsToDeduct) {
-            throw new IllegalArgumentException("Credit cost does not match server job action");
-        }
-        // This read must be AFTER taking the serialization locks, including on a retry.
-        Optional<CreditTransaction> existingUsage = creditTransactionRepository
-                .findByReferenceAndType(reference, CreditTransactionType.USAGE);
+
+        // Không trừ credit lần thứ hai cho cùng một Optimization Job.
+        Optional<CreditTransaction> existingUsage =
+                creditTransactionRepository.findByReferenceAndType(
+                        reference,
+                        CreditTransactionType.USAGE
+                );
+
         if (existingUsage.isPresent()) {
             CreditTransaction existing = existingUsage.get();
-            if (!companyId.equals(existing.getCreditAccount().getCompany().getId())
-                    || existing.getAmount() != -creditsToDeduct) {
-                throw new IllegalStateException("Conflicting credit usage reference");
+
+            Long existingCompanyId = existing.getCreditAccount()
+                    .getCompany()
+                    .getId();
+
+            if (!existingCompanyId.equals(companyId)) {
+                throw new IllegalStateException(
+                        "Credit reference belongs to another company"
+                );
             }
-            return; // includes a committed deduction whose HTTP response was lost; never charge again.
+
+            log.info(
+                    "Credit already deducted for reference {}. Skipping duplicate.",
+                    reference
+            );
+            return;
         }
-        entitlements.requireActive(companyId);
+
+        int creditsToDeduct = amount > 0 ? amount : INITIAL_OPTIMIZATION_CREDIT_COST;
+
         CreditAccount account = creditAccountRepository.findByCompanyIdForUpdate(companyId)
                 .orElseGet(() -> getOrCreateAccount(companyId));
-        if (account.getBalance() == null || account.getBalance() < creditsToDeduct) {
+
+        resetBalanceIfSubscriptionInactive(companyId, account);
+
+        if (account.getBalance() < creditsToDeduct) {
+            log.warn("Company {} has insufficient credits (balance: {}, required: {}) for reference {}",
+                    companyId, account.getBalance(), creditsToDeduct, reference);
             throw new InsufficientCreditsException();
         }
+
         account.setBalance(account.getBalance() - creditsToDeduct);
         creditAccountRepository.save(account);
+
         CreditTransaction tx = CreditTransaction.builder()
-                .creditAccount(account).amount(-creditsToDeduct).type(CreditTransactionType.USAGE)
-                .reference(reference).refunded(false)
-                .createdAt(LocalDateTime.now().truncatedTo(ChronoUnit.SECONDS)).build();
+                .creditAccount(account)
+                .amount(-creditsToDeduct)
+                .type(CreditTransactionType.USAGE)
+                .reference(reference)
+                .refunded(false)
+                .createdAt(LocalDateTime.now().truncatedTo(ChronoUnit.SECONDS))
+                .build();
         tx.prePersist();
         creditTransactionRepository.save(tx);
+        log.info("Deducted {} credit(s) for company {}. New balance: {}", creditsToDeduct, companyId, account.getBalance());
+        auditLowBalance(companyId, account.getBalance());
+    }
+
+    /** Sự kiện của hệ thống (không người làm), thuộc công ty: nguồn của thông báo "Sắp hết credit". */
+    private void auditLowBalance(Long companyId, Integer balance) {
+        if (balance == null || balance > LOW_CREDIT_THRESHOLD || isUnlimitedPlan(companyId)) {
+            return;
+        }
+        Map<String, Object> values = new LinkedHashMap<>();
+        values.put("balance", balance);
+        values.put("threshold", LOW_CREDIT_THRESHOLD);
+        auditLogRepository.save(AuditLog.builder()
+                .companyId(companyId)
+                .actionType("CREDIT_LOW_BALANCE")
+                .entityName("Company")
+                .entityId(String.valueOf(companyId))
+                .newValues(values)
+                .createdAt(Instant.now())
+                .build());
     }
 
     @Override

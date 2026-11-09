@@ -45,6 +45,7 @@ public class DeliveryRequirementServiceImpl implements DeliveryRequirementServic
     private final DeliveryStopRepository deliveryStopRepository;
     private final AuditLogRepository auditLogRepository;
     private final UserRepository userRepository;
+    private final CargoPackageRepository cargoPackageRepository;
 
     @Override
     @Transactional
@@ -476,6 +477,14 @@ public class DeliveryRequirementServiceImpl implements DeliveryRequirementServic
                 .map(CargoPackage::getId)
                 .sorted()
                 .toList();
+        long dropped = cargoPackageRepository != null && requirement.getId() != null
+                ? cargoPackageRepository.countByDroppedRequirementId(requirement.getId())
+                : 0;
+        // Kiện hoàn trả (khách từ chối, sự cố lúc giao) cũng làm yêu cầu thành giao thiếu, như kiện bị bỏ lại kho.
+        long returned = requirement.getPackages()
+                .stream()
+                .filter(p -> p.getStatus() == fu.se184491.loadmaster_be.constant.cargo.PackageStatus.RETURNED)
+                .count();
 
         return DeliveryRequirementResponse.builder()
                 .id(requirement.getId())
@@ -500,6 +509,8 @@ public class DeliveryRequirementServiceImpl implements DeliveryRequirementServic
                 // Thông tin yêu cầu và chuyến
                 .note(requirement.getNote())
                 .status(requirement.getStatus())
+                .droppedPackageCount((int) dropped)
+                .shortDelivered(dropped > 0 || returned > 0)
                 .tripId(requirement.getTrip() == null
                         ? null
                         : requirement.getTrip().getId())

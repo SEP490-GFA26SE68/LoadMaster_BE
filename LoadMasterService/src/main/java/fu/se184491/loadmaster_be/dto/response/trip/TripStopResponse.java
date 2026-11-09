@@ -21,7 +21,9 @@ public record TripStopResponse(
         DeliveryStopStatus status,
         LocalDateTime plannedArrival,
         LocalDateTime actualArrival,
-        LocalDateTime deadline
+        LocalDateTime deadline,
+        /** DELIVERY hoặc PICKUP (điểm nhận hàng dọc đường). */
+        String stopType
 ) {
 
     public static TripStopResponse fromEntity(DeliveryStop stop) {
@@ -45,6 +47,7 @@ public record TripStopResponse(
                 .status(stop.getStatus())
                 .plannedArrival(stop.getPlannedArrival())
                 .actualArrival(stop.getActualArrival())
+                .stopType(stop.kind().name())
                 .deadline(
                         stop.getDeliveryRequirement() != null
                                 ? stop.getDeliveryRequirement().getDeadline()

@@ -28,6 +28,7 @@ import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Instant;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.IdentityHashMap;
@@ -114,7 +115,7 @@ public class AuditLogQueryService {
         if (entityName != null && entityId != null) {
             switch (entityName) {
                 case "DeliveryStop": return Ref.of(RefKind.STOP, entityId);
-                case "LoadPlan": return Ref.of(RefKind.PLAN, entityId);
+                case "LoadPlan", "LOAD_PLAN": return Ref.of(RefKind.PLAN, entityId);
                 case "PackagePlacement": return Ref.of(RefKind.PLACEMENT, entityId);
                 default: break;
             }
@@ -149,6 +150,21 @@ public class AuditLogQueryService {
      * điểm giao → chuyến. Mỗi bậc một truy vấn cho cả trang.
      */
     private Map<AuditLog, String> tripCodesOf(List<AuditLog> logs) {
+        Map<AuditLog, String> result = new IdentityHashMap<>();
+        tripsOf(logs).forEach((log, trip) -> {
+            if (trip.getTripCode() != null) {
+                result.put(log, trip.getTripCode());
+            }
+        });
+        return result;
+    }
+
+    /**
+     * Chuyến mà từng bản ghi nói tới (cùng đường lần như {@link #tripCodesOf}); bản ghi không gắn chuyến nào thì
+     * không có trong kết quả. Dùng chung cho nhật ký và chuông thông báo.
+     */
+    @Transactional(readOnly = true)
+    public Map<AuditLog, Trip> tripsOf(List<AuditLog> logs) {
         Map<AuditLog, Ref> refs = new IdentityHashMap<>();
         for (AuditLog log : logs) {
             Ref start = startOf(log);
@@ -176,20 +192,31 @@ public class AuditLogQueryService {
             return Map.of();
         }
 
-        Map<Long, String> codeOfTrip = new HashMap<>();
+        Map<Long, Trip> tripById = new HashMap<>();
         for (Trip trip : tripRepository.findAllById(idsOf(refs, RefKind.TRIP))) {
-            if (trip.getTripCode() != null) {
-                codeOfTrip.put(trip.getId(), trip.getTripCode());
-            }
+            tripById.put(trip.getId(), trip);
         }
-        Map<AuditLog, String> result = new IdentityHashMap<>();
+        Map<AuditLog, Trip> result = new IdentityHashMap<>();
         refs.forEach((log, ref) -> {
-            String code = ref.kind() == RefKind.TRIP ? codeOfTrip.get(ref.id()) : null;
-            if (code != null) {
-                result.put(log, code);
+            Trip trip = ref.kind() == RefKind.TRIP ? tripById.get(ref.id()) : null;
+            if (trip != null) {
+                result.put(log, trip);
             }
         });
         return result;
+    }
+
+    /**
+     * Bản ghi mới nhất của các loại việc cho trước, từ {@code since}, tối đa {@code max} dòng.
+     * {@code companyId} null là mọi công ty (quản trị hệ thống).
+     */
+    @Transactional(readOnly = true)
+    public List<AuditLog> recent(Long companyId, Set<String> actions, Instant since, int max) {
+        if (actions.isEmpty()) {
+            return List.of();
+        }
+        Pageable pageable = PageRequest.of(0, max, Sort.by(Sort.Order.desc("createdAt"), Sort.Order.desc("id")));
+        return auditLogRepository.findAll(AuditLogSpecifications.recent(companyId, actions, since), pageable).getContent();
     }
 
     /** Đưa mọi bản ghi đang ở bậc {@code kind} lên bậc kế tiếp bằng một truy vấn; lần không ra thì bỏ. */

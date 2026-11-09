@@ -30,4 +30,10 @@ public class CompleteStopResponse {
 
     @Schema(description = "Thông báo kết quả")
     private String message;
+
+    @Schema(description = "Số kiện đã giao ở điểm vừa hoàn thành")
+    private Integer deliveredCount;
+
+    @Schema(description = "Số kiện ở lại xe (có sự cố, chưa dỡ) — hoàn trả")
+    private Integer returnedCount;
 }

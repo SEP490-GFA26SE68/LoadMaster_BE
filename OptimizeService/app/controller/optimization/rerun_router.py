@@ -20,6 +20,7 @@ from app.dto.api_response import ApiResponse
 from app.dto.optimization.engine.engine_response import EngineOptimizationResponse
 from app.dto.optimization.engine.problem_request import PinnedData
 from app.service.auth.auth_dependency import require_optimization_service
+from app.service.optimize.algorithm_tier_service import AlgorithmTierService
 from app.service.optimize.async_optimization_runner import AsyncOptimizationRunner
 from app.service.optimize.optimization_client import OptimizationClient
 
@@ -51,6 +52,9 @@ class RerunRequest(_CamelModel):
     time_limit_sec: Optional[int] = Field(default=60, ge=1, le=600)
     seed: Optional[int] = None
     pinned_placements: List[PinnedPlacementIn] = Field(default_factory=list)
+    # Gói của công ty / mã thuật toán của job gốc. Vắng cả hai: chỉ EP + DBLF (như trước).
+    subscription_tier: Optional[str] = None
+    algorithm_name: Optional[str] = None
 
 
 def get_runner() -> AsyncOptimizationRunner:
@@ -85,6 +89,8 @@ def to_rerun_result(result: EngineOptimizationResponse) -> dict[str, Any]:
         "frontAxleLoad": metrics.front_axle_load,
         "rearAxleLoad": metrics.rear_axle_load,
         "rehandlingCount": metrics.rehandling_count,
+        # Thuật toán đã sinh ra phương án (EP_DBLF | GA | SA | EP_LUMO_R1_1 | LUMO_R1 | LUMO_R1_1 | LUMO_R2).
+        "algorithmName": result.algorithm_name,
         "placements": [
             {
                 "packageId": _id(p.package_id),
@@ -126,6 +132,12 @@ async def rerun(
         db,
     )
     problem.seed = request.seed
+    if request.subscription_tier:
+        problem.algorithm_name = AlgorithmTierService.resolve_algorithm(
+            request.subscription_tier, request.algorithm_name
+        )
+    else:
+        problem.algorithm_name = request.algorithm_name
     problem.pinned = [
         PinnedData(
             package_id=str(pin.package_id),

@@ -173,6 +173,7 @@ class OptimizationResultPersistenceService:
         plan.plan_name = plan_name
         plan.objective = objective
         plan.candidate_label = candidate_label
+        plan.algorithm_name = result.algorithm_name
         plan.packed_items_count = packed_count
         plan.volume_utilization = vol_util
         plan.weight_utilization = wt_util
@@ -215,7 +216,7 @@ class OptimizationResultPersistenceService:
                         packed_height=p.packed_h,
                         rotation_type=p.rotation_type or 0,
                         step_sequence=p.step_sequence or 1,
-                        pinned=False,
+                        pinned=bool(getattr(p, "pinned", False)),
                         stop_zone_id=zone_id_val,
                     )
                 )

@@ -22,4 +22,8 @@ public class RerunEngineRequest {
     private Integer timeLimitSec;
     private Integer seed;
     private List<PinnedPlacementDto> pinnedPlacements;
+    /** Hạng gói của công ty lúc chạy lại (BASIC / PRO / ULTIMATE): dịch vụ tối ưu chọn thuật toán theo hạng này. */
+    private String subscriptionTier;
+    /** Mã thuật toán của hạng (EP_DBLF / EP_DBLF_GA / EP_DBLF_GA_AI), cũng là thuật toán của job chạy lại. */
+    private String algorithmName;
 }

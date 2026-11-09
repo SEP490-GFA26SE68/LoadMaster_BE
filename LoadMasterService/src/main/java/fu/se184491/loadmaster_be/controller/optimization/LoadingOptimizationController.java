@@ -1,9 +1,7 @@
 package fu.se184491.loadmaster_be.controller.optimization;
 
-import fu.se184491.loadmaster_be.client.OptimizationClient;
-
-
 import fu.se184491.loadmaster_be.dto.ApiResponse;
+import fu.se184491.loadmaster_be.dto.request.optimization.OptimizeLoadingRequest;
 import fu.se184491.loadmaster_be.dto.response.optimization.LoadPlanDetailResponse;
 import fu.se184491.loadmaster_be.dto.response.optimization.OptimizationJobStartResponse;
 import fu.se184491.loadmaster_be.dto.response.optimization.OptimizationJobStatusResponse;
@@ -17,6 +15,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -32,34 +31,24 @@ import java.util.List;
 @RequiredArgsConstructor
 public class LoadingOptimizationController {
 
-    private final fu.se184491.loadmaster_be.service.optimization.OptimizationSubmissionService submissionService;
-    private final OptimizationClient optimizationClient;
     private final LoadingOptimizationService loadingOptimizationService;
     private final LoadPlanQueryService loadPlanQueryService;
 
     @PostMapping("/{tripId}/optimize-loading")
     @PreAuthorize("hasRole('DISPATCHER')")
-    public ResponseEntity<fu.se184491.loadmaster_be.dto.ApiResponse<Map<String, String>>> optimizeLoading(
-            @PathVariable Long tripId,
-            @RequestHeader(value = "Idempotency-Key", required = false) String suppliedKey
     public ResponseEntity<ApiResponse<OptimizationJobStartResponse>> optimizeLoading(
-            @PathVariable Long tripId
+            @PathVariable Long tripId,
+            @RequestBody(required = false) OptimizeLoadingRequest request
     ) {
-        // Optional for compatibility. Callers needing retry guarantees MUST send and retain their own key.
-        String key = suppliedKey == null ? java.util.UUID.randomUUID().toString() : suppliedKey;
-        var response = submissionService.submitInitial(tripId, key);
-        return ResponseEntity.status(HttpStatus.ACCEPTED).header("Idempotency-Key", key).body(response);
-        OptimizationJobStartResponse response = loadingOptimizationService.startLoadingOptimization(tripId);
+        OptimizationJobStartResponse response = loadingOptimizationService.startLoadingOptimization(
+                tripId, request == null ? null : request.keepPinsFromPlanId());
         return ResponseEntity
                 .status(HttpStatus.ACCEPTED)
                 .body(ApiResponse.success("Tác vụ tối ưu đã được khởi tạo", response));
     }
 
-
     /** Trạng thái job: status, thời gian chạy và số phương án đã lưu có kiện ({@code packedPlanCount}). */
     @GetMapping("/optimization-jobs/{jobId}")
-    @PreAuthorize("hasRole('DISPATCHER') and @optimizationAccess.canReadJob(#jobId)")
-    public ResponseEntity<String> getOptimizationJobStatus(
     @PreAuthorize("hasAnyRole('DISPATCHER', 'MANAGER')")
     public ResponseEntity<ApiResponse<OptimizationJobStatusResponse>> getOptimizationJobStatus(
             @PathVariable String jobId
@@ -69,8 +58,6 @@ public class LoadingOptimizationController {
     }
 
     @GetMapping("/optimization-jobs/{jobId}/plans")
-    @PreAuthorize("hasRole('DISPATCHER') and @optimizationAccess.canReadJob(#jobId)")
-    public ResponseEntity<String> getOptimizationJobPlans(
     @PreAuthorize("hasAnyRole('DISPATCHER', 'MANAGER')")
     public ResponseEntity<ApiResponse<List<LoadPlanDetailResponse>>> getOptimizationJobPlans(
             @PathVariable String jobId

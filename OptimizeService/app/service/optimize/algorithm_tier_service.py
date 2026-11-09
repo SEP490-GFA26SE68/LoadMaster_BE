@@ -99,3 +99,42 @@ class AlgorithmTierService:
     def get_algorithm_tier(cls, subscription_tier: Optional[str]) -> str:
         """Trả về tên tier chuẩn hóa."""
         return cls.normalize_tier(subscription_tier)
+
+    # Mã thuật toán của job → hạng thuật toán thật sự được chạy.
+    _FAMILY_OF: Dict[str, str] = {
+        AlgorithmName.EP_DBLF_GA_AI.value: SubscriptionTier.ULTIMATE.value,
+        "AI": SubscriptionTier.ULTIMATE.value,
+        "ULTIMATE": SubscriptionTier.ULTIMATE.value,
+        AlgorithmName.EP_DBLF_GA.value: SubscriptionTier.PRO.value,
+        "GA": SubscriptionTier.PRO.value,
+        "PRO": SubscriptionTier.PRO.value,
+    }
+
+    @classmethod
+    def family_of(cls, algorithm_name: Optional[str]) -> str:
+        """
+        Hạng thuật toán của job theo mã thuật toán đã chọn (gói đã được quy ra mã lúc tạo job).
+        Mã lạ hoặc vắng là BASIC — chỉ EP + DBLF.
+        """
+        if not algorithm_name:
+            return SubscriptionTier.BASIC.value
+        return cls._FAMILY_OF.get(str(algorithm_name).strip().upper(), SubscriptionTier.BASIC.value)
+
+    @classmethod
+    def plan_algorithms_for(cls, algorithm_name: Optional[str]) -> list[str]:
+        """
+        Các thuật toán sinh phương án mà job được chạy, theo thứ tự (mã của PlanAlgorithm):
+          BASIC    → EP_DBLF
+          PRO      → EP_DBLF, GA, SA
+          ULTIMATE → EP_DBLF, GA, SA, EP_LUMO_R1_1, LUMO_R1, LUMO_R1_1, LUMO_R2
+        Mã AI chỉ là "được phép": thiếu torch hoặc trọng số thì bước đó bị bỏ qua.
+        """
+        from app.constant.optimization.plan_algorithm import PlanAlgorithm as P
+
+        family = cls.family_of(algorithm_name)
+        codes = [P.EP_DBLF.value]
+        if family in (SubscriptionTier.PRO.value, SubscriptionTier.ULTIMATE.value):
+            codes += [P.GA.value, P.SA.value]
+        if family == SubscriptionTier.ULTIMATE.value:
+            codes += [P.EP_LUMO_R1_1.value, P.LUMO_R1.value, P.LUMO_R1_1.value, P.LUMO_R2.value]
+        return codes

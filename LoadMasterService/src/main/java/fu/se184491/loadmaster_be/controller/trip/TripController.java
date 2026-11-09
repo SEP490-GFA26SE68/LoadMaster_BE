@@ -12,8 +12,10 @@ import fu.se184491.loadmaster_be.dto.response.trip.TripDetailResponse;
 import fu.se184491.loadmaster_be.dto.response.trip.TripResponse;
 import fu.se184491.loadmaster_be.dto.response.trip.TripStopResponse;
 import fu.se184491.loadmaster_be.dto.response.trip.TripVehicleConfigResponse;
+import fu.se184491.loadmaster_be.dto.response.trip.TripVehicleChoicesResponse;
 import fu.se184491.loadmaster_be.service.trip.TripLifecycleService;
 import fu.se184491.loadmaster_be.service.trip.TripService;
+import fu.se184491.loadmaster_be.service.trip.TripVehicleChoiceService;
 
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -40,6 +42,7 @@ public class TripController {
 
     private final TripService tripService;
     private final TripLifecycleService tripLifecycleService;
+    private final TripVehicleChoiceService tripVehicleChoiceService;
 
     /**
      * Tạo chuyến mới.
@@ -209,6 +212,16 @@ public class TripController {
                         "Gán yêu cầu giao vào chuyến thành công",
                         response
                 ));
+    }
+
+    /**
+     * Các xe của công ty để đổi xe cho chuyến: cấu hình, trạng thái, chuyến đang dùng xe và lý do không chở được hàng.
+     */
+    @GetMapping("/{id}/vehicle-choices")
+    @PreAuthorize("hasRole('DISPATCHER')")
+    public ResponseEntity<ApiResponse<TripVehicleChoicesResponse>> getVehicleChoices(@PathVariable Long id) {
+        return ResponseEntity.ok(ApiResponse.success(
+                "Lấy danh sách xe cho chuyến hàng thành công", tripVehicleChoiceService.choices(id)));
     }
 
     /**

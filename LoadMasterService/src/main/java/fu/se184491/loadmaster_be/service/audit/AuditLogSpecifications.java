@@ -67,6 +67,21 @@ final class AuditLogSpecifications {
         };
     }
 
+    /** Chuông thông báo: các loại việc cho trước, từ {@code since}; {@code companyId} null là mọi công ty. */
+    static Specification<AuditLog> recent(Long companyId, java.util.Collection<String> actions, Instant since) {
+        return (root, query, cb) -> {
+            List<Predicate> predicates = new ArrayList<>();
+            predicates.add(root.get("actionType").in(actions));
+            predicates.add(cb.greaterThanOrEqualTo(root.get("createdAt"), since));
+            if (companyId != null) {
+                Join<AuditLog, User> user = root.join("user", JoinType.LEFT);
+                Join<User, Company> userCompany = user.join("company", JoinType.LEFT);
+                predicates.add(cb.equal(cb.coalesce(root.<Long>get("companyId"), userCompany.<Long>get("id")), companyId));
+            }
+            return cb.and(predicates.toArray(Predicate[]::new));
+        };
+    }
+
     private static boolean hasText(String value) {
         return value != null && !value.isBlank();
     }

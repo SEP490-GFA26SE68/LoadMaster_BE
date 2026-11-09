@@ -21,4 +21,13 @@ public interface LoadPlanRepository extends JpaRepository<LoadPlan, Long> {
     @Query("UPDATE LoadPlan p SET p.approved = false WHERE p.approved = true"
             + " AND p.job.id IN (SELECT j.id FROM OptimizationJob j WHERE j.trip.id = :tripId)")
     int unapproveAllByTripId(@Param("tripId") Long tripId);
+
+    /**
+     * Mọi phương án của chuyến thành lỗi thời (hàng, xe hoặc điểm giao vừa đổi) và thôi là bản duyệt: kho không xếp theo phương án
+     * tính cho đầu vào cũ.
+     */
+    @Modifying
+    @Query("UPDATE LoadPlan p SET p.stale = true, p.approved = false"
+            + " WHERE p.job.id IN (SELECT j.id FROM OptimizationJob j WHERE j.trip.id = :tripId)")
+    int markStaleByTripId(@Param("tripId") Long tripId);
 }

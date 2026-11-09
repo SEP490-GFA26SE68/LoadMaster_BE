@@ -99,6 +99,26 @@ class TripStatusServiceTest {
         verify(routePlanRepository).deactivateAllByTripId(10L);
     }
 
+    @Test
+    void abortedLoadingSendsTheTripBackToPlanned() {
+        Trip trip = stubTrip(TripStatus.LOADING);
+        when(tripRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+
+        service.transitionTo(10L, TripStatus.PLANNED, null);
+
+        assertEquals(TripStatus.PLANNED, trip.getStatus());
+    }
+
+    @Test
+    void openLoadingSessionKeepsTheTripLoading() {
+        stubTrip(TripStatus.LOADING);
+        when(loadingExecutionRepository.existsByLoadPlanJobTripIdAndStatus(10L,
+                fu.se184491.loadmaster_be.constant.optimization.LoadingExecutionStatus.IN_PROGRESS)).thenReturn(true);
+
+        assertThrows(InvalidTripStatusTransitionException.class,
+                () -> service.transitionTo(10L, TripStatus.PLANNED, null));
+    }
+
     private Trip stubTrip(TripStatus status) {
         Trip trip = Trip.builder().id(10L).status(status).build();
         when(tripRepository.findById(10L)).thenReturn(Optional.of(trip));

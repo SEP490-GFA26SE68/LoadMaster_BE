@@ -33,6 +33,12 @@ public interface PackageService {
             Long id
     );
 
+    /** Điều phối viên gỡ cờ thiếu / hỏng của kiện: kiện lại đưa được vào yêu cầu giao, chuyến. */
+    PackageResponse clearFlag(
+            Long companyId,
+            Long id
+    );
+
     void deletePackage(
             Long companyId,
             Long id

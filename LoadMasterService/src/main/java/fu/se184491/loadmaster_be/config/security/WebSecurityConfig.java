@@ -59,7 +59,8 @@ public class WebSecurityConfig {
                                 "/api/auth/password-reset/**",
                                 "/api/driver/**",
                                 "/webhook/**",
-                                "/api/payment/**"
+                                "/api/payment/**",
+                                "/api/guest-registration/**"
                         )
                         .permitAll()
 

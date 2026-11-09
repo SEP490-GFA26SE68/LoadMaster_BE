@@ -155,8 +155,29 @@ public class TripExceptionServiceImpl implements TripExceptionService {
                 .reportedAt(MonitoringTime.now())
                 .reportedBy(reporter)
                 .build();
+        TripException saved = tripExceptionRepository.save(exception);
+        Map<String, Object> values = new LinkedHashMap<>();
+        values.put("tripId", trip.getId());
+        values.put("exceptionId", saved.getId());
+        values.put("type", request.getType() == null ? null : request.getType().toString());
+        values.put("delayMinutes", request.getDelayMinutes());
+        values.put("stopNumber", stopNumber);
+        auditException(trip, saved, reporter, "TRIP_EXCEPTION_REPORTED", values);
+        return toResponse(saved);
+    }
 
-        return toResponse(tripExceptionRepository.save(exception));
+    /** Sự cố cấp chuyến vào nhật ký: nguồn của chuông thông báo (điều phối viên, quản lý). */
+    private void auditException(Trip trip, TripException exception, User actor, String action,
+                                Map<String, Object> values) {
+        auditLogRepository.save(AuditLog.builder()
+                .companyId(AuditCompany.ofTrip(trip))
+                .user(actor)
+                .actionType(action)
+                .entityName("TripException")
+                .entityId(exception.getId() == null ? null : String.valueOf(exception.getId()))
+                .newValues(values)
+                .createdAt(Instant.now())
+                .build());
     }
 
     @Override
@@ -243,7 +264,17 @@ public class TripExceptionServiceImpl implements TripExceptionService {
         exception.setEscalationReason(reason);
         exception.setEscalatedAt(MonitoringTime.now());
         exception.setEscalatedBy(escalatedBy);
-        return toResponse(tripExceptionRepository.save(exception));
+        TripException saved = tripExceptionRepository.save(exception);
+        Trip trip = saved.getTrip();
+        if (trip != null) {
+            Map<String, Object> values = new LinkedHashMap<>();
+            values.put("tripId", trip.getId());
+            values.put("exceptionId", saved.getId());
+            values.put("reason", reason);
+            // Chuyển do quá 30 phút: việc của hệ thống, không có người làm
+            auditException(trip, saved, escalatedBy, "TRIP_EXCEPTION_ESCALATED", values);
+        }
+        return toResponse(saved);
     }
 
     private TripExceptionResponse resolveEntity(
