@@ -296,7 +296,9 @@ public enum ErrorCode {
     // -------------------------------------------------------------------------
     AGREEMENT_NOT_FOUND("Không tìm thấy thỏa thuận dịch vụ của doanh nghiệp", HttpStatus.NOT_FOUND),
     AGREEMENT_ALREADY_SIGNED("Thỏa thuận dịch vụ này đã được ký trước đó", HttpStatus.BAD_REQUEST),
-    AGREEMENT_DEADLINE_EXPIRED("Đã quá thời hạn 3 ngày ký thỏa thuận dịch vụ. Tài khoản đã bị khóa", HttpStatus.FORBIDDEN),
+    AGREEMENT_DEADLINE_EXPIRED("Đã quá thời hạn ký thỏa thuận dịch vụ. Tài khoản đã bị khóa", HttpStatus.FORBIDDEN),
+    AGREEMENT_REQUIRED("Vui lòng hoàn tất ký thỏa thuận dịch vụ thử nghiệm trước khi thực hiện thao tác này", HttpStatus.FORBIDDEN),
+    ACCOUNT_FLAGGED("Tài khoản của bạn đã bị gắn cờ do không ký thỏa thuận dịch vụ đúng hạn 72 giờ. Toàn bộ thông tin và chức năng đã bị khóa", HttpStatus.FORBIDDEN),
 
     // -------------------------------------------------------------------------
     // Guest Self-Registration errors
