@@ -127,8 +127,50 @@ public class SupportTicketServiceImpl implements SupportTicketService {
         SupportTicket ticket = supportTicketRepository.findById(id)
                 .orElseThrow(() -> new AppException(ErrorCode.RESOURCE_NOT_FOUND));
 
+        // 1. Phiếu đã đóng (CLOSED) chỉ đọc đối với cả nhân viên hỗ trợ và khách hàng
+        if (ticket.getStatus() == TicketStatus.CLOSED) {
+            throw new AppException(ErrorCode.SUPPORT_TICKET_CLOSED);
+        }
+
+        User actor = resolveCurrentUserSafely();
+        boolean actorIsSupporter = actor != null && isPlatformSupportOrManager(actor.getUserRoleType());
+        boolean actorIsClient = actor != null && !actorIsSupporter;
+
+        // 2. Khoá chống trùng khi phiếu đang ở trạng thái Đang xử lý (IN_PROGRESS):
+        // Nhân viên thứ 2 không được thao tác (đổi trạng thái hoặc trả lời) trên phiếu đã có nhân viên 1 nhận xử lý.
+        if (ticket.getStatus() == TicketStatus.IN_PROGRESS
+                && ticket.getAssignedTo() != null
+                && ticket.getAssignedTo().getId() != null
+                && actorIsSupporter
+                && !ticket.getAssignedTo().getId().equals(actor.getId())) {
+            String assigneeName = ticket.getAssignedTo().getFullName() != null
+                    ? ticket.getAssignedTo().getFullName()
+                    : ticket.getAssignedTo().getEmail();
+            throw new AppException(
+                    ErrorCode.SUPPORT_TICKET_LOCKED,
+                    "Phiếu hỗ trợ này đang được xử lý bởi nhân viên " + assigneeName + ". Bạn không thể thao tác trên phiếu này."
+            );
+        }
+
+        // 3. Khi phiếu đang ở Đã giải quyết (RESOLVED) mà khách hàng nhắn tiếp -> tự động mở lại (OPEN) và gỡ khoá
+        if (ticket.getStatus() == TicketStatus.RESOLVED
+                && request.resolutionNote() != null
+                && (actorIsClient || request.status() == null)) {
+            ticket.setStatus(TicketStatus.OPEN);
+            ticket.setAssignedTo(null);
+            ticket.setResolvedAt(null);
+        }
+
         if (request.status() != null) {
             ticket.setStatus(request.status());
+            if (request.status() == TicketStatus.OPEN) {
+                ticket.setAssignedTo(null);
+                ticket.setResolvedAt(null);
+            } else if (request.status() == TicketStatus.IN_PROGRESS && actorIsSupporter && request.assignedToId() == null) {
+                ticket.setAssignedTo(actor);
+            } else if (request.status() == TicketStatus.RESOLVED && request.assignedToId() == null) {
+                ticket.setAssignedTo(null);
+            }
             if ((request.status() == TicketStatus.RESOLVED || request.status() == TicketStatus.CLOSED)
                     && ticket.getResolvedAt() == null) {
                 LocalDateTime now = LocalDateTime.now().truncatedTo(ChronoUnit.SECONDS);
@@ -138,6 +180,9 @@ public class SupportTicketServiceImpl implements SupportTicketService {
                     ticket.setResolvedAt(now);
                 }
             }
+        } else if (actorIsSupporter && ticket.getStatus() == TicketStatus.OPEN && request.resolutionNote() != null) {
+            ticket.setStatus(TicketStatus.IN_PROGRESS);
+            ticket.setAssignedTo(actor);
         }
 
         if (request.assignedToId() != null) {
@@ -156,6 +201,14 @@ public class SupportTicketServiceImpl implements SupportTicketService {
         }
         auditUpdate(saved, request);
         return toResponse(saved);
+    }
+
+    private User resolveCurrentUserSafely() {
+        try {
+            return currentUserService.getCurrentUser();
+        } catch (Exception ignored) {
+            return null;
+        }
     }
 
     /**

@@ -147,7 +147,11 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ApiResponse<Void>> handleValidationExceptions(
             MethodArgumentNotValidException ex, HttpServletRequest request) {
         FieldError fieldError = ex.getFieldError();
-        String errorMessage = fieldError != null ? fieldError.getDefaultMessage() : ErrorCode.VALIDATION_ERROR.getMessage();
+        String errorMessage = fieldError != null
+                ? fieldError.getDefaultMessage()
+                : (!ex.getBindingResult().getAllErrors().isEmpty()
+                        ? ex.getBindingResult().getAllErrors().get(0).getDefaultMessage()
+                        : ErrorCode.VALIDATION_ERROR.getMessage());
         ErrorCode errorCode = ErrorCode.VALIDATION_ERROR;
 
         if (errorMessage != null) {
@@ -165,6 +169,7 @@ public class GlobalExceptionHandler {
                 .status(errorCode.getHttpStatus())
                 .body(ApiResponse.<Void>builder()
                         .success(false)
+                        .code(errorCode.name())
                         .message(errorMessage)
                         .data(null)
                         .build());
@@ -204,6 +209,69 @@ public class GlobalExceptionHandler {
                                         .success(false)
                                         .code("PACKAGE_TYPE_CODE_ALREADY_EXISTS")
                                         .message("Mã loại kiện đã tồn tại trong công ty")
+                                        .data(null)
+                                        .build());
+                    }
+                    if (lower.contains("chk_") && lower.contains("tax_code")) {
+                        return ResponseEntity
+                                .status(HttpStatus.BAD_REQUEST)
+                                .body(ApiResponse.<Void>builder()
+                                        .success(false)
+                                        .code(ErrorCode.INVALID_TAX_CODE_FORMAT.name())
+                                        .message(ErrorCode.INVALID_TAX_CODE_FORMAT.getMessage())
+                                        .data(null)
+                                        .build());
+                    }
+                    if (lower.contains("chk_") && lower.contains("phone")) {
+                        return ResponseEntity
+                                .status(HttpStatus.BAD_REQUEST)
+                                .body(ApiResponse.<Void>builder()
+                                        .success(false)
+                                        .code(ErrorCode.INVALID_PHONE_NUMBER.name())
+                                        .message(ErrorCode.INVALID_PHONE_NUMBER.getMessage())
+                                        .data(null)
+                                        .build());
+                    }
+                    if (lower.contains("phone")) {
+                        return ResponseEntity
+                                .status(HttpStatus.CONFLICT)
+                                .body(ApiResponse.<Void>builder()
+                                        .success(false)
+                                        .code(ErrorCode.PHONE_NUMBER_ALREADY_EXISTS.name())
+                                        .message(ErrorCode.PHONE_NUMBER_ALREADY_EXISTS.getMessage())
+                                        .data(null)
+                                        .build());
+                    }
+                    if (lower.contains("resolved_after_created")) {
+                        return ResponseEntity
+                                .status(HttpStatus.BAD_REQUEST)
+                                .body(ApiResponse.<Void>builder()
+                                        .success(false)
+                                        .code(ErrorCode.RESOLVED_BEFORE_CREATED.name())
+                                        .message(ErrorCode.RESOLVED_BEFORE_CREATED.getMessage())
+                                        .data(null)
+                                        .build());
+                    }
+                    if (lower.contains("after_created") || lower.contains("expires_after")) {
+                        return ResponseEntity
+                                .status(HttpStatus.BAD_REQUEST)
+                                .body(ApiResponse.<Void>builder()
+                                        .success(false)
+                                        .code(ErrorCode.EXPIRES_BEFORE_CREATED.name())
+                                        .message(ErrorCode.EXPIRES_BEFORE_CREATED.getMessage())
+                                        .data(null)
+                                        .build());
+                    }
+                    if (lower.contains("created_at_check")
+                            || lower.contains("resolved_at_check")
+                            || lower.contains("expires_at_check")
+                            || lower.contains("otp_resend_allowed_at_check")) {
+                        return ResponseEntity
+                                .status(HttpStatus.BAD_REQUEST)
+                                .body(ApiResponse.<Void>builder()
+                                        .success(false)
+                                        .code(ErrorCode.INVALID_TIMESTAMP_FORMAT.name())
+                                        .message(ErrorCode.INVALID_TIMESTAMP_FORMAT.getMessage())
                                         .data(null)
                                         .build());
                     }

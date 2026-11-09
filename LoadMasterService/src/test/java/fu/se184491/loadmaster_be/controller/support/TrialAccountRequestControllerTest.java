@@ -31,6 +31,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @WebMvcTest(TrialAccountRequestController.class)
@@ -83,15 +84,19 @@ class TrialAccountRequestControllerTest {
     @WithMockUser(roles = "SYSTEM_MANAGER")
     void trialRequests_whenCallerIsSystemManager_behavior() throws Exception {
         when(trialAccountRequestService.getTrialRequests(any(), any(), any()))
-                .thenReturn(PageResponse.<TrialAccountRequestResponse>builder().data(List.of()).build());
+                .thenReturn(PageResponse.<TrialAccountRequestResponse>builder().success(true).data(List.of()).build());
         when(trialAccountRequestService.managerApprove(any(), any(), any()))
                 .thenReturn(TrialAccountRequestResponse.builder().id(1L).status(TrialRequestStatus.PENDING_ADMIN_CREATION).build());
 
         mockMvc.perform(get("/api/trial-requests"))
-                .andExpect(status().isOk());
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true));
 
         mockMvc.perform(post("/api/trial-requests/1/manager-approve"))
-                .andExpect(status().isOk());
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.id").value(1))
+                .andExpect(jsonPath("$.data.status").value("PENDING_ADMIN_CREATION"));
 
         mockMvc.perform(post("/api/trial-requests/1/approve")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -110,20 +115,24 @@ class TrialAccountRequestControllerTest {
     }
 
     @Test
-    @DisplayName("GET /api/trial-requests & POST /api/trial-requests/{id}/approve - Allows SYSTEM_ADMIN")
+    @DisplayName("GET /api/trial-requests & POST /api/trial-requests/{id}/approve - Allows SYSTEM_ADMIN and wraps single resource in ApiResponse")
     @WithMockUser(roles = "SYSTEM_ADMIN")
     void trialRequests_whenCallerIsSystemAdmin_returnsOk() throws Exception {
         when(trialAccountRequestService.getTrialRequests(any(), any(), any()))
-                .thenReturn(PageResponse.<TrialAccountRequestResponse>builder().data(List.of()).build());
+                .thenReturn(PageResponse.<TrialAccountRequestResponse>builder().success(true).data(List.of()).build());
         when(trialAccountRequestService.approveTrialRequest(any(), any(), any()))
-                .thenReturn(TrialAccountRequestResponse.builder().id(1L).build());
+                .thenReturn(TrialAccountRequestResponse.builder().id(1L).status(TrialRequestStatus.APPROVED).build());
 
         mockMvc.perform(get("/api/trial-requests"))
-                .andExpect(status().isOk());
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true));
 
         mockMvc.perform(post("/api/trial-requests/1/approve")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{}"))
-                .andExpect(status().isOk());
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.id").value(1))
+                .andExpect(jsonPath("$.data.status").value("APPROVED"));
     }
 }

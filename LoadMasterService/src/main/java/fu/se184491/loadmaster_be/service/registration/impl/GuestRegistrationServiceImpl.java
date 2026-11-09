@@ -62,10 +62,27 @@ public class GuestRegistrationServiceImpl implements GuestRegistrationService {
     public GuestRegistrationSessionResponse initRegistration(GuestRegistrationInitRequest request) {
         String email = request.getEmail().trim().toLowerCase();
         String companyCode = request.getCompanyCode().trim().toUpperCase();
-        String taxCode = request.getTaxCode().trim();
+        String taxCode = request.getTaxCode() != null ? request.getTaxCode().trim() : "";
+
+        if (taxCode.isBlank()) {
+            throw new AppException(ErrorCode.TAX_CODE_REQUIRED);
+        }
+        if (!taxCode.matches("^([0-9]{10}|[0-9]{10}-[0-9]{3}|[0-9]{13})$")) {
+            throw new AppException(ErrorCode.INVALID_TAX_CODE_FORMAT);
+        }
+        if (request.getPhoneNumber() == null || request.getPhoneNumber().isBlank()) {
+            throw new AppException(ErrorCode.PHONE_NUMBER_REQUIRED);
+        }
+        if (!request.isPhoneNumberValidForCountry()) {
+            throw new AppException(ErrorCode.INVALID_PHONE_NUMBER);
+        }
 
         if (userRepository.existsByEmail(email)) {
             throw new AppException(ErrorCode.EMAIL_ALREADY_EXISTS, "Email '" + email + "' đã được sử dụng trong hệ thống.");
+        }
+        List<String> phoneVariants = GuestRegistrationInitRequest.buildPhoneVariants(request.getPhoneNumber());
+        if (!phoneVariants.isEmpty() && userRepository.existsByPhoneNumberIn(phoneVariants)) {
+            throw new AppException(ErrorCode.PHONE_NUMBER_ALREADY_EXISTS, "Số điện thoại '" + request.getPhoneNumber().trim() + "' đã được sử dụng trong hệ thống.");
         }
         if (companyRepository.existsByCompanyCode(companyCode)) {
             throw new AppException(ErrorCode.COMPANY_ALREADY_EXISTS, "Mã công ty '" + companyCode + "' đã tồn tại trong hệ thống.");

@@ -4,12 +4,15 @@ import fu.se184491.loadmaster_be.client.BrevoClient;
 import fu.se184491.loadmaster_be.client.KeycloakAdminClient;
 import fu.se184491.loadmaster_be.constant.account.UserRole;
 import fu.se184491.loadmaster_be.constant.account.UserStatus;
+import fu.se184491.loadmaster_be.constant.account.UserType;
 import fu.se184491.loadmaster_be.constant.billing.SubscriptionStatus;
 import fu.se184491.loadmaster_be.constant.billing.SubscriptionTier;
 import fu.se184491.loadmaster_be.constant.company.CompanyStatus;
+import fu.se184491.loadmaster_be.constant.support.AiPrecheckStatus;
 import fu.se184491.loadmaster_be.constant.support.ContactStatus;
 import fu.se184491.loadmaster_be.constant.support.TrialRequestStatus;
 import fu.se184491.loadmaster_be.dto.PageResponse;
+import fu.se184491.loadmaster_be.dto.request.registration.GuestRegistrationInitRequest;
 import fu.se184491.loadmaster_be.dto.request.support.ApproveTrialAccountRequest;
 import fu.se184491.loadmaster_be.dto.request.support.CreateTrialAccountRequest;
 import fu.se184491.loadmaster_be.dto.request.support.ManagerApproveTrialRequest;
@@ -22,6 +25,7 @@ import fu.se184491.loadmaster_be.entity.support.ContactOfGuest;
 import fu.se184491.loadmaster_be.entity.support.TrialAccountRequest;
 import fu.se184491.loadmaster_be.exception.AppException;
 import fu.se184491.loadmaster_be.exception.ErrorCode;
+import fu.se184491.loadmaster_be.helpers.CompanyCodeGenerator;
 import fu.se184491.loadmaster_be.helpers.TemporaryPasswordGenerator;
 import fu.se184491.loadmaster_be.repository.account.UserRepository;
 import fu.se184491.loadmaster_be.repository.billing.CompanySubscriptionRepository;
@@ -29,22 +33,25 @@ import fu.se184491.loadmaster_be.repository.billing.SubscriptionPlanRepository;
 import fu.se184491.loadmaster_be.repository.company.CompanyRepository;
 import fu.se184491.loadmaster_be.repository.support.ContactOfGuestRepository;
 import fu.se184491.loadmaster_be.repository.support.TrialAccountRequestRepository;
+import fu.se184491.loadmaster_be.service.company.CompanyAgreementService;
 import fu.se184491.loadmaster_be.service.credit.CreditService;
 import fu.se184491.loadmaster_be.service.support.TrialAccountRequestService;
 import jakarta.persistence.criteria.Predicate;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
+import org.springframework.http.HttpStatus;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-
-import lombok.extern.slf4j.Slf4j;
-import org.springframework.http.HttpStatus;
 import org.springframework.web.client.HttpStatusCodeException;
 
 import java.time.Instant;
 import java.time.LocalDateTime;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
@@ -64,9 +71,9 @@ public class TrialAccountRequestServiceImpl implements TrialAccountRequestServic
     private final CreditService creditService;
     private final KeycloakAdminClient keycloakAdminClient;
     private final TemporaryPasswordGenerator temporaryPasswordGenerator;
-    private final fu.se184491.loadmaster_be.helpers.CompanyCodeGenerator companyCodeGenerator;
+    private final CompanyCodeGenerator companyCodeGenerator;
     private final BrevoClient brevoClient;
-    private final fu.se184491.loadmaster_be.service.company.CompanyAgreementService companyAgreementService;
+    private final CompanyAgreementService companyAgreementService;
 
     @Override
     public TrialAccountRequestResponse createTrialRequest(CreateTrialAccountRequest request, User requestedBy) {
@@ -95,11 +102,29 @@ public class TrialAccountRequestServiceImpl implements TrialAccountRequestServic
             initialCompCode = companyCodeGenerator.generateUniqueCode(finalCompName != null ? finalCompName : request.getFullName(), companyRepository::existsByCompanyCode);
         }
 
+        TrialAccountRequest.LocalDateTimeSecondsConverter converter = new TrialAccountRequest.LocalDateTimeSecondsConverter();
+        LocalDateTime createdAt = (request.getCreatedAt() != null && !request.getCreatedAt().isBlank())
+                ? converter.convertToEntityAttribute(request.getCreatedAt())
+                : LocalDateTime.now().truncatedTo(ChronoUnit.SECONDS);
+        LocalDateTime resolvedAt = (request.getResolvedAt() != null && !request.getResolvedAt().isBlank())
+                ? converter.convertToEntityAttribute(request.getResolvedAt())
+                : null;
+        if (resolvedAt != null && resolvedAt.isBefore(createdAt)) {
+            throw new AppException(ErrorCode.RESOLVED_BEFORE_CREATED);
+        }
+
+        if (request.getPhoneNumber() != null && !request.getPhoneNumber().isBlank()) {
+            List<String> phoneVariants = GuestRegistrationInitRequest.buildPhoneVariants(request.getPhoneNumber());
+            if (!phoneVariants.isEmpty() && userRepository.existsByPhoneNumberIn(phoneVariants)) {
+                throw new AppException(ErrorCode.PHONE_NUMBER_ALREADY_EXISTS, "Số điện thoại '" + request.getPhoneNumber() + "' đã được sử dụng trong hệ thống.");
+            }
+        }
+
         TrialAccountRequest trial = TrialAccountRequest.builder()
                 .contact(contact)
                 .fullName(request.getFullName())
                 .email(request.getEmail())
-                .phoneNumber(request.getPhoneNumber())
+                .phoneNumber(request.getPhoneNumber() != null ? request.getPhoneNumber().replaceAll("[\\s.-]", "") : null)
                 .companyName(finalCompName)
                 .companyCode(initialCompCode)
                 .taxCode(request.getTaxCode() != null ? request.getTaxCode() : (contact != null ? contact.getTaxCode() : null))
@@ -107,7 +132,8 @@ public class TrialAccountRequestServiceImpl implements TrialAccountRequestServic
                 .status(TrialRequestStatus.PENDING)
                 .note(request.getNote())
                 .requestedBy(requestedBy)
-                .createdAt(Instant.now())
+                .createdAt(createdAt)
+                .resolvedAt(resolvedAt)
                 .build();
 
         TrialAccountRequest saved = trialAccountRequestRepository.save(trial);
@@ -117,7 +143,7 @@ public class TrialAccountRequestServiceImpl implements TrialAccountRequestServic
     @Override
     @Transactional(readOnly = true)
     public PageResponse<TrialAccountRequestResponse> getTrialRequests(String search, TrialRequestStatus status, Pageable pageable) {
-        org.springframework.security.core.Authentication auth = org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
         boolean isAdminOnly = false;
         if (auth != null) {
             boolean hasAdmin = auth.getAuthorities().stream().anyMatch(a -> a.getAuthority().equals("ROLE_SYSTEM_ADMIN") || a.getAuthority().equals("SYSTEM_ADMIN"));
@@ -137,7 +163,7 @@ public class TrialAccountRequestServiceImpl implements TrialAccountRequestServic
                 // 2. Không hiển thị đơn bị AI từ chối (aiPrecheckStatus == FAILED hoặc handledByName chứa AI)
                 predicates.add(cb.or(
                         cb.isNull(root.get("aiPrecheckStatus")),
-                        cb.notEqual(root.get("aiPrecheckStatus"), fu.se184491.loadmaster_be.constant.support.AiPrecheckStatus.FAILED)
+                        cb.notEqual(root.get("aiPrecheckStatus"), AiPrecheckStatus.FAILED)
                 ));
                 predicates.add(cb.or(
                         cb.isNull(root.get("handledByName")),
@@ -191,9 +217,15 @@ public class TrialAccountRequestServiceImpl implements TrialAccountRequestServic
             throw new AppException(ErrorCode.TRIAL_REQUEST_ALREADY_PROCESSED);
         }
 
-        // 1. Kiểm tra email người dùng đã tồn tại trong DB chưa
+        // 1. Kiểm tra email và số điện thoại người dùng đã tồn tại trong DB chưa
         if (userRepository.existsByEmail(trial.getEmail())) {
             throw new AppException(ErrorCode.EMAIL_ALREADY_EXISTS, "Email '" + trial.getEmail() + "' đã được sử dụng cho một tài khoản khác trong hệ thống.");
+        }
+        if (trial.getPhoneNumber() != null && !trial.getPhoneNumber().isBlank()) {
+            List<String> phoneVariants = GuestRegistrationInitRequest.buildPhoneVariants(trial.getPhoneNumber());
+            if (!phoneVariants.isEmpty() && userRepository.existsByPhoneNumberIn(phoneVariants)) {
+                throw new AppException(ErrorCode.PHONE_NUMBER_ALREADY_EXISTS, "Số điện thoại '" + trial.getPhoneNumber() + "' đã được sử dụng cho một tài khoản khác trong hệ thống.");
+            }
         }
 
         // 2. Chuẩn bị và kiểm tra thông tin công ty (Mã công ty tự sinh tự động từ BE, không nhập tay)
@@ -267,7 +299,7 @@ public class TrialAccountRequestServiceImpl implements TrialAccountRequestServic
                     .fullName(trial.getFullName())
                     .phoneNumber(trial.getPhoneNumber())
                     .userRoleType(UserRole.ADMIN)
-                    .userType(fu.se184491.loadmaster_be.constant.account.UserType.TRIAL)
+                    .userType(UserType.TRIAL)
                     .status(UserStatus.ACTIVE)
                     .build();
             savedUser = userRepository.save(user);
@@ -396,7 +428,7 @@ public class TrialAccountRequestServiceImpl implements TrialAccountRequestServic
         trial.setStatus(TrialRequestStatus.APPROVED);
         trial.setApprovedBy(approvedBy);
         trial.setCreatedCompany(savedCompany);
-        trial.setResolvedAt(Instant.now());
+        trial.setResolvedAt(resolveTimestampNotBeforeCreated(trial.getCreatedAt(), request.getResolvedAt()));
         if (request.getNote() != null) {
             trial.setNote(trial.getNote() != null ? trial.getNote() + "\n" + request.getNote() : request.getNote());
         }
@@ -431,6 +463,13 @@ public class TrialAccountRequestServiceImpl implements TrialAccountRequestServic
             throw new AppException(ErrorCode.EMAIL_ALREADY_EXISTS,
                     "Email người đại diện đã được sử dụng cho một tài khoản khác trong hệ thống.");
         }
+        if (trial.getPhoneNumber() != null && !trial.getPhoneNumber().isBlank()) {
+            List<String> phoneVariants = GuestRegistrationInitRequest.buildPhoneVariants(trial.getPhoneNumber());
+            if (!phoneVariants.isEmpty() && userRepository.existsByPhoneNumberIn(phoneVariants)) {
+                throw new AppException(ErrorCode.PHONE_NUMBER_ALREADY_EXISTS,
+                        "Số điện thoại người đại diện đã được sử dụng cho một tài khoản khác trong hệ thống.");
+            }
+        }
 
         // System Manager không sửa thông tin Guest, chỉ lưu ghi chú nội bộ chuyển tiếp nếu có
         if (request != null && request.getManagerNote() != null && !request.getManagerNote().trim().isEmpty()) {
@@ -462,7 +501,7 @@ public class TrialAccountRequestServiceImpl implements TrialAccountRequestServic
         trial.setManagerReviewedBy(manager);
         trial.setHandledByName(manager != null ? manager.getFullName() : "System Manager");
         trial.setRejectionReason(reason);
-        trial.setResolvedAt(Instant.now());
+        trial.setResolvedAt(resolveTimestampNotBeforeCreated(trial.getCreatedAt(), null));
         if (reason != null && !reason.trim().isEmpty()) {
             trial.setNote(trial.getNote() != null ? trial.getNote() + "\n[Manager từ chối]: " + reason : "[Manager từ chối]: " + reason);
         }
@@ -510,7 +549,7 @@ public class TrialAccountRequestServiceImpl implements TrialAccountRequestServic
 
         trial.setStatus(TrialRequestStatus.REJECTED);
         trial.setApprovedBy(rejectedBy);
-        trial.setResolvedAt(Instant.now());
+        trial.setResolvedAt(resolveTimestampNotBeforeCreated(trial.getCreatedAt(), null));
         if (reason != null && !reason.trim().isEmpty()) {
             trial.setNote(trial.getNote() != null ? trial.getNote() + "\n[Lý do từ chối]: " + reason : "[Lý do từ chối]: " + reason);
         }
@@ -546,6 +585,22 @@ public class TrialAccountRequestServiceImpl implements TrialAccountRequestServic
 
         TrialAccountRequest updated = trialAccountRequestRepository.save(trial);
         return mapToResponse(updated);
+    }
+
+    private LocalDateTime resolveTimestampNotBeforeCreated(LocalDateTime createdAt, String requestedResolvedAt) {
+        if (requestedResolvedAt != null && !requestedResolvedAt.isBlank()) {
+            TrialAccountRequest.LocalDateTimeSecondsConverter converter = new TrialAccountRequest.LocalDateTimeSecondsConverter();
+            LocalDateTime parsed = converter.convertToEntityAttribute(requestedResolvedAt);
+            if (createdAt != null && parsed.isBefore(createdAt.truncatedTo(ChronoUnit.SECONDS))) {
+                throw new AppException(ErrorCode.RESOLVED_BEFORE_CREATED);
+            }
+            return parsed;
+        }
+        LocalDateTime now = LocalDateTime.now().truncatedTo(ChronoUnit.SECONDS);
+        if (createdAt != null && now.isBefore(createdAt.truncatedTo(ChronoUnit.SECONDS))) {
+            return createdAt.truncatedTo(ChronoUnit.SECONDS);
+        }
+        return now;
     }
 
     private TrialAccountRequestResponse mapToResponse(TrialAccountRequest entity) {

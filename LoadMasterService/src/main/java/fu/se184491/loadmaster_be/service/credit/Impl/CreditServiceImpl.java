@@ -1,10 +1,14 @@
 package fu.se184491.loadmaster_be.service.credit.Impl;
 
 import fu.se184491.loadmaster_be.constant.billing.CreditTransactionType;
+import fu.se184491.loadmaster_be.constant.billing.PaymentGateway;
 import fu.se184491.loadmaster_be.constant.billing.SubscriptionStatus;
 import fu.se184491.loadmaster_be.constant.billing.SubscriptionTier;
+import fu.se184491.loadmaster_be.dto.request.credit.CreditTopupRequest;
 import fu.se184491.loadmaster_be.dto.response.credit.CreditBalanceResponse;
 import fu.se184491.loadmaster_be.dto.response.credit.CreditTransactionResponse;
+import fu.se184491.loadmaster_be.dto.response.payment.PaymentUrlResponse;
+import fu.se184491.loadmaster_be.entity.billing.CompanySubscription;
 import fu.se184491.loadmaster_be.entity.billing.CreditAccount;
 import fu.se184491.loadmaster_be.entity.billing.CreditTransaction;
 import fu.se184491.loadmaster_be.entity.common.AuditLog;
@@ -18,6 +22,7 @@ import fu.se184491.loadmaster_be.repository.billing.CreditTransactionRepository;
 import fu.se184491.loadmaster_be.repository.common.AuditLogRepository;
 import fu.se184491.loadmaster_be.repository.company.CompanyRepository;
 import fu.se184491.loadmaster_be.service.credit.CreditService;
+import fu.se184491.loadmaster_be.service.payment.PaymentGatewayService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
@@ -25,6 +30,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
@@ -37,17 +43,23 @@ import java.util.Optional;
 @Slf4j
 public class CreditServiceImpl implements CreditService {
 
-    /** Một lần chạy tối ưu 3D (ba phương án ứng viên) dùng đúng 1 credit, như lần chạy lại. */
-    public static final int INITIAL_OPTIMIZATION_CREDIT_COST = 1;
+    /** Mỗi lần tối ưu 3D (ba phương án ứng viên) xài 2 credit; chạy lại tốn 1 credit. */
+    public static final int INITIAL_OPTIMIZATION_CREDIT_COST = 2;
     public static final int RERUN_OPTIMIZATION_CREDIT_COST = 1;
     /** Số dư sau một lần trừ xuống tới mức này thì báo "Sắp hết credit" cho quản trị công ty (đề xuất, chờ chốt). */
     public static final int LOW_CREDIT_THRESHOLD = 10;
+
+    /** Đơn giá mua lẻ credit (VND/credit) theo hạng gói hiện tại của công ty. */
+    public static final BigDecimal PRICE_PER_CREDIT_BASIC_VND = new BigDecimal("400");
+    public static final BigDecimal PRICE_PER_CREDIT_PRO_VND = new BigDecimal("326");
+    public static final BigDecimal PRICE_PER_CREDIT_ULTIMATE_VND = new BigDecimal("263");
 
     private final CreditAccountRepository creditAccountRepository;
     private final CreditTransactionRepository creditTransactionRepository;
     private final CompanySubscriptionRepository companySubscriptionRepository;
     private final CompanyRepository companyRepository;
     private final AuditLogRepository auditLogRepository;
+    private final PaymentGatewayService paymentGatewayService;
 
     @Override
     @Transactional
@@ -69,6 +81,51 @@ public class CreditServiceImpl implements CreditService {
                 .map(account -> creditTransactionRepository.findByCreditAccountIdOrderByCreatedAtDesc(account.getId(), pageable)
                         .map(this::toResponse))
                 .orElseGet(() -> Page.empty(pageable));
+    }
+
+    @Override
+    @Transactional
+    public PaymentUrlResponse topup(Long companyId, CreditTopupRequest request, String clientIp) {
+        Company company = companyRepository.findById(companyId)
+                .orElseThrow(() -> new AppException(ErrorCode.COMPANY_NOT_FOUND));
+
+        Optional<CompanySubscription> subOpt = companySubscriptionRepository.findByCompanyId(companyId);
+        if (subOpt.isPresent() && subOpt.get().getStatus() != SubscriptionStatus.ACTIVE) {
+            throw new AppException(
+                    ErrorCode.INVALID_INPUT,
+                    "Gói cước của công ty không ở trạng thái hoạt động. Vui lòng gia hạn gói trước khi mua thêm credit."
+            );
+        }
+
+        SubscriptionTier tier = (subOpt.isPresent()
+                && subOpt.get().getPlan() != null
+                && subOpt.get().getPlan().getTier() != null)
+                ? subOpt.get().getPlan().getTier()
+                : SubscriptionTier.BASIC;
+
+        int requestedCredits = request.getCredits();
+
+        BigDecimal pricePerCredit;
+        if (tier == SubscriptionTier.BASIC) {
+            pricePerCredit = PRICE_PER_CREDIT_BASIC_VND;
+        } else if (tier == SubscriptionTier.PRO) {
+            pricePerCredit = PRICE_PER_CREDIT_PRO_VND;
+        } else {
+            pricePerCredit = PRICE_PER_CREDIT_ULTIMATE_VND;
+        }
+
+        BigDecimal totalAmount = pricePerCredit.multiply(BigDecimal.valueOf(requestedCredits));
+        PaymentGateway gateway = request.getGateway() != null ? request.getGateway() : PaymentGateway.VNPAY;
+
+        return paymentGatewayService.createPayment(
+                company,
+                gateway,
+                "CREDIT_TOPUP",
+                Long.valueOf(requestedCredits),
+                totalAmount,
+                "Nạp " + requestedCredits + " credits",
+                clientIp
+        );
     }
 
     @Override
@@ -312,6 +369,18 @@ public class CreditServiceImpl implements CreditService {
         log.info("Purchased/Added {} credits to company {}. New balance: {}", amount, companyId, account.getBalance());
     }
 
+    @Override
+    @Transactional
+    public void resetBalance(Long companyId) {
+        CreditAccount account = creditAccountRepository.findByCompanyIdForUpdate(companyId)
+                .orElseGet(() -> getOrCreateAccount(companyId));
+        if (account.getBalance() != null && account.getBalance() > 0) {
+            log.info("Resetting credit balance for company {} from {} to 0 upon plan change/activation.", companyId, account.getBalance());
+            account.setBalance(0);
+            creditAccountRepository.save(account);
+        }
+    }
+
     private CreditAccount getOrCreateAccount(Long companyId) {
         return creditAccountRepository.findByCompanyId(companyId)
                 .orElseGet(() -> {
@@ -326,13 +395,51 @@ public class CreditServiceImpl implements CreditService {
     }
 
     private void resetBalanceIfSubscriptionInactive(Long companyId, CreditAccount account) {
-        boolean inactive = companySubscriptionRepository.findByCompanyId(companyId)
-                .map(sub -> sub.getStatus() == SubscriptionStatus.EXPIRED || sub.getStatus() == SubscriptionStatus.CANCELLED)
-                .orElse(false);
+        Optional<CompanySubscription> subOpt = companySubscriptionRepository.findByCompanyId(companyId);
+        if (subOpt.isEmpty()) {
+            return;
+        }
+        CompanySubscription sub = subOpt.get();
+        boolean inactive = sub.getStatus() == SubscriptionStatus.EXPIRED || sub.getStatus() == SubscriptionStatus.CANCELLED;
         if (inactive && account.getBalance() != null && account.getBalance() > 0) {
             log.info("Company {} subscription is EXPIRED/CANCELLED. Resetting credit balance from {} to 0.", companyId, account.getBalance());
             account.setBalance(0);
             creditAccountRepository.save(account);
+            return;
+        }
+
+        LocalDateTime now = LocalDateTime.now().truncatedTo(ChronoUnit.SECONDS);
+        if (sub.getStatus() == SubscriptionStatus.ACTIVE
+                && sub.getId() != null
+                && sub.getStartedAt() != null
+                && sub.getExpiresAt() != null
+                && now.isBefore(sub.getExpiresAt())
+                && sub.getPlan() != null
+                && sub.getPlan().getMonthlyCredits() != null
+                && sub.getPlan().getMonthlyCredits() > 0) {
+            long completedMonths = ChronoUnit.MONTHS.between(sub.getStartedAt(), now);
+            if (completedMonths >= 1) {
+                long cycleMonth = completedMonths + 1;
+                String cycleRef = "CYCLE-" + sub.getId() + "-M" + cycleMonth;
+                if (creditTransactionRepository.findByReferenceAndType(cycleRef, CreditTransactionType.MONTHLY_GRANT).isEmpty()) {
+                    int baseMonthlyCredits = sub.getPlan().getMonthlyCredits();
+                    account.setBalance(baseMonthlyCredits);
+                    creditAccountRepository.save(account);
+
+                    CreditTransaction tx = CreditTransaction.builder()
+                            .creditAccount(account)
+                            .amount(baseMonthlyCredits)
+                            .type(CreditTransactionType.MONTHLY_GRANT)
+                            .reference(cycleRef)
+                            .refunded(false)
+                            .createdAt(now)
+                            .build();
+                    tx.prePersist();
+                    creditTransactionRepository.save(tx);
+                    log.info("Reset credit balance for company {} entering billing month {} back to plan base credits {}.",
+                            companyId, cycleMonth, baseMonthlyCredits);
+                }
+            }
         }
     }
 

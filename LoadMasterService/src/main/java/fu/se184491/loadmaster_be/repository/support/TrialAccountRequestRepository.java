@@ -20,6 +20,8 @@ public interface TrialAccountRequestRepository extends JpaRepository<TrialAccoun
     boolean existsByTaxCodeAndStatusInAndIdNot(String taxCode, Collection<TrialRequestStatus> statuses, Long id);
     boolean existsByEmailAndStatusIn(String email, Collection<TrialRequestStatus> statuses);
     boolean existsByEmailAndStatusInAndIdNot(String email, Collection<TrialRequestStatus> statuses, Long id);
+    boolean existsByPhoneNumberInAndStatusIn(Collection<String> phoneNumbers, Collection<TrialRequestStatus> statuses);
+    boolean existsByPhoneNumberInAndStatusInAndIdNot(Collection<String> phoneNumbers, Collection<TrialRequestStatus> statuses, Long id);
     Optional<TrialAccountRequest> findFirstByTaxCodeOrderByCreatedAtDesc(String taxCode);
     Optional<TrialAccountRequest> findFirstByEmailOrderByCreatedAtDesc(String email);
 }

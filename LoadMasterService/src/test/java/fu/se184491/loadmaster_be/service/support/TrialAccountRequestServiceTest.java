@@ -22,6 +22,7 @@ import fu.se184491.loadmaster_be.entity.support.ContactOfGuest;
 import fu.se184491.loadmaster_be.entity.support.TrialAccountRequest;
 import fu.se184491.loadmaster_be.exception.AppException;
 import fu.se184491.loadmaster_be.exception.ErrorCode;
+import fu.se184491.loadmaster_be.helpers.CompanyCodeGenerator;
 import fu.se184491.loadmaster_be.helpers.TemporaryPasswordGenerator;
 import fu.se184491.loadmaster_be.repository.account.UserRepository;
 import fu.se184491.loadmaster_be.repository.billing.CompanySubscriptionRepository;
@@ -29,6 +30,7 @@ import fu.se184491.loadmaster_be.repository.billing.SubscriptionPlanRepository;
 import fu.se184491.loadmaster_be.repository.company.CompanyRepository;
 import fu.se184491.loadmaster_be.repository.support.ContactOfGuestRepository;
 import fu.se184491.loadmaster_be.repository.support.TrialAccountRequestRepository;
+import fu.se184491.loadmaster_be.service.company.CompanyAgreementService;
 import fu.se184491.loadmaster_be.service.credit.CreditService;
 import fu.se184491.loadmaster_be.service.support.impl.TrialAccountRequestServiceImpl;
 import org.junit.jupiter.api.BeforeEach;
@@ -82,13 +84,13 @@ class TrialAccountRequestServiceTest {
     private TemporaryPasswordGenerator temporaryPasswordGenerator;
 
     @Mock
-    private fu.se184491.loadmaster_be.helpers.CompanyCodeGenerator companyCodeGenerator;
+    private CompanyCodeGenerator companyCodeGenerator;
 
     @Mock
     private BrevoClient brevoClient;
 
     @Mock
-    private fu.se184491.loadmaster_be.service.company.CompanyAgreementService companyAgreementService;
+    private CompanyAgreementService companyAgreementService;
 
     @InjectMocks
     private TrialAccountRequestServiceImpl trialAccountRequestService;
@@ -140,7 +142,7 @@ class TrialAccountRequestServiceTest {
                 .taxCode("0109988776")
                 .interestedPlan(proPlan)
                 .status(TrialRequestStatus.PENDING)
-                .createdAt(Instant.now())
+                .createdAt(LocalDateTime.now().truncatedTo(ChronoUnit.SECONDS))
                 .build();
     }
 

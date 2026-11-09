@@ -1,5 +1,6 @@
 package fu.se184491.loadmaster_be.dto.request.subscription;
 
+import fu.se184491.loadmaster_be.constant.billing.BillingCycle;
 import fu.se184491.loadmaster_be.constant.billing.PaymentGateway;
 import jakarta.validation.constraints.NotNull;
 import lombok.*;
@@ -15,4 +16,6 @@ public class SubscribeRequest {
 
     @Builder.Default
     private PaymentGateway gateway = PaymentGateway.VNPAY;
+
+    private BillingCycle billingCycle;
 }

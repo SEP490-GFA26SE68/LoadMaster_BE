@@ -4,6 +4,7 @@ import fu.se184491.loadmaster_be.client.BrevoClient;
 import fu.se184491.loadmaster_be.constant.billing.SubscriptionTier;
 import fu.se184491.loadmaster_be.constant.support.AiPrecheckStatus;
 import fu.se184491.loadmaster_be.constant.support.TrialRequestStatus;
+import fu.se184491.loadmaster_be.dto.request.registration.GuestRegistrationInitRequest;
 import fu.se184491.loadmaster_be.dto.request.support.GuestTrialInitRequest;
 import fu.se184491.loadmaster_be.dto.request.support.GuestTrialResendOtpRequest;
 import fu.se184491.loadmaster_be.dto.request.support.GuestTrialVerifyOtpRequest;
@@ -14,11 +15,13 @@ import fu.se184491.loadmaster_be.entity.support.TrialAccountRequest;
 import fu.se184491.loadmaster_be.entity.support.TrialRegistrationSession;
 import fu.se184491.loadmaster_be.exception.AppException;
 import fu.se184491.loadmaster_be.exception.ErrorCode;
+import fu.se184491.loadmaster_be.helpers.CompanyCodeGenerator;
+import fu.se184491.loadmaster_be.repository.account.UserRepository;
 import fu.se184491.loadmaster_be.repository.billing.SubscriptionPlanRepository;
+import fu.se184491.loadmaster_be.repository.company.CompanyRepository;
 import fu.se184491.loadmaster_be.repository.support.TrialAccountRequestRepository;
 import fu.se184491.loadmaster_be.repository.support.TrialRegistrationSessionRepository;
 import fu.se184491.loadmaster_be.service.security.OtpHasher;
-import fu.se184491.loadmaster_be.service.support.TrialPreValidationService;
 import fu.se184491.loadmaster_be.service.support.TrialRegistrationService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -26,9 +29,11 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.security.SecureRandom;
-import java.time.Instant;
+import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
+import java.util.List;
 import java.util.UUID;
+import java.util.regex.Pattern;
 
 @Service
 @RequiredArgsConstructor
@@ -39,15 +44,21 @@ public class TrialRegistrationServiceImpl implements TrialRegistrationService {
     private static final int OTP_EXPIRY_MINUTES = 10;
     private static final int OTP_RESEND_COOLDOWN_SECONDS = 60;
     private static final int SESSION_EXPIRY_HOURS = 24;
+    private static final Pattern TAX_CODE_PATTERN = Pattern.compile("^([0-9]{10}|[0-9]{10}-[0-9]{3}|[0-9]{13})$");
+    private static final List<TrialRequestStatus> ACTIVE_TRIAL_STATUSES = List.of(
+            TrialRequestStatus.PENDING,
+            TrialRequestStatus.PENDING_ADMIN_CREATION,
+            TrialRequestStatus.APPROVED
+    );
 
     private final TrialRegistrationSessionRepository sessionRepository;
     private final TrialAccountRequestRepository trialAccountRequestRepository;
     private final SubscriptionPlanRepository subscriptionPlanRepository;
-    private final fu.se184491.loadmaster_be.repository.company.CompanyRepository companyRepository;
-    private final fu.se184491.loadmaster_be.helpers.CompanyCodeGenerator companyCodeGenerator;
+    private final CompanyRepository companyRepository;
+    private final UserRepository userRepository;
+    private final CompanyCodeGenerator companyCodeGenerator;
     private final OtpHasher otpHasher;
     private final BrevoClient brevoClient;
-    private final TrialPreValidationService trialPreValidationService;
 
     @Override
     @Transactional
@@ -56,19 +67,45 @@ public class TrialRegistrationServiceImpl implements TrialRegistrationService {
         String taxCode = request.getTaxCode().trim();
 
         // 1. Kiểm tra thông tin sơ bộ trước khi sinh OTP (Bắt buộc hợp lệ mới cho gửi OTP)
-        trialPreValidationService.checkEligibility(taxCode, email);
+        if (!request.isPhoneNumberValidForCountry()) {
+            throw new AppException(ErrorCode.INVALID_PHONE_NUMBER);
+        }
+        checkEligibility(taxCode, email);
+        if (request.getPhoneNumber() != null && !request.getPhoneNumber().isBlank()) {
+            List<String> phoneVariants = GuestRegistrationInitRequest.buildPhoneVariants(request.getPhoneNumber());
+            if (!phoneVariants.isEmpty() && (userRepository.existsByPhoneNumberIn(phoneVariants)
+                    || trialAccountRequestRepository.existsByPhoneNumberInAndStatusIn(
+                    phoneVariants,
+                    ACTIVE_TRIAL_STATUSES))) {
+                throw new AppException(ErrorCode.PHONE_NUMBER_ALREADY_EXISTS, "Số điện thoại này đã được đăng ký hoặc đang trong quá trình xét duyệt dùng thử.");
+            }
+        }
 
         // 2. Gói dùng thử bắt buộc là gói Basic
         SubscriptionPlan basicPlan = subscriptionPlanRepository.findByTierAndActiveTrue(SubscriptionTier.BASIC)
                 .orElseGet(() -> subscriptionPlanRepository.findByActiveTrue().stream().findFirst().orElse(null));
 
-        Instant now = Instant.now();
+        TrialRegistrationSession.LocalDateTimeSecondsConverter converter = new TrialRegistrationSession.LocalDateTimeSecondsConverter();
+        LocalDateTime now = (request.getCreatedAt() != null && !request.getCreatedAt().isBlank())
+                ? converter.convertToEntityAttribute(request.getCreatedAt())
+                : LocalDateTime.now().truncatedTo(ChronoUnit.SECONDS);
 
         // 3. Sinh OTP 6 số ngẫu nhiên
         String otp = String.format("%06d", RANDOM.nextInt(1_000_000));
         String hashedOtp = otpHasher.hash(email, otp);
-        Instant otpExpiresAt = now.plus(OTP_EXPIRY_MINUTES, ChronoUnit.MINUTES);
-        Instant otpResendAllowedAt = now.plus(OTP_RESEND_COOLDOWN_SECONDS, ChronoUnit.SECONDS);
+        LocalDateTime otpExpiresAt = (request.getOtpExpiresAt() != null && !request.getOtpExpiresAt().isBlank())
+                ? converter.convertToEntityAttribute(request.getOtpExpiresAt())
+                : now.plus(OTP_EXPIRY_MINUTES, ChronoUnit.MINUTES).truncatedTo(ChronoUnit.SECONDS);
+        LocalDateTime otpResendAllowedAt = (request.getOtpResendAllowedAt() != null && !request.getOtpResendAllowedAt().isBlank())
+                ? converter.convertToEntityAttribute(request.getOtpResendAllowedAt())
+                : now.plus(OTP_RESEND_COOLDOWN_SECONDS, ChronoUnit.SECONDS).truncatedTo(ChronoUnit.SECONDS);
+        LocalDateTime expiresAt = (request.getExpiresAt() != null && !request.getExpiresAt().isBlank())
+                ? converter.convertToEntityAttribute(request.getExpiresAt())
+                : now.plus(SESSION_EXPIRY_HOURS, ChronoUnit.HOURS).truncatedTo(ChronoUnit.SECONDS);
+
+        if (expiresAt.isBefore(now) || otpExpiresAt.isBefore(now) || otpResendAllowedAt.isBefore(now)) {
+            throw new AppException(ErrorCode.EXPIRES_BEFORE_CREATED);
+        }
 
         // 4. Tạo session lưu trữ tạm thời
         String token = UUID.randomUUID().toString();
@@ -76,7 +113,7 @@ public class TrialRegistrationServiceImpl implements TrialRegistrationService {
                 .token(token)
                 .email(email)
                 .fullName(request.getFullName().trim())
-                .phoneNumber(request.getPhoneNumber() != null ? request.getPhoneNumber().trim() : null)
+                .phoneNumber(request.getPhoneNumber() != null ? request.getPhoneNumber().replaceAll("[\\s.-]", "") : null)
                 .companyName(request.getCompanyName().trim())
                 .taxCode(taxCode)
                 .companyAddress(request.getCompanyAddress() != null ? request.getCompanyAddress().trim() : null)
@@ -87,7 +124,7 @@ public class TrialRegistrationServiceImpl implements TrialRegistrationService {
                 .otpResendAllowedAt(otpResendAllowedAt)
                 .verified(false)
                 .createdAt(now)
-                .expiresAt(now.plus(SESSION_EXPIRY_HOURS, ChronoUnit.HOURS))
+                .expiresAt(expiresAt)
                 .build();
 
         sessionRepository.save(session);
@@ -99,6 +136,8 @@ public class TrialRegistrationServiceImpl implements TrialRegistrationService {
                 .token(token)
                 .email(email)
                 .maskedEmail(maskEmail(email))
+                .createdAt(session.getCreatedAt())
+                .expiresAt(session.getExpiresAt())
                 .otpExpiresAt(otpExpiresAt)
                 .otpResendAllowedAt(otpResendAllowedAt)
                 .message("Mã xác thực OTP gồm 6 chữ số đã được gửi đến email của bạn.")
@@ -111,7 +150,7 @@ public class TrialRegistrationServiceImpl implements TrialRegistrationService {
         TrialRegistrationSession session = sessionRepository.findByToken(request.getToken())
                 .orElseThrow(() -> new AppException(ErrorCode.REGISTRATION_SESSION_NOT_FOUND, "Phiên đăng ký không hợp lệ hoặc đã hết hạn"));
 
-        Instant now = Instant.now();
+        LocalDateTime now = LocalDateTime.now().truncatedTo(ChronoUnit.SECONDS);
         if (session.getExpiresAt().isBefore(now)) {
             throw new AppException(ErrorCode.REGISTRATION_SESSION_EXPIRED, "Phiên đăng ký đã hết hạn. Vui lòng thực hiện lại.");
         }
@@ -175,7 +214,7 @@ public class TrialRegistrationServiceImpl implements TrialRegistrationService {
         TrialRegistrationSession session = sessionRepository.findByToken(request.getToken())
                 .orElseThrow(() -> new AppException(ErrorCode.REGISTRATION_SESSION_NOT_FOUND, "Phiên đăng ký không hợp lệ"));
 
-        Instant now = Instant.now();
+        LocalDateTime now = LocalDateTime.now().truncatedTo(ChronoUnit.SECONDS);
         if (session.getOtpResendAllowedAt() != null && now.isBefore(session.getOtpResendAllowedAt())) {
             long waitSeconds = ChronoUnit.SECONDS.between(now, session.getOtpResendAllowedAt());
             throw new AppException(ErrorCode.OTP_RESEND_COOLDOWN, "Vui lòng đợi " + Math.max(1, waitSeconds) + " giây trước khi gửi lại OTP.");
@@ -184,8 +223,8 @@ public class TrialRegistrationServiceImpl implements TrialRegistrationService {
         // Tạo OTP mới
         String otp = String.format("%06d", RANDOM.nextInt(1_000_000));
         String hashedOtp = otpHasher.hash(session.getEmail(), otp);
-        Instant otpExpiresAt = now.plus(OTP_EXPIRY_MINUTES, ChronoUnit.MINUTES);
-        Instant otpResendAllowedAt = now.plus(OTP_RESEND_COOLDOWN_SECONDS, ChronoUnit.SECONDS);
+        LocalDateTime otpExpiresAt = now.plus(OTP_EXPIRY_MINUTES, ChronoUnit.MINUTES).truncatedTo(ChronoUnit.SECONDS);
+        LocalDateTime otpResendAllowedAt = now.plus(OTP_RESEND_COOLDOWN_SECONDS, ChronoUnit.SECONDS).truncatedTo(ChronoUnit.SECONDS);
 
         session.setOtpHash(hashedOtp);
         session.setOtpExpiresAt(otpExpiresAt);
@@ -198,10 +237,43 @@ public class TrialRegistrationServiceImpl implements TrialRegistrationService {
                 .token(session.getToken())
                 .email(session.getEmail())
                 .maskedEmail(maskEmail(session.getEmail()))
+                .createdAt(session.getCreatedAt())
+                .expiresAt(session.getExpiresAt())
                 .otpExpiresAt(otpExpiresAt)
                 .otpResendAllowedAt(otpResendAllowedAt)
                 .message("Mã OTP mới đã được gửi lại vào email của bạn.")
                 .build();
+    }
+
+    private void checkEligibility(String taxCode, String email) {
+        String cleanTax = taxCode != null ? taxCode.trim() : "";
+        String cleanEmail = email != null ? email.trim().toLowerCase() : "";
+
+        if (!TAX_CODE_PATTERN.matcher(cleanTax).matches()) {
+            throw new AppException(
+                    ErrorCode.INVALID_TAX_CODE_FORMAT,
+                    "Mã số thuế không đúng cấu trúc quy định (yêu cầu 10 chữ số hoặc 13 chữ số có/không có dấu gạch ngang).");
+        }
+        if (companyRepository.existsByTaxCode(cleanTax)) {
+            throw new AppException(
+                    ErrorCode.TAX_CODE_ALREADY_EXISTS,
+                    "Doanh nghiệp với Mã số thuế này đã hoạt động trên hệ thống LoadMaster.");
+        }
+        if (trialAccountRequestRepository.existsByTaxCodeAndStatusIn(cleanTax, ACTIVE_TRIAL_STATUSES)) {
+            throw new AppException(
+                    ErrorCode.TAX_CODE_ALREADY_EXISTS,
+                    "Mã số thuế này đã được đăng ký hoặc đang trong quá trình xét duyệt dùng thử.");
+        }
+        if (userRepository.existsByEmail(cleanEmail)) {
+            throw new AppException(
+                    ErrorCode.EMAIL_ALREADY_EXISTS,
+                    "Email này đã được sử dụng cho một tài khoản khác trên hệ thống.");
+        }
+        if (trialAccountRequestRepository.existsByEmailAndStatusIn(cleanEmail, ACTIVE_TRIAL_STATUSES)) {
+            throw new AppException(
+                    ErrorCode.EMAIL_ALREADY_EXISTS,
+                    "Email này đã gửi yêu cầu dùng thử gần đây và đang được xử lý.");
+        }
     }
 
     private void sendOtpEmail(String email, String fullName, String otp) {

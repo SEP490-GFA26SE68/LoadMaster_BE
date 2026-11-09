@@ -397,4 +397,154 @@ class SupportTicketServiceTest {
                 "Should reject when a message contains more than 5 images"
         );
     }
+
+    @Test
+    @DisplayName("updateTicket - Supporter moving OPEN ticket to IN_PROGRESS locks ticket to that supporter and blocks a second supporter")
+    void updateTicket_whenSupporterMovesOpenToInProgress_locksTicketAndBlocksSecondSupporter() {
+        User secondSupporter = User.builder()
+                .id(6L)
+                .email("supporter2@loadmaster.vn")
+                .fullName("Second Supporter")
+                .userRoleType(UserRole.SYSTEM_SUPPORTER)
+                .status(UserStatus.ACTIVE)
+                .build();
+
+        SupportTicket ticket = SupportTicket.builder()
+                .id(401L)
+                .ticketCode("TCK-20261109-0401")
+                .requester(companyAdmin)
+                .subject("Cần kiểm tra tải trọng")
+                .category(TicketCategory.SYSTEM_BUG)
+                .priority(TicketPriority.HIGH)
+                .status(TicketStatus.OPEN)
+                .build();
+
+        when(supportTicketRepository.findById(401L)).thenReturn(Optional.of(ticket));
+        when(supportTicketRepository.save(any(SupportTicket.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        // Supporter 1 picks up the OPEN ticket and moves it to IN_PROGRESS
+        when(currentUserService.getCurrentUser()).thenReturn(systemSupporter);
+        SupportTicketResponse lockedResponse = supportTicketService.updateTicket(
+                401L,
+                new UpdateSupportTicketRequest(TicketStatus.IN_PROGRESS, null, null)
+        );
+        assertEquals(TicketStatus.IN_PROGRESS, lockedResponse.getStatus());
+        assertEquals(5L, lockedResponse.getAssignedToId(), "Ticket must be locked to Supporter 1 (id=5)");
+
+        // Supporter 2 tries to reply or change status while ticket is IN_PROGRESS -> rejected
+        when(currentUserService.getCurrentUser()).thenReturn(secondSupporter);
+        AppException lockEx = assertThrows(
+                AppException.class,
+                () -> supportTicketService.updateTicket(
+                        401L,
+                        new UpdateSupportTicketRequest(
+                                TicketStatus.RESOLVED,
+                                null,
+                                "[{\"authorId\":\"6\",\"authorName\":\"Second Supporter\",\"authorRole\":\"systemSupporter\",\"text\":\"Để tôi xử lý\",\"at\":\"2026-11-09 10:00:00\"}]"
+                        )
+                )
+        );
+        assertEquals(fu.se184491.loadmaster_be.exception.ErrorCode.SUPPORT_TICKET_LOCKED, lockEx.getErrorCode());
+
+        // Client (requester) CAN still reply while ticket is IN_PROGRESS
+        when(currentUserService.getCurrentUser()).thenReturn(companyAdmin);
+        SupportTicketResponse clientReplyResp = supportTicketService.updateTicket(
+                401L,
+                new UpdateSupportTicketRequest(
+                        null,
+                        null,
+                        "[{\"authorId\":\"2\",\"authorName\":\"Acme Admin\",\"authorRole\":\"companyAdmin\",\"text\":\"Em gửi thêm thông tin\",\"at\":\"2026-11-09 10:05:00\"}]"
+                )
+        );
+        assertEquals(TicketStatus.IN_PROGRESS, clientReplyResp.getStatus());
+        assertEquals(5L, clientReplyResp.getAssignedToId(), "Lock remains with Supporter 1 while IN_PROGRESS");
+    }
+
+    @Test
+    @DisplayName("updateTicket - RESOLVED ticket is unlocked for any supporter, and when client replies it transitions back to OPEN")
+    void updateTicket_whenResolved_anySupporterCanAccess_andClientReplyTransitionsBackToOpen() {
+        User secondSupporter = User.builder()
+                .id(6L)
+                .email("supporter2@loadmaster.vn")
+                .fullName("Second Supporter")
+                .userRoleType(UserRole.SYSTEM_SUPPORTER)
+                .status(UserStatus.ACTIVE)
+                .build();
+
+        SupportTicket ticket = SupportTicket.builder()
+                .id(402L)
+                .ticketCode("TCK-20261109-0402")
+                .requester(companyAdmin)
+                .assignedTo(systemSupporter)
+                .subject("Hỏi về cước phí")
+                .category(TicketCategory.BILLING)
+                .priority(TicketPriority.MEDIUM)
+                .status(TicketStatus.RESOLVED)
+                .resolvedAt(LocalDateTime.now().truncatedTo(java.time.temporal.ChronoUnit.SECONDS))
+                .build();
+
+        when(supportTicketRepository.findById(402L)).thenReturn(Optional.of(ticket));
+        when(supportTicketRepository.save(any(SupportTicket.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        // Client replies to RESOLVED ticket -> automatically transitions back to OPEN and clears assignedTo lock
+        when(currentUserService.getCurrentUser()).thenReturn(companyAdmin);
+        SupportTicketResponse reopened = supportTicketService.updateTicket(
+                402L,
+                new UpdateSupportTicketRequest(
+                        null,
+                        null,
+                        "[{\"authorId\":\"2\",\"authorName\":\"Acme Admin\",\"authorRole\":\"companyAdmin\",\"text\":\"Em vẫn còn thắc mắc thêm\",\"at\":\"2026-11-09 11:00:00\"}]"
+                )
+        );
+        assertEquals(TicketStatus.OPEN, reopened.getStatus(), "Client reply on RESOLVED ticket must move status back to OPEN");
+        org.junit.jupiter.api.Assertions.assertNull(reopened.getAssignedToId(), "Reopened OPEN ticket must not be locked to any supporter");
+
+        // Now Supporter 2 can pick it up and move to IN_PROGRESS, locking it to Supporter 2
+        when(currentUserService.getCurrentUser()).thenReturn(secondSupporter);
+        SupportTicketResponse pickedBySecond = supportTicketService.updateTicket(
+                402L,
+                new UpdateSupportTicketRequest(TicketStatus.IN_PROGRESS, null, null)
+        );
+        assertEquals(TicketStatus.IN_PROGRESS, pickedBySecond.getStatus());
+        assertEquals(6L, pickedBySecond.getAssignedToId());
+    }
+
+    @Test
+    @DisplayName("updateTicket - CLOSED ticket is strictly read-only for both supporter and client")
+    void updateTicket_whenClosed_rejectsUpdatesFromBothSupporterAndClient() {
+        SupportTicket closedTicket = SupportTicket.builder()
+                .id(403L)
+                .ticketCode("TCK-20261109-0403")
+                .requester(companyAdmin)
+                .subject("Phiếu đã đóng")
+                .category(TicketCategory.SYSTEM_BUG)
+                .priority(TicketPriority.HIGH)
+                .status(TicketStatus.CLOSED)
+                .resolvedAt(LocalDateTime.now().truncatedTo(java.time.temporal.ChronoUnit.SECONDS))
+                .build();
+
+        when(supportTicketRepository.findById(403L)).thenReturn(Optional.of(closedTicket));
+
+        AppException supporterEx = assertThrows(
+                AppException.class,
+                () -> supportTicketService.updateTicket(
+                        403L,
+                        new UpdateSupportTicketRequest(TicketStatus.OPEN, null, null)
+                )
+        );
+        assertEquals(fu.se184491.loadmaster_be.exception.ErrorCode.SUPPORT_TICKET_CLOSED, supporterEx.getErrorCode());
+
+        AppException clientEx = assertThrows(
+                AppException.class,
+                () -> supportTicketService.updateTicket(
+                        403L,
+                        new UpdateSupportTicketRequest(
+                                null,
+                                null,
+                                "[{\"authorId\":\"2\",\"authorName\":\"Acme Admin\",\"authorRole\":\"companyAdmin\",\"text\":\"Chat vào phiếu đã đóng\",\"at\":\"2026-11-09 12:00:00\"}]"
+                        )
+                )
+        );
+        assertEquals(fu.se184491.loadmaster_be.exception.ErrorCode.SUPPORT_TICKET_CLOSED, clientEx.getErrorCode());
+    }
 }

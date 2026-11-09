@@ -15,6 +15,7 @@ import java.time.temporal.ChronoUnit;
 
 @Entity
 @Table(name = "support_tickets")
+@Check(name = "chk_support_tickets_resolved_after_created", constraints = "created_at IS NULL OR resolved_at IS NULL OR resolved_at >= created_at")
 @Getter @Setter @NoArgsConstructor @AllArgsConstructor @Builder
 public class SupportTicket {
     @Id @GeneratedValue(strategy = GenerationType.IDENTITY)

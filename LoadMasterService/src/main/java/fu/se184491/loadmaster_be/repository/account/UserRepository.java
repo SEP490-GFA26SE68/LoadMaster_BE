@@ -24,6 +24,10 @@ public interface UserRepository extends
 
     boolean existsByEmail(String email);
 
+    boolean existsByPhoneNumber(String phoneNumber);
+
+    boolean existsByPhoneNumberIn(java.util.Collection<String> phoneNumbers);
+
     List<User> findByCompanyIdAndUserRoleTypeAndStatus(Long companyId, UserRole userRole, UserStatus userStatus);
 
     List<User> findByStatusAndUpdatedAtBefore(UserStatus status, LocalDateTime updatedAtCutoff);

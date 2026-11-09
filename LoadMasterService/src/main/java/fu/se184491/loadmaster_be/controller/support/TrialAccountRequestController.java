@@ -1,6 +1,7 @@
 package fu.se184491.loadmaster_be.controller.support;
 
 import fu.se184491.loadmaster_be.constant.support.TrialRequestStatus;
+import fu.se184491.loadmaster_be.dto.ApiResponse;
 import fu.se184491.loadmaster_be.dto.PageResponse;
 import fu.se184491.loadmaster_be.dto.request.support.ApproveTrialAccountRequest;
 import fu.se184491.loadmaster_be.dto.request.support.CreateTrialAccountRequest;
@@ -32,13 +33,14 @@ public class TrialAccountRequestController {
 
     @PostMapping
     @PreAuthorize("hasRole('SYSTEM_ADMIN') or hasAuthority('SYSTEM_ADMIN')")
-    public ResponseEntity<TrialAccountRequestResponse> createTrialRequest(
+    public ResponseEntity<ApiResponse<TrialAccountRequestResponse>> createTrialRequest(
             @Valid @RequestBody CreateTrialAccountRequest request,
             @AuthenticationPrincipal Jwt jwt
     ) {
         User requester = resolveUser(jwt);
         TrialAccountRequestResponse response = trialAccountRequestService.createTrialRequest(request, requester);
-        return ResponseEntity.status(HttpStatus.CREATED).body(response);
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(ApiResponse.success("Trial account request created successfully", response));
     }
 
     @GetMapping
@@ -56,41 +58,41 @@ public class TrialAccountRequestController {
 
     @GetMapping("/{id}")
     @PreAuthorize("hasAnyRole('SYSTEM_MANAGER', 'SYSTEM_ADMIN') or hasAnyAuthority('SYSTEM_MANAGER', 'SYSTEM_ADMIN')")
-    public ResponseEntity<TrialAccountRequestResponse> getTrialRequestById(@PathVariable Long id) {
+    public ResponseEntity<ApiResponse<TrialAccountRequestResponse>> getTrialRequestById(@PathVariable Long id) {
         TrialAccountRequestResponse response = trialAccountRequestService.getTrialRequestById(id);
-        return ResponseEntity.ok(response);
+        return ResponseEntity.ok(ApiResponse.success("Trial account request retrieved successfully", response));
     }
 
     @PostMapping("/{id}/manager-approve")
     @PreAuthorize("hasRole('SYSTEM_MANAGER') or hasAuthority('SYSTEM_MANAGER')")
-    public ResponseEntity<TrialAccountRequestResponse> managerApprove(
+    public ResponseEntity<ApiResponse<TrialAccountRequestResponse>> managerApprove(
             @PathVariable Long id,
             @Valid @RequestBody(required = false) ManagerApproveTrialRequest request,
             @AuthenticationPrincipal Jwt jwt
     ) {
         User manager = resolveUser(jwt);
         TrialAccountRequestResponse response = trialAccountRequestService.managerApprove(id, request, manager);
-        return ResponseEntity.ok(response);
+        return ResponseEntity.ok(ApiResponse.success("Trial account request approved by System Manager", response));
     }
 
     @PostMapping("/{id}/manager-reject")
     @PreAuthorize("hasRole('SYSTEM_MANAGER') or hasAuthority('SYSTEM_MANAGER')")
-    public ResponseEntity<TrialAccountRequestResponse> managerReject(
+    public ResponseEntity<ApiResponse<TrialAccountRequestResponse>> managerReject(
             @PathVariable Long id,
-            @RequestBody(required = false) RejectTrialAccountRequest request,
+            @Valid @RequestBody(required = false) RejectTrialAccountRequest request,
             @AuthenticationPrincipal Jwt jwt
     ) {
         User manager = resolveUser(jwt);
         String reason = (request != null) ? request.getReason() : null;
         TrialAccountRequestResponse response = trialAccountRequestService.managerReject(id, reason, manager);
-        return ResponseEntity.ok(response);
+        return ResponseEntity.ok(ApiResponse.success("Trial account request rejected by System Manager", response));
     }
 
     @PostMapping("/{id}/approve")
     @PreAuthorize("hasRole('SYSTEM_ADMIN') or hasAuthority('SYSTEM_ADMIN')")
-    public ResponseEntity<TrialAccountRequestResponse> approveTrialRequest(
+    public ResponseEntity<ApiResponse<TrialAccountRequestResponse>> approveTrialRequest(
             @PathVariable Long id,
-            @RequestBody(required = false) ApproveTrialAccountRequest request,
+            @Valid @RequestBody(required = false) ApproveTrialAccountRequest request,
             @AuthenticationPrincipal Jwt jwt
     ) {
         User approver = resolveUser(jwt);
@@ -98,20 +100,20 @@ public class TrialAccountRequestController {
             request = new ApproveTrialAccountRequest();
         }
         TrialAccountRequestResponse response = trialAccountRequestService.approveTrialRequest(id, request, approver);
-        return ResponseEntity.ok(response);
+        return ResponseEntity.ok(ApiResponse.success("Trial account request approved successfully", response));
     }
 
     @PostMapping("/{id}/reject")
     @PreAuthorize("hasRole('SYSTEM_ADMIN') or hasAuthority('SYSTEM_ADMIN')")
-    public ResponseEntity<TrialAccountRequestResponse> rejectTrialRequest(
+    public ResponseEntity<ApiResponse<TrialAccountRequestResponse>> rejectTrialRequest(
             @PathVariable Long id,
-            @RequestBody(required = false) RejectTrialAccountRequest request,
+            @Valid @RequestBody(required = false) RejectTrialAccountRequest request,
             @AuthenticationPrincipal Jwt jwt
     ) {
         User rejecter = resolveUser(jwt);
         String reason = (request != null) ? request.getReason() : null;
         TrialAccountRequestResponse response = trialAccountRequestService.rejectTrialRequest(id, reason, rejecter);
-        return ResponseEntity.ok(response);
+        return ResponseEntity.ok(ApiResponse.success("Trial account request rejected successfully", response));
     }
 
     private User resolveUser(Jwt jwt) {
