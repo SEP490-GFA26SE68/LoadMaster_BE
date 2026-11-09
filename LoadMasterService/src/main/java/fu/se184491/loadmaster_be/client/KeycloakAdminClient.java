@@ -40,6 +40,8 @@ public class KeycloakAdminClient {
         body.put("email", email);
         body.put("emailVerified", true);
         body.put("enabled", true);
+        body.put("firstName", "System");
+        body.put("lastName", "Admin");
 
         ResponseEntity<Void> response =
                 keycloakAdminRestClient
@@ -189,5 +191,51 @@ public class KeycloakAdminClient {
         }
 
         return users[0].id();
+    }
+
+    public void ensureRealmRoleExists(String roleName) {
+        String token = serviceTokenProvider.getKeycloakAdminToken();
+
+        try {
+            keycloakAdminRestClient.get()
+                    .uri("/admin/realms/{realm}/roles/{role}",
+                            REALM, roleName)
+                    .headers(h -> h.setBearerAuth(token))
+                    .retrieve()
+                    .toBodilessEntity();
+
+        } catch (org.springframework.web.client.HttpClientErrorException.NotFound ex) {
+
+            keycloakAdminRestClient.post()
+                    .uri("/admin/realms/{realm}/roles", REALM)
+                    .headers(h -> h.setBearerAuth(token))
+                    .body(Map.of("name", roleName))
+                    .retrieve()
+                    .toBodilessEntity();
+        }
+    }
+
+    public boolean hasRealmRole(String userId, String roleName) {
+
+        String token = serviceTokenProvider.getKeycloakAdminToken();
+
+        KeycloakRoleRepresentation[] roles =
+                keycloakAdminRestClient
+                        .get()
+                        .uri(
+                                "/admin/realms/{realm}/users/{userId}/role-mappings/realm",
+                                REALM,
+                                userId
+                        )
+                        .headers(h -> h.setBearerAuth(token))
+                        .retrieve()
+                        .body(KeycloakRoleRepresentation[].class);
+
+        if (roles == null) {
+            return false;
+        }
+
+        return java.util.Arrays.stream(roles)
+                .anyMatch(role -> roleName.equals(role.name()));
     }
 }

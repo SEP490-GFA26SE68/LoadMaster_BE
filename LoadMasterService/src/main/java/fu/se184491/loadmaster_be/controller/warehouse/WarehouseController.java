@@ -38,9 +38,8 @@ public class WarehouseController {
     @Operation(summary = "Get warehouse tasks", description = "Retrieve list of trips with approved load plans that are ready for loading")
     public ResponseEntity<ApiResponse<List<WarehouseTaskResponse>>> getTasks(
             @RequestParam(value = "companyId", required = false) Long companyId,
-            @RequestParam(value = "workerId", required = false) Long workerId,
-            @RequestParam(value = "includeAwaitingReplan", defaultValue = "false") boolean includeAwaitingReplan) {
-        List<WarehouseTaskResponse> tasks = warehouseService.getTasks(companyId, workerId, includeAwaitingReplan);
+            @RequestParam(value = "workerId", required = false) Long workerId) {
+        List<WarehouseTaskResponse> tasks = warehouseService.getTasks(companyId, workerId);
         return ResponseEntity.ok(ApiResponse.success("Lấy danh sách nhiệm vụ bốc xếp thành công", tasks));
     }
 

@@ -4,74 +4,34 @@ package fu.se184491.loadmaster_be.service.qr.Impl;
 import fu.se184491.loadmaster_be.exception.AppException;
 import fu.se184491.loadmaster_be.exception.ErrorCode;
 import fu.se184491.loadmaster_be.service.qr.AesQrTokenService;
-import jakarta.persistence.AttributeConverter;
-import jakarta.persistence.Converter;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import javax.crypto.Cipher;
-import javax.crypto.spec.GCMParameterSpec;
 import javax.crypto.spec.IvParameterSpec;
 import javax.crypto.spec.SecretKeySpec;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
-import java.security.SecureRandom;
 import java.util.Arrays;
 import java.util.Base64;
-import java.util.regex.Pattern;
 
 @Slf4j
 @Service
-@Converter(autoApply = false)
-public class AesQrTokenServiceImpl
-        implements AesQrTokenService,
-        AttributeConverter<String, String> {
+public class AesQrTokenServiceImpl implements AesQrTokenService {
 
-    private static final String VERSION = "v2:";
-    private static final String GCM = "AES/GCM/NoPadding";
-    private static final String LEGACY_CBC =
+    private static final String TRANSFORMATION =
             "AES/CBC/PKCS5Padding";
 
-    private static final int NONCE_SIZE = 12;
-    private static final int TAG_BITS = 128;
+    private final SecretKeySpec keySpec;
+    private final IvParameterSpec legacyIvSpec;
 
-    private static final byte[] AAD =
-            "LoadMaster:packages.qr_token:v2"
-                    .getBytes(StandardCharsets.UTF_8);
-
-    private static final SecureRandom RANDOM =
-            new SecureRandom();
-
-    private static final Pattern UUID_PATTERN =
-            Pattern.compile(
-                    "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-" +
-                            "[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-" +
-                            "[0-9a-fA-F]{12}$"
-            );
-
-    private static volatile SecretKeySpec sharedKeySpec;
-    private static volatile IvParameterSpec sharedLegacyIv;
-
-    public AesQrTokenServiceImpl() {
-        // Hibernate converter constructor
-    }
-
-    @Autowired
     public AesQrTokenServiceImpl(
-            @Value("${app.security.qr-aes-secret}")
-            String secret
-    ) {
-        initKey(secret);
-    }
-
-    private static synchronized void initKey(
-            String secret
+            @Value("${app.security.qr-aes-secret}") String secret
     ) {
         if (secret == null || secret.isBlank()) {
-            throw new AppException(
-                    ErrorCode.QR_ENCRYPTION_FAILED
+            throw new IllegalStateException(
+                    "QR_AES_SECRET environment variable is required"
             );
         }
 
@@ -83,101 +43,66 @@ public class AesQrTokenServiceImpl
                     secret.getBytes(StandardCharsets.UTF_8)
             );
 
+            // ===== THÊM ĐOẠN NÀY =====
+            MessageDigest fingerprintDigest =
+                    MessageDigest.getInstance("SHA-256");
+
+            byte[] fingerprint =
+                    fingerprintDigest.digest(key);
+
+            log.info(
+                    "QR AES key fingerprint: {}",
+                    java.util.HexFormat.of()
+                            .formatHex(fingerprint, 0, 8)
+            );
+            // ===== KẾT THÚC =====
+
             byte[] ivHash = sha.digest(
                     ("LoadMaster-QR-IV:" + secret)
                             .getBytes(StandardCharsets.UTF_8)
             );
 
-            sharedKeySpec =
-                    new SecretKeySpec(key, "AES");
+            this.keySpec = new SecretKeySpec(key, "AES");
 
-            // Chỉ dùng để đọc dữ liệu AES-CBC cũ.
-            sharedLegacyIv = new IvParameterSpec(
+            this.legacyIvSpec = new IvParameterSpec(
                     Arrays.copyOf(ivHash, 16)
             );
 
+            log.info("QR AES service initialized successfully");
+
         } catch (Exception e) {
-            log.error("QR key initialization failed", e);
-            throw new AppException(
-                    ErrorCode.QR_ENCRYPTION_FAILED
+            throw new IllegalStateException(
+                    "Failed to initialize QR AES key", e
             );
         }
-    }
-
-    private static void requireKey() {
-        if (sharedKeySpec == null ||
-                sharedLegacyIv == null) {
-            throw new AppException(
-                    ErrorCode.QR_ENCRYPTION_FAILED
-            );
-        }
-    }
-
-    public boolean isCurrentFormat(String value) {
-        return value != null &&
-                value.startsWith(VERSION);
-    }
-
-    public boolean isLegacyUuid(String value) {
-        return value != null &&
-                UUID_PATTERN.matcher(value).matches();
     }
 
     @Override
     public String encrypt(String plainQrToken) {
-        if (plainQrToken == null ||
-                plainQrToken.isBlank()) {
+
+        if (plainQrToken == null || plainQrToken.isBlank()) {
             return plainQrToken;
         }
 
-        requireKey();
-
         try {
-            byte[] nonce = new byte[NONCE_SIZE];
-            RANDOM.nextBytes(nonce);
-
-            Cipher cipher = Cipher.getInstance(GCM);
+            Cipher cipher = Cipher.getInstance(TRANSFORMATION);
 
             cipher.init(
                     Cipher.ENCRYPT_MODE,
-                    sharedKeySpec,
-                    new GCMParameterSpec(
-                            TAG_BITS,
-                            nonce
-                    )
+                    keySpec,
+                    legacyIvSpec
             );
-
-            cipher.updateAAD(AAD);
 
             byte[] encrypted = cipher.doFinal(
-                    plainQrToken.getBytes(
-                            StandardCharsets.UTF_8
-                    )
+                    plainQrToken.getBytes(StandardCharsets.UTF_8)
             );
 
-            byte[] combined = new byte[
-                    nonce.length + encrypted.length
-                    ];
-
-            System.arraycopy(
-                    nonce, 0,
-                    combined, 0,
-                    nonce.length
-            );
-
-            System.arraycopy(
-                    encrypted, 0,
-                    combined, nonce.length,
-                    encrypted.length
-            );
-
-            return VERSION +
-                    Base64.getUrlEncoder()
-                            .withoutPadding()
-                            .encodeToString(combined);
+            return Base64.getEncoder()
+                    .encodeToString(encrypted);
 
         } catch (Exception e) {
-            log.error("QR AES-GCM encryption failed", e);
+            log.error("QR encryption failed", e);
+
             throw new AppException(
                     ErrorCode.QR_ENCRYPTION_FAILED
             );
@@ -185,30 +110,35 @@ public class AesQrTokenServiceImpl
     }
 
     @Override
-    public String decrypt(String storedToken) {
-        if (storedToken == null ||
-                storedToken.isBlank()) {
-            return storedToken;
-        }
+    public String decrypt(String dbCiphertext) {
 
-        // Tạm hỗ trợ UUID plaintext cũ.
-        if (isLegacyUuid(storedToken)) {
-            return storedToken;
+        if (dbCiphertext == null || dbCiphertext.isBlank()) {
+            return dbCiphertext;
         }
-
-        requireKey();
 
         try {
-            if (isCurrentFormat(storedToken)) {
-                return decryptGcm(storedToken);
-            }
+            byte[] decoded =
+                    Base64.getDecoder().decode(dbCiphertext);
 
-            // Tạm hỗ trợ AES-CBC Base64 cũ.
-            return decryptLegacyCbc(storedToken);
+            Cipher cipher = Cipher.getInstance(TRANSFORMATION);
+
+            cipher.init(
+                    Cipher.DECRYPT_MODE,
+                    keySpec,
+                    legacyIvSpec
+            );
+
+            byte[] decrypted = cipher.doFinal(decoded);
+
+            return new String(
+                    decrypted,
+                    StandardCharsets.UTF_8
+            );
 
         } catch (Exception e) {
             log.error(
-                    "QR decryption failed: invalid token format or key",
+                    "QR decryption failed: {}",
+                    e.getClass().getSimpleName(),
                     e
             );
 
@@ -216,83 +146,5 @@ public class AesQrTokenServiceImpl
                     ErrorCode.QR_ENCRYPTION_FAILED
             );
         }
-    }
-
-    private String decryptGcm(String stored)
-            throws Exception {
-
-        byte[] combined =
-                Base64.getUrlDecoder().decode(
-                        stored.substring(VERSION.length())
-                );
-
-        if (combined.length < NONCE_SIZE + 16) {
-            throw new IllegalArgumentException(
-                    "Invalid AES-GCM token length"
-            );
-        }
-
-        byte[] nonce = Arrays.copyOfRange(
-                combined, 0, NONCE_SIZE
-        );
-
-        byte[] ciphertext = Arrays.copyOfRange(
-                combined, NONCE_SIZE, combined.length
-        );
-
-        Cipher cipher = Cipher.getInstance(GCM);
-
-        cipher.init(
-                Cipher.DECRYPT_MODE,
-                sharedKeySpec,
-                new GCMParameterSpec(TAG_BITS, nonce)
-        );
-
-        cipher.updateAAD(AAD);
-
-        byte[] plain = cipher.doFinal(ciphertext);
-
-        return new String(
-                plain, StandardCharsets.UTF_8
-        );
-    }
-
-    private String decryptLegacyCbc(String stored)
-            throws Exception {
-
-        byte[] decoded =
-                Base64.getDecoder().decode(stored);
-
-        Cipher cipher = Cipher.getInstance(LEGACY_CBC);
-
-        cipher.init(
-                Cipher.DECRYPT_MODE,
-                sharedKeySpec,
-                sharedLegacyIv
-        );
-
-        String plain = new String(
-                cipher.doFinal(decoded),
-                StandardCharsets.UTF_8
-        );
-
-        // Các token của CargoPackage được tạo dạng UUID.
-        if (!isLegacyUuid(plain)) {
-            throw new IllegalArgumentException(
-                    "Unexpected legacy QR token format"
-            );
-        }
-
-        return plain;
-    }
-
-    @Override
-    public String convertToDatabaseColumn(String plain) {
-        return encrypt(plain);
-    }
-
-    @Override
-    public String convertToEntityAttribute(String stored) {
-        return decrypt(stored);
     }
 }

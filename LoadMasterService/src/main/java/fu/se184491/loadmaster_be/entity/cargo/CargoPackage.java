@@ -1,11 +1,11 @@
 package fu.se184491.loadmaster_be.entity.cargo;
 
+import fu.se184491.loadmaster_be.converter.QrTokenAttributeConverter;
 import fu.se184491.loadmaster_be.entity.company.Company;
 import fu.se184491.loadmaster_be.entity.order.TransportOrder;
 import fu.se184491.loadmaster_be.constant.cargo.HandlingClass;
 import fu.se184491.loadmaster_be.constant.cargo.PackageFlag;
 import fu.se184491.loadmaster_be.constant.cargo.PackageStatus;
-import fu.se184491.loadmaster_be.service.qr.Impl.AesQrTokenServiceImpl;
 import jakarta.persistence.*;
 import jakarta.validation.constraints.Positive;
 import lombok.*;
@@ -39,7 +39,7 @@ public class CargoPackage {
     @Column(name = "tracking_barcode", length = 100, unique = true)
     private String trackingBarcode;
 
-    @Convert(converter = AesQrTokenServiceImpl.class)
+    @Convert(converter = QrTokenAttributeConverter.class)
     @Column(name = "qr_token", length = 128, unique = true, nullable = false, updatable = false)
     private String qrToken;
 

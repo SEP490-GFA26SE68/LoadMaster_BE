@@ -13,7 +13,6 @@ import fu.se184491.loadmaster_be.service.optimization.OptimizationEngineClient;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
-/** Python currently has no pinned-rerun route. Fail closed instead of inventing placements. */
 /**
  * Chạy lại tối ưu giữ kiện đã ghim qua dịch vụ tối ưu ({@code POST /api/v1/optimize/rerun}),
  * bằng service token của backend. Dịch vụ lỗi thì ném lỗi, không trả kết quả thay thế.
@@ -32,7 +31,6 @@ public class OptimizationEngineClientImpl implements OptimizationEngineClient {
 
     @Override
     public OptimizationResultDto rerunOptimization(RerunEngineRequest request) {
-        throw new AppException(ErrorCode.OPTIMIZATION_RERUN_UNAVAILABLE);
         log.info("Sending rerun request to Optimization Engine for job {}", request.getJobUuid());
         JsonNode data = optimizationClient.rerun(request);
         try {

@@ -1,5 +1,6 @@
 package fu.se184491.loadmaster_be.service.driver.Impl;
 
+import fu.se184491.loadmaster_be.service.audit.AuditCompany;
 import fu.se184491.loadmaster_be.constant.cargo.PackageStatus;
 import fu.se184491.loadmaster_be.constant.optimization.LoadingExecutionStatus;
 import fu.se184491.loadmaster_be.constant.planning.DeliveryRequirementStatus;
@@ -92,25 +93,8 @@ public class DriverServiceImpl implements DriverService {
     @Override
     @Transactional(readOnly = true)
     public List<DriverTripResponse> listTrips(Long driverId) {
-        if (driverId == null) {
-            throw new AppException(ErrorCode.USER_NOT_FOUND);
-        }
-        userRepository.findById(driverId).orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
-
-        Long companyId = currentUser.getCurrentCompanyId();
         User driver = currentDriver(driverId);
         List<DriverTripResponse> trips = new ArrayList<>();
-        for (Trip trip : tripRepository.findByDriver_IdOrderByDepartureTimeDesc(driverId)) {
-            // Fail closed on legacy cross-company driver assignments instead of leaking them in the list.
-            if (companyId == null || trip.getCompany() == null || !companyId.equals(trip.getCompany().getId())) continue;
-            trips.add(DriverTripResponse.builder()
-                    .tripId(trip.getId())
-                    .tripCode(trip.getTripCode())
-                    .vehicleLicensePlate(trip.getVehicle() != null ? trip.getVehicle().getLicensePlate() : null)
-                    .stopCount((int) deliveryStopRepository.countByTripId(trip.getId()))
-                    .departureTime(trip.getDepartureTime())
-                    .status(trip.getStatus() != null ? trip.getStatus().name() : null)
-                    .build());
         for (Trip trip : tripRepository.findByDriver_IdOrderByDepartureTimeDesc(driver.getId())) {
             trips.add(toTripResponse(trip));
         }

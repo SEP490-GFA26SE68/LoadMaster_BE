@@ -34,8 +34,6 @@ import fu.se184491.loadmaster_be.repository.optimization.OptimizationJobReposito
 import fu.se184491.loadmaster_be.repository.optimization.PackagePlacementRepository;
 import fu.se184491.loadmaster_be.repository.optimization.UnplacedPackageRepository;
 import fu.se184491.loadmaster_be.service.optimization.LoadPlanService;
-import fu.se184491.loadmaster_be.helpers.CurrentUserService;
-import org.springframework.security.access.AccessDeniedException;
 import fu.se184491.loadmaster_be.service.optimization.OptimizationEngineClient;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -54,8 +52,6 @@ import java.util.stream.Collectors;
 public class LoadPlanServiceImpl implements LoadPlanService {
 
     private final LoadPlanRepository loadPlanRepository;
-    private final CurrentUserService currentUserService;
-    private final fu.se184491.loadmaster_be.service.optimization.OptimizationEntitlementService entitlements;
     private final PackagePlacementRepository packagePlacementRepository;
     private final AuditLogRepository auditLogRepository;
     private final OptimizationJobRepository optimizationJobRepository;
@@ -113,7 +109,6 @@ public class LoadPlanServiceImpl implements LoadPlanService {
     @Override
     @Transactional
     public PackagePlacementResponse pinPlacement(Long loadPlanId, PinPlacementRequest request) {
-        LoadPlan loadPlan = requireOwnedPlan(loadPlanId);
         LoadPlan loadPlan = editablePlan(loadPlanId);
 
         PackagePlacement placement = packagePlacementRepository.findById(request.getPlacementId())
@@ -134,7 +129,6 @@ public class LoadPlanServiceImpl implements LoadPlanService {
     @Override
     @Transactional
     public PackagePlacementResponse unpinPlacement(Long loadPlanId, Long placementId) {
-        LoadPlan loadPlan = requireOwnedPlan(loadPlanId);
         LoadPlan loadPlan = editablePlan(loadPlanId);
 
         PackagePlacement placement = packagePlacementRepository.findById(placementId)
@@ -166,8 +160,8 @@ public class LoadPlanServiceImpl implements LoadPlanService {
         OptimizationObjective objective = request.getObjective() != null
                 ? request.getObjective()
                 : (currentPlan.getJob() != null && currentPlan.getJob().getObjective() != null
-                    ? currentPlan.getJob().getObjective()
-                    : OptimizationObjective.MAX_VOLUME);
+                ? currentPlan.getJob().getObjective()
+                : OptimizationObjective.MAX_VOLUME);
         Integer timeLimit = request.getTimeLimitSec() != null ? request.getTimeLimitSec() : 60;
 
         OptimizationJob newJob = OptimizationJob.builder()
@@ -334,9 +328,6 @@ public class LoadPlanServiceImpl implements LoadPlanService {
                 .runAlgorithm(jobAlgorithm(newJob))
                 .placements(savedPlacements.stream().map(this::mapToResponse).collect(Collectors.toList()))
                 .build();
-        LoadPlan currentPlan = requireOwnedPlan(loadPlanId);
-        entitlements.requireActive(currentPlan.getJob().getTrip().getCompany().getId());
-        throw new AppException(ErrorCode.OPTIMIZATION_RERUN_UNAVAILABLE);
     }
 
     private static String jobAlgorithm(OptimizationJob job) {
@@ -372,9 +363,11 @@ public class LoadPlanServiceImpl implements LoadPlanService {
     @Override
     @Transactional(readOnly = true)
     public PlanComparisonResponse comparePlans(Long planId1, Long planId2) {
-        LoadPlan plan1 = requireOwnedPlan(planId1);
+        LoadPlan plan1 = loadPlanRepository.findById(planId1)
+                .orElseThrow(() -> new AppException(ErrorCode.LOAD_PLAN_NOT_FOUND));
 
-        LoadPlan plan2 = requireOwnedPlan(planId2);
+        LoadPlan plan2 = loadPlanRepository.findById(planId2)
+                .orElseThrow(() -> new AppException(ErrorCode.LOAD_PLAN_NOT_FOUND));
 
         PlanMetricsDto m1 = buildPlanMetrics(plan1);
         PlanMetricsDto m2 = buildPlanMetrics(plan2);
@@ -385,18 +378,6 @@ public class LoadPlanServiceImpl implements LoadPlanService {
                 .plan1Metrics(m1)
                 .plan2Metrics(m2)
                 .build();
-    }
-
-    private LoadPlan requireOwnedPlan(Long planId) {
-        LoadPlan plan = loadPlanRepository.findById(planId)
-                .orElseThrow(() -> new AppException(ErrorCode.LOAD_PLAN_NOT_FOUND));
-        Long companyId = currentUserService.getCurrentCompanyId();
-        if (plan.getJob() == null || plan.getJob().getTrip() == null
-                || plan.getJob().getTrip().getCompany() == null || companyId == null
-                || !companyId.equals(plan.getJob().getTrip().getCompany().getId())) {
-            throw new AccessDeniedException("Load plan does not belong to the current company");
-        }
-        return plan;
     }
 
     private PlanMetricsDto buildPlanMetrics(LoadPlan plan) {

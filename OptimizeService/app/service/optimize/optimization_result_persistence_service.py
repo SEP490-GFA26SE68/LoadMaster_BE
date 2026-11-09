@@ -24,11 +24,11 @@ class OptimizationResultPersistenceService:
     """
 
     def __init__(
-        self,
-        job_service: Optional[OptimizationJobService] = None,
-        load_plan_repository: Optional[LoadPlanRepository] = None,
-        package_placement_repository: Optional[PackagePlacementRepository] = None,
-        unplaced_package_repository: Optional[UnplacedPackageRepository] = None,
+            self,
+            job_service: Optional[OptimizationJobService] = None,
+            load_plan_repository: Optional[LoadPlanRepository] = None,
+            package_placement_repository: Optional[PackagePlacementRepository] = None,
+            unplaced_package_repository: Optional[UnplacedPackageRepository] = None,
     ):
         self.job_service = job_service or OptimizationJobService()
         self.load_plan_repository = load_plan_repository or LoadPlanRepository()
@@ -36,11 +36,11 @@ class OptimizationResultPersistenceService:
         self.unplaced_package_repository = unplaced_package_repository or UnplacedPackageRepository()
 
     def save(
-        self,
-        job_uuid: Union[str, UUID],
-        result: EngineOptimizationResponse,
-        db: Session,
-        plan_name: Optional[str] = None,
+            self,
+            job_uuid: Union[str, UUID],
+            result: EngineOptimizationResponse,
+            db: Session,
+            plan_name: Optional[str] = None,
     ) -> LoadPlan:
         """
         Lưu kết quả xếp hàng từ EngineOptimizationResponse trong một savepoint:
@@ -92,14 +92,14 @@ class OptimizationResultPersistenceService:
             raise exc
 
     def _write_plan(
-        self,
-        job,
-        result: EngineOptimizationResponse,
-        db: Session,
-        plan_name: str,
-        objective: Optional[str],
-        candidate_label: Optional[str],
-        reuse_empty: bool,
+            self,
+            job,
+            result: EngineOptimizationResponse,
+            db: Session,
+            plan_name: str,
+            objective: Optional[str],
+            candidate_label: Optional[str],
+            reuse_empty: bool,
     ) -> LoadPlan:
         """Ghi một LoadPlan kèm kiện đã xếp và kiện không xếp được (trong savepoint của save)."""
         logger.info(
@@ -108,7 +108,7 @@ class OptimizationResultPersistenceService:
             candidate_label or "-",
             len(result.placements or []),
             len(result.unplaced or []),
-        )
+            )
 
         for item in result.unplaced or []:
             logger.info(
@@ -155,10 +155,10 @@ class OptimizationResultPersistenceService:
                 existing_placements = self.package_placement_repository.find_by_plan_id(existing.id, db)
                 existing_unplaced = self.unplaced_package_repository.find_by_plan_id(existing.id, db)
                 if (
-                    existing.approved is False
-                    and existing.packed_items_count == 0
-                    and not existing_placements
-                    and not existing_unplaced
+                        existing.approved is False
+                        and existing.packed_items_count == 0
+                        and not existing_placements
+                        and not existing_unplaced
                 ):
                     plan = existing
 
@@ -221,23 +221,6 @@ class OptimizationResultPersistenceService:
                     )
                 )
             self.package_placement_repository.create_all(placement_entities, db)
-                    placement_entities.append(
-                        PackagePlacement(
-                            load_plan_id=plan.id,
-                            package_id=pkg_id_val,
-                            pos_x=p.x,
-                            pos_y=p.y,
-                            pos_z=p.z,
-                            packed_length=p.packed_l,
-                            packed_width=p.packed_w,
-                            packed_height=p.packed_h,
-                            rotation_type=p.rotation_type,
-                            step_sequence=p.step_sequence or 1,
-                            pinned=False,
-                            stop_zone_id=zone_id_val,
-                        )
-                    )
-                self.package_placement_repository.create_all(placement_entities, db)
 
         # Unplaced
         unplaced_entities: List[UnplacedPackage] = []
