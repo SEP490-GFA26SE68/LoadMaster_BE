@@ -28,12 +28,20 @@ import java.io.IOException;
  * - Chặn toàn bộ các API nghiệp vụ khác với mã HTTP 403 Forbidden và mã lỗi ACCOUNT_FLAGGED.
  */
 @Component
-@RequiredArgsConstructor
 @Slf4j
 public class FlaggedUserEnforcementFilter extends OncePerRequestFilter {
 
     private final CurrentUserService currentUserService;
     private final ObjectMapper objectMapper;
+
+    public FlaggedUserEnforcementFilter(CurrentUserService currentUserService) {
+        this(currentUserService, new ObjectMapper());
+    }
+
+    public FlaggedUserEnforcementFilter(CurrentUserService currentUserService, ObjectMapper objectMapper) {
+        this.currentUserService = currentUserService;
+        this.objectMapper = objectMapper != null ? objectMapper : new ObjectMapper();
+    }
 
     @Override
     protected void doFilterInternal(

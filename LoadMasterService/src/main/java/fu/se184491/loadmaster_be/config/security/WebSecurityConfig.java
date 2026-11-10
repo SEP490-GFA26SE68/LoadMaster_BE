@@ -1,5 +1,6 @@
 package fu.se184491.loadmaster_be.config.security;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Import;
@@ -126,5 +127,10 @@ public class WebSecurityConfig {
         );
 
         return source;
+    }
+
+    @Bean
+    public ObjectMapper objectMapper() {
+        return new ObjectMapper();
     }
 }
