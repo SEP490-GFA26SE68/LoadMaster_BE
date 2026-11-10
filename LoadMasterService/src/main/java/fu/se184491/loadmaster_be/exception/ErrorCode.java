@@ -42,6 +42,14 @@ public enum ErrorCode {
     COMPANY_REQUIRED("Yêu cầu phải có thông tin công ty đối với các vai trò ở phạm vi công ty.", HttpStatus.BAD_REQUEST),
     USER_COMPANY_NOT_FOUND("Người dùng không thuộc công ty nào", HttpStatus.NOT_FOUND),
     TAX_CODE_ALREADY_EXISTS("Mã số thuế đã tồn tại trong hệ thống", HttpStatus.CONFLICT),
+    TAX_CODE_REQUIRED("Mã số thuế không được để trống", HttpStatus.BAD_REQUEST),
+    INVALID_TAX_CODE_FORMAT("Mã số thuế không hợp lệ (chỉ được chứa chữ số, gồm 10 hoặc 13 số)", HttpStatus.BAD_REQUEST),
+    PHONE_NUMBER_REQUIRED("Số điện thoại không được để trống", HttpStatus.BAD_REQUEST),
+    INVALID_PHONE_NUMBER("Số điện thoại không đúng định dạng của quốc gia đã chọn (với VN: 10 số đầu 03/05/07/08/09 hoặc +84, 8 số sau không được giống hệt nhau)", HttpStatus.BAD_REQUEST),
+    PHONE_NUMBER_ALREADY_EXISTS("Số điện thoại đã được sử dụng trong hệ thống", HttpStatus.CONFLICT),
+    INVALID_TIMESTAMP_FORMAT("Định dạng thời gian không hợp lệ (yêu cầu yyyy-MM-dd HH:mm:ss)", HttpStatus.BAD_REQUEST),
+    RESOLVED_BEFORE_CREATED("Thời gian xử lý (resolved_at) không được trước thời gian tạo (created_at)", HttpStatus.BAD_REQUEST),
+    EXPIRES_BEFORE_CREATED("Thời gian hết hạn / gửi lại OTP không được trước thời gian tạo (created_at)", HttpStatus.BAD_REQUEST),
     ROLE_NOT_FOUND("Không tìm thấy vai trò người dùng", HttpStatus.NOT_FOUND),
     EMAIL_ALREADY_EXISTS("Email đã được sử dụng", HttpStatus.CONFLICT),
     USER_IS_NOT_DRIVER("Người dùng hiện tại không phải là tài xế", HttpStatus.BAD_REQUEST),
@@ -290,13 +298,21 @@ public enum ErrorCode {
     TRIAL_REQUEST_NOT_FOUND("Không tìm thấy đơn yêu cầu tạo tài khoản dùng thử", HttpStatus.NOT_FOUND),
     TRIAL_REQUEST_ALREADY_PROCESSED("Đơn yêu cầu tạo tài khoản dùng thử đã được xử lý trước đó", HttpStatus.BAD_REQUEST),
     CANNOT_DIRECTLY_APPROVE_DEMO_REQUEST("Yêu cầu dùng thử phải được chuyển sang Quản lý nền tảng duyệt tạo tài khoản", HttpStatus.BAD_REQUEST),
+    SUPPORT_TICKET_LOCKED("Phiếu hỗ trợ đang được xử lý bởi nhân viên khác", HttpStatus.CONFLICT),
+    SUPPORT_TICKET_CLOSED("Phiếu hỗ trợ đã đóng, chỉ có thể xem lại lịch sử. Vui lòng tạo phiếu hỗ trợ mới", HttpStatus.CONFLICT),
+    SUPPORT_TICKET_NOT_FOUND("Không tìm thấy phiếu hỗ trợ", HttpStatus.NOT_FOUND),
 
     // -------------------------------------------------------------------------
     // Company Service Agreement errors
     // -------------------------------------------------------------------------
     AGREEMENT_NOT_FOUND("Không tìm thấy thỏa thuận dịch vụ của doanh nghiệp", HttpStatus.NOT_FOUND),
     AGREEMENT_ALREADY_SIGNED("Thỏa thuận dịch vụ này đã được ký trước đó", HttpStatus.BAD_REQUEST),
-    AGREEMENT_DEADLINE_EXPIRED("Đã quá thời hạn 3 ngày ký thỏa thuận dịch vụ. Tài khoản đã bị khóa", HttpStatus.FORBIDDEN),
+    AGREEMENT_DEADLINE_EXPIRED("Đã quá thời hạn ký thỏa thuận dịch vụ. Tài khoản đã bị khóa", HttpStatus.FORBIDDEN),
+    AGREEMENT_REQUIRED("Vui lòng hoàn tất ký thỏa thuận dịch vụ thử nghiệm trước khi thực hiện thao tác này", HttpStatus.FORBIDDEN),
+    ACCOUNT_FLAGGED("Tài khoản của bạn đã bị gắn cờ do không ký thỏa thuận dịch vụ đúng hạn 72 giờ. Toàn bộ thông tin và chức năng đã bị khóa", HttpStatus.FORBIDDEN),
+    UNLOCK_TRIAL_TICKET_NOT_ELIGIBLE("Chỉ có thể mở khóa qua phiếu thuộc loại Mở khóa Tài khoản Dùng thử", HttpStatus.BAD_REQUEST),
+    UNLOCK_TRIAL_ALREADY_ACTIVE("Tài khoản này không ở trạng thái bị gắn cờ nên không cần mở khóa", HttpStatus.CONFLICT),
+    UNLOCK_TRIAL_TICKET_ALREADY_RESOLVED("Phiếu hỗ trợ này đã được xử lý xong, không thể mở khóa thêm", HttpStatus.CONFLICT),
 
     // -------------------------------------------------------------------------
     // Guest Self-Registration errors

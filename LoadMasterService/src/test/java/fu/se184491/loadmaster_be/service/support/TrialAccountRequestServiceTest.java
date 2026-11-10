@@ -4,6 +4,7 @@ import fu.se184491.loadmaster_be.client.BrevoClient;
 import fu.se184491.loadmaster_be.client.KeycloakAdminClient;
 import fu.se184491.loadmaster_be.constant.account.UserRole;
 import fu.se184491.loadmaster_be.constant.account.UserStatus;
+import fu.se184491.loadmaster_be.constant.account.UserType;
 import fu.se184491.loadmaster_be.constant.billing.SubscriptionStatus;
 import fu.se184491.loadmaster_be.constant.billing.SubscriptionTier;
 import fu.se184491.loadmaster_be.constant.company.CompanyStatus;
@@ -11,6 +12,7 @@ import fu.se184491.loadmaster_be.constant.support.ContactRequestType;
 import fu.se184491.loadmaster_be.constant.support.ContactStatus;
 import fu.se184491.loadmaster_be.constant.support.TrialRequestStatus;
 import fu.se184491.loadmaster_be.dto.request.support.ApproveTrialAccountRequest;
+import fu.se184491.loadmaster_be.dto.request.support.ManagerApproveTrialRequest;
 import fu.se184491.loadmaster_be.dto.response.support.TrialAccountRequestResponse;
 import fu.se184491.loadmaster_be.entity.account.User;
 import fu.se184491.loadmaster_be.entity.billing.CompanySubscription;
@@ -20,6 +22,7 @@ import fu.se184491.loadmaster_be.entity.support.ContactOfGuest;
 import fu.se184491.loadmaster_be.entity.support.TrialAccountRequest;
 import fu.se184491.loadmaster_be.exception.AppException;
 import fu.se184491.loadmaster_be.exception.ErrorCode;
+import fu.se184491.loadmaster_be.helpers.CompanyCodeGenerator;
 import fu.se184491.loadmaster_be.helpers.TemporaryPasswordGenerator;
 import fu.se184491.loadmaster_be.repository.account.UserRepository;
 import fu.se184491.loadmaster_be.repository.billing.CompanySubscriptionRepository;
@@ -27,6 +30,7 @@ import fu.se184491.loadmaster_be.repository.billing.SubscriptionPlanRepository;
 import fu.se184491.loadmaster_be.repository.company.CompanyRepository;
 import fu.se184491.loadmaster_be.repository.support.ContactOfGuestRepository;
 import fu.se184491.loadmaster_be.repository.support.TrialAccountRequestRepository;
+import fu.se184491.loadmaster_be.service.company.CompanyAgreementService;
 import fu.se184491.loadmaster_be.service.credit.CreditService;
 import fu.se184491.loadmaster_be.service.support.impl.TrialAccountRequestServiceImpl;
 import org.junit.jupiter.api.BeforeEach;
@@ -80,10 +84,13 @@ class TrialAccountRequestServiceTest {
     private TemporaryPasswordGenerator temporaryPasswordGenerator;
 
     @Mock
+    private CompanyCodeGenerator companyCodeGenerator;
+
+    @Mock
     private BrevoClient brevoClient;
 
     @Mock
-    private fu.se184491.loadmaster_be.service.company.CompanyAgreementService companyAgreementService;
+    private CompanyAgreementService companyAgreementService;
 
     @InjectMocks
     private TrialAccountRequestServiceImpl trialAccountRequestService;
@@ -135,7 +142,7 @@ class TrialAccountRequestServiceTest {
                 .taxCode("0109988776")
                 .interestedPlan(proPlan)
                 .status(TrialRequestStatus.PENDING)
-                .createdAt(Instant.now())
+                .createdAt(LocalDateTime.now().truncatedTo(ChronoUnit.SECONDS))
                 .build();
     }
 
@@ -197,7 +204,7 @@ class TrialAccountRequestServiceTest {
 
         // Verify Keycloak user creation with role ADMIN
         verify(keycloakAdminClient).createUser("khach@logistics.vn", "Nguyen Van Khach");
-        verify(keycloakAdminClient).setPassword("kc-user-50", "TempSecure#123", true);
+        verify(keycloakAdminClient).setPassword("kc-user-50", "TempSecure#123", false);
         verify(keycloakAdminClient).assignRealmRole("kc-user-50", UserRole.ADMIN.name());
 
         // Verify Postgres user creation with ADMIN
@@ -206,6 +213,7 @@ class TrialAccountRequestServiceTest {
         User createdUser = userCaptor.getValue();
         assertThat(createdUser.getEmail()).isEqualTo("khach@logistics.vn");
         assertThat(createdUser.getUserRoleType()).isEqualTo(UserRole.ADMIN);
+        assertThat(createdUser.getUserType()).isEqualTo(UserType.TRIAL);
         assertThat(createdUser.getCompany().getId()).isEqualTo(50L);
 
         // Verify Subscription creation with trial duration (7 days)
@@ -294,7 +302,7 @@ class TrialAccountRequestServiceTest {
         // Verify keycloak createUser was NOT called (reused existing)
         verify(keycloakAdminClient, never()).createUser(anyString(), anyString());
         // Password and role must still be set
-        verify(keycloakAdminClient).setPassword("kc-existing-50", "TempSecure#123", true);
+        verify(keycloakAdminClient).setPassword("kc-existing-50", "TempSecure#123", false);
         verify(keycloakAdminClient).assignRealmRole("kc-existing-50", UserRole.ADMIN.name());
 
         // Verify DB user saved with the existing keycloak ID
@@ -320,5 +328,38 @@ class TrialAccountRequestServiceTest {
         ArgumentCaptor<String> emailCaptor = ArgumentCaptor.forClass(String.class);
         verify(brevoClient).sendEmail(eq("khach@logistics.vn"), anyString(), emailCaptor.capture());
         assertThat(emailCaptor.getValue()).contains("Thông tin mã số thuế không thể xác minh");
+    }
+
+    @Test
+    @DisplayName("managerApprove updates status to PENDING_ADMIN_CREATION and sets reviewer")
+    void managerApprove_success() {
+        when(trialAccountRequestRepository.findById(1L)).thenReturn(Optional.of(trialRequest));
+        when(trialAccountRequestRepository.save(any(TrialAccountRequest.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        ManagerApproveTrialRequest approveReq = ManagerApproveTrialRequest.builder()
+                .managerNote("Đã xác minh MST qua cổng thuế")
+                .build();
+
+        TrialAccountRequestResponse response = trialAccountRequestService.managerApprove(1L, approveReq, systemManager);
+
+        assertThat(response.getStatus()).isEqualTo(TrialRequestStatus.PENDING_ADMIN_CREATION);
+        assertThat(trialRequest.getStatus()).isEqualTo(TrialRequestStatus.PENDING_ADMIN_CREATION);
+        assertThat(trialRequest.getManagerReviewedBy()).isEqualTo(systemManager);
+        assertThat(trialRequest.getManagerNote()).isEqualTo("Đã xác minh MST qua cổng thuế");
+    }
+
+    @Test
+    @DisplayName("managerReject updates status to REJECTED and sends refusal email")
+    void managerReject_success() {
+        when(trialAccountRequestRepository.findById(1L)).thenReturn(Optional.of(trialRequest));
+        when(trialAccountRequestRepository.save(any(TrialAccountRequest.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        TrialAccountRequestResponse response = trialAccountRequestService.managerReject(
+                1L, "Doanh nghiệp không đạt tiêu chuẩn.", systemManager);
+
+        assertThat(response.getStatus()).isEqualTo(TrialRequestStatus.REJECTED);
+        assertThat(trialRequest.getStatus()).isEqualTo(TrialRequestStatus.REJECTED);
+        assertThat(trialRequest.getRejectionReason()).isEqualTo("Doanh nghiệp không đạt tiêu chuẩn.");
+        verify(brevoClient).sendEmail(eq("khach@logistics.vn"), anyString(), anyString());
     }
 }

@@ -6,6 +6,7 @@ import fu.se184491.loadmaster_be.dto.ApiResponse;
 import fu.se184491.loadmaster_be.dto.request.support.CreateSupportTicketRequest;
 import fu.se184491.loadmaster_be.dto.request.support.UpdateSupportTicketRequest;
 import fu.se184491.loadmaster_be.dto.response.support.SupportTicketResponse;
+import fu.se184491.loadmaster_be.dto.response.support.UnlockTrialResponse;
 import fu.se184491.loadmaster_be.service.support.SupportTicketService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -60,6 +61,26 @@ public class SupportTicketController {
         return ApiResponse.success(
                 "Support ticket updated successfully",
                 supportTicketService.updateTicket(id, request)
+        );
+    }
+
+    /**
+     * Mở khóa tài khoản dùng thử đang bị FLAGGED thông qua phiếu hỗ trợ.
+     * Chỉ System Supporter, System Manager, hoặc System Admin mới có quyền thực hiện.
+     * Phiếu phải có category = TRIAL_ACCOUNT_UNLOCK.
+     *
+     * POST /api/support-tickets/{id}/unlock-trial
+     * Body: { "staffNote": "Ghi chú xử lý" }
+     */
+    @PostMapping("/{id}/unlock-trial")
+    @PreAuthorize("hasAnyRole('SYSTEM_SUPPORTER', 'SYSTEM_MANAGER', 'SYSTEM_ADMIN') or hasAnyAuthority('SYSTEM_SUPPORTER', 'SYSTEM_MANAGER', 'SYSTEM_ADMIN')")
+    public ApiResponse<UnlockTrialResponse> unlockTrialAccount(
+            @PathVariable Long id,
+            @RequestParam(required = false) String staffNote
+    ) {
+        return ApiResponse.success(
+                "Tài khoản dùng thử đã được mở khóa thành công",
+                supportTicketService.unlockTrialAccount(id, staffNote)
         );
     }
 }

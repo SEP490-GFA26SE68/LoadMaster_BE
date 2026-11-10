@@ -87,6 +87,7 @@ public class UserServiceImpl implements UserService {
                                 : null
                 )
                 .userRoleType(user.getUserRoleType())
+                .userType(user.getUserType() != null ? user.getUserType() : fu.se184491.loadmaster_be.constant.account.UserType.OFFICIAL)
                 .status(user.getStatus())
                 .build();
     }
@@ -269,6 +270,23 @@ public class UserServiceImpl implements UserService {
                 }
                 if (agreement.getSignerPhone() != null && !agreement.getSignerPhone().isBlank()) {
                     targetPhone = agreement.getSignerPhone().trim();
+                }
+            }
+        }
+
+        // Nếu người gọi là Company Admin (ADMIN), bắt buộc công ty phải ký thỏa thuận dịch vụ trước khi tạo nhân viên
+        if (currentUser.getUserRoleType() == UserRole.ADMIN
+                && company != null
+                && companyAgreementRepository != null) {
+            Optional<CompanyAgreement> agreementOpt =
+                    companyAgreementRepository.findFirstByCompanyIdOrderByCreatedAtDesc(company.getId());
+            if (agreementOpt.isPresent()) {
+                CompanyAgreement agreement = agreementOpt.get();
+                if (agreement.getStatus() != AgreementStatus.SIGNED) {
+                    throw new AppException(
+                            ErrorCode.AGREEMENT_REQUIRED,
+                            "Vui lòng hoàn tất ký thỏa thuận dịch vụ thử nghiệm trước khi tạo tài khoản nhân viên."
+                    );
                 }
             }
         }
@@ -812,6 +830,7 @@ public class UserServiceImpl implements UserService {
                 user.getFullName(),
                 user.getPhoneNumber(),
                 user.getUserRoleType(),
+                user.getUserType() != null ? user.getUserType() : fu.se184491.loadmaster_be.constant.account.UserType.OFFICIAL,
                 user.getStatus(),
                 user.getCompany() != null
                         ? user.getCompany().getId()

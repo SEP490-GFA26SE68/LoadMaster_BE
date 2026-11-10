@@ -1,9 +1,12 @@
 package fu.se184491.loadmaster_be.dto.response.support;
 
+import com.fasterxml.jackson.annotation.JsonFormat;
+import fu.se184491.loadmaster_be.constant.support.AiPrecheckStatus;
 import fu.se184491.loadmaster_be.constant.support.TrialRequestStatus;
+import jakarta.validation.constraints.AssertTrue;
 import lombok.*;
 
-import java.time.Instant;
+import java.time.LocalDateTime;
 
 @Data
 @NoArgsConstructor
@@ -24,27 +27,44 @@ public class TrialAccountRequestResponse {
     private String companyName;
     private String companyCode;
     private String taxCode;
-    private Long interestedPlanId;
+    private String companyAddress;
 
+    private Long interestedPlanId;
     private String interestedPlanName;
 
     private TrialRequestStatus status;
+    private AiPrecheckStatus aiPrecheckStatus;
+    private String aiPrecheckReason;
+    private String handledByName;
+    private String rejectionReason;
 
     private String note;
+    private String managerNote;
+    private Integer trialDays;
+    private Integer trialCredits;
 
     private Long requestedById;
-
     private String requestedByName;
 
-    private Long approvedById;
+    private Long managerReviewedById;
+    private String managerReviewedByName;
+    private String managerReviewedByEmail;
 
+    private Long approvedById;
     private String approvedByName;
+    private String approvedByEmail;
 
     private Long createdCompanyId;
-
     private String createdCompanyName;
 
-    private Instant createdAt;
+    @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
+    private LocalDateTime createdAt;
 
-    private Instant resolvedAt;
+    @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
+    private LocalDateTime resolvedAt;
+
+    @AssertTrue(message = "RESOLVED_BEFORE_CREATED")
+    public boolean isResolvedAtAfterCreatedAt() {
+        return createdAt == null || resolvedAt == null || !resolvedAt.isBefore(createdAt);
+    }
 }

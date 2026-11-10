@@ -3,6 +3,7 @@ package fu.se184491.loadmaster_be.service.subscription.Impl;
 import fu.se184491.loadmaster_be.constant.billing.BillingCycle;
 import fu.se184491.loadmaster_be.constant.billing.PaymentGateway;
 import fu.se184491.loadmaster_be.constant.billing.SubscriptionStatus;
+import fu.se184491.loadmaster_be.constant.billing.SubscriptionTier;
 import fu.se184491.loadmaster_be.dto.request.subscription.SubscribeRequest;
 import fu.se184491.loadmaster_be.dto.response.credit.CreditBalanceResponse;
 import fu.se184491.loadmaster_be.dto.response.payment.PaymentUrlResponse;
@@ -93,18 +94,6 @@ public class SubscriptionServiceImpl implements SubscriptionService {
                         "Hợp đồng gói cước đang bị tạm ngưng/hủy. Vui lòng gửi phiếu hỗ trợ (Support Ticket) để ký lại hợp đồng."
                 );
             }
-            boolean isSamePlan = existingSub.getPlan() != null
-                    && existingSub.getPlan().getId() != null
-                    && existingSub.getPlan().getId().equals(request.getPlanId());
-
-            if (existingSub.getStatus() == SubscriptionStatus.ACTIVE && !isSamePlan) {
-                throw new AppException(
-                        ErrorCode.ACTIVE_SUBSCRIPTION_ALREADY_EXISTS,
-                        "Doanh nghiệp chỉ được tự gia hạn gói hiện tại theo hợp đồng ("
-                                + (existingSub.getPlan() != null ? existingSub.getPlan().getName() : "")
-                                + "). Để nâng cấp hoặc đổi gói cước, vui lòng gửi phiếu hỗ trợ (Support Ticket) để được phê duyệt hợp đồng."
-                );
-            }
         }
 
         SubscriptionPlan plan = subscriptionPlanRepository.findById(request.getPlanId())
@@ -114,29 +103,50 @@ public class SubscriptionServiceImpl implements SubscriptionService {
             throw new AppException(ErrorCode.SUBSCRIPTION_PLAN_NOT_FOUND);
         }
 
+        boolean isExtendingSameActivePlan = false;
+        int remainingMonthsToYearCap = 12;
+
         if (existingSubOpt.isPresent()) {
             CompanySubscription existingSub = existingSubOpt.get();
             boolean isSamePlan = existingSub.getPlan() != null
                     && existingSub.getPlan().getId() != null
                     && existingSub.getPlan().getId().equals(plan.getId());
-            if (existingSub.getStatus() == SubscriptionStatus.EXPIRED && !isSamePlan) {
+
+            if (existingSub.getStatus() == SubscriptionStatus.ACTIVE && !isSamePlan) {
                 int currentRank = tierRank(existingSub.getPlan() != null ? existingSub.getPlan().getTier() : null);
                 int targetRank = tierRank(plan.getTier());
-                if (targetRank > currentRank) {
+                if (targetRank <= currentRank) {
                     throw new AppException(
                             ErrorCode.ACTIVE_SUBSCRIPTION_ALREADY_EXISTS,
-                            "Để nâng cấp lên gói cao hơn (" + plan.getName()
-                                    + "), vui lòng gửi phiếu hỗ trợ (Support Ticket) để được phê duyệt hợp đồng."
+                            "Khi gói hiện tại đang hoạt động, doanh nghiệp chỉ có thể tự gia hạn gói đang dùng hoặc nâng cấp lên gói cao hơn."
+                    );
+                }
+            } else if (existingSub.getStatus() == SubscriptionStatus.ACTIVE && isSamePlan) {
+                isExtendingSameActivePlan = true;
+                int purchasedMonths = calculatePurchasedMonths(existingSub);
+                remainingMonthsToYearCap = 12 - purchasedMonths;
+                if (remainingMonthsToYearCap <= 0) {
+                    throw new AppException(
+                            ErrorCode.ACTIVE_SUBSCRIPTION_ALREADY_EXISTS,
+                            "Gói hiện tại đã đạt tối đa 12 tháng kể từ lần kích hoạt đầu tiên. Vui lòng đợi hết hạn để gia hạn tiếp."
                     );
                 }
             }
         }
 
-        BigDecimal price = plan.getPriceVnd() != null ? plan.getPriceVnd() : BigDecimal.ZERO;
+        BigDecimal basePrice = plan.getPriceVnd() != null ? plan.getPriceVnd() : BigDecimal.ZERO;
+        BillingCycle requestedCycle = request.getBillingCycle();
+        boolean isYearlyRequest = requestedCycle == BillingCycle.YEARLY;
+        int monthsToCharge = isYearlyRequest
+                ? (isExtendingSameActivePlan ? remainingMonthsToYearCap : 12)
+                : 1;
+        BigDecimal price = (isYearlyRequest && plan.getBillingCycle() != BillingCycle.YEARLY)
+                ? basePrice.multiply(BigDecimal.valueOf(monthsToCharge))
+                : basePrice;
 
         // If plan is free, activate immediately
         if (price.compareTo(BigDecimal.ZERO) <= 0) {
-            activateSubscription(companyId, plan.getId());
+            activateSubscription(companyId, plan.getId(), requestedCycle);
             return PaymentUrlResponse.builder()
                     .status("ACTIVE")
                     .paymentUrl(null)
@@ -146,11 +156,12 @@ public class SubscriptionServiceImpl implements SubscriptionService {
 
         // Paid plan -> Trigger Payment Gateway
         PaymentGateway gateway = request.getGateway() != null ? request.getGateway() : PaymentGateway.VNPAY;
+        String orderType = isYearlyRequest ? "SUBSCRIPTION_YEARLY" : "SUBSCRIPTION";
         String orderInfo = "Đăng ký gói " + plan.getName();
-        return paymentGatewayService.createPayment(company, gateway, "SUBSCRIPTION", plan.getId(), price, orderInfo, ipAddress);
+        return paymentGatewayService.createPayment(company, gateway, orderType, plan.getId(), price, orderInfo, ipAddress);
     }
 
-    private int tierRank(fu.se184491.loadmaster_be.constant.billing.SubscriptionTier tier) {
+    private int tierRank(SubscriptionTier tier) {
         if (tier == null) return 0;
         return switch (tier) {
             case BASIC -> 1;
@@ -162,6 +173,12 @@ public class SubscriptionServiceImpl implements SubscriptionService {
     @Override
     @Transactional
     public void activateSubscription(Long companyId, Long planId) {
+        activateSubscription(companyId, planId, null);
+    }
+
+    @Override
+    @Transactional
+    public void activateSubscription(Long companyId, Long planId, BillingCycle requestedCycle) {
         Company company = companyRepository.findById(companyId)
                 .orElseThrow(() -> new AppException(ErrorCode.COMPANY_NOT_FOUND));
         SubscriptionPlan plan = subscriptionPlanRepository.findById(planId)
@@ -181,7 +198,7 @@ public class SubscriptionServiceImpl implements SubscriptionService {
                 && sub.getExpiresAt().isAfter(now);
 
         if (!isExtendingSameActivePlan && sub.getId() != null) {
-            creditService.getBalance(companyId);
+            creditService.resetBalance(companyId);
         }
 
         sub.setPlan(plan);
@@ -189,21 +206,39 @@ public class SubscriptionServiceImpl implements SubscriptionService {
         if (!isExtendingSameActivePlan || sub.getStartedAt() == null) {
             sub.setStartedAt(now);
         }
-        LocalDateTime baseExpiry = isExtendingSameActivePlan
-                ? sub.getExpiresAt().truncatedTo(ChronoUnit.SECONDS)
-                : now;
-        sub.setExpiresAt(calculateExpiresAt(baseExpiry, plan).truncatedTo(ChronoUnit.SECONDS));
+        if (isExtendingSameActivePlan && requestedCycle == BillingCycle.YEARLY && sub.getStartedAt() != null) {
+            sub.setExpiresAt(sub.getStartedAt().truncatedTo(ChronoUnit.SECONDS).plusMonths(12));
+        } else {
+            LocalDateTime baseExpiry = isExtendingSameActivePlan
+                    ? sub.getExpiresAt().truncatedTo(ChronoUnit.SECONDS)
+                    : now;
+            sub.setExpiresAt(calculateExpiresAt(baseExpiry, plan, requestedCycle).truncatedTo(ChronoUnit.SECONDS));
+        }
         sub.setAutoRenew(true);
         sub.normalizeTimestamps();
 
         companySubscriptionRepository.save(sub);
         log.info("Activated subscription id={} for company={} plan={}", sub.getId(), companyId, plan.getName());
 
-        // Grant monthly credits
-        int monthlyCredits = plan.getMonthlyCredits() != null ? plan.getMonthlyCredits() : 0;
-        if (monthlyCredits > 0) {
-            creditService.grantMonthlyCredits(companyId, monthlyCredits);
+        // Grant monthly credits only when starting a new cycle or switching plans (not when extending active plan early)
+        if (!isExtendingSameActivePlan) {
+            int monthlyCredits = plan.getMonthlyCredits() != null ? plan.getMonthlyCredits() : 0;
+            if (monthlyCredits > 0) {
+                creditService.grantMonthlyCredits(companyId, monthlyCredits);
+            }
         }
+    }
+
+    private int calculatePurchasedMonths(CompanySubscription sub) {
+        if (sub == null || sub.getStartedAt() == null || sub.getExpiresAt() == null) {
+            return 1;
+        }
+        long months = ChronoUnit.MONTHS.between(sub.getStartedAt(), sub.getExpiresAt());
+        if (months > 0) {
+            return (int) months;
+        }
+        long days = ChronoUnit.DAYS.between(sub.getStartedAt(), sub.getExpiresAt());
+        return Math.max(1, (int) Math.round(days / 30.0));
     }
 
     @Override
@@ -253,8 +288,13 @@ public class SubscriptionServiceImpl implements SubscriptionService {
     }
 
     private LocalDateTime calculateExpiresAt(LocalDateTime start, SubscriptionPlan plan) {
-        return plan.getBillingCycle() == BillingCycle.YEARLY
-                ? start.plusYears(1)
-                : start.plusMonths(1);
+        return calculateExpiresAt(start, plan, null);
+    }
+
+    private LocalDateTime calculateExpiresAt(LocalDateTime start, SubscriptionPlan plan, BillingCycle requestedCycle) {
+        if (requestedCycle == BillingCycle.YEARLY || (requestedCycle == null && plan.getBillingCycle() == BillingCycle.YEARLY)) {
+            return start.plusYears(1);
+        }
+        return start.plusMonths(1);
     }
 }

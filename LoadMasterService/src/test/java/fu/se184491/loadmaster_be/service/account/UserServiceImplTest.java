@@ -387,6 +387,32 @@ class UserServiceImplTest {
     }
 
     @Test
+    @DisplayName("createUser - Company ADMIN bị chặn tạo nhân viên khi thỏa thuận dịch vụ chưa được ký")
+    void createUser_whenCallerIsCompanyAdminAndAgreementNotSigned_throwsAgreementRequired() {
+        when(currentUserService.getCurrentUser()).thenReturn(companyAdminCaller);
+        when(companyRepository.findById(10L)).thenReturn(Optional.of(company10));
+        CompanyAgreement pendingAgreement = CompanyAgreement.builder()
+                .id(1L)
+                .company(company10)
+                .status(AgreementStatus.PENDING)
+                .build();
+        when(companyAgreementRepository.findFirstByCompanyIdOrderByCreatedAtDesc(10L))
+                .thenReturn(Optional.of(pendingAgreement));
+
+        CreateUserRequest request = new CreateUserRequest(
+                "dispatcher@acme.vn",
+                "Acme Dispatcher",
+                "0908888888",
+                10L,
+                UserRole.DISPATCHER
+        );
+
+        AppException ex = assertThrows(AppException.class, () -> userService.createUser(request));
+        assertEquals(ErrorCode.AGREEMENT_REQUIRED, ex.getErrorCode());
+        verify(keycloakAdminClient, never()).createUser(any(), any());
+    }
+
+    @Test
     @DisplayName("getUsers - SYSTEM_MANAGER can list users across companies")
     @SuppressWarnings("unchecked")
     void getUsers_whenCallerIsSystemManager_returnsPagedUsers() {

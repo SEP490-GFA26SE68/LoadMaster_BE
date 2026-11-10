@@ -224,6 +224,28 @@ public class PaymentCallbackHandlerTest {
     }
 
     @Test
+    @DisplayName("handleVnPayCallback - Success response for SUBSCRIPTION_YEARLY activates yearly subscription")
+    void testSuccessActivatesYearlySubscription() {
+        subscriptionTxn.setOrderType("SUBSCRIPTION_YEARLY");
+        subscriptionTxn.setAmountVnd(new BigDecimal("12000000"));
+        when(vnPayClient.verifyCallback(anyMap())).thenReturn(true);
+        when(paymentTransactionRepository.findByGatewayTransactionId("VNP_SUB_001"))
+                .thenReturn(Optional.of(subscriptionTxn));
+
+        Map<String, String> params = new HashMap<>();
+        params.put("vnp_TxnRef", "VNP_SUB_001");
+        params.put("vnp_ResponseCode", "00");
+        params.put("vnp_Amount", "1200000000"); // 12,000,000 * 100
+
+        Map<String, String> res = paymentCallbackHandler.handleVnPayCallback(params);
+
+        assertEquals("00", res.get("RspCode"));
+        assertEquals(PaymentStatus.SUCCESS, subscriptionTxn.getStatus());
+        verify(subscriptionService).activateSubscription(1L, 2L, fu.se184491.loadmaster_be.constant.billing.BillingCycle.YEARLY);
+        verify(paymentTransactionRepository).save(subscriptionTxn);
+    }
+
+    @Test
     @DisplayName("Delegate to GuestRegistrationService when txnRef starts with REG_")
     void testDelegateToGuestRegistrationService() {
         Map<String, String> params = Map.of("vnp_TxnRef", "REG_ABC123");
