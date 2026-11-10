@@ -300,6 +300,7 @@ public enum ErrorCode {
     CANNOT_DIRECTLY_APPROVE_DEMO_REQUEST("Yêu cầu dùng thử phải được chuyển sang Quản lý nền tảng duyệt tạo tài khoản", HttpStatus.BAD_REQUEST),
     SUPPORT_TICKET_LOCKED("Phiếu hỗ trợ đang được xử lý bởi nhân viên khác", HttpStatus.CONFLICT),
     SUPPORT_TICKET_CLOSED("Phiếu hỗ trợ đã đóng, chỉ có thể xem lại lịch sử. Vui lòng tạo phiếu hỗ trợ mới", HttpStatus.CONFLICT),
+    SUPPORT_TICKET_NOT_FOUND("Không tìm thấy phiếu hỗ trợ", HttpStatus.NOT_FOUND),
 
     // -------------------------------------------------------------------------
     // Company Service Agreement errors
@@ -309,6 +310,9 @@ public enum ErrorCode {
     AGREEMENT_DEADLINE_EXPIRED("Đã quá thời hạn ký thỏa thuận dịch vụ. Tài khoản đã bị khóa", HttpStatus.FORBIDDEN),
     AGREEMENT_REQUIRED("Vui lòng hoàn tất ký thỏa thuận dịch vụ thử nghiệm trước khi thực hiện thao tác này", HttpStatus.FORBIDDEN),
     ACCOUNT_FLAGGED("Tài khoản của bạn đã bị gắn cờ do không ký thỏa thuận dịch vụ đúng hạn 72 giờ. Toàn bộ thông tin và chức năng đã bị khóa", HttpStatus.FORBIDDEN),
+    UNLOCK_TRIAL_TICKET_NOT_ELIGIBLE("Chỉ có thể mở khóa qua phiếu thuộc loại Mở khóa Tài khoản Dùng thử", HttpStatus.BAD_REQUEST),
+    UNLOCK_TRIAL_ALREADY_ACTIVE("Tài khoản này không ở trạng thái bị gắn cờ nên không cần mở khóa", HttpStatus.CONFLICT),
+    UNLOCK_TRIAL_TICKET_ALREADY_RESOLVED("Phiếu hỗ trợ này đã được xử lý xong, không thể mở khóa thêm", HttpStatus.CONFLICT),
 
     // -------------------------------------------------------------------------
     // Guest Self-Registration errors

@@ -2,18 +2,26 @@ package fu.se184491.loadmaster_be.service.support;
 
 import fu.se184491.loadmaster_be.constant.account.UserRole;
 import fu.se184491.loadmaster_be.constant.account.UserStatus;
+import fu.se184491.loadmaster_be.constant.billing.SubscriptionStatus;
+import fu.se184491.loadmaster_be.constant.company.AgreementStatus;
 import fu.se184491.loadmaster_be.constant.support.TicketCategory;
 import fu.se184491.loadmaster_be.constant.support.TicketPriority;
 import fu.se184491.loadmaster_be.constant.support.TicketStatus;
 import fu.se184491.loadmaster_be.dto.request.support.CreateSupportTicketRequest;
 import fu.se184491.loadmaster_be.dto.request.support.UpdateSupportTicketRequest;
 import fu.se184491.loadmaster_be.dto.response.support.SupportTicketResponse;
+import fu.se184491.loadmaster_be.dto.response.support.UnlockTrialResponse;
 import fu.se184491.loadmaster_be.entity.account.User;
+import fu.se184491.loadmaster_be.entity.billing.CompanySubscription;
 import fu.se184491.loadmaster_be.entity.company.Company;
+import fu.se184491.loadmaster_be.entity.company.CompanyAgreement;
 import fu.se184491.loadmaster_be.entity.support.SupportTicket;
 import fu.se184491.loadmaster_be.exception.AppException;
+import fu.se184491.loadmaster_be.exception.ErrorCode;
 import fu.se184491.loadmaster_be.helpers.CurrentUserService;
 import fu.se184491.loadmaster_be.repository.account.UserRepository;
+import fu.se184491.loadmaster_be.repository.billing.CompanySubscriptionRepository;
+import fu.se184491.loadmaster_be.repository.company.CompanyAgreementRepository;
 import fu.se184491.loadmaster_be.repository.support.SupportTicketRepository;
 import fu.se184491.loadmaster_be.service.support.impl.SupportTicketServiceImpl;
 import org.junit.jupiter.api.BeforeEach;
@@ -31,6 +39,7 @@ import java.util.List;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -51,6 +60,12 @@ class SupportTicketServiceTest {
 
     @Mock
     private fu.se184491.loadmaster_be.repository.common.AuditLogRepository auditLogRepository;
+
+    @Mock
+    private CompanySubscriptionRepository companySubscriptionRepository;
+
+    @Mock
+    private CompanyAgreementRepository companyAgreementRepository;
 
     @InjectMocks
     private SupportTicketServiceImpl supportTicketService;
@@ -546,5 +561,148 @@ class SupportTicketServiceTest {
                 )
         );
         assertEquals(fu.se184491.loadmaster_be.exception.ErrorCode.SUPPORT_TICKET_CLOSED, clientEx.getErrorCode());
+    }
+
+    // =========================================================================
+    // RED → GREEN: unlockTrialAccount — TDD Cycle
+    // =========================================================================
+
+    @Test
+    @DisplayName("unlockTrialAccount - Ticket không phải loại TRIAL_ACCOUNT_UNLOCK → ném UNLOCK_TRIAL_TICKET_NOT_ELIGIBLE")
+    void unlockTrialAccount_whenWrongCategory_throwsNotEligible() {
+        SupportTicket billingTicket = SupportTicket.builder()
+                .id(500L)
+                .ticketCode("TCK-20261110-0500")
+                .requester(companyAdmin)
+                .category(TicketCategory.BILLING)
+                .status(TicketStatus.OPEN)
+                .build();
+
+        when(supportTicketRepository.findById(500L)).thenReturn(Optional.of(billingTicket));
+
+        AppException ex = assertThrows(AppException.class,
+                () -> supportTicketService.unlockTrialAccount(500L, "Mở thử"));
+        assertEquals(ErrorCode.UNLOCK_TRIAL_TICKET_NOT_ELIGIBLE, ex.getErrorCode());
+    }
+
+    @Test
+    @DisplayName("unlockTrialAccount - Ticket đã RESOLVED → ném UNLOCK_TRIAL_TICKET_ALREADY_RESOLVED")
+    void unlockTrialAccount_whenTicketAlreadyResolved_throwsAlreadyResolved() {
+        SupportTicket resolvedTicket = SupportTicket.builder()
+                .id(501L)
+                .ticketCode("TCK-20261110-0501")
+                .requester(companyAdmin)
+                .category(TicketCategory.TRIAL_ACCOUNT_UNLOCK)
+                .status(TicketStatus.RESOLVED)
+                .resolvedAt(LocalDateTime.now().minusHours(1))
+                .build();
+
+        when(supportTicketRepository.findById(501L)).thenReturn(Optional.of(resolvedTicket));
+
+        AppException ex = assertThrows(AppException.class,
+                () -> supportTicketService.unlockTrialAccount(501L, "Thử mở lại"));
+        assertEquals(ErrorCode.UNLOCK_TRIAL_TICKET_ALREADY_RESOLVED, ex.getErrorCode());
+    }
+
+    @Test
+    @DisplayName("unlockTrialAccount - User không ở FLAGGED → ném UNLOCK_TRIAL_ALREADY_ACTIVE")
+    void unlockTrialAccount_whenUserNotFlagged_throwsAlreadyActive() {
+        User activeUser = User.builder()
+                .id(2L).email("admin@acme.vn").fullName("Acme Admin")
+                .company(company10).userRoleType(UserRole.ADMIN)
+                .status(UserStatus.ACTIVE)
+                .build();
+        SupportTicket ticket = SupportTicket.builder()
+                .id(502L).ticketCode("TCK-20261110-0502")
+                .requester(activeUser)
+                .category(TicketCategory.TRIAL_ACCOUNT_UNLOCK)
+                .status(TicketStatus.OPEN)
+                .build();
+
+        when(supportTicketRepository.findById(502L)).thenReturn(Optional.of(ticket));
+
+        AppException ex = assertThrows(AppException.class,
+                () -> supportTicketService.unlockTrialAccount(502L, "Thử mở lại"));
+        assertEquals(ErrorCode.UNLOCK_TRIAL_ALREADY_ACTIVE, ex.getErrorCode());
+    }
+
+    @Test
+    @DisplayName("unlockTrialAccount - User FLAGGED, subscription còn hạn → ACTIVE, trialStillValid=true, nextAction=SIGN_AGREEMENT")
+    void unlockTrialAccount_whenFlaggedAndTrialValid_returnsSignAgreementAction() {
+        User flaggedUser = User.builder()
+                .id(2L).email("admin@acme.vn").fullName("Acme Admin")
+                .company(company10).userRoleType(UserRole.ADMIN)
+                .status(UserStatus.FLAGGED)
+                .build();
+        SupportTicket ticket = SupportTicket.builder()
+                .id(503L).ticketCode("TCK-20261110-0503")
+                .requester(flaggedUser)
+                .category(TicketCategory.TRIAL_ACCOUNT_UNLOCK)
+                .status(TicketStatus.OPEN)
+                .build();
+        CompanySubscription activeSub = CompanySubscription.builder()
+                .company(company10)
+                .status(SubscriptionStatus.ACTIVE)
+                .expiresAt(LocalDateTime.now().plusDays(10))
+                .build();
+        CompanyAgreement expiredAgreement = CompanyAgreement.builder()
+                .company(company10).user(flaggedUser)
+                .status(AgreementStatus.EXPIRED)
+                .deadlineAt(LocalDateTime.now().minusDays(2))
+                .title("Thỏa thuận dùng thử").content("Nội dung").agreementCode("AGR-001")
+                .build();
+
+        when(supportTicketRepository.findById(503L)).thenReturn(Optional.of(ticket));
+        when(companySubscriptionRepository.findByCompanyId(10L)).thenReturn(Optional.of(activeSub));
+        when(companyAgreementRepository.findFirstByCompanyIdOrderByCreatedAtDesc(10L))
+                .thenReturn(Optional.of(expiredAgreement));
+        when(supportTicketRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        when(userRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        when(companyAgreementRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        UnlockTrialResponse result = supportTicketService.unlockTrialAccount(503L, "Hỗ trợ mở khóa cho khách");
+
+        assertNotNull(result);
+        assertEquals(2L, result.getUserId());
+        assertTrue(result.isTrialStillValid(), "Subscription còn hạn → trialStillValid phải true");
+        assertEquals("SIGN_AGREEMENT", result.getNextAction());
+        assertEquals("RESOLVED", result.getTicketStatus());
+        assertEquals(UserStatus.ACTIVE, flaggedUser.getStatus());
+        assertEquals(AgreementStatus.PENDING, expiredAgreement.getStatus(),
+                "Agreement phải được reset về PENDING để khách ký lại trong 72h");
+    }
+
+    @Test
+    @DisplayName("unlockTrialAccount - User FLAGGED, subscription hết hạn → ACTIVE, trialStillValid=false, nextAction=UPGRADE_PLAN")
+    void unlockTrialAccount_whenFlaggedAndTrialExpired_returnsUpgradePlanAction() {
+        User flaggedUser = User.builder()
+                .id(2L).email("admin@acme.vn").fullName("Acme Admin")
+                .company(company10).userRoleType(UserRole.ADMIN)
+                .status(UserStatus.FLAGGED)
+                .build();
+        SupportTicket ticket = SupportTicket.builder()
+                .id(504L).ticketCode("TCK-20261110-0504")
+                .requester(flaggedUser)
+                .category(TicketCategory.TRIAL_ACCOUNT_UNLOCK)
+                .status(TicketStatus.IN_PROGRESS)
+                .build();
+        CompanySubscription expiredSub = CompanySubscription.builder()
+                .company(company10)
+                .status(SubscriptionStatus.ACTIVE)
+                .expiresAt(LocalDateTime.now().minusDays(3))
+                .build();
+
+        when(supportTicketRepository.findById(504L)).thenReturn(Optional.of(ticket));
+        when(companySubscriptionRepository.findByCompanyId(10L)).thenReturn(Optional.of(expiredSub));
+        when(supportTicketRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        when(userRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        UnlockTrialResponse result = supportTicketService.unlockTrialAccount(504L, "Mở khóa, nhắc khách nâng cấp");
+
+        assertNotNull(result);
+        assertFalse(result.isTrialStillValid(), "Subscription hết hạn → trialStillValid phải false");
+        assertEquals("UPGRADE_PLAN", result.getNextAction());
+        assertEquals("RESOLVED", result.getTicketStatus());
+        assertEquals(UserStatus.ACTIVE, flaggedUser.getStatus());
     }
 }

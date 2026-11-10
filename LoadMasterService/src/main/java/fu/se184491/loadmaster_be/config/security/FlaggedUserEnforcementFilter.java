@@ -10,7 +10,6 @@ import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.MediaType;
 import org.springframework.security.core.Authentication;
@@ -34,10 +33,10 @@ public class FlaggedUserEnforcementFilter extends OncePerRequestFilter {
     private final CurrentUserService currentUserService;
     private final ObjectMapper objectMapper;
 
-    public FlaggedUserEnforcementFilter(CurrentUserService currentUserService) {
-        this(currentUserService, new ObjectMapper());
-    }
-
+    /**
+     * Constructor chính dùng bởi Spring IoC — nhận ObjectMapper bean đã được khai báo trong WebSecurityConfig.
+     * Hai tham số đều bắt buộc, không có no-arg constructor do Spring Boot 4+ không cần CGLib proxy cho filters.
+     */
     public FlaggedUserEnforcementFilter(CurrentUserService currentUserService, ObjectMapper objectMapper) {
         this.currentUserService = currentUserService;
         this.objectMapper = objectMapper != null ? objectMapper : new ObjectMapper();
@@ -91,6 +90,7 @@ public class FlaggedUserEnforcementFilter extends OncePerRequestFilter {
         }
         return path.equals("/api/users/me")
                 || path.startsWith("/api/agreements/")
+                || path.startsWith("/api/support-tickets")  // cho phép gửi ticket mở khóa và xem trạng thái ticket
                 || path.startsWith("/v3/api-docs")
                 || path.startsWith("/swagger-ui")
                 || path.startsWith("/api/auth/")

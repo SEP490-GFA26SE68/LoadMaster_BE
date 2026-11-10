@@ -120,5 +120,29 @@ class FlaggedUserEnforcementFilterTest {
 
         verify(filterChain).doFilter(request, response);
     }
+
+    @Test
+    @DisplayName("Cho phép POST /api/support-tickets khi user FLAGGED để gửi ticket mở khóa")
+    void doFilter_shouldAllowSupportTicketsWhenUserFlagged() throws Exception {
+        MockHttpServletRequest request = new MockHttpServletRequest("POST", "/api/support-tickets");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        filter.doFilterInternal(request, response, filterChain);
+
+        verify(filterChain).doFilter(request, response);
+        verify(currentUserService, never()).getCurrentUser();
+    }
+
+    @Test
+    @DisplayName("Cho phép POST /api/support-tickets/{id}/unlock-trial khi user FLAGGED (vẫn trong whitelist)")
+    void doFilter_shouldAllowSupportTicketUnlockWhenUserFlagged() throws Exception {
+        MockHttpServletRequest request = new MockHttpServletRequest("POST", "/api/support-tickets/42/unlock-trial");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        filter.doFilterInternal(request, response, filterChain);
+
+        verify(filterChain).doFilter(request, response);
+        verify(currentUserService, never()).getCurrentUser();
+    }
 }
 
