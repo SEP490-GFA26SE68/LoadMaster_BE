@@ -120,4 +120,43 @@ class NotificationRulesTest {
         assertThat(NotificationRules.concerns(event("TRIP_UPDATED", 10L, Map.of(), Map.of("driverId", 13L), 13L), DRIVER)).isFalse();
         assertThat(NotificationRules.concerns(event("TRIP_UPDATED", 10L, null, null, 13L), DRIVER)).isFalse();
     }
+
+    @Test
+    void warehouseShortagesDamagesAndFoundPackagesReachTheRightPeople() {
+        NotificationRules.Event shortage = event("STAGING_SHORTAGE_REPORTED", 12L, null, Map.of("tripId", 5L), 13L);
+        assertThat(NotificationRules.concerns(shortage, DISPATCHER)).isTrue();
+        assertThat(NotificationRules.concerns(shortage, MANAGER)).isFalse();
+        assertThat(NotificationRules.concerns(shortage, DRIVER)).isFalse();
+
+        NotificationRules.Event found = event("PACKAGE_FOUND", 12L, null, Map.of("packageId", 7L), null);
+        assertThat(NotificationRules.concerns(found, DISPATCHER)).isTrue();
+        assertThat(NotificationRules.concerns(found, WORKER)).as("người báo tìm thấy là chính mình").isFalse();
+
+        NotificationRules.Event leftOut = event("LOADING_DAMAGE_REPORTED", 12L, null,
+                Map.of("outcome", "LEFT_OUT", "driverId", 13L), 13L);
+        NotificationRules.Event replanned = event("LOADING_DAMAGE_REPORTED", 12L, null,
+                Map.of("outcome", "REPLANNED", "driverId", 13L), 13L);
+        assertThat(NotificationRules.concerns(leftOut, DISPATCHER)).isTrue();
+        assertThat(NotificationRules.concerns(leftOut, MANAGER)).isTrue();
+        assertThat(NotificationRules.concerns(leftOut, DRIVER)).as("kiện bỏ lại kho, xếp tiếp: không phải việc của tài xế").isFalse();
+        assertThat(NotificationRules.concerns(replanned, DRIVER)).isTrue();
+        assertThat(NotificationRules.concerns(replanned, new NotificationRules.Viewer(30L, UserRole.DRIVER))).isFalse();
+    }
+
+    @Test
+    void shortageDecisionsReachTheReporterAndDropsReachManagerAndDriver() {
+        NotificationRules.Event keep = event("STAGING_SHORTAGE_RESOLVED", 10L, null,
+                Map.of("decision", "KEEP_SEARCHING", "reportedBy", 12L, "driverId", 13L), 13L);
+        NotificationRules.Event drop = event("STAGING_SHORTAGE_RESOLVED", 10L, null,
+                Map.of("decision", "DROP", "reportedBy", 12L, "driverId", 13L), 13L);
+        assertThat(NotificationRules.concerns(keep, WORKER)).isTrue();
+        assertThat(NotificationRules.concerns(drop, WORKER)).isTrue();
+        assertThat(NotificationRules.concerns(drop, new NotificationRules.Viewer(31L, UserRole.WAREHOUSE_WORKER)))
+                .as("nhân viên kho khác không báo thiếu kiện này").isFalse();
+        assertThat(NotificationRules.concerns(keep, MANAGER)).isFalse();
+        assertThat(NotificationRules.concerns(drop, MANAGER)).isTrue();
+        assertThat(NotificationRules.concerns(keep, DRIVER)).isFalse();
+        assertThat(NotificationRules.concerns(drop, DRIVER)).isTrue();
+        assertThat(NotificationRules.concerns(drop, DISPATCHER)).as("điều phối viên tự quyết").isFalse();
+    }
 }

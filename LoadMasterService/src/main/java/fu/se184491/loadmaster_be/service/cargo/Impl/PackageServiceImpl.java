@@ -1,5 +1,6 @@
 package fu.se184491.loadmaster_be.service.cargo.Impl;
 
+import fu.se184491.loadmaster_be.constant.cargo.PackageFlag;
 import fu.se184491.loadmaster_be.constant.cargo.PackageStatus;
 import fu.se184491.loadmaster_be.constant.planning.DeliveryRequirementStatus;
 import fu.se184491.loadmaster_be.dto.request.cargo.PackageRequest;
@@ -740,6 +741,39 @@ public class PackageServiceImpl implements PackageService {
             auditLogRepository.save(AuditLog.builder()
                     .companyId(companyId)
                     .actionType("PACKAGE_FLAG_CLEARED")
+                    .entityName("CargoPackage")
+                    .entityId(String.valueOf(cargoPackage.getId()))
+                    .user(currentUserService != null ? currentUserService.getCurrentUser() : null)
+                    .newValues(values)
+                    .createdAt(Instant.now())
+                    .build());
+        }
+        return mapToResponse(cargoPackage);
+    }
+
+    @Override
+    @Transactional
+    public PackageResponse reportFound(
+            Long companyId,
+            Long id
+    ) {
+        CargoPackage cargoPackage = getOwnedPackage(
+                companyId,
+                id
+        );
+        if (cargoPackage.getFlag() != PackageFlag.NOT_FOUND) {
+            throw new AppException(ErrorCode.PACKAGE_NOT_FLAGGED);
+        }
+        cargoPackage.setFlag(null);
+        packageRepository.save(cargoPackage);
+        if (auditLogRepository != null) {
+            Map<String, Object> values = new LinkedHashMap<>();
+            values.put("packageId", cargoPackage.getId());
+            values.put("packageCode", cargoPackage.getPackageCode());
+            values.put("flag", PackageFlag.NOT_FOUND.name());
+            auditLogRepository.save(AuditLog.builder()
+                    .companyId(companyId)
+                    .actionType("PACKAGE_FOUND")
                     .entityName("CargoPackage")
                     .entityId(String.valueOf(cargoPackage.getId()))
                     .user(currentUserService != null ? currentUserService.getCurrentUser() : null)

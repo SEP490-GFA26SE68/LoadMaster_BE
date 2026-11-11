@@ -133,6 +133,24 @@ public class PackageController {
         );
     }
 
+    @PostMapping("/{id}/found")
+    @PreAuthorize("hasRole('WAREHOUSE_WORKER')")
+    public ResponseEntity<ApiResponse<PackageResponse>> reportFound(
+            @PathVariable Long id
+    ) {
+        PackageResponse result = packageService.reportFound(
+                getCurrentCompanyId(),
+                id
+        );
+
+        return ResponseEntity.ok(
+                ApiResponse.success(
+                        "Đã ghi nhận tìm thấy kiện hàng",
+                        result
+                )
+        );
+    }
+
     // ==================== GET BY ID ====================
 
     @GetMapping("/{id}")
