@@ -11,6 +11,8 @@ import fu.se184491.loadmaster_be.entity.company.CompanyAgreement;
 import fu.se184491.loadmaster_be.repository.account.UserRepository;
 import fu.se184491.loadmaster_be.repository.company.CompanyAgreementRepository;
 import fu.se184491.loadmaster_be.repository.company.CompanyRepository;
+import fu.se184491.loadmaster_be.repository.support.SupportTicketRepository;
+import fu.se184491.loadmaster_be.repository.support.TicketReplyRepository;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
@@ -21,6 +23,7 @@ import org.springframework.web.client.HttpClientErrorException;
 
 import java.time.LocalDateTime;
 import java.util.Comparator;
+import java.util.List;
 
 /**
  * Job duy nhất thực thi hạn ký thỏa thuận dùng thử. Mỗi lần chạy:
@@ -31,7 +34,8 @@ import java.util.Comparator;
  *   <li>Thỏa thuận EXPIRED chưa có {@code expiredAt} (bản ghi có trước cột này) → {@code expiredAt} = lúc chạy, nên mốc
  *       30 ngày của chúng bắt đầu từ đây chứ không phải từ hạn 72 giờ cũ.</li>
  *   <li>Thỏa thuận EXPIRED quá 30 ngày kể từ {@code expiredAt} → xóa cứng tài khoản nếu đó là tài khoản TRIAL còn bị
- *       gắn cờ. Tài khoản OFFICIAL chỉ bị gắn cờ, không bao giờ bị xóa, công ty của họ cũng vậy.</li>
+ *       gắn cờ, cùng các yêu cầu hỗ trợ tài khoản đó đã gửi (trả lời của chúng xoá trước, vì khóa ngoại). Tài khoản OFFICIAL chỉ bị
+ *       gắn cờ, không bao giờ bị xóa, công ty của họ cũng vậy.</li>
  * </ol>
  *
  * <p>Mỗi thỏa thuận chạy trong transaction riêng (REQUIRES_NEW): một bản ghi lỗi không kéo các bản ghi khác rollback
@@ -47,6 +51,8 @@ public class TrialAgreementEnforcementJob {
     private final CompanyAgreementRepository agreementRepository;
     private final UserRepository userRepository;
     private final CompanyRepository companyRepository;
+    private final SupportTicketRepository supportTicketRepository;
+    private final TicketReplyRepository ticketReplyRepository;
     private final KeycloakAdminClient keycloakAdminClient;
     private final TransactionTemplate requiresNew;
 
@@ -54,12 +60,16 @@ public class TrialAgreementEnforcementJob {
             CompanyAgreementRepository agreementRepository,
             UserRepository userRepository,
             CompanyRepository companyRepository,
+            SupportTicketRepository supportTicketRepository,
+            TicketReplyRepository ticketReplyRepository,
             KeycloakAdminClient keycloakAdminClient,
             PlatformTransactionManager transactionManager
     ) {
         this.agreementRepository = agreementRepository;
         this.userRepository = userRepository;
         this.companyRepository = companyRepository;
+        this.supportTicketRepository = supportTicketRepository;
+        this.ticketReplyRepository = ticketReplyRepository;
         this.keycloakAdminClient = keycloakAdminClient;
         this.requiresNew = new TransactionTemplate(transactionManager);
         this.requiresNew.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
@@ -194,10 +204,21 @@ public class TrialAgreementEnforcementJob {
                 agreement.getAgreementType() == AgreementType.TRIAL_TERMS);
 
         agreementRepository.delete(agreement);
+        deleteSupportTicketsOf(user);
         userRepository.delete(user);
         log.info("HARD DELETED trial user id={} of company {} from the DB, {} days after agreement {} expired",
                 deleted.userId(), deleted.companyId(), HARD_DELETE_AFTER_DAYS, agreementId);
         return deleted;
+    }
+
+    /** Yêu cầu hỗ trợ của tài khoản bị xóa cứng: trả lời trước rồi tới phiếu, cùng transaction với việc xóa tài khoản. */
+    private void deleteSupportTicketsOf(User user) {
+        List<Long> ticketIds = supportTicketRepository.findIdsByRequesterId(user.getId());
+        if (ticketIds == null || ticketIds.isEmpty()) {
+            return;
+        }
+        ticketReplyRepository.deleteByTicketIdIn(ticketIds);
+        supportTicketRepository.deleteAllByIdInBatch(ticketIds);
     }
 
     private void deleteKeycloakUser(DeletedTrialAccount deleted) {

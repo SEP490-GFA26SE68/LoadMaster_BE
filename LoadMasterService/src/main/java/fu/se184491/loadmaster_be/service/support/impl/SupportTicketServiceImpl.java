@@ -24,6 +24,7 @@ import fu.se184491.loadmaster_be.repository.common.AuditLogRepository;
 import fu.se184491.loadmaster_be.service.audit.AuditCompany;
 import fu.se184491.loadmaster_be.repository.company.CompanyAgreementRepository;
 import fu.se184491.loadmaster_be.repository.support.SupportTicketRepository;
+import fu.se184491.loadmaster_be.repository.support.TicketReplyRepository;
 import fu.se184491.loadmaster_be.service.support.SupportTicketService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Sort;
@@ -69,6 +70,7 @@ public class SupportTicketServiceImpl implements SupportTicketService {
     private final AuditLogRepository auditLogRepository;
     private final CompanySubscriptionRepository companySubscriptionRepository;
     private final CompanyAgreementRepository companyAgreementRepository;
+    private final TicketReplyRepository ticketReplyRepository;
 
     @Override
     @Transactional
@@ -268,7 +270,7 @@ public class SupportTicketServiceImpl implements SupportTicketService {
     @Transactional
     @Scheduled(cron = "0 15 * * * *")
     public int cleanupClosedTicketChatHistory() {
-        return cleanupExpiredClosedTickets(supportTicketRepository.findByStatusInAndResolutionNoteIsNotNull(
+        return cleanupExpiredClosedTickets(supportTicketRepository.findWithChatHistoryByStatusIn(
                 List.of(TicketStatus.CLOSED, TicketStatus.RESOLVED)));
     }
 
@@ -362,12 +364,22 @@ public class SupportTicketServiceImpl implements SupportTicketService {
                 .truncatedTo(ChronoUnit.SECONDS)
                 .minusDays(CLOSED_CHAT_RETENTION_DAYS);
         int cleanedCount = 0;
+        List<Long> closedIds = tickets.stream()
+                .filter(ticket -> ticket.getStatus() == TicketStatus.CLOSED || ticket.getStatus() == TicketStatus.RESOLVED)
+                .map(SupportTicket::getId)
+                .filter(java.util.Objects::nonNull)
+                .toList();
+        // Trả lời ở bảng ticket_replies cũng là lịch sử trao đổi: hết hạn giữ thì xoá cùng ghi chú cũ.
+        Set<Long> withReplies = closedIds.isEmpty() ? Set.of() : ticketReplyRepository.findTicketIdsWithReplies(closedIds);
+        List<Long> repliesToDelete = new java.util.ArrayList<>();
         for (SupportTicket ticket : tickets) {
             TicketStatus status = ticket.getStatus();
             if (status != TicketStatus.CLOSED && status != TicketStatus.RESOLVED) {
                 continue;
             }
-            if (ticket.getResolutionNote() == null || ticket.getResolutionNote().isBlank()) {
+            boolean hasNote = ticket.getResolutionNote() != null && !ticket.getResolutionNote().isBlank();
+            boolean hasReplies = ticket.getId() != null && withReplies != null && withReplies.contains(ticket.getId());
+            if (!hasNote && !hasReplies) {
                 continue;
             }
             LocalDateTime closedTime = ticket.getResolvedAt() != null
@@ -381,10 +393,18 @@ public class SupportTicketServiceImpl implements SupportTicketService {
                     && closedTime != null
                     && !closedTime.isBefore(ticket.getCreatedAt().plusDays(CLOSED_CHAT_RETENTION_DAYS));
             if (expiredFromNow || expiredFromCreated) {
-                ticket.setResolutionNote(null);
-                supportTicketRepository.save(ticket);
+                if (hasNote) {
+                    ticket.setResolutionNote(null);
+                    supportTicketRepository.save(ticket);
+                }
+                if (hasReplies) {
+                    repliesToDelete.add(ticket.getId());
+                }
                 cleanedCount++;
             }
+        }
+        if (!repliesToDelete.isEmpty()) {
+            ticketReplyRepository.deleteByTicketIdIn(repliesToDelete);
         }
         return cleanedCount;
     }

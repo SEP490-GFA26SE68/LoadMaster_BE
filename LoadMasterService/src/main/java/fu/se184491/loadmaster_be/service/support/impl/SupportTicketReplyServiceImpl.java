@@ -95,7 +95,7 @@ public class SupportTicketReplyServiceImpl implements SupportTicketReplyService 
         }
         rows.add(ticketReplyRepository.save(TicketReply.builder()
                 .ticket(ticket)
-                .author(actor)
+                .authorId(actor.getId())
                 .authorName(actor.getFullName() != null ? actor.getFullName() : actor.getEmail())
                 .authorRole(actor.getUserRoleType() == null ? null : actor.getUserRoleType().name())
                 .message(message.trim())
@@ -120,7 +120,7 @@ public class SupportTicketReplyServiceImpl implements SupportTicketReplyService 
     private static TicketReplyResponse replyOf(TicketReply row) {
         return TicketReplyResponse.builder()
                 .id(row.getId())
-                .authorId(row.getAuthor() == null || row.getAuthor().getId() == null ? null : row.getAuthor().getId().toString())
+                .authorId(row.getAuthorId() == null ? null : row.getAuthorId().toString())
                 .authorName(row.getAuthorName())
                 .authorRole(row.getAuthorRole())
                 .message(row.getMessage())
