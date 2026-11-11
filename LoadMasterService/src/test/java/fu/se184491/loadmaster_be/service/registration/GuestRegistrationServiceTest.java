@@ -598,6 +598,44 @@ class GuestRegistrationServiceTest {
     }
 
     @Test
+    @DisplayName("handlePaymentCallback: vnpay.mock tắt thì vnp_Mock=true không bỏ qua được chữ ký")
+    void handlePaymentCallback_mockParamIgnoredWhenMockConfigOff() {
+        java.util.Map<String, String> params = java.util.Map.of(
+                "vnp_TxnRef", "REG_12345",
+                "vnp_ResponseCode", "00",
+                "vnp_Mock", "true",
+                "vnp_SecureHash", "forged"
+        );
+
+        when(vnPayClient.isMock()).thenReturn(false);
+        when(vnPayClient.verifyCallback(params)).thenReturn(false);
+
+        java.util.Map<String, String> result = service.handlePaymentCallback(params);
+
+        assertThat(result.get("RspCode")).isEqualTo("97");
+        verify(sessionRepository, never()).findByPaymentRef(any());
+        verify(companyRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("handlePaymentCallback: vnpay.mock tắt thì mã giao dịch MOCK_ không bỏ qua được chữ ký")
+    void handlePaymentCallback_mockPrefixIgnoredWhenMockConfigOff() {
+        java.util.Map<String, String> params = java.util.Map.of(
+                "vnp_TxnRef", "MOCK_REG_12345",
+                "vnp_ResponseCode", "00"
+        );
+
+        when(vnPayClient.isMock()).thenReturn(false);
+        when(vnPayClient.verifyCallback(params)).thenReturn(false);
+
+        java.util.Map<String, String> result = service.handlePaymentCallback(params);
+
+        assertThat(result.get("RspCode")).isEqualTo("97");
+        verify(sessionRepository, never()).findByPaymentRef(any());
+        verify(companyRepository, never()).save(any());
+    }
+
+    @Test
     @DisplayName("handlePaymentCallback: thất bại khi sai chữ ký checksum")
     void handlePaymentCallback_invalidSignature() {
         java.util.Map<String, String> params = java.util.Map.of(
