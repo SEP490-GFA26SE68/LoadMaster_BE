@@ -58,9 +58,7 @@ public class UserServiceImpl implements UserService {
     private final CompanyAgreementRepository companyAgreementRepository;
     private final BrevoClient brevoClient;
     private final AuditLogRepository auditLogRepository;
-
-    @org.springframework.beans.factory.annotation.Autowired(required = false)
-    private fu.se184491.loadmaster_be.repository.billing.CompanySubscriptionRepository companySubscriptionRepository;
+    private final fu.se184491.loadmaster_be.repository.billing.CompanySubscriptionRepository companySubscriptionRepository;
 
     @org.springframework.beans.factory.annotation.Autowired(required = false)
     private fu.se184491.loadmaster_be.repository.billing.CreditAccountRepository creditAccountRepository;
@@ -73,6 +71,21 @@ public class UserServiceImpl implements UserService {
                 .orElseThrow(() ->
                         new AppException(ErrorCode.USER_NOT_FOUND)
                 );
+
+        Boolean subscriptionExpired = false;
+        if (user.getCompany() != null) {
+            subscriptionExpired = true;
+            if (companySubscriptionRepository != null) {
+                Optional<fu.se184491.loadmaster_be.entity.billing.CompanySubscription> subOpt =
+                        companySubscriptionRepository.findByCompanyId(user.getCompany().getId());
+                if (subOpt.isPresent()) {
+                    fu.se184491.loadmaster_be.entity.billing.CompanySubscription sub = subOpt.get();
+                    boolean expired = sub.getStatus() == fu.se184491.loadmaster_be.constant.billing.SubscriptionStatus.EXPIRED
+                            || (sub.getExpiresAt() != null && sub.getExpiresAt().isBefore(java.time.LocalDateTime.now()));
+                    subscriptionExpired = expired;
+                }
+            }
+        }
 
         return UserProfileResponse.builder()
                 .id(user.getId())
@@ -89,6 +102,7 @@ public class UserServiceImpl implements UserService {
                 .userRoleType(user.getUserRoleType())
                 .userType(user.getUserType() != null ? user.getUserType() : fu.se184491.loadmaster_be.constant.account.UserType.OFFICIAL)
                 .status(user.getStatus())
+                .subscriptionExpired(subscriptionExpired)
                 .build();
     }
 
@@ -327,6 +341,7 @@ public class UserServiceImpl implements UserService {
                     .fullName(targetFullName)
                     .phoneNumber(targetPhone)
                     .userRoleType(request.role())
+                    .userType(currentUser.getUserType() != null ? currentUser.getUserType() : fu.se184491.loadmaster_be.constant.account.UserType.OFFICIAL)
                     .status(UserStatus.ACTIVE)
                     .build();
             user.prePersist();

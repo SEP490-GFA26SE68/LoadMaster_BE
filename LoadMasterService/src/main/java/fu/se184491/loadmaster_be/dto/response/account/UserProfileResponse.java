@@ -17,6 +17,7 @@ public record UserProfileResponse(
 
         UserRole userRoleType,
         UserType userType,
-        UserStatus status
+        UserStatus status,
+        Boolean subscriptionExpired
 ) {
 }

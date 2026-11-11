@@ -81,6 +81,9 @@ class UserServiceImplTest {
     @Mock
     private AuditLogRepository auditLogRepository;
 
+    @Mock
+    private fu.se184491.loadmaster_be.repository.billing.CompanySubscriptionRepository companySubscriptionRepository;
+
     @InjectMocks
     private UserServiceImpl userService;
 
@@ -734,5 +737,109 @@ class UserServiceImplTest {
         assertEquals("USER_DELETED", deleted.getActionType());
         assertEquals(10L, deleted.getCompanyId());
         assertEquals("INACTIVE", deleted.getNewValues().get("status"));
+    }
+
+    @Test
+    @DisplayName("getUserProfile: Trả về subscriptionExpired = true khi công ty hết hạn gói cước")
+    void getUserProfile_shouldReturnSubscriptionExpiredTrue_whenCompanySubscriptionIsExpired() {
+        org.springframework.security.oauth2.jwt.Jwt jwt = new org.springframework.security.oauth2.jwt.Jwt(
+                "token",
+                java.time.Instant.now(),
+                java.time.Instant.now().plusSeconds(3600),
+                java.util.Map.of("alg", "none"),
+                java.util.Map.of("sub", "kc-expired-1", "preferred_username", "admin@expired.vn")
+        );
+
+        Company company = Company.builder().id(10L).companyCode("GAMMA-TRIAL").build();
+        User user = User.builder()
+                .id(1L)
+                .keycloakId("kc-expired-1")
+                .email("admin@expired.vn")
+                .fullName("Admin Expired")
+                .company(company)
+                .userRoleType(UserRole.ADMIN)
+                .status(UserStatus.ACTIVE)
+                .build();
+        when(userRepository.findByKeycloakId("kc-expired-1")).thenReturn(Optional.of(user));
+
+        fu.se184491.loadmaster_be.entity.billing.CompanySubscription sub =
+                fu.se184491.loadmaster_be.entity.billing.CompanySubscription.builder()
+                        .id(5L)
+                        .company(company)
+                        .status(fu.se184491.loadmaster_be.constant.billing.SubscriptionStatus.EXPIRED)
+                        .expiresAt(LocalDateTime.now().minusDays(1))
+                        .build();
+        when(companySubscriptionRepository.findByCompanyId(10L)).thenReturn(Optional.of(sub));
+
+        fu.se184491.loadmaster_be.dto.response.account.UserProfileResponse profile = userService.getUserProfile(jwt);
+
+        assertNotNull(profile);
+        assertTrue(profile.subscriptionExpired());
+    }
+
+    @Test
+    @DisplayName("getUserProfile: Trả về subscriptionExpired = false khi công ty đang có gói cước ACTIVE còn hạn")
+    void getUserProfile_shouldReturnSubscriptionExpiredFalse_whenCompanySubscriptionIsActive() {
+        org.springframework.security.oauth2.jwt.Jwt jwt = new org.springframework.security.oauth2.jwt.Jwt(
+                "token",
+                java.time.Instant.now(),
+                java.time.Instant.now().plusSeconds(3600),
+                java.util.Map.of("alg", "none"),
+                java.util.Map.of("sub", "kc-active-1", "preferred_username", "admin@active.vn")
+        );
+
+        Company company = Company.builder().id(20L).companyCode("BETA-ACTIVE").build();
+        User user = User.builder()
+                .id(2L)
+                .keycloakId("kc-active-1")
+                .email("admin@active.vn")
+                .fullName("Admin Active")
+                .company(company)
+                .userRoleType(UserRole.ADMIN)
+                .status(UserStatus.ACTIVE)
+                .build();
+        when(userRepository.findByKeycloakId("kc-active-1")).thenReturn(Optional.of(user));
+
+        fu.se184491.loadmaster_be.entity.billing.CompanySubscription sub =
+                fu.se184491.loadmaster_be.entity.billing.CompanySubscription.builder()
+                        .id(6L)
+                        .company(company)
+                        .status(fu.se184491.loadmaster_be.constant.billing.SubscriptionStatus.ACTIVE)
+                        .expiresAt(LocalDateTime.now().plusDays(10))
+                        .build();
+        when(companySubscriptionRepository.findByCompanyId(20L)).thenReturn(Optional.of(sub));
+
+        fu.se184491.loadmaster_be.dto.response.account.UserProfileResponse profile = userService.getUserProfile(jwt);
+
+        assertNotNull(profile);
+        assertFalse(profile.subscriptionExpired());
+    }
+
+    @Test
+    @DisplayName("getUserProfile: Trả về subscriptionExpired = false khi user không thuộc công ty nào (Platform Role)")
+    void getUserProfile_shouldReturnSubscriptionExpiredFalse_whenUserHasNoCompany() {
+        org.springframework.security.oauth2.jwt.Jwt jwt = new org.springframework.security.oauth2.jwt.Jwt(
+                "token",
+                java.time.Instant.now(),
+                java.time.Instant.now().plusSeconds(3600),
+                java.util.Map.of("alg", "none"),
+                java.util.Map.of("sub", "kc-sysadmin", "preferred_username", "sysadmin@loadmaster.vn")
+        );
+
+        User user = User.builder()
+                .id(99L)
+                .keycloakId("kc-sysadmin")
+                .email("sysadmin@loadmaster.vn")
+                .fullName("System Admin")
+                .company(null)
+                .userRoleType(UserRole.SYSTEM_ADMIN)
+                .status(UserStatus.ACTIVE)
+                .build();
+        when(userRepository.findByKeycloakId("kc-sysadmin")).thenReturn(Optional.of(user));
+
+        fu.se184491.loadmaster_be.dto.response.account.UserProfileResponse profile = userService.getUserProfile(jwt);
+
+        assertNotNull(profile);
+        assertFalse(profile.subscriptionExpired());
     }
 }
