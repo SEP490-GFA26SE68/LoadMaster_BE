@@ -4,6 +4,7 @@ import fu.se184491.loadmaster_be.client.BrevoClient;
 import fu.se184491.loadmaster_be.client.KeycloakAdminClient;
 import fu.se184491.loadmaster_be.constant.account.UserRole;
 import fu.se184491.loadmaster_be.constant.account.UserStatus;
+import fu.se184491.loadmaster_be.constant.billing.SubscriptionStatus;
 import fu.se184491.loadmaster_be.constant.company.AgreementStatus;
 import fu.se184491.loadmaster_be.dto.PageResponse;
 import fu.se184491.loadmaster_be.dto.request.account.CreateUserRequest;
@@ -12,7 +13,9 @@ import fu.se184491.loadmaster_be.dto.request.account.UpdateUserStatusRequest;
 import fu.se184491.loadmaster_be.dto.response.account.CreateUserResponse;
 import fu.se184491.loadmaster_be.dto.response.account.ResetPasswordResponse;
 import fu.se184491.loadmaster_be.dto.response.account.UserListItemResponse;
+import fu.se184491.loadmaster_be.dto.response.account.UserProfileResponse;
 import fu.se184491.loadmaster_be.entity.account.User;
+import fu.se184491.loadmaster_be.entity.billing.CompanySubscription;
 import fu.se184491.loadmaster_be.entity.company.Company;
 import fu.se184491.loadmaster_be.entity.company.CompanyAgreement;
 import fu.se184491.loadmaster_be.entity.support.SupportTicket;
@@ -22,6 +25,7 @@ import fu.se184491.loadmaster_be.helpers.CurrentUserService;
 import fu.se184491.loadmaster_be.helpers.TemporaryPasswordGenerator;
 import fu.se184491.loadmaster_be.entity.common.AuditLog;
 import fu.se184491.loadmaster_be.repository.account.UserRepository;
+import fu.se184491.loadmaster_be.repository.billing.CompanySubscriptionRepository;
 import fu.se184491.loadmaster_be.repository.common.AuditLogRepository;
 import fu.se184491.loadmaster_be.repository.company.CompanyAgreementRepository;
 import fu.se184491.loadmaster_be.repository.company.CompanyRepository;
@@ -37,9 +41,12 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
+import org.springframework.security.oauth2.jwt.Jwt;
 
+import java.time.Instant;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -82,7 +89,7 @@ class UserServiceImplTest {
     private AuditLogRepository auditLogRepository;
 
     @Mock
-    private fu.se184491.loadmaster_be.repository.billing.CompanySubscriptionRepository companySubscriptionRepository;
+    private CompanySubscriptionRepository companySubscriptionRepository;
 
     @InjectMocks
     private UserServiceImpl userService;
@@ -695,8 +702,8 @@ class UserServiceImplTest {
         AuditLog log = savedAuditLog();
         assertEquals("USER_UPDATED", log.getActionType());
         assertEquals(10L, log.getCompanyId());
-        assertEquals(java.util.Map.of("phoneNumber", "0901111111"), log.getOldValues());
-        assertEquals(java.util.Map.of("phoneNumber", "0909999999"), log.getNewValues());
+        assertEquals(Map.of("phoneNumber", "0901111111"), log.getOldValues());
+        assertEquals(Map.of("phoneNumber", "0909999999"), log.getNewValues());
 
         userService.updateUser(100L, new UpdateUserRequest("Old Driver", "0909999999", null, null));
         verify(auditLogRepository).save(any(AuditLog.class));
@@ -742,12 +749,12 @@ class UserServiceImplTest {
     @Test
     @DisplayName("getUserProfile: Trả về subscriptionExpired = true khi công ty hết hạn gói cước")
     void getUserProfile_shouldReturnSubscriptionExpiredTrue_whenCompanySubscriptionIsExpired() {
-        org.springframework.security.oauth2.jwt.Jwt jwt = new org.springframework.security.oauth2.jwt.Jwt(
+        Jwt jwt = new Jwt(
                 "token",
-                java.time.Instant.now(),
-                java.time.Instant.now().plusSeconds(3600),
-                java.util.Map.of("alg", "none"),
-                java.util.Map.of("sub", "kc-expired-1", "preferred_username", "admin@expired.vn")
+                Instant.now(),
+                Instant.now().plusSeconds(3600),
+                Map.of("alg", "none"),
+                Map.of("sub", "kc-expired-1", "preferred_username", "admin@expired.vn")
         );
 
         Company company = Company.builder().id(10L).companyCode("GAMMA-TRIAL").build();
@@ -762,16 +769,16 @@ class UserServiceImplTest {
                 .build();
         when(userRepository.findByKeycloakId("kc-expired-1")).thenReturn(Optional.of(user));
 
-        fu.se184491.loadmaster_be.entity.billing.CompanySubscription sub =
-                fu.se184491.loadmaster_be.entity.billing.CompanySubscription.builder()
+        CompanySubscription sub =
+                CompanySubscription.builder()
                         .id(5L)
                         .company(company)
-                        .status(fu.se184491.loadmaster_be.constant.billing.SubscriptionStatus.EXPIRED)
+                        .status(SubscriptionStatus.EXPIRED)
                         .expiresAt(LocalDateTime.now().minusDays(1))
                         .build();
         when(companySubscriptionRepository.findByCompanyId(10L)).thenReturn(Optional.of(sub));
 
-        fu.se184491.loadmaster_be.dto.response.account.UserProfileResponse profile = userService.getUserProfile(jwt);
+        UserProfileResponse profile = userService.getUserProfile(jwt);
 
         assertNotNull(profile);
         assertTrue(profile.subscriptionExpired());
@@ -780,12 +787,12 @@ class UserServiceImplTest {
     @Test
     @DisplayName("getUserProfile: Trả về subscriptionExpired = false khi công ty đang có gói cước ACTIVE còn hạn")
     void getUserProfile_shouldReturnSubscriptionExpiredFalse_whenCompanySubscriptionIsActive() {
-        org.springframework.security.oauth2.jwt.Jwt jwt = new org.springframework.security.oauth2.jwt.Jwt(
+        Jwt jwt = new Jwt(
                 "token",
-                java.time.Instant.now(),
-                java.time.Instant.now().plusSeconds(3600),
-                java.util.Map.of("alg", "none"),
-                java.util.Map.of("sub", "kc-active-1", "preferred_username", "admin@active.vn")
+                Instant.now(),
+                Instant.now().plusSeconds(3600),
+                Map.of("alg", "none"),
+                Map.of("sub", "kc-active-1", "preferred_username", "admin@active.vn")
         );
 
         Company company = Company.builder().id(20L).companyCode("BETA-ACTIVE").build();
@@ -800,16 +807,16 @@ class UserServiceImplTest {
                 .build();
         when(userRepository.findByKeycloakId("kc-active-1")).thenReturn(Optional.of(user));
 
-        fu.se184491.loadmaster_be.entity.billing.CompanySubscription sub =
-                fu.se184491.loadmaster_be.entity.billing.CompanySubscription.builder()
+        CompanySubscription sub =
+                CompanySubscription.builder()
                         .id(6L)
                         .company(company)
-                        .status(fu.se184491.loadmaster_be.constant.billing.SubscriptionStatus.ACTIVE)
+                        .status(SubscriptionStatus.ACTIVE)
                         .expiresAt(LocalDateTime.now().plusDays(10))
                         .build();
         when(companySubscriptionRepository.findByCompanyId(20L)).thenReturn(Optional.of(sub));
 
-        fu.se184491.loadmaster_be.dto.response.account.UserProfileResponse profile = userService.getUserProfile(jwt);
+        UserProfileResponse profile = userService.getUserProfile(jwt);
 
         assertNotNull(profile);
         assertFalse(profile.subscriptionExpired());
@@ -818,12 +825,12 @@ class UserServiceImplTest {
     @Test
     @DisplayName("getUserProfile: Trả về subscriptionExpired = false khi user không thuộc công ty nào (Platform Role)")
     void getUserProfile_shouldReturnSubscriptionExpiredFalse_whenUserHasNoCompany() {
-        org.springframework.security.oauth2.jwt.Jwt jwt = new org.springframework.security.oauth2.jwt.Jwt(
+        Jwt jwt = new Jwt(
                 "token",
-                java.time.Instant.now(),
-                java.time.Instant.now().plusSeconds(3600),
-                java.util.Map.of("alg", "none"),
-                java.util.Map.of("sub", "kc-sysadmin", "preferred_username", "sysadmin@loadmaster.vn")
+                Instant.now(),
+                Instant.now().plusSeconds(3600),
+                Map.of("alg", "none"),
+                Map.of("sub", "kc-sysadmin", "preferred_username", "sysadmin@loadmaster.vn")
         );
 
         User user = User.builder()
@@ -837,7 +844,7 @@ class UserServiceImplTest {
                 .build();
         when(userRepository.findByKeycloakId("kc-sysadmin")).thenReturn(Optional.of(user));
 
-        fu.se184491.loadmaster_be.dto.response.account.UserProfileResponse profile = userService.getUserProfile(jwt);
+        UserProfileResponse profile = userService.getUserProfile(jwt);
 
         assertNotNull(profile);
         assertFalse(profile.subscriptionExpired());

@@ -4,6 +4,8 @@ import fu.se184491.loadmaster_be.client.BrevoClient;
 import fu.se184491.loadmaster_be.client.KeycloakAdminClient;
 import fu.se184491.loadmaster_be.constant.account.UserRole;
 import fu.se184491.loadmaster_be.constant.account.UserStatus;
+import fu.se184491.loadmaster_be.constant.account.UserType;
+import fu.se184491.loadmaster_be.constant.billing.SubscriptionStatus;
 import fu.se184491.loadmaster_be.constant.company.AgreementStatus;
 import fu.se184491.loadmaster_be.dto.PageResponse;
 import fu.se184491.loadmaster_be.dto.request.account.CreateUserRequest;
@@ -15,33 +17,41 @@ import fu.se184491.loadmaster_be.dto.response.account.UserListItemResponse;
 import fu.se184491.loadmaster_be.dto.response.account.UserProfileResponse;
 import fu.se184491.loadmaster_be.dto.response.account.UserStatsResponse;
 import fu.se184491.loadmaster_be.entity.account.User;
+import fu.se184491.loadmaster_be.entity.billing.CompanySubscription;
+import fu.se184491.loadmaster_be.entity.common.AuditLog;
 import fu.se184491.loadmaster_be.entity.company.Company;
 import fu.se184491.loadmaster_be.entity.company.CompanyAgreement;
 import fu.se184491.loadmaster_be.exception.AppException;
 import fu.se184491.loadmaster_be.exception.ErrorCode;
 import fu.se184491.loadmaster_be.helpers.CurrentUserService;
 import fu.se184491.loadmaster_be.helpers.TemporaryPasswordGenerator;
-import fu.se184491.loadmaster_be.entity.common.AuditLog;
 import fu.se184491.loadmaster_be.repository.account.UserRepository;
+import fu.se184491.loadmaster_be.repository.billing.CompanySubscriptionRepository;
+import fu.se184491.loadmaster_be.repository.billing.CreditAccountRepository;
 import fu.se184491.loadmaster_be.repository.common.AuditLogRepository;
-import fu.se184491.loadmaster_be.service.audit.AuditCompany;
 import fu.se184491.loadmaster_be.repository.company.CompanyAgreementRepository;
 import fu.se184491.loadmaster_be.repository.company.CompanyRepository;
 import fu.se184491.loadmaster_be.service.account.UserService;
+import fu.se184491.loadmaster_be.service.audit.AuditCompany;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.domain.Specification;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.client.HttpClientErrorException;
 
 import java.time.Instant;
+import java.time.LocalDateTime;
+import java.time.temporal.ChronoUnit;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
@@ -58,10 +68,10 @@ public class UserServiceImpl implements UserService {
     private final CompanyAgreementRepository companyAgreementRepository;
     private final BrevoClient brevoClient;
     private final AuditLogRepository auditLogRepository;
-    private final fu.se184491.loadmaster_be.repository.billing.CompanySubscriptionRepository companySubscriptionRepository;
+    private final CompanySubscriptionRepository companySubscriptionRepository;
 
-    @org.springframework.beans.factory.annotation.Autowired(required = false)
-    private fu.se184491.loadmaster_be.repository.billing.CreditAccountRepository creditAccountRepository;
+    @Autowired(required = false)
+    private CreditAccountRepository creditAccountRepository;
 
     public UserProfileResponse getUserProfile(Jwt jwt) {
 
@@ -76,12 +86,12 @@ public class UserServiceImpl implements UserService {
         if (user.getCompany() != null) {
             subscriptionExpired = true;
             if (companySubscriptionRepository != null) {
-                Optional<fu.se184491.loadmaster_be.entity.billing.CompanySubscription> subOpt =
+                Optional<CompanySubscription> subOpt =
                         companySubscriptionRepository.findByCompanyId(user.getCompany().getId());
                 if (subOpt.isPresent()) {
-                    fu.se184491.loadmaster_be.entity.billing.CompanySubscription sub = subOpt.get();
-                    boolean expired = sub.getStatus() == fu.se184491.loadmaster_be.constant.billing.SubscriptionStatus.EXPIRED
-                            || (sub.getExpiresAt() != null && sub.getExpiresAt().isBefore(java.time.LocalDateTime.now()));
+                    CompanySubscription sub = subOpt.get();
+                    boolean expired = sub.getStatus() == SubscriptionStatus.EXPIRED
+                            || (sub.getExpiresAt() != null && sub.getExpiresAt().isBefore(LocalDateTime.now()));
                     subscriptionExpired = expired;
                 }
             }
@@ -100,7 +110,7 @@ public class UserServiceImpl implements UserService {
                                 : null
                 )
                 .userRoleType(user.getUserRoleType())
-                .userType(user.getUserType() != null ? user.getUserType() : fu.se184491.loadmaster_be.constant.account.UserType.OFFICIAL)
+                .userType(user.getUserType() != null ? user.getUserType() : UserType.OFFICIAL)
                 .status(user.getStatus())
                 .subscriptionExpired(subscriptionExpired)
                 .build();
@@ -341,7 +351,7 @@ public class UserServiceImpl implements UserService {
                     .fullName(targetFullName)
                     .phoneNumber(targetPhone)
                     .userRoleType(request.role())
-                    .userType(currentUser.getUserType() != null ? currentUser.getUserType() : fu.se184491.loadmaster_be.constant.account.UserType.OFFICIAL)
+                    .userType(currentUser.getUserType() != null ? currentUser.getUserType() : UserType.OFFICIAL)
                     .status(UserStatus.ACTIVE)
                     .build();
             user.prePersist();
@@ -565,7 +575,7 @@ public class UserServiceImpl implements UserService {
                         "Chỉ tài khoản quản trị hệ thống mới được phép thay đổi công ty của người dùng"
                 );
             }
-            fu.se184491.loadmaster_be.entity.company.Company targetCompany = companyRepository.findById(request.companyId())
+            Company targetCompany = companyRepository.findById(request.companyId())
                     .orElseThrow(() -> new AppException(ErrorCode.COMPANY_NOT_FOUND));
             targetUser.setCompany(targetCompany);
         }
@@ -663,13 +673,13 @@ public class UserServiceImpl implements UserService {
 
     @Override
     @Transactional
-    @org.springframework.scheduling.annotation.Scheduled(cron = "0 0 * * * *")
+    @Scheduled(cron = "0 0 * * * *")
     public void purgeInactiveUsersAfterThreeMonths() {
-        java.time.LocalDateTime cutoff = java.time.LocalDateTime.now()
+        LocalDateTime cutoff = LocalDateTime.now()
                 .minusMonths(3)
-                .truncatedTo(java.time.temporal.ChronoUnit.SECONDS);
+                .truncatedTo(ChronoUnit.SECONDS);
 
-        java.util.List<User> expiredUsers =
+        List<User> expiredUsers =
                 userRepository.findByStatusAndUpdatedAtBefore(UserStatus.INACTIVE, cutoff);
 
         for (User expiredUser : expiredUsers) {
@@ -806,7 +816,7 @@ public class UserServiceImpl implements UserService {
         String planTier = null;
         String planCode = null;
         String subscriptionStatus = null;
-        java.time.LocalDateTime subscriptionExpiresAt = null;
+        LocalDateTime subscriptionExpiresAt = null;
         Integer creditBalance = null;
 
         if (user.getCompany() != null) {
@@ -845,7 +855,7 @@ public class UserServiceImpl implements UserService {
                 user.getFullName(),
                 user.getPhoneNumber(),
                 user.getUserRoleType(),
-                user.getUserType() != null ? user.getUserType() : fu.se184491.loadmaster_be.constant.account.UserType.OFFICIAL,
+                user.getUserType() != null ? user.getUserType() : UserType.OFFICIAL,
                 user.getStatus(),
                 user.getCompany() != null
                         ? user.getCompany().getId()

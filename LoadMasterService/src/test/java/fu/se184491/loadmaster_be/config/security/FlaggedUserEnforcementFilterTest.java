@@ -11,6 +11,7 @@ import fu.se184491.loadmaster_be.helpers.CurrentUserService;
 import fu.se184491.loadmaster_be.repository.billing.CompanySubscriptionRepository;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.http.HttpServletResponse;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -52,7 +53,7 @@ class FlaggedUserEnforcementFilterTest {
         filter = new FlaggedUserEnforcementFilter(currentUserService, objectMapper, companySubscriptionRepository);
     }
 
-    @org.junit.jupiter.api.AfterEach
+    @AfterEach
     void tearDown() {
         SecurityContextHolder.clearContext();
     }
