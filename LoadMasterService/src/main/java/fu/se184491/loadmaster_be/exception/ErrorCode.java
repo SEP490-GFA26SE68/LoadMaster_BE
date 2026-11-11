@@ -97,6 +97,7 @@ public enum ErrorCode {
     TRIP_NOT_EDITABLE("Chỉ sửa được chuyến ở trạng thái Nháp hoặc Đã lập kế hoạch", HttpStatus.CONFLICT),
     TRIP_NOT_CANCELLABLE("Chỉ huỷ được chuyến ở trạng thái Nháp, Đã lập kế hoạch hoặc Đang xếp hàng", HttpStatus.CONFLICT),
     TRIP_HAS_NO_STOPS("Chuyến chưa có điểm giao nào", HttpStatus.BAD_REQUEST),
+    TRIP_HAS_NO_PACKAGES("Chuyến chưa có kiện nào", HttpStatus.BAD_REQUEST),
     DELIVERY_REQUIREMENT_NOT_IN_TRIP("Yêu cầu giao không thuộc chuyến này", HttpStatus.BAD_REQUEST),
     TRIP_NOT_READY_FOR_LOADING("Chỉ bắt đầu xếp được chuyến ở trạng thái Đã lập kế hoạch", HttpStatus.CONFLICT),
     LOADING_NOT_COMPLETED("Kho chưa xếp xong hàng cho chuyến", HttpStatus.CONFLICT),
@@ -108,6 +109,16 @@ public enum ErrorCode {
     WIDTH_RATIO("Chiều rộng cửa không được vượt quá chiều rộng thùng xe", HttpStatus.BAD_REQUEST),
 
     HIGH_RATIO("Chiều cao cửa không được vượt quá chiều cao thùng xe", HttpStatus.BAD_REQUEST),
+    VEHICLE_IN_USE("Xe đang được dùng cho chuyến chưa giao xong hoặc chưa huỷ", HttpStatus.CONFLICT),
+    VEHICLE_BUSY("Xe đang phục vụ chuyến nên chưa đưa vào bảo dưỡng được", HttpStatus.CONFLICT),
+    VEHICLE_RETIRED("Xe đã ngừng sử dụng", HttpStatus.CONFLICT),
+    VEHICLE_TYPE_IN_USE("Loại xe còn xe đang gắn nên chưa xoá được", HttpStatus.CONFLICT),
+    TRIP_REPORT_NOT_AVAILABLE("Chỉ xem báo cáo của chuyến đã giao hoặc bị huỷ khi đang vận chuyển", HttpStatus.CONFLICT),
+    TRIP_NOT_IN_TRANSIT("Chuyến không ở trạng thái Đang vận chuyển", HttpStatus.CONFLICT),
+    STOP_ORDER_INVALID("Thứ tự điểm giao không hợp lệ", HttpStatus.BAD_REQUEST),
+    STOP_NOT_MOVABLE("Điểm đã hoàn tất hoặc xe đã tới không đổi chỗ được", HttpStatus.CONFLICT),
+    PICKUP_AFTER_DELIVERY("Điểm nhận hàng phải đứng trước điểm giao của nó", HttpStatus.CONFLICT),
+    STOP_ORDER_BLOCKS_CARGO("Thứ tự mới làm kiện bị che kín lối dỡ", HttpStatus.CONFLICT),
 
     // -------------------------------------------------------------------------
     // Subscription & Payment errors
@@ -269,6 +280,7 @@ public enum ErrorCode {
     // -------------------------------------------------------------------------
     ACTIVE_SUBSCRIPTION_ALREADY_EXISTS("Doanh nghiệp đã có gói đăng ký đang hoạt động", HttpStatus.CONFLICT),
     NO_ACTIVE_SUBSCRIPTION("Doanh nghiệp chưa có gói đăng ký nào đang hoạt động", HttpStatus.NOT_FOUND),
+    SUBSCRIPTION_NOT_RENEWABLE("Gói cước chưa tới kỳ gia hạn, đang dùng thử hoặc hợp đồng đã huỷ", HttpStatus.CONFLICT),
     SUBSCRIPTION_PLAN_NOT_FOUND("Không tìm thấy gói đăng ký", HttpStatus.NOT_FOUND),
     PAYMENT_TRANSACTION_NOT_FOUND("Không tìm thấy giao dịch thanh toán", HttpStatus.NOT_FOUND),
     INVALID_PAYMENT_SIGNATURE("Chữ ký thanh toán không hợp lệ", HttpStatus.BAD_REQUEST),
@@ -295,6 +307,7 @@ public enum ErrorCode {
     // Partner Contract & Support Guest errors (Sprint 4)
     // -------------------------------------------------------------------------
     CONTACT_REQUEST_NOT_FOUND("Không tìm thấy yêu cầu liên hệ", HttpStatus.NOT_FOUND),
+    CONTACT_ASSIGNEE_INVALID("Chỉ giao yêu cầu liên hệ cho quản trị hệ thống hoặc hỗ trợ khách hàng đang hoạt động", HttpStatus.BAD_REQUEST),
     CONTRACT_NOT_FOUND("Không tìm thấy hợp đồng", HttpStatus.NOT_FOUND),
     INVOICE_NOT_FOUND("Không tìm thấy hóa đơn", HttpStatus.NOT_FOUND),
     TRIAL_REQUEST_NOT_FOUND("Không tìm thấy đơn yêu cầu tạo tài khoản dùng thử", HttpStatus.NOT_FOUND),

@@ -118,6 +118,18 @@ class LoadingOptimizationServiceImplTest {
     }
 
     @Test
+    void oneCreditIsNotEnoughForARunThatCostsTwo() {
+        subscription(SubscriptionTier.BASIC, SubscriptionStatus.ACTIVE);
+        balance(1);
+
+        assertThatThrownBy(() -> service.startLoadingOptimization(10L))
+                .isInstanceOf(AppException.class)
+                .extracting(LoadingOptimizationServiceImplTest::codeOf)
+                .isEqualTo(ErrorCode.INSUFFICIENT_CREDITS);
+        verify(optimizationClient, never()).createJob(any());
+    }
+
+    @Test
     void ultimateSkipsTheBalanceCheck() {
         subscription(SubscriptionTier.ULTIMATE, SubscriptionStatus.ACTIVE);
         balance(0);

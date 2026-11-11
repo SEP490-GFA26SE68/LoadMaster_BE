@@ -13,7 +13,9 @@ public interface VehicleTypeService {
             CreateVehicleTypeRequest request
     );
 
-    void deleteVehicleType(Long companyId, Long id);
+    VehicleTypeResponse updateVehicleType(Long id, CreateVehicleTypeRequest request);
+
+    void deleteVehicleType(Long id);
 
     PageResponse<VehicleTypeResponse> getVehicleTypes(
             int page,

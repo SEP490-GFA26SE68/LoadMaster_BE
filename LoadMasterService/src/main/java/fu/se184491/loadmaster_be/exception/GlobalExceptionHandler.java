@@ -66,6 +66,7 @@ public class GlobalExceptionHandler {
                         .code(errorCode.name())
                         .message(ex.getMessage())
                         .data(null)
+                        .errors(ex.getDetails())
                         .build());
     }
 

@@ -180,6 +180,8 @@ public class TripLifecycleService {
             throw new AppException(ErrorCode.INVALID_INPUT, "Vui lòng nhập lý do huỷ chuyến");
         }
         TripStatus previousStatus = trip.getStatus();
+        trip.setCancelReason(trimmedReason);
+        trip.setCancelledFromStatus(previousStatus);
 
         int loadedCount = 0;
         int requirementCount = 0;

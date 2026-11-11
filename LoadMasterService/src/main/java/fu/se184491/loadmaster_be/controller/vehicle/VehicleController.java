@@ -4,6 +4,9 @@ import fu.se184491.loadmaster_be.dto.ApiResponse;
 import fu.se184491.loadmaster_be.dto.PageResponse;
 import fu.se184491.loadmaster_be.dto.request.vehicle.AssignDriverRequest;
 import fu.se184491.loadmaster_be.dto.request.vehicle.CreateVehicleRequest;
+import fu.se184491.loadmaster_be.dto.request.vehicle.UpdateVehicleRequest;
+import fu.se184491.loadmaster_be.dto.request.vehicle.VehicleMaintenanceRequest;
+import fu.se184491.loadmaster_be.dto.response.vehicle.VehicleDeleteResponse;
 import fu.se184491.loadmaster_be.dto.response.trip.TripVehicleConfigResponse;
 import fu.se184491.loadmaster_be.dto.response.vehicle.VehicleResponse;
 import fu.se184491.loadmaster_be.service.vehicle.VehicleService;
@@ -80,6 +83,37 @@ public class VehicleController {
                         vehicleService.getVehicleById(id)
                 )
         );
+    }
+
+    @PutMapping("/{id}")
+    @PreAuthorize("hasAuthority('VEHICLES_UPDATE')")
+    public ResponseEntity<ApiResponse<VehicleResponse>> updateVehicle(
+            @PathVariable Long id,
+            @Valid @RequestBody UpdateVehicleRequest request
+    ) {
+        return ResponseEntity.ok(ApiResponse.success(vehicleService.updateVehicle(id, request)));
+    }
+
+    @DeleteMapping("/{id}")
+    @PreAuthorize("hasAuthority('VEHICLES_DELETE')")
+    public ResponseEntity<ApiResponse<VehicleDeleteResponse>> deleteVehicle(@PathVariable Long id) {
+        return ResponseEntity.ok(ApiResponse.success(vehicleService.deleteVehicle(id)));
+    }
+
+    @PostMapping("/{id}/maintenance")
+    @PreAuthorize("hasAuthority('VEHICLES_UPDATE')")
+    public ResponseEntity<ApiResponse<VehicleResponse>> startMaintenance(
+            @PathVariable Long id,
+            @Valid @RequestBody(required = false) VehicleMaintenanceRequest request
+    ) {
+        String note = request == null ? null : request.note();
+        return ResponseEntity.ok(ApiResponse.success(vehicleService.startMaintenance(id, note)));
+    }
+
+    @DeleteMapping("/{id}/maintenance")
+    @PreAuthorize("hasAuthority('VEHICLES_UPDATE')")
+    public ResponseEntity<ApiResponse<VehicleResponse>> endMaintenance(@PathVariable Long id) {
+        return ResponseEntity.ok(ApiResponse.success(vehicleService.endMaintenance(id)));
     }
 
     @GetMapping("/{id}/config")

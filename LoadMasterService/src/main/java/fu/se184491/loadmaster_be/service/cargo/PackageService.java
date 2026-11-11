@@ -39,6 +39,15 @@ public interface PackageService {
             Long id
     );
 
+    /**
+     * Nhân viên kho tìm thấy lại kiện mang cờ "Không tìm thấy": gỡ cờ và ghi {@code PACKAGE_FOUND} để điều phối viên được báo.
+     * Kiện không mang cờ đó: {@code PACKAGE_NOT_FLAGGED}.
+     */
+    PackageResponse reportFound(
+            Long companyId,
+            Long id
+    );
+
     void deletePackage(
             Long companyId,
             Long id

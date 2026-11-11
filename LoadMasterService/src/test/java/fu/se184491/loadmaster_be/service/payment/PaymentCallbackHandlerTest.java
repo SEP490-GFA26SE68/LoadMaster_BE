@@ -293,4 +293,21 @@ public class PaymentCallbackHandlerTest {
         verify(guestRegistrationService).handlePaymentCallback(params);
         verifyNoInteractions(paymentTransactionRepository);
     }
+
+    @Test
+    @DisplayName("handleVnPayCallback - Paid renewal extends the same plan")
+    void testSuccessfulRenewalActivatesTheSamePlan() {
+        subscriptionTxn.setOrderType("SUBSCRIPTION_RENEWAL");
+        when(vnPayClient.verifyCallback(anyMap())).thenReturn(true);
+        when(paymentTransactionRepository.findByGatewayTransactionId("VNP_SUB_001"))
+                .thenReturn(Optional.of(subscriptionTxn));
+
+        Map<String, String> params = new HashMap<>();
+        params.put("vnp_TxnRef", "VNP_SUB_001");
+        params.put("vnp_ResponseCode", "00");
+        params.put("vnp_Amount", "100000000");
+
+        assertEquals("00", paymentCallbackHandler.handleVnPayCallback(params).get("RspCode"));
+        verify(subscriptionService).activateSubscription(1L, 2L);
+    }
 }
