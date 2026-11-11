@@ -97,6 +97,7 @@ public enum ErrorCode {
     TRIP_NOT_EDITABLE("Chỉ sửa được chuyến ở trạng thái Nháp hoặc Đã lập kế hoạch", HttpStatus.CONFLICT),
     TRIP_NOT_CANCELLABLE("Chỉ huỷ được chuyến ở trạng thái Nháp, Đã lập kế hoạch hoặc Đang xếp hàng", HttpStatus.CONFLICT),
     TRIP_HAS_NO_STOPS("Chuyến chưa có điểm giao nào", HttpStatus.BAD_REQUEST),
+    TRIP_HAS_NO_PACKAGES("Chuyến chưa có kiện nào", HttpStatus.BAD_REQUEST),
     DELIVERY_REQUIREMENT_NOT_IN_TRIP("Yêu cầu giao không thuộc chuyến này", HttpStatus.BAD_REQUEST),
     TRIP_NOT_READY_FOR_LOADING("Chỉ bắt đầu xếp được chuyến ở trạng thái Đã lập kế hoạch", HttpStatus.CONFLICT),
     LOADING_NOT_COMPLETED("Kho chưa xếp xong hàng cho chuyến", HttpStatus.CONFLICT),
@@ -279,6 +280,7 @@ public enum ErrorCode {
     // -------------------------------------------------------------------------
     ACTIVE_SUBSCRIPTION_ALREADY_EXISTS("Doanh nghiệp đã có gói đăng ký đang hoạt động", HttpStatus.CONFLICT),
     NO_ACTIVE_SUBSCRIPTION("Doanh nghiệp chưa có gói đăng ký nào đang hoạt động", HttpStatus.NOT_FOUND),
+    SUBSCRIPTION_NOT_RENEWABLE("Gói cước chưa tới kỳ gia hạn, đang dùng thử hoặc hợp đồng đã huỷ", HttpStatus.CONFLICT),
     SUBSCRIPTION_PLAN_NOT_FOUND("Không tìm thấy gói đăng ký", HttpStatus.NOT_FOUND),
     PAYMENT_TRANSACTION_NOT_FOUND("Không tìm thấy giao dịch thanh toán", HttpStatus.NOT_FOUND),
     INVALID_PAYMENT_SIGNATURE("Chữ ký thanh toán không hợp lệ", HttpStatus.BAD_REQUEST),
@@ -305,6 +307,7 @@ public enum ErrorCode {
     // Partner Contract & Support Guest errors (Sprint 4)
     // -------------------------------------------------------------------------
     CONTACT_REQUEST_NOT_FOUND("Không tìm thấy yêu cầu liên hệ", HttpStatus.NOT_FOUND),
+    CONTACT_ASSIGNEE_INVALID("Chỉ giao yêu cầu liên hệ cho quản trị hệ thống hoặc hỗ trợ khách hàng đang hoạt động", HttpStatus.BAD_REQUEST),
     CONTRACT_NOT_FOUND("Không tìm thấy hợp đồng", HttpStatus.NOT_FOUND),
     INVOICE_NOT_FOUND("Không tìm thấy hóa đơn", HttpStatus.NOT_FOUND),
     TRIAL_REQUEST_NOT_FOUND("Không tìm thấy đơn yêu cầu tạo tài khoản dùng thử", HttpStatus.NOT_FOUND),

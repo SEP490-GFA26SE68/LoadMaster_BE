@@ -2,12 +2,16 @@ package fu.se184491.loadmaster_be.service.subscription.Impl;
 
 import fu.se184491.loadmaster_be.constant.billing.BillingCycle;
 import fu.se184491.loadmaster_be.constant.billing.PaymentGateway;
+import fu.se184491.loadmaster_be.constant.billing.PaymentStatus;
 import fu.se184491.loadmaster_be.constant.billing.SubscriptionStatus;
 import fu.se184491.loadmaster_be.constant.billing.SubscriptionTier;
 import fu.se184491.loadmaster_be.dto.request.subscription.SubscribeRequest;
 import fu.se184491.loadmaster_be.dto.response.credit.CreditBalanceResponse;
 import fu.se184491.loadmaster_be.dto.response.payment.PaymentUrlResponse;
 import fu.se184491.loadmaster_be.dto.response.subscription.SubscriptionCurrentResponse;
+import fu.se184491.loadmaster_be.dto.response.subscription.SubscriptionRenewalResponse;
+import fu.se184491.loadmaster_be.entity.billing.PaymentTransaction;
+import fu.se184491.loadmaster_be.repository.billing.PaymentTransactionRepository;
 import fu.se184491.loadmaster_be.entity.billing.CompanySubscription;
 import fu.se184491.loadmaster_be.entity.billing.SubscriptionPlan;
 import fu.se184491.loadmaster_be.entity.company.Company;
@@ -40,6 +44,12 @@ public class SubscriptionServiceImpl implements SubscriptionService {
     private final CompanySubscriptionRepository companySubscriptionRepository;
     private final CreditService creditService;
     private final PaymentGatewayService paymentGatewayService;
+    private final PaymentTransactionRepository paymentTransactionRepository;
+
+    /** Gói còn hạn chỉ gia hạn được trong chừng này ngày cuối kỳ; gói đã hết hạn thì lúc nào cũng được. */
+    public static final int RENEWAL_WINDOW_DAYS = 3;
+    static final String RENEWAL_ORDER = "SUBSCRIPTION_RENEWAL";
+    private static final List<String> PLAN_ORDERS = List.of("SUBSCRIPTION", "SUBSCRIPTION_YEARLY", RENEWAL_ORDER);
 
     @Override
     @Transactional
@@ -251,6 +261,103 @@ public class SubscriptionServiceImpl implements SubscriptionService {
         sub.setAutoRenew(false);
         companySubscriptionRepository.save(sub);
         log.info("Cancelled auto-renewal for company subscription id={}", sub.getId());
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public SubscriptionRenewalResponse getRenewal(Long companyId) {
+        Optional<CompanySubscription> subOpt = companySubscriptionRepository.findByCompanyId(companyId);
+        LocalDateTime now = LocalDateTime.now().truncatedTo(ChronoUnit.SECONDS);
+        SubscriptionRenewalResponse.SubscriptionRenewalResponseBuilder out = SubscriptionRenewalResponse.builder()
+                .renewalWindowDays(RENEWAL_WINDOW_DAYS)
+                .pendingPayment(pendingPlanPayment(companyId));
+        if (subOpt.isEmpty() || subOpt.get().getPlan() == null) {
+            return out.renewable(false).reason("NO_SUBSCRIPTION").build();
+        }
+        CompanySubscription sub = subOpt.get();
+        SubscriptionPlan plan = sub.getPlan();
+        String reason = renewalBlock(sub, now);
+        return out.planId(plan.getId())
+                .planName(plan.getName())
+                .tier(plan.getTier())
+                .planActive(!Boolean.FALSE.equals(plan.getActive()))
+                .status(sub.getStatus())
+                .expiresAt(sub.getExpiresAt())
+                .amountVnd(plan.getPriceVnd() != null ? plan.getPriceVnd() : BigDecimal.ZERO)
+                .renewable(reason == null)
+                .reason(reason)
+                .build();
+    }
+
+    @Override
+    @Transactional
+    public PaymentUrlResponse renew(Long companyId, PaymentGateway gateway, String ipAddress) {
+        Company company = companyRepository.findById(companyId)
+                .orElseThrow(() -> new AppException(ErrorCode.COMPANY_NOT_FOUND));
+        CompanySubscription sub = companySubscriptionRepository.findByCompanyId(companyId)
+                .filter(found -> found.getPlan() != null)
+                .orElseThrow(() -> new AppException(ErrorCode.SUBSCRIPTION_NOT_FOUND));
+        if (renewalBlock(sub, LocalDateTime.now().truncatedTo(ChronoUnit.SECONDS)) != null) {
+            throw new AppException(ErrorCode.SUBSCRIPTION_NOT_RENEWABLE);
+        }
+        // Gói ngừng bán vẫn gia hạn được cho công ty đang dùng (đăng ký mới thì không).
+        SubscriptionPlan plan = sub.getPlan();
+        BigDecimal price = plan.getPriceVnd() != null ? plan.getPriceVnd() : BigDecimal.ZERO;
+        if (price.compareTo(BigDecimal.ZERO) <= 0) {
+            activateSubscription(companyId, plan.getId());
+            return PaymentUrlResponse.builder().status("ACTIVE").build();
+        }
+        PaymentGateway chosen = gateway != null ? gateway : PaymentGateway.VNPAY;
+        Optional<PaymentTransaction> pending = paymentTransactionRepository
+                .findFirstByCompanyIdAndStatusAndOrderTypeInOrderByIdDesc(companyId, PaymentStatus.PENDING, List.of(RENEWAL_ORDER))
+                .filter(txn -> chosen == PaymentGateway.MOCK && txn.getGateway() == PaymentGateway.MOCK
+                        && plan.getId().equals(txn.getTargetId())
+                        && txn.getAmountVnd() != null && txn.getAmountVnd().compareTo(price) == 0);
+        if (pending.isPresent()) {
+            PaymentTransaction txn = pending.get();
+            return PaymentUrlResponse.builder()
+                    .id(txn.getId())
+                    .transactionId(txn.getGatewayTransactionId())
+                    .paymentUrl(mockCheckoutUrl(txn))
+                    .status(txn.getStatus().name())
+                    .amountVnd(txn.getAmountVnd())
+                    .build();
+        }
+        return paymentGatewayService.createPayment(company, chosen, RENEWAL_ORDER, plan.getId(), price,
+                "Gia hạn gói " + plan.getName(), ipAddress);
+    }
+
+    /** Lý do không gia hạn được, {@code null} khi được: gói hết hạn, hoặc còn hạn trong {@link #RENEWAL_WINDOW_DAYS} ngày cuối. */
+    private static String renewalBlock(CompanySubscription sub, LocalDateTime now) {
+        SubscriptionStatus status = sub.getStatus();
+        if (status == SubscriptionStatus.CANCELLED) return "CANCELLED";
+        if (status == SubscriptionStatus.TRIAL) return "TRIAL";
+        if (status == SubscriptionStatus.EXPIRED) return null;
+        LocalDateTime expiresAt = sub.getExpiresAt();
+        if (expiresAt == null || expiresAt.isAfter(now.plusDays(RENEWAL_WINDOW_DAYS))) return "NOT_DUE";
+        return null;
+    }
+
+    private SubscriptionRenewalResponse.PendingPayment pendingPlanPayment(Long companyId) {
+        return paymentTransactionRepository
+                .findFirstByCompanyIdAndStatusAndOrderTypeInOrderByIdDesc(companyId, PaymentStatus.PENDING, PLAN_ORDERS)
+                .map(txn -> SubscriptionRenewalResponse.PendingPayment.builder()
+                        .id(txn.getId())
+                        .transactionId(txn.getGatewayTransactionId())
+                        .paymentUrl(mockCheckoutUrl(txn))
+                        .orderType(txn.getOrderType())
+                        .planId(txn.getTargetId())
+                        .amountVnd(txn.getAmountVnd())
+                        .createdAt(txn.getCreatedAt())
+                        .build())
+                .orElse(null);
+    }
+
+    /** Liên kết của cổng giả lập; cổng thật không lưu liên kết nên {@code null}. */
+    private static String mockCheckoutUrl(PaymentTransaction txn) {
+        return txn.getGateway() == PaymentGateway.MOCK
+                ? "/api/payment/mock-checkout?txnRef=" + txn.getGatewayTransactionId()
+                : null;
     }
 
     @Override

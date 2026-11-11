@@ -1,6 +1,7 @@
 package fu.se184491.loadmaster_be.dto.response;
 
 import fu.se184491.loadmaster_be.constant.cargo.HandlingClass;
+import fu.se184491.loadmaster_be.constant.cargo.PackageFlag;
 import fu.se184491.loadmaster_be.constant.cargo.PackageStatus;
 import lombok.Builder;
 
@@ -21,7 +22,9 @@ public record PackageDetailResponse(
         Long orderId,
         TripRef trip,
         StopRef stop,
-        String destination
+        String destination,
+        /** Cờ của kiện (NOT_FOUND, DAMAGED); {@code null} khi kiện không mang cờ. */
+        PackageFlag flag
 ) {
     /** Trip currently holding the package. {@code name} is the trip code. */
     public record TripRef(Long id, String name) {}

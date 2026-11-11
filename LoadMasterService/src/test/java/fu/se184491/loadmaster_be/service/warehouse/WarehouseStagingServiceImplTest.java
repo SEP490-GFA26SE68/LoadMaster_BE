@@ -184,7 +184,9 @@ class WarehouseStagingServiceImplTest {
 
     @Test
     void keepSearchingClosesTheReportWithoutTouchingTheTrip() {
-        StagingShortage open = StagingShortage.builder().id(5L).trip(trip).cargoPackage(pkg).status(ShortageStatus.OPEN).build();
+        trip.setDriver(User.builder().id(13L).build());
+        StagingShortage open = StagingShortage.builder().id(5L).trip(trip).cargoPackage(pkg).reportedBy(worker)
+                .status(ShortageStatus.OPEN).build();
         when(stagingShortageRepository.findById(5L)).thenReturn(Optional.of(open));
 
         StagingShortageResponse response = service.resolveShortage("10", 5L,
@@ -192,6 +194,12 @@ class WarehouseStagingServiceImplTest {
 
         assertEquals("KEEP_SEARCHING", response.getStatus());
         verify(loadingReplanService, never()).returnToPlanning(any(), any(), any(), any(), any());
+        // Chuông của người báo thiếu và tài xế của chuyến đọc hai giá trị này
+        verify(lookup).audit(org.mockito.ArgumentMatchers.eq(trip), any(),
+                org.mockito.ArgumentMatchers.eq("STAGING_SHORTAGE_RESOLVED"), any(), any(),
+                org.mockito.ArgumentMatchers.argThat(values -> Long.valueOf(9L).equals(values.get("reportedBy"))
+                        && Long.valueOf(13L).equals(values.get("driverId"))
+                        && "KEEP_SEARCHING".equals(values.get("decision"))));
     }
 
     @Test

@@ -18,6 +18,7 @@ import fu.se184491.loadmaster_be.entity.optimization.LoadPlan;
 import fu.se184491.loadmaster_be.entity.optimization.PackagePlacement;
 import fu.se184491.loadmaster_be.entity.trip.Trip;
 import fu.se184491.loadmaster_be.service.credit.CreditService;
+import fu.se184491.loadmaster_be.service.credit.Impl.CreditServiceImpl;
 import fu.se184491.loadmaster_be.service.optimization.LoadPlanQueryService;
 import fu.se184491.loadmaster_be.service.optimization.LoadingOptimizationService;
 import lombok.RequiredArgsConstructor;
@@ -34,10 +35,11 @@ import java.util.Objects;
 public class LoadingOptimizationServiceImpl implements LoadingOptimizationService {
 
     /**
-     * Một lần chạy tối ưu 3D (ba phương án) dùng 1 credit. Dịch vụ tối ưu giữ credit khi bắt đầu chạy
-     * và hoàn lại khi không ra phương án nào (NO_SOLUTION) hoặc lỗi.
+     * Một lần chạy tối ưu 3D (ba phương án) dùng đúng số credit mà dịch vụ tối ưu trừ qua
+     * {@code /api/internal/credits/deduct}. Dịch vụ tối ưu giữ credit khi bắt đầu chạy và hoàn lại khi không ra
+     * phương án nào (NO_SOLUTION) hoặc lỗi; chặn sớm ở đây theo cùng số để không tạo job sẽ hỏng vì thiếu credit.
      */
-    private static final int CREDIT_PER_RUN = 1;
+    private static final int CREDIT_PER_RUN = CreditServiceImpl.INITIAL_OPTIMIZATION_CREDIT_COST;
 
     private final TripRepository tripRepository;
     private final CurrentUserService currentUserService;

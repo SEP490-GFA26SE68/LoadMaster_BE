@@ -31,4 +31,6 @@ public interface UserRepository extends
     List<User> findByCompanyIdAndUserRoleTypeAndStatus(Long companyId, UserRole userRole, UserStatus userStatus);
 
     List<User> findByStatusAndUpdatedAtBefore(UserStatus status, LocalDateTime updatedAtCutoff);
+
+    List<User> findByUserRoleTypeInAndStatusOrderByFullNameAsc(java.util.Collection<UserRole> roles, UserStatus status);
 }

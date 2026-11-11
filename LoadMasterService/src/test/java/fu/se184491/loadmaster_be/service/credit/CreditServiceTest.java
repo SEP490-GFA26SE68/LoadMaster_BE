@@ -361,4 +361,43 @@ public class CreditServiceTest {
         PaymentUrlResponse basicRes = creditService.topup(1L, req, "127.0.0.1");
         assertEquals("MOCK_BASIC_5000", basicRes.getTransactionId());
     }
+
+    @Test
+    @DisplayName("getPricing - giá theo hạng gói đang dùng, một lần tối ưu 2 credit, chạy lại 1 credit, nạp từ 1 credit không trần")
+    void pricingFollowsTheCurrentTier() {
+        when(companySubscriptionRepository.findByCompanyId(1L)).thenReturn(Optional.of(subscription));
+
+        var pricing = creditService.getPricing(1L);
+
+        assertEquals(SubscriptionTier.PRO, pricing.getTier());
+        assertEquals(new BigDecimal("326"), pricing.getPricePerCreditVnd());
+        assertEquals(new BigDecimal("400"), pricing.getTierPrices().get(SubscriptionTier.BASIC));
+        assertEquals(new BigDecimal("263"), pricing.getTierPrices().get(SubscriptionTier.ULTIMATE));
+        assertEquals(2, pricing.getOptimizationCost());
+        assertEquals(1, pricing.getRerunCost());
+        assertEquals(1, pricing.getMinTopUpCredits());
+        assertNull(pricing.getMaxTopUpCredits());
+        assertFalse(pricing.getUnlimited());
+        assertTrue(pricing.getTopUpAllowed());
+    }
+
+    @Test
+    @DisplayName("getPricing - chưa có gói tính như Basic, nạp được; gói hết hạn không nạp được; Ultimate đang dùng là không giới hạn")
+    void pricingWithoutPlanExpiredAndUltimate() {
+        when(companySubscriptionRepository.findByCompanyId(1L)).thenReturn(Optional.empty());
+        var none = creditService.getPricing(1L);
+        assertEquals(SubscriptionTier.BASIC, none.getTier());
+        assertEquals(new BigDecimal("400"), none.getPricePerCreditVnd());
+        assertTrue(none.getTopUpAllowed());
+
+        subscription.setStatus(SubscriptionStatus.EXPIRED);
+        when(companySubscriptionRepository.findByCompanyId(1L)).thenReturn(Optional.of(subscription));
+        assertFalse(creditService.getPricing(1L).getTopUpAllowed());
+
+        subscription.setStatus(SubscriptionStatus.ACTIVE);
+        subscription.setPlan(ultimatePlan);
+        var ultimate = creditService.getPricing(1L);
+        assertTrue(ultimate.getUnlimited());
+        assertEquals(new BigDecimal("263"), ultimate.getPricePerCreditVnd());
+    }
 }
