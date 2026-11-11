@@ -39,6 +39,12 @@ public interface TripRepository extends
             Collection<TripStatus> statuses
     );
 
+    boolean existsByVehicleId(Long vehicleId);
+
+    List<Trip> findByVehicleIdAndStatusIn(Long vehicleId, Collection<TripStatus> statuses);
+
+    List<Trip> findByVehicle_VehicleType_IdAndStatusIn(Long vehicleTypeId, Collection<TripStatus> statuses);
+
     Page<Trip> findByCompanyId(Long companyId, Pageable pageable);
 
     /** Chuyến của công ty có giờ xuất phát trong [start, end). */

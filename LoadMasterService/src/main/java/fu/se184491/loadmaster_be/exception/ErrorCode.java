@@ -108,6 +108,16 @@ public enum ErrorCode {
     WIDTH_RATIO("Chiều rộng cửa không được vượt quá chiều rộng thùng xe", HttpStatus.BAD_REQUEST),
 
     HIGH_RATIO("Chiều cao cửa không được vượt quá chiều cao thùng xe", HttpStatus.BAD_REQUEST),
+    VEHICLE_IN_USE("Xe đang được dùng cho chuyến chưa giao xong hoặc chưa huỷ", HttpStatus.CONFLICT),
+    VEHICLE_BUSY("Xe đang phục vụ chuyến nên chưa đưa vào bảo dưỡng được", HttpStatus.CONFLICT),
+    VEHICLE_RETIRED("Xe đã ngừng sử dụng", HttpStatus.CONFLICT),
+    VEHICLE_TYPE_IN_USE("Loại xe còn xe đang gắn nên chưa xoá được", HttpStatus.CONFLICT),
+    TRIP_REPORT_NOT_AVAILABLE("Chỉ xem báo cáo của chuyến đã giao hoặc bị huỷ khi đang vận chuyển", HttpStatus.CONFLICT),
+    TRIP_NOT_IN_TRANSIT("Chuyến không ở trạng thái Đang vận chuyển", HttpStatus.CONFLICT),
+    STOP_ORDER_INVALID("Thứ tự điểm giao không hợp lệ", HttpStatus.BAD_REQUEST),
+    STOP_NOT_MOVABLE("Điểm đã hoàn tất hoặc xe đã tới không đổi chỗ được", HttpStatus.CONFLICT),
+    PICKUP_AFTER_DELIVERY("Điểm nhận hàng phải đứng trước điểm giao của nó", HttpStatus.CONFLICT),
+    STOP_ORDER_BLOCKS_CARGO("Thứ tự mới làm kiện bị che kín lối dỡ", HttpStatus.CONFLICT),
 
     // -------------------------------------------------------------------------
     // Subscription & Payment errors
