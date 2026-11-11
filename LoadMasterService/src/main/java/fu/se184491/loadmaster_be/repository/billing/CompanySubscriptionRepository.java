@@ -15,6 +15,8 @@ public interface CompanySubscriptionRepository extends JpaRepository<CompanySubs
     Optional<CompanySubscription> findByCompanyId(Long companyId);
     Optional<CompanySubscription> findByCompanyIdAndStatus(Long companyId, SubscriptionStatus status);
     boolean existsByPlanIdAndStatus(Long planId, SubscriptionStatus status);
+    /** Còn đăng ký nào (mọi trạng thái) trỏ tới gói: `plan_id` là khoá ngoại bắt buộc. */
+    boolean existsByPlanId(Long planId);
     long countByPlanIdAndStatus(Long planId, SubscriptionStatus status);
     List<CompanySubscription> findByStatusAndExpiresAtBefore(SubscriptionStatus status, LocalDateTime dateTime);
     long countByStatus(SubscriptionStatus status);

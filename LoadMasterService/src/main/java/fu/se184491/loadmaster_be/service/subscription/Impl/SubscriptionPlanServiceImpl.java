@@ -134,7 +134,8 @@ public class SubscriptionPlanServiceImpl implements SubscriptionPlanService {
         SubscriptionPlan plan = planRepository.findById(id)
                 .orElseThrow(() -> new AppException(ErrorCode.SUBSCRIPTION_NOT_FOUND));
 
-        if (companySubscriptionRepository.existsByPlanIdAndStatus(id, SubscriptionStatus.ACTIVE)) {
+        // Đăng ký đã hết hạn hay đã huỷ vẫn trỏ tới gói (khoá ngoại bắt buộc): còn bất kỳ đăng ký nào thì không xoá được
+        if (companySubscriptionRepository.existsByPlanId(id)) {
             throw new AppException(ErrorCode.PLAN_IN_USE);
         }
 
