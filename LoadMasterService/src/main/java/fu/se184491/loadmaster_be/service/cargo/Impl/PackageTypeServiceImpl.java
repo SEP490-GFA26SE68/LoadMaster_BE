@@ -89,8 +89,6 @@ public class PackageTypeServiceImpl implements PackageTypeService {
         }
 
         packageType.setTypeCode(typeCode);
-
-        packageType.setTypeCode(request.getTypeCode());
         packageType.setName(request.getName().trim());
         packageType.setLength(request.getLength());
         packageType.setWidth(request.getWidth());
