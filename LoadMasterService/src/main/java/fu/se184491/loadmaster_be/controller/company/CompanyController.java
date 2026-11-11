@@ -25,13 +25,13 @@ public class CompanyController {
     private final CompanyService companyService;
 
     @PostMapping
-    @PreAuthorize("hasRole('SYSTEM_ADMIN') or hasAuthority('SYSTEM_ADMIN')")
+    @PreAuthorize("hasRole('SYSTEM_ADMIN')")
     public ResponseEntity<CompanyResponse> createCompany(@Valid @RequestBody CompanyRequest request) {
         return new ResponseEntity<>(companyService.createCompany(request), HttpStatus.CREATED);
     }
 
     @PutMapping("/{id}")
-    @PreAuthorize("hasRole('SYSTEM_ADMIN') or hasAuthority('SYSTEM_ADMIN')")
+    @PreAuthorize("hasRole('SYSTEM_ADMIN')")
     public ResponseEntity<CompanyResponse> updateCompany(
             @PathVariable Long id,
             @Valid @RequestBody CompanyRequest request) {
@@ -39,13 +39,13 @@ public class CompanyController {
     }
 
     @GetMapping("/{id}")
-    @PreAuthorize("hasAnyRole('SYSTEM_MANAGER', 'SYSTEM_ADMIN') or hasAuthority('SYSTEM_MANAGER')")
+    @PreAuthorize("hasAnyRole('SYSTEM_MANAGER', 'SYSTEM_ADMIN')")
     public ResponseEntity<CompanyResponse> getCompanyById(@PathVariable Long id) {
         return ResponseEntity.ok(companyService.getCompanyById(id));
     }
 
     @GetMapping
-    @PreAuthorize("hasAnyRole('SYSTEM_SUPPORTER', 'SYSTEM_MANAGER', 'SYSTEM_ADMIN') or hasAnyAuthority('SYSTEM_SUPPORTER', 'SYSTEM_MANAGER', 'SYSTEM_ADMIN')")
+    @PreAuthorize("hasAnyRole('SYSTEM_SUPPORTER', 'SYSTEM_MANAGER', 'SYSTEM_ADMIN')")
     public ResponseEntity<Page<CompanyResponse>> getAllCompanies(
             @RequestParam(required = false) String search,
             Pageable pageable
@@ -54,14 +54,14 @@ public class CompanyController {
     }
 
     @PatchMapping("/{id}/status")
-    @PreAuthorize("hasRole('SYSTEM_ADMIN') or hasAuthority('SYSTEM_ADMIN')")
+    @PreAuthorize("hasRole('SYSTEM_ADMIN')")
     public ResponseEntity<CompanyResponse> changeCompanyStatus(
             @PathVariable Long id,
             @RequestParam CompanyStatus status) {
         return ResponseEntity.ok(companyService.changeCompanyStatus(id, status));
     }
 
-    @PreAuthorize("hasAuthority('USERS_CREATE') or hasAnyRole('SYSTEM_MANAGER', 'SYSTEM_SUPPORTER', 'SYSTEM_ADMIN') or hasAnyAuthority('SYSTEM_MANAGER', 'SYSTEM_SUPPORTER', 'SYSTEM_ADMIN')")
+    @PreAuthorize("hasAuthority('USERS_CREATE') or hasAnyRole('SYSTEM_MANAGER', 'SYSTEM_SUPPORTER', 'SYSTEM_ADMIN')")
     @GetMapping("/options")
     public ApiResponse<List<CompanyOptionResponse>> getCompanies() {
         return ApiResponse.success(
