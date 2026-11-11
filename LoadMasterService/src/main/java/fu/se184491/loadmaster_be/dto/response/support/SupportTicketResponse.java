@@ -39,4 +39,8 @@ public class SupportTicketResponse {
 
     @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
     private LocalDateTime resolvedAt;
+
+    /** Lần hoạt động gần nhất của phiếu (trả lời, đổi trạng thái). */
+    @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
+    private LocalDateTime updatedAt;
 }

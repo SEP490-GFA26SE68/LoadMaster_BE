@@ -125,7 +125,7 @@ public class SupportTicketServiceImpl implements SupportTicketService {
                 .findAll(spec, Sort.by(Sort.Direction.DESC, "createdAt"));
         cleanupExpiredClosedTickets(tickets);
         return tickets.stream()
-                .map(this::toResponse)
+                .map(SupportTicketServiceImpl::toResponse)
                 .toList();
     }
 
@@ -209,6 +209,7 @@ public class SupportTicketServiceImpl implements SupportTicketService {
             ticket.setResolutionNote(normalizeAndPruneResolutionNote(request.resolutionNote()));
         }
 
+        ticket.setUpdatedAt(LocalDateTime.now().truncatedTo(ChronoUnit.SECONDS));
         SupportTicket saved = supportTicketRepository.save(ticket);
         if (request.resolutionNote() != null) {
             pruneCompanyChatHistoryToRecentDays(saved);
@@ -555,7 +556,7 @@ public class SupportTicketServiceImpl implements SupportTicketService {
         return "TCK-" + datePart + "-" + randomDigits;
     }
 
-    private SupportTicketResponse toResponse(SupportTicket ticket) {
+    static SupportTicketResponse toResponse(SupportTicket ticket) {
         User requester = ticket.getRequester();
         User assignedTo = ticket.getAssignedTo();
         return SupportTicketResponse.builder()
@@ -580,6 +581,7 @@ public class SupportTicketServiceImpl implements SupportTicketService {
                 .resolutionNote(ticket.getResolutionNote())
                 .createdAt(ticket.getCreatedAt())
                 .resolvedAt(ticket.getResolvedAt())
+                .updatedAt(LegacyTicketChat.lastActivity(ticket))
                 .build();
     }
 }
