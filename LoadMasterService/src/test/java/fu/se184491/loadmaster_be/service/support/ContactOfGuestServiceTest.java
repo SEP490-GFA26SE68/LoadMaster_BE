@@ -66,6 +66,8 @@ class ContactOfGuestServiceTest {
         supporter = User.builder()
                 .id(2L)
                 .fullName("Nguyễn Hỗ Trợ")
+                .userRoleType(fu.se184491.loadmaster_be.constant.account.UserRole.SYSTEM_SUPPORTER)
+                .status(fu.se184491.loadmaster_be.constant.account.UserStatus.ACTIVE)
                 .build();
     }
 
@@ -186,5 +188,56 @@ class ContactOfGuestServiceTest {
         assertThatThrownBy(() -> contactOfGuestService.updateContact(10L, updateRequest))
                 .isInstanceOf(AppException.class)
                 .hasFieldOrPropertyWithValue("errorCode", ErrorCode.CANNOT_DIRECTLY_APPROVE_DEMO_REQUEST);
+    }
+
+    @Test
+    @DisplayName("Bỏ người nhận việc bằng unassign; không giao cho người ngoài hai vai trò xử lý liên hệ")
+    void updateContact_UnassignAndRejectNonHandler() {
+        ContactOfGuest contact = ContactOfGuest.builder()
+                .id(10L)
+                .fullName("Trần Khách")
+                .email("khach@gmail.com")
+                .status(ContactStatus.IN_PROGRESS)
+                .requestType(ContactRequestType.PRICING)
+                .assignedTo(supporter)
+                .createdAt(Instant.now().minusSeconds(3600))
+                .build();
+        when(contactOfGuestRepository.findById(10L)).thenReturn(Optional.of(contact));
+        when(contactOfGuestRepository.save(any(ContactOfGuest.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        ContactOfGuestResponse response = contactOfGuestService.updateContact(10L,
+                UpdateContactOfGuestRequest.builder().unassign(true).build());
+        assertThat(response.getAssignedToName()).isNull();
+        assertThat(contact.getAssignedTo()).isNull();
+
+        User dispatcher = User.builder().id(5L).fullName("Điều Phối")
+                .userRoleType(fu.se184491.loadmaster_be.constant.account.UserRole.DISPATCHER)
+                .status(fu.se184491.loadmaster_be.constant.account.UserStatus.ACTIVE).build();
+        when(userRepository.findById(5L)).thenReturn(Optional.of(dispatcher));
+        assertThatThrownBy(() -> contactOfGuestService.updateContact(10L,
+                UpdateContactOfGuestRequest.builder().assignedToId(5L).build()))
+                .isInstanceOf(AppException.class)
+                .extracting(error -> ((AppException) error).getErrorCode())
+                .isEqualTo(ErrorCode.CONTACT_ASSIGNEE_INVALID);
+    }
+
+    @Test
+    @DisplayName("Danh sách người nhận việc: quản trị hệ thống và hỗ trợ khách hàng đang hoạt động")
+    void listHandlers_ActiveSystemAdminsAndSupporters() {
+        when(userRepository.findByUserRoleTypeInAndStatusOrderByFullNameAsc(any(),
+                eq(fu.se184491.loadmaster_be.constant.account.UserStatus.ACTIVE)))
+                .thenReturn(java.util.List.of(supporter));
+
+        assertThat(contactOfGuestService.listHandlers())
+                .singleElement()
+                .satisfies(handler -> {
+                    assertThat(handler.getId()).isEqualTo(2L);
+                    assertThat(handler.getFullName()).isEqualTo("Nguyễn Hỗ Trợ");
+                    assertThat(handler.getRole()).isEqualTo(fu.se184491.loadmaster_be.constant.account.UserRole.SYSTEM_SUPPORTER);
+                });
+        verify(userRepository).findByUserRoleTypeInAndStatusOrderByFullNameAsc(
+                java.util.EnumSet.of(fu.se184491.loadmaster_be.constant.account.UserRole.SYSTEM_ADMIN,
+                        fu.se184491.loadmaster_be.constant.account.UserRole.SYSTEM_SUPPORTER),
+                fu.se184491.loadmaster_be.constant.account.UserStatus.ACTIVE);
     }
 }

@@ -8,6 +8,8 @@ import fu.se184491.loadmaster_be.dto.response.support.ContactOfGuestResponse;
 import fu.se184491.loadmaster_be.entity.account.User;
 import fu.se184491.loadmaster_be.entity.billing.SubscriptionPlan;
 import fu.se184491.loadmaster_be.entity.support.ContactOfGuest;
+import fu.se184491.loadmaster_be.constant.account.UserRole;
+import fu.se184491.loadmaster_be.constant.account.UserStatus;
 import fu.se184491.loadmaster_be.exception.AppException;
 import fu.se184491.loadmaster_be.exception.ErrorCode;
 import fu.se184491.loadmaster_be.repository.account.UserRepository;
@@ -181,9 +183,14 @@ public class ContactOfGuestServiceImpl implements ContactOfGuestService {
             }
         }
 
-        if (request.getAssignedToId() != null) {
+        if (Boolean.TRUE.equals(request.getUnassign())) {
+            contact.setAssignedTo(null);
+        } else if (request.getAssignedToId() != null) {
             User supporter = userRepository.findById(request.getAssignedToId())
                     .orElse(null);
+            if (supporter != null && !isContactHandler(supporter)) {
+                throw new AppException(ErrorCode.CONTACT_ASSIGNEE_INVALID);
+            }
             if (supporter == null && currentUser != null) {
                 supporter = currentUser;
             }
@@ -200,6 +207,27 @@ public class ContactOfGuestServiceImpl implements ContactOfGuestService {
 
         ContactOfGuest updated = contactOfGuestRepository.save(contact);
         return mapToResponse(updated);
+    }
+
+    @Override
+    public List<fu.se184491.loadmaster_be.dto.response.support.ContactHandlerResponse> listHandlers() {
+        return userRepository.findByUserRoleTypeInAndStatusOrderByFullNameAsc(CONTACT_HANDLER_ROLES, UserStatus.ACTIVE)
+                .stream()
+                .map(user -> fu.se184491.loadmaster_be.dto.response.support.ContactHandlerResponse.builder()
+                        .id(user.getId())
+                        .fullName(user.getFullName())
+                        .email(user.getEmail())
+                        .role(user.getUserRoleType())
+                        .build())
+                .toList();
+    }
+
+    /** Ai nhận việc của yêu cầu liên hệ được: quản trị hệ thống, hỗ trợ khách hàng đang hoạt động. */
+    private static final java.util.Set<UserRole> CONTACT_HANDLER_ROLES =
+            java.util.EnumSet.of(UserRole.SYSTEM_ADMIN, UserRole.SYSTEM_SUPPORTER);
+
+    private static boolean isContactHandler(User user) {
+        return CONTACT_HANDLER_ROLES.contains(user.getUserRoleType()) && user.getStatus() == UserStatus.ACTIVE;
     }
 
     @Override

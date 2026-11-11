@@ -296,6 +296,7 @@ public enum ErrorCode {
     // Partner Contract & Support Guest errors (Sprint 4)
     // -------------------------------------------------------------------------
     CONTACT_REQUEST_NOT_FOUND("Không tìm thấy yêu cầu liên hệ", HttpStatus.NOT_FOUND),
+    CONTACT_ASSIGNEE_INVALID("Chỉ giao yêu cầu liên hệ cho quản trị hệ thống hoặc hỗ trợ khách hàng đang hoạt động", HttpStatus.BAD_REQUEST),
     CONTRACT_NOT_FOUND("Không tìm thấy hợp đồng", HttpStatus.NOT_FOUND),
     INVOICE_NOT_FOUND("Không tìm thấy hóa đơn", HttpStatus.NOT_FOUND),
     TRIAL_REQUEST_NOT_FOUND("Không tìm thấy đơn yêu cầu tạo tài khoản dùng thử", HttpStatus.NOT_FOUND),

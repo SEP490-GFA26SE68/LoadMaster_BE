@@ -78,6 +78,13 @@ public class ContactGuestController {
         return ResponseEntity.ok(response);
     }
 
+    /** Người nhận việc chọn được ở khung xử lý: quản trị hệ thống và hỗ trợ khách hàng đang hoạt động. */
+    @GetMapping("/handlers")
+    @PreAuthorize("hasAnyRole('SYSTEM_SUPPORTER', 'SYSTEM_ADMIN')")
+    public ResponseEntity<List<fu.se184491.loadmaster_be.dto.response.support.ContactHandlerResponse>> listHandlers() {
+        return ResponseEntity.ok(contactOfGuestService.listHandlers());
+    }
+
     @GetMapping("/{id}")
     @PreAuthorize("hasAnyRole('SYSTEM_SUPPORTER', 'SYSTEM_MANAGER', 'SYSTEM_ADMIN')")
     public ResponseEntity<ContactOfGuestResponse> getContactById(
