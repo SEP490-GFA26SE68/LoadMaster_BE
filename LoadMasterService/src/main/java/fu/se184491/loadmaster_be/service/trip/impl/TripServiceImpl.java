@@ -560,6 +560,7 @@ public class TripServiceImpl implements TripService {
                 .originLongitude(trip.getOriginLongitude())
                 .status(trip.getStatus())
                 .cancelReason(trip.getCancelReason())
+                .cancelledFromStatus(trip.getCancelledFromStatus())
                 .createdAt(trip.getCreatedAt())
                 .build();
     }
@@ -603,6 +604,7 @@ public class TripServiceImpl implements TripService {
                 .originLongitude(trip.getOriginLongitude())
                 .status(trip.getStatus())
                 .cancelReason(trip.getCancelReason())
+                .cancelledFromStatus(trip.getCancelledFromStatus())
                 .createdAt(trip.getCreatedAt())
                 .stopCount(stopCount)
                 .packageCount(packageCount)
