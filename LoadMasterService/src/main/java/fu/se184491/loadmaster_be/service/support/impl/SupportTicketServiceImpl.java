@@ -102,19 +102,15 @@ public class SupportTicketServiceImpl implements SupportTicketService {
     @Override
     @Transactional
     public List<SupportTicketResponse> getTickets(TicketStatus status, TicketCategory category) {
-        User currentUser = currentUserService.getCurrentUser();
+        User currentUser = requireActor();
         Specification<SupportTicket> spec = Specification.unrestricted();
 
+        // Nhân sự nền tảng thấy mọi phiếu; người khác chỉ thấy phiếu do chính mình gửi
+        // (không phải mọi phiếu của công ty: nội dung trao đổi là của người gửi).
         if (!isPlatformSupportOrManager(currentUser.getUserRoleType())) {
-            if (currentUser.getCompany() != null) {
-                Long companyId = currentUser.getCompany().getId();
-                spec = spec.and((root, query, cb) ->
-                        cb.equal(root.get("requester").get("company").get("id"), companyId));
-            } else {
-                Long userId = currentUser.getId();
-                spec = spec.and((root, query, cb) ->
-                        cb.equal(root.get("requester").get("id"), userId));
-            }
+            Long userId = currentUser.getId();
+            spec = spec.and((root, query, cb) ->
+                    cb.equal(root.get("requester").get("id"), userId));
         }
 
         if (status != null) {
@@ -136,17 +132,23 @@ public class SupportTicketServiceImpl implements SupportTicketService {
     @Override
     @Transactional
     public SupportTicketResponse updateTicket(Long id, UpdateSupportTicketRequest request) {
+        User actor = requireActor();
+        boolean actorIsSupporter = isPlatformSupportOrManager(actor.getUserRoleType());
+        boolean actorIsClient = !actorIsSupporter;
+
+        // 0. Quyền: nhân sự nền tảng sửa mọi phiếu; người khác chỉ phiếu do chính mình gửi. Phiếu của người
+        // khác trả "không tìm thấy" như phiếu không tồn tại, để không lộ mã phiếu nào đang có.
         SupportTicket ticket = supportTicketRepository.findById(id)
-                .orElseThrow(() -> new AppException(ErrorCode.RESOURCE_NOT_FOUND));
+                .filter(t -> actorIsSupporter || isRequester(t, actor))
+                .orElseThrow(() -> new AppException(ErrorCode.SUPPORT_TICKET_NOT_FOUND));
+        if (actorIsClient && (request.status() != null || request.assignedToId() != null)) {
+            throw new AppException(ErrorCode.UNAUTHORIZED);
+        }
 
         // 1. Phiếu đã đóng (CLOSED) chỉ đọc đối với cả nhân viên hỗ trợ và khách hàng
         if (ticket.getStatus() == TicketStatus.CLOSED) {
             throw new AppException(ErrorCode.SUPPORT_TICKET_CLOSED);
         }
-
-        User actor = resolveCurrentUserSafely();
-        boolean actorIsSupporter = actor != null && isPlatformSupportOrManager(actor.getUserRoleType());
-        boolean actorIsClient = actor != null && !actorIsSupporter;
 
         // 2. Khoá chống trùng khi phiếu đang ở trạng thái Đang xử lý (IN_PROGRESS):
         // Nhân viên thứ 2 không được thao tác (đổi trạng thái hoặc trả lời) trên phiếu đã có nhân viên 1 nhận xử lý.
@@ -211,24 +213,30 @@ public class SupportTicketServiceImpl implements SupportTicketService {
         if (request.resolutionNote() != null) {
             pruneCompanyChatHistoryToRecentDays(saved);
         }
-        auditUpdate(saved, request);
+        auditUpdate(saved, request, actor);
         return toResponse(saved);
     }
 
-    private User resolveCurrentUserSafely() {
-        try {
-            return currentUserService.getCurrentUser();
-        } catch (Exception ignored) {
-            return null;
+    /** Người đang gọi; không xác định được thì từ chối thay vì coi như người dùng không vai trò. */
+    private User requireActor() {
+        User actor = currentUserService.getCurrentUser();
+        if (actor == null) {
+            throw new AppException(ErrorCode.UNAUTHENTICATED);
         }
+        return actor;
+    }
+
+    private boolean isRequester(SupportTicket ticket, User user) {
+        return ticket.getRequester() != null
+                && ticket.getRequester().getId() != null
+                && ticket.getRequester().getId().equals(user.getId());
     }
 
     /**
      * Người khác (hỗ trợ khách hàng) cập nhật yêu cầu: ghi nhật ký thuộc công ty của người gửi, mang
      * {@code requestedBy}, để chuông của người gửi nhận được. Người gửi tự cập nhật thì không ghi.
      */
-    private void auditUpdate(SupportTicket ticket, UpdateSupportTicketRequest request) {
-        User actor = currentUserService.getCurrentUser();
+    private void auditUpdate(SupportTicket ticket, UpdateSupportTicketRequest request, User actor) {
         User requester = ticket.getRequester();
         if (actor == null || requester == null || requester.getId() == null
                 || requester.getId().equals(actor.getId())) {
@@ -250,11 +258,17 @@ public class SupportTicketServiceImpl implements SupportTicketService {
                 .build());
     }
 
+    /**
+     * Xoá lịch sử trao đổi của phiếu đã đóng / đã giải quyết quá {@value #CLOSED_CHAT_RETENTION_DAYS} ngày.
+     * Hạn tính theo ngày nên chạy mỗi giờ là đủ; chỉ đọc phiếu CLOSED / RESOLVED còn lịch sử trao đổi,
+     * không đọc cả bảng. Danh sách phiếu (getTickets) vẫn tự dọn phiếu hết hạn lúc đọc.
+     */
     @Override
     @Transactional
-    @Scheduled(fixedDelay = 10000)
+    @Scheduled(cron = "0 15 * * * *")
     public int cleanupClosedTicketChatHistory() {
-        return cleanupExpiredClosedTickets(supportTicketRepository.findAll());
+        return cleanupExpiredClosedTickets(supportTicketRepository.findByStatusInAndResolutionNoteIsNotNull(
+                List.of(TicketStatus.CLOSED, TicketStatus.RESOLVED)));
     }
 
     // =========================================================================
@@ -274,6 +288,11 @@ public class SupportTicketServiceImpl implements SupportTicketService {
     @Override
     @Transactional
     public UnlockTrialResponse unlockTrialAccount(Long ticketId, String staffNote) {
+        // 0. Chỉ nhân sự nền tảng (controller đã chặn; kiểm lại ở đây vì việc này mở khóa tài khoản người khác)
+        if (!isPlatformSupportOrManager(requireActor().getUserRoleType())) {
+            throw new AppException(ErrorCode.UNAUTHORIZED);
+        }
+
         // 1. Lấy và kiểm tra ticket
         SupportTicket ticket = supportTicketRepository.findById(ticketId)
                 .orElseThrow(() -> new AppException(ErrorCode.SUPPORT_TICKET_NOT_FOUND));

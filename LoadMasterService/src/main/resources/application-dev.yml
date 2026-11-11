@@ -22,3 +22,8 @@ app:
 
     security:
       otp-hmac-secret: ${OTP_HMAC_SECRET}
+
+# Máy dev chạy thanh toán giả lập (mock-checkout, bỏ kiểm chữ ký). Môi trường thật đặt VNPAY_MOCK=false
+# hoặc không bật profile dev.
+vnpay:
+  mock: ${VNPAY_MOCK:true}

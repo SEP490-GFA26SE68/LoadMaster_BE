@@ -162,15 +162,15 @@ public class PaymentCallbackHandlerTest {
     }
 
     @Test
-    @DisplayName("handleVnPayCallback - Mock checkout with VNPAY_ prefix skips signature verification")
-    void testMockCheckoutWithVnPayPrefixSkipsSignatureVerification() {
+    @DisplayName("handleVnPayCallback - vnpay.mock on: skips signature verification")
+    void testMockConfigOnSkipsSignatureVerification() {
+        when(vnPayClient.isMock()).thenReturn(true);
         when(paymentTransactionRepository.findByGatewayTransactionId("VNP_SUB_001"))
                 .thenReturn(Optional.of(subscriptionTxn));
 
         Map<String, String> params = new HashMap<>();
         params.put("vnp_TxnRef", "VNP_SUB_001");
         params.put("vnp_ResponseCode", "00");
-        params.put("vnp_Mock", "true");
 
         Map<String, String> res = paymentCallbackHandler.handleVnPayCallback(params);
 
@@ -178,6 +178,42 @@ public class PaymentCallbackHandlerTest {
         assertEquals(PaymentStatus.SUCCESS, subscriptionTxn.getStatus());
         verify(vnPayClient, never()).verifyCallback(anyMap());
         verify(subscriptionService).activateSubscription(1L, 2L);
+    }
+
+    @Test
+    @DisplayName("handleVnPayCallback - vnpay.mock off: vnp_Mock=true with a bad signature is rejected")
+    void testMockParamIgnoredWhenMockConfigOff() {
+        when(vnPayClient.isMock()).thenReturn(false);
+        when(vnPayClient.verifyCallback(anyMap())).thenReturn(false);
+
+        Map<String, String> params = new HashMap<>();
+        params.put("vnp_TxnRef", "VNP_SUB_001");
+        params.put("vnp_ResponseCode", "00");
+        params.put("vnp_Amount", "100000000");
+        params.put("vnp_Mock", "true");
+        params.put("vnp_SecureHash", "forged");
+
+        Map<String, String> res = paymentCallbackHandler.handleVnPayCallback(params);
+
+        assertEquals("97", res.get("RspCode"));
+        assertEquals(PaymentStatus.PENDING, subscriptionTxn.getStatus());
+        verifyNoInteractions(paymentTransactionRepository, subscriptionService, creditService);
+    }
+
+    @Test
+    @DisplayName("handleVnPayCallback - vnpay.mock off: MOCK_ transaction prefix does not skip signature verification")
+    void testMockPrefixIgnoredWhenMockConfigOff() {
+        when(vnPayClient.isMock()).thenReturn(false);
+        when(vnPayClient.verifyCallback(anyMap())).thenReturn(false);
+
+        Map<String, String> params = new HashMap<>();
+        params.put("vnp_TxnRef", "MOCK_0123456789ABCDEF");
+        params.put("vnp_ResponseCode", "00");
+
+        Map<String, String> res = paymentCallbackHandler.handleVnPayCallback(params);
+
+        assertEquals("97", res.get("RspCode"));
+        verifyNoInteractions(paymentTransactionRepository, subscriptionService, creditService);
     }
 
     @Test

@@ -6,6 +6,8 @@ import fu.se184491.loadmaster_be.constant.billing.PaymentStatus;
 import fu.se184491.loadmaster_be.dto.response.payment.PaymentUrlResponse;
 import fu.se184491.loadmaster_be.entity.billing.PaymentTransaction;
 import fu.se184491.loadmaster_be.entity.company.Company;
+import fu.se184491.loadmaster_be.exception.AppException;
+import fu.se184491.loadmaster_be.exception.ErrorCode;
 import fu.se184491.loadmaster_be.repository.billing.PaymentTransactionRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -31,6 +33,11 @@ public class PaymentGatewayService {
                                             BigDecimal amountVnd,
                                             String orderInfo,
                                             String ipAddress) {
+        // Cổng giả lập chỉ có khi máy chủ bật vnpay.mock; tắt thì /api/payment/mock-checkout từ chối,
+        // nên không tạo giao dịch treo PENDING với liên kết không dùng được.
+        if (gateway == PaymentGateway.MOCK && !vnPayClient.isMock()) {
+            throw new AppException(ErrorCode.INVALID_INPUT, "Cổng thanh toán giả lập không được bật trên máy chủ này");
+        }
         String prefix = (gateway != null ? gateway.name() : "VNPAY") + "_";
         String gatewayTxnId = prefix + UUID.randomUUID().toString().replace("-", "").substring(0, 16).toUpperCase();
 

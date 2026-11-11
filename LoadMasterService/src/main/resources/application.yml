@@ -61,7 +61,9 @@ vnpay:
   hash-secret: ${VNPAY_HASH_SECRET}
   vnp-url: ${VNPAY_URL:https://sandbox.vnpayment.vn/paymentv2/vpcpay.html}
   return-url: ${VNPAY_RETURN_URL:http://localhost:8080/webhook/vnpay-return}
-  mock: ${VNPAY_MOCK:true}
+  # true: bỏ kiểm chữ ký VNPay và mở /api/payment/mock-checkout (ai cũng đánh dấu được giao dịch đã trả).
+  # Mặc định tắt; chỉ profile dev bật sẵn (application-dev.yml).
+  mock: ${VNPAY_MOCK:false}
 
 
 goong:
