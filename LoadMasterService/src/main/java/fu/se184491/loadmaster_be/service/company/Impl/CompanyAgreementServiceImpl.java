@@ -1,6 +1,5 @@
 package fu.se184491.loadmaster_be.service.company.Impl;
 
-import fu.se184491.loadmaster_be.client.KeycloakAdminClient;
 import fu.se184491.loadmaster_be.constant.account.UserStatus;
 import fu.se184491.loadmaster_be.constant.company.AgreementStatus;
 import fu.se184491.loadmaster_be.constant.company.AgreementType;
@@ -14,15 +13,14 @@ import fu.se184491.loadmaster_be.exception.ErrorCode;
 import fu.se184491.loadmaster_be.repository.account.UserRepository;
 import fu.se184491.loadmaster_be.repository.company.CompanyAgreementRepository;
 import fu.se184491.loadmaster_be.service.company.CompanyAgreementService;
+import fu.se184491.loadmaster_be.service.company.TrialAgreementEnforcementJob;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Duration;
 import java.time.LocalDateTime;
-import java.util.List;
 import java.util.UUID;
 
 @Service
@@ -33,7 +31,6 @@ public class CompanyAgreementServiceImpl implements CompanyAgreementService {
 
     private final CompanyAgreementRepository agreementRepository;
     private final UserRepository userRepository;
-    private final KeycloakAdminClient keycloakAdminClient;
 
     public static final String STANDARD_TRIAL_TERMS = """
             # THỎA THUẬN SỬ DỤNG DỊCH VỤ THỬ NGHIỆM NỀN TẢNG LOADMASTER
@@ -111,11 +108,18 @@ public class CompanyAgreementServiceImpl implements CompanyAgreementService {
 
         LocalDateTime now = LocalDateTime.now();
 
-        // Kiểm tra xem đã quá hạn 30 ngày kể từ deadline chưa (sau 30 ngày tài khoản sẽ bị xóa cứng)
-        LocalDateTime hardDeleteLimit = agreement.getDeadlineAt().plusDays(30);
+        // Quá 30 ngày kể từ lúc thỏa thuận thật sự thành EXPIRED thì không ký được nữa (cùng mốc với
+        // TrialAgreementEnforcementJob). Bản ghi cũ chưa có expiredAt thì tính từ hạn 72 giờ.
+        LocalDateTime expiredFrom = agreement.getExpiredAt() != null
+                ? agreement.getExpiredAt()
+                : agreement.getDeadlineAt();
+        LocalDateTime hardDeleteLimit = expiredFrom.plusDays(TrialAgreementEnforcementJob.HARD_DELETE_AFTER_DAYS);
         if (now.isAfter(hardDeleteLimit)) {
             log.warn("User {} attempted to sign agreement {} past 30-day limit {}", currentUser.getEmail(), agreement.getId(), hardDeleteLimit);
             agreement.setStatus(AgreementStatus.EXPIRED);
+            if (agreement.getExpiredAt() == null) {
+                agreement.setExpiredAt(now);
+            }
             agreementRepository.save(agreement);
 
             currentUser.setStatus(UserStatus.FLAGGED);
@@ -167,48 +171,6 @@ public class CompanyAgreementServiceImpl implements CompanyAgreementService {
                 .orElseThrow(() -> new AppException(ErrorCode.AGREEMENT_NOT_FOUND));
 
         return toResponse(agreement);
-    }
-
-    @Override
-    @Scheduled(cron = "0 0 * * * *")
-    public void processExpiredTrialAgreements() {
-        LocalDateTime now = LocalDateTime.now();
-
-        // 1. Quá 72 giờ chưa ký thỏa thuận: chuyển thỏa thuận sang EXPIRED và gắn cờ (FLAGGED) tài khoản dùng thử
-        List<CompanyAgreement> pendingPastDeadline =
-                agreementRepository.findByStatusAndDeadlineAtBefore(AgreementStatus.PENDING, now);
-        for (CompanyAgreement agreement : pendingPastDeadline) {
-            agreement.setStatus(AgreementStatus.EXPIRED);
-            User trialUser = agreement.getUser();
-            if (trialUser != null) {
-                trialUser.setStatus(UserStatus.FLAGGED);
-                trialUser.preUpdate();
-                userRepository.save(trialUser);
-            }
-            agreementRepository.save(agreement);
-        }
-
-        // 2. Sau 30 ngày kể từ hạn hết 72 giờ: xóa vĩnh viễn tài khoản khỏi Keycloak và DB
-        LocalDateTime hardDeleteCutoff = now.minusDays(30);
-        List<CompanyAgreement> expiredPastThirtyDays =
-                agreementRepository.findByStatusAndDeadlineAtBefore(AgreementStatus.EXPIRED, hardDeleteCutoff);
-        for (CompanyAgreement agreement : expiredPastThirtyDays) {
-            User expiredTrialUser = agreement.getUser();
-            if (expiredTrialUser != null) {
-                if (keycloakAdminClient != null
-                        && expiredTrialUser.getKeycloakId() != null
-                        && !expiredTrialUser.getKeycloakId().isBlank()) {
-                    try {
-                        keycloakAdminClient.deleteUser(expiredTrialUser.getKeycloakId());
-                    } catch (Exception ex) {
-                        log.warn("Keycloak user {} already absent during 30-day trial cleanup", expiredTrialUser.getKeycloakId());
-                    }
-                }
-                agreement.setUser(null);
-                agreementRepository.save(agreement);
-                userRepository.delete(expiredTrialUser);
-            }
-        }
     }
 
     private CompanyAgreementResponse toResponse(CompanyAgreement a) {

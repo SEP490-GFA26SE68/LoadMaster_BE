@@ -61,6 +61,12 @@ public class CompanyAgreement {
     @Column(name = "signed_at")
     private LocalDateTime signedAt;
 
+    // Lúc thỏa thuận thật sự chuyển sang EXPIRED (job gắn cờ hoặc lần ký quá hạn). Mốc 30 ngày xóa cứng tính từ đây,
+    // không tính từ deadlineAt: job chạy trễ hay bị tắt một thời gian không làm tài khoản bị xóa sớm. Nullable vì
+    // bản ghi có trước cột này; job tự điền giá trị cho bản ghi EXPIRED còn trống.
+    @Column(name = "expired_at")
+    private LocalDateTime expiredAt;
+
     @Column(name = "signer_name", length = 150)
     private String signerName;
 
