@@ -112,6 +112,7 @@ class CargoSegregationServiceIntegrationTest {
         Vehicle vehicle = Vehicle.builder()
                 .company(company)
                 .vehicleType(vehicleType)
+                .name("General Truck 01")
                 .licensePlate("51C-SEG-01")
                 .build();
         entityManager.persist(vehicle);
@@ -119,6 +120,7 @@ class CargoSegregationServiceIntegrationTest {
         trip = Trip.builder()
                 .company(company)
                 .vehicle(vehicle)
+                .createdByDispatcher(dispatcher)
                 .tripCode("TRIP-SEG-01")
                 .status(TripStatus.DRAFT)
                 .build();
@@ -229,7 +231,7 @@ class CargoSegregationServiceIntegrationTest {
 
         mockMvc.perform(get("/api/trips/{id}/segregation", trip.getId())
                         .with(jwt().jwt(token -> token.subject("segregation-dispatcher"))
-                                .authorities(() -> "TRIP_MANAGE")))
+                                .authorities(() -> "ROLE_DISPATCHER")))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.groups.length()").value(2))
                 .andExpect(jsonPath("$.groups[0].handlingClass").value("STANDARD"))
@@ -363,12 +365,13 @@ class CargoSegregationServiceIntegrationTest {
 
         mockMvc.perform(get("/api/trips/{id}/segregation", trip.getId())
                         .with(jwt().jwt(token -> token.subject("other-segregation-dispatcher"))
-                                .authorities(() -> "TRIP_MANAGE")))
+                                .authorities(() -> "ROLE_DISPATCHER")))
                 .andExpect(status().isNotFound());
     }
 
     private CargoPackage persistPackage(String barcode, HandlingClass handlingClass) {
         CargoPackage cargoPackage = CargoPackage.builder()
+                .company(company)
                 .order(order)
                 .packageType(packageType)
                 .trackingBarcode(barcode)
@@ -382,6 +385,7 @@ class CargoSegregationServiceIntegrationTest {
 
     private CargoPackage persistUnassignedPackage(String barcode, HandlingClass handlingClass) {
         CargoPackage cargoPackage = CargoPackage.builder()
+                .company(company)
                 .order(unassignedOrder)
                 .packageType(packageType)
                 .trackingBarcode(barcode)

@@ -2,20 +2,27 @@ package fu.se184491.loadmaster_be.service.route;
 
 import fu.se184491.loadmaster_be.client.GoongMapsClient;
 import fu.se184491.loadmaster_be.client.KeycloakAdminClient;
+import fu.se184491.loadmaster_be.constant.account.UserRole;
+import fu.se184491.loadmaster_be.constant.account.UserStatus;
 import fu.se184491.loadmaster_be.constant.cargo.PackageStatus;
+import fu.se184491.loadmaster_be.constant.company.CompanyStatus;
 import fu.se184491.loadmaster_be.constant.order.OrderStatus;
 import fu.se184491.loadmaster_be.constant.trip.DeliveryStopStatus;
 import fu.se184491.loadmaster_be.constant.trip.TripStatus;
 import fu.se184491.loadmaster_be.dto.goong.DirectionsResponse;
 import fu.se184491.loadmaster_be.dto.goong.DistanceMatrixResponse;
 import fu.se184491.loadmaster_be.dto.route.RouteOptimizationResult;
+import fu.se184491.loadmaster_be.entity.account.User;
 import fu.se184491.loadmaster_be.entity.cargo.CargoPackage;
 import fu.se184491.loadmaster_be.entity.common.AuditLog;
+import fu.se184491.loadmaster_be.entity.company.Company;
 import fu.se184491.loadmaster_be.entity.order.TransportOrder;
 import fu.se184491.loadmaster_be.entity.route.RouteLeg;
 import fu.se184491.loadmaster_be.entity.route.RoutePlan;
 import fu.se184491.loadmaster_be.entity.trip.DeliveryStop;
 import fu.se184491.loadmaster_be.entity.trip.Trip;
+import fu.se184491.loadmaster_be.entity.vehicle.Vehicle;
+import fu.se184491.loadmaster_be.entity.vehicle.VehicleType;
 import fu.se184491.loadmaster_be.exception.MissingCoordinatesException;
 import fu.se184491.loadmaster_be.exception.RouteOptimizationUnavailableException;
 import fu.se184491.loadmaster_be.exception.ServiceUnavailableException;
@@ -30,6 +37,7 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
@@ -83,13 +91,53 @@ class RouteOptimizationServiceIntegrationTest {
     @MockitoBean
     private ServiceTokenProvider serviceTokenProvider;
 
+    private Company company;
     private Trip trip;
     private DeliveryStop firstStop;
     private DeliveryStop secondStop;
 
     @BeforeEach
     void setUpTrip() {
+        // Chuyến cần công ty, xe và người lập (các cột NOT NULL của trips, vehicles, packages).
+        company = Company.builder()
+                .companyCode("ROUTE-OPT")
+                .companyName("Route Optimization Logistics")
+                .taxCode("ROUTE-OPT-TAX")
+                .billingEmail("billing@route-opt.test")
+                .status(CompanyStatus.ACTIVE)
+                .createdAt(Instant.now())
+                .build();
+        entityManager.persist(company);
+        User dispatcher = User.builder()
+                .keycloakId("route-opt-dispatcher")
+                .company(company)
+                .email("dispatcher@route-opt.test")
+                .fullName("Route Dispatcher")
+                .userRoleType(UserRole.DISPATCHER)
+                .status(UserStatus.ACTIVE)
+                .build();
+        entityManager.persist(dispatcher);
+        VehicleType vehicleType = VehicleType.builder()
+                .company(company)
+                .name("Route Truck")
+                .innerLength(6000)
+                .innerWidth(2400)
+                .innerHeight(2400)
+                .maxPayloadKg(new BigDecimal("10000"))
+                .build();
+        entityManager.persist(vehicleType);
+        Vehicle vehicle = Vehicle.builder()
+                .company(company)
+                .vehicleType(vehicleType)
+                .name("Route Truck 01")
+                .licensePlate("51C-ROUTE-01")
+                .build();
+        entityManager.persist(vehicle);
+
         trip = Trip.builder()
+                .company(company)
+                .vehicle(vehicle)
+                .createdByDispatcher(dispatcher)
                 .tripCode("ROUTE-OPT-01")
                 .departureTime(DEPARTURE)
                 .status(TripStatus.DRAFT)
@@ -116,7 +164,7 @@ class RouteOptimizationServiceIntegrationTest {
                 .thenReturn(directions(route(4000, 320, "slow"), route(3500, 280, "origin-second")))
                 .thenReturn(directions(route(2800, 250, "slow"), route(2500, 200, "second-first")));
 
-        RouteOptimizationResult result = routeOptimizationService.optimizeRoute(trip.getId(), null);
+        RouteOptimizationResult result = routeOptimizationService.optimizeRoute(company.getId(), trip.getId());
 
         assertEquals(List.of(secondStop.getId(), firstStop.getId()), result.getOrderedStops());
         assertEquals(480, result.getTotalTravelDurationSeconds());
@@ -131,9 +179,9 @@ class RouteOptimizationServiceIntegrationTest {
         DeliveryStop reloadedSecond = entityManager.find(DeliveryStop.class, secondStop.getId());
         DeliveryStop reloadedFirst = entityManager.find(DeliveryStop.class, firstStop.getId());
         assertEquals(1, reloadedSecond.getStopSequence());
-        assertEquals(DEPARTURE.plusSeconds(280 + 900), reloadedSecond.getPlannedArrival());
+        assertEquals(DEPARTURE.plusSeconds(280), reloadedSecond.getPlannedArrival());
         assertEquals(2, reloadedFirst.getStopSequence());
-        assertEquals(DEPARTURE.plusSeconds(280 + 900 + 200 + 900), reloadedFirst.getPlannedArrival());
+        assertEquals(DEPARTURE.plusSeconds(280 + 900 + 200), reloadedFirst.getPlannedArrival());
 
         Trip reloadedTrip = entityManager.find(Trip.class, trip.getId());
         assertEquals(List.of(secondStop.getId().intValue(), firstStop.getId().intValue()),
@@ -161,7 +209,8 @@ class RouteOptimizationServiceIntegrationTest {
         assertEquals(firstStop.getId(), legs.get(1).getEndStop().getId());
 
         AuditLog audit = entityManager.createQuery(
-                        "select a from AuditLog a where a.entityName = 'Trip' and a.entityId = :tripId",
+                        "select a from AuditLog a where a.entityName = 'Trip' and a.entityId = :tripId"
+                                + " and a.actionType = 'ROUTE_OPTIMIZED'",
                         AuditLog.class)
                 .setParameter("tripId", trip.getId().toString())
                 .getSingleResult();
@@ -175,7 +224,7 @@ class RouteOptimizationServiceIntegrationTest {
 
         assertThrows(
                 MissingCoordinatesException.class,
-                () -> routeOptimizationService.optimizeRoute(trip.getId(), null));
+                () -> routeOptimizationService.optimizeRoute(company.getId(), trip.getId()));
     }
 
     @Test
@@ -185,7 +234,7 @@ class RouteOptimizationServiceIntegrationTest {
 
         assertThrows(
                 RouteOptimizationUnavailableException.class,
-                () -> routeOptimizationService.optimizeRoute(trip.getId(), null));
+                () -> routeOptimizationService.optimizeRoute(company.getId(), trip.getId()));
     }
 
     private DeliveryStop persistStop(int sequence, String name, String latitude, String longitude) {
@@ -203,6 +252,7 @@ class RouteOptimizationServiceIntegrationTest {
 
     private void persistPackage(DeliveryStop stop, String barcode, LocalDateTime deadline) {
         TransportOrder order = TransportOrder.builder()
+                .company(company)
                 .deliveryStop(stop)
                 .orderCode("ORDER-" + barcode)
                 .timeWindowEnd(deadline)
@@ -210,6 +260,7 @@ class RouteOptimizationServiceIntegrationTest {
                 .build();
         entityManager.persist(order);
         entityManager.persist(CargoPackage.builder()
+                .company(company)
                 .order(order)
                 .trackingBarcode(barcode)
                 .actualWeightKg(BigDecimal.ONE)

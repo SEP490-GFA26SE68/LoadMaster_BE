@@ -4,6 +4,9 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import fu.se184491.loadmaster_be.config.security.WebSecurityConfig;
 import fu.se184491.loadmaster_be.dto.request.packagetype.PackageTypeRequest;
 import fu.se184491.loadmaster_be.dto.response.packagetype.PackageTypeResponse;
+import fu.se184491.loadmaster_be.entity.account.User;
+import fu.se184491.loadmaster_be.entity.company.Company;
+import fu.se184491.loadmaster_be.helpers.CurrentUserService;
 import fu.se184491.loadmaster_be.service.cargo.PackageTypeService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -43,6 +46,9 @@ public class PackageTypeControllerTest {
     private PackageTypeService packageTypeService;
 
     @MockitoBean
+    private CurrentUserService currentUserService;
+
+    @MockitoBean
     private JwtAuthenticationConverter jwtAuthenticationConverter;
 
     @MockitoBean
@@ -61,6 +67,9 @@ public class PackageTypeControllerTest {
     @BeforeEach
     void setUp() {
         objectMapper = new ObjectMapper();
+        // Controller lấy công ty từ người đang đăng nhập.
+        when(currentUserService.getCurrentUser())
+                .thenReturn(User.builder().id(7L).company(Company.builder().id(1L).build()).build());
 
         request = PackageTypeRequest.builder()
                 .name("Thùng nhỏ")
@@ -96,14 +105,14 @@ public class PackageTypeControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.id").value(100L))
-                .andExpect(jsonPath("$.name").value("Thùng nhỏ"))
-                .andExpect(jsonPath("$.length").value(400))
-                .andExpect(jsonPath("$.width").value(300))
-                .andExpect(jsonPath("$.height").value(300))
-                .andExpect(jsonPath("$.weightKg").value(12.50))
-                .andExpect(jsonPath("$.maxStackingWeightKg").value(50.00))
-                .andExpect(jsonPath("$.isFragile").value(false));
+                .andExpect(jsonPath("$.data.id").value(100L))
+                .andExpect(jsonPath("$.data.name").value("Thùng nhỏ"))
+                .andExpect(jsonPath("$.data.length").value(400))
+                .andExpect(jsonPath("$.data.width").value(300))
+                .andExpect(jsonPath("$.data.height").value(300))
+                .andExpect(jsonPath("$.data.weightKg").value(12.50))
+                .andExpect(jsonPath("$.data.maxStackingWeightKg").value(50.00))
+                .andExpect(jsonPath("$.data.isFragile").value(false));
     }
 
     @Test
@@ -139,8 +148,8 @@ public class PackageTypeControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.id").value(100L))
-                .andExpect(jsonPath("$.name").value("Thùng nhỏ"));
+                .andExpect(jsonPath("$.data.id").value(100L))
+                .andExpect(jsonPath("$.data.name").value("Thùng nhỏ"));
     }
 
     @Test
@@ -151,8 +160,8 @@ public class PackageTypeControllerTest {
 
         mockMvc.perform(get("/api/package-types/100"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.id").value(100L))
-                .andExpect(jsonPath("$.name").value("Thùng nhỏ"));
+                .andExpect(jsonPath("$.data.id").value(100L))
+                .andExpect(jsonPath("$.data.name").value("Thùng nhỏ"));
     }
 
     @Test
@@ -164,19 +173,19 @@ public class PackageTypeControllerTest {
 
         mockMvc.perform(get("/api/package-types"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.content[0].id").value(100L))
-                .andExpect(jsonPath("$.content[0].name").value("Thùng nhỏ"));
+                .andExpect(jsonPath("$.data[0].id").value(100L))
+                .andExpect(jsonPath("$.data[0].name").value("Thùng nhỏ"));
     }
 
     @Test
-    @DisplayName("DELETE /api/package-types/{id} should return 204 No Content")
+    @DisplayName("DELETE /api/package-types/{id} should return 200 OK")
     @WithMockUser(authorities = "PACKAGE_TYPE_MANAGE")
     void deletePackageType_Success() throws Exception {
         doNothing().when(packageTypeService).deletePackageType(1L, 100L);
 
         mockMvc.perform(delete("/api/package-types/100")
                         .with(csrf()))
-                .andExpect(status().isNoContent());
+                .andExpect(status().isOk());
 
         verify(packageTypeService).deletePackageType(1L, 100L);
     }

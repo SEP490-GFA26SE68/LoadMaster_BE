@@ -10,6 +10,7 @@ import fu.se184491.loadmaster_be.constant.support.ContactStatus;
 import fu.se184491.loadmaster_be.dto.request.support.CreateContactOfGuestRequest;
 import fu.se184491.loadmaster_be.dto.request.support.UpdateContactOfGuestRequest;
 import fu.se184491.loadmaster_be.dto.response.support.ContactOfGuestResponse;
+import fu.se184491.loadmaster_be.repository.account.UserRepository;
 import fu.se184491.loadmaster_be.service.support.ContactOfGuestService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -29,6 +30,7 @@ import java.util.List;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -44,6 +46,9 @@ class ContactGuestControllerTest {
 
     @MockitoBean
     private ContactOfGuestService contactOfGuestService;
+
+    @MockitoBean
+    private UserRepository userRepository;
 
     @MockitoBean
     private JwtAuthenticationConverter jwtAuthenticationConverter;
@@ -151,7 +156,8 @@ class ContactGuestControllerTest {
         sampleResponse.setStatus(ContactStatus.IN_PROGRESS);
         sampleResponse.setNote("Đang gọi điện thoại tư vấn");
 
-        when(contactOfGuestService.updateContact(eq(1L), any(UpdateContactOfGuestRequest.class)))
+        // Controller truyền người đang đăng nhập (null khi không có JWT) cho dịch vụ.
+        when(contactOfGuestService.updateContact(eq(1L), any(UpdateContactOfGuestRequest.class), isNull()))
                 .thenReturn(sampleResponse);
 
         mockMvc.perform(patch("/api/contact-guests/1")
