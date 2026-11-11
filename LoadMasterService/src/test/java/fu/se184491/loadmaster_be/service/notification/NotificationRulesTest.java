@@ -9,6 +9,15 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 class NotificationRulesTest {
 
+    @Test
+    void stopReorderReachesOnlyTheTripsDriver() {
+        NotificationRules.Event reordered = event("TRIP_STOPS_REORDERED", 10L, null,
+                Map.of("count", 3, "driverId", 13L), 13L);
+        assertThat(NotificationRules.concerns(reordered, DRIVER)).isTrue();
+        assertThat(NotificationRules.concerns(reordered, new NotificationRules.Viewer(30L, UserRole.DRIVER))).isFalse();
+        assertThat(NotificationRules.concerns(reordered, MANAGER)).isFalse();
+    }
+
     private static final NotificationRules.Viewer DISPATCHER = new NotificationRules.Viewer(10L, UserRole.DISPATCHER);
     private static final NotificationRules.Viewer MANAGER = new NotificationRules.Viewer(11L, UserRole.MANAGER);
     private static final NotificationRules.Viewer WORKER = new NotificationRules.Viewer(12L, UserRole.WAREHOUSE_WORKER);

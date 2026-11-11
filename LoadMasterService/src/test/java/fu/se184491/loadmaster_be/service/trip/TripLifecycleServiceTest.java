@@ -103,6 +103,8 @@ class TripLifecycleServiceTest {
         assertEquals(DeliveryRequirementStatus.PENDING, requirement.getStatus());
         assertNull(requirement.getTrip());
         assertEquals(LoadingExecutionStatus.ABORTED, execution.getStatus());
+        assertEquals("Khách huỷ đơn", trip.getCancelReason());
+        assertEquals(TripStatus.LOADING, trip.getCancelledFromStatus());
         verify(tripStatusService).transitionTo(10L, TripStatus.CANCELLED, 7L);
     }
 

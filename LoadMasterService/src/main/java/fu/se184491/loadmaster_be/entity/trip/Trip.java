@@ -95,4 +95,13 @@ public class Trip {
     /** Giờ tài xế hoàn tất điểm giao cuối (chuyến thành DELIVERED); chuyến chưa giao xong hoặc giao xong trước khi có cột này thì null. */
     @Column(name = "completed_at")
     private LocalDateTime completedAt;
+
+    /** Lý do điều phối viên nhập khi huỷ chuyến; chuyến chưa huỷ thì null. */
+    @Column(name = "cancel_reason", columnDefinition = "text")
+    private String cancelReason;
+
+    /** Trạng thái của chuyến ngay trước khi bị huỷ; chuyến chưa huỷ thì null. */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "cancelled_from_status", length = 20)
+    private TripStatus cancelledFromStatus;
 }

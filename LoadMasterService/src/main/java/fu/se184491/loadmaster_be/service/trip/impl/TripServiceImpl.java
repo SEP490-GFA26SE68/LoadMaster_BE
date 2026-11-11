@@ -559,6 +559,7 @@ public class TripServiceImpl implements TripService {
                 .originLatitude(trip.getOriginLatitude())
                 .originLongitude(trip.getOriginLongitude())
                 .status(trip.getStatus())
+                .cancelReason(trip.getCancelReason())
                 .createdAt(trip.getCreatedAt())
                 .build();
     }
@@ -601,6 +602,7 @@ public class TripServiceImpl implements TripService {
                 .originLatitude(trip.getOriginLatitude())
                 .originLongitude(trip.getOriginLongitude())
                 .status(trip.getStatus())
+                .cancelReason(trip.getCancelReason())
                 .createdAt(trip.getCreatedAt())
                 .stopCount(stopCount)
                 .packageCount(packageCount)

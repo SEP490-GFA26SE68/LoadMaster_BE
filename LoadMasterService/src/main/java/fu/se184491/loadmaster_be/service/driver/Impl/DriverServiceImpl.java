@@ -285,6 +285,10 @@ public class DriverServiceImpl implements DriverService {
                 throw new WrongStopException("Kiện hàng không thuộc điểm dừng hiện tại");
             }
         }
+        // Dỡ chỉ sau khi tài xế báo đã đến điểm (như dỡ qua hộp đối chiếu và xác nhận tay)
+        if (currentStop.getActualArrival() == null) {
+            throw new AppException(ErrorCode.DELIVERY_STOP_NOT_ARRIVED);
+        }
 
         UnloadConfirmation confirmation = UnloadConfirmation.builder()
                 .cargoPackage(pkg)

@@ -143,9 +143,27 @@ class DriverServiceImplTest {
     }
 
     @Test
-    void unloadFindsStopThroughDeliveryRequirement() {
+    void unloadBeforeArrivalIsRejected() {
         trip.setStatus(TripStatus.IN_TRANSIT);
         DeliveryStop stop = DeliveryStop.builder().id(30L).trip(trip).stopSequence(1).build();
+        CargoPackage pkg = CargoPackage.builder().id(1L).trackingBarcode("PK-1").status(PackageStatus.LOADED).build();
+        when(cargoPackageRepository.findById(1L)).thenReturn(Optional.of(pkg));
+        when(tripPackageResolver.stopOfPackage(pkg)).thenReturn(Optional.of(stop));
+        when(deliveryStopRepository.findFirstByTripIdAndStatusNotOrderByStopSequenceAsc(10L, DeliveryStopStatus.COMPLETED))
+                .thenReturn(Optional.of(stop));
+
+        AppException error = assertThrows(AppException.class, () -> service.confirmUnload(1L, null));
+
+        assertEquals(ErrorCode.DELIVERY_STOP_NOT_ARRIVED, error.getErrorCode());
+        verify(unloadConfirmationRepository, never()).save(any());
+        assertEquals(PackageStatus.LOADED, pkg.getStatus());
+    }
+
+    @Test
+    void unloadFindsStopThroughDeliveryRequirement() {
+        trip.setStatus(TripStatus.IN_TRANSIT);
+        DeliveryStop stop = DeliveryStop.builder().id(30L).trip(trip).stopSequence(1)
+                .actualArrival(LocalDateTime.of(2026, 11, 6, 9, 0)).build();
         CargoPackage pkg = CargoPackage.builder().id(1L).trackingBarcode("PK-1").status(PackageStatus.LOADED).build();
         when(cargoPackageRepository.findById(1L)).thenReturn(Optional.of(pkg));
         when(tripPackageResolver.stopOfPackage(pkg)).thenReturn(Optional.of(stop));

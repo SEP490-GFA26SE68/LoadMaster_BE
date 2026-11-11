@@ -55,6 +55,7 @@ public final class NotificationRules {
         ACTIONS.put(UserRole.DRIVER, Set.of(
                 "MANUAL_CONFIRM_REJECTED", "TRIP_STATUS_TRANSITION", "LOADING_COMPLETED", "TRIP_CANCELLED", "TRIP_UPDATED",
                 "PICKUP_APPROVED", "PICKUP_REJECTED",
+                "TRIP_STOPS_REORDERED",
                 TICKET_UPDATED));
     }
 
@@ -115,6 +116,8 @@ public final class NotificationRules {
             case "TRIP_CANCELLED" -> wasLoading(event) && sameId(driverOf(event), driverId);
             // Quyết định về yêu cầu nhận dọc đường: tài xế của chuyến lúc quyết định
             case "PICKUP_APPROVED", "PICKUP_REJECTED" -> sameId(value(event.newValues(), "driverId"), driverId);
+            // Điều phối viên đổi thứ tự điểm khi xe đang chạy: tài xế của chuyến lúc đổi
+            case "TRIP_STOPS_REORDERED" -> sameId(value(event.newValues(), "driverId"), driverId);
             default -> false;
         };
     }
