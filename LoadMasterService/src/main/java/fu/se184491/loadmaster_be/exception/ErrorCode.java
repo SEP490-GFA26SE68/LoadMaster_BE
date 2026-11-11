@@ -249,6 +249,8 @@ public enum ErrorCode {
     SEAL_NOT_ALLOWED("Chỉ ghi được số seal khi đã xếp xong và xe chưa xuất phát", HttpStatus.CONFLICT),
     PACKAGE_FLAGGED("Kiện đang mang cờ không tìm thấy / hư hỏng: gỡ cờ trước khi đưa vào chuyến", HttpStatus.CONFLICT),
     PACKAGE_NOT_FLAGGED("Kiện không mang cờ nào", HttpStatus.CONFLICT),
+    PACKAGE_NOT_AVAILABLE("Chỉ đưa vào yêu cầu giao kiện đang chờ xử lý ở kho", HttpStatus.CONFLICT),
+    PACKAGE_IN_OTHER_REQUIREMENT("Kiện đã thuộc một yêu cầu giao khác", HttpStatus.CONFLICT),
 
     // -------------------------------------------------------------------------
     // Driver & Unloading errors
