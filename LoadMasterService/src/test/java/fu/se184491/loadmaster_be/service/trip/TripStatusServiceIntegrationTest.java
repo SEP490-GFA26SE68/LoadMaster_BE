@@ -2,16 +2,20 @@ package fu.se184491.loadmaster_be.service.trip;
 
 import fu.se184491.loadmaster_be.constant.account.UserRole;
 import fu.se184491.loadmaster_be.constant.account.UserStatus;
+import fu.se184491.loadmaster_be.constant.company.CompanyStatus;
 import fu.se184491.loadmaster_be.constant.optimization.LoadingExecutionStatus;
 import fu.se184491.loadmaster_be.constant.trip.DeliveryStopStatus;
 import fu.se184491.loadmaster_be.constant.trip.TripStatus;
 import fu.se184491.loadmaster_be.entity.account.User;
 import fu.se184491.loadmaster_be.entity.common.AuditLog;
+import fu.se184491.loadmaster_be.entity.company.Company;
 import fu.se184491.loadmaster_be.entity.optimization.LoadPlan;
 import fu.se184491.loadmaster_be.entity.optimization.LoadingExecution;
 import fu.se184491.loadmaster_be.entity.optimization.OptimizationJob;
 import fu.se184491.loadmaster_be.entity.trip.Trip;
 import fu.se184491.loadmaster_be.entity.trip.DeliveryStop;
+import fu.se184491.loadmaster_be.entity.vehicle.Vehicle;
+import fu.se184491.loadmaster_be.entity.vehicle.VehicleType;
 import fu.se184491.loadmaster_be.exception.InvalidTripStatusTransitionException;
 import jakarta.persistence.EntityManager;
 import org.junit.jupiter.api.BeforeEach;
@@ -22,6 +26,8 @@ import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
+import java.time.Instant;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -53,17 +59,46 @@ class TripStatusServiceIntegrationTest {
     private JwtDecoder jwtDecoder;
 
     private User actor;
+    private Company company;
+    private Vehicle vehicle;
 
     @BeforeEach
     void setUpActor() {
+        // Chuyến cần công ty, xe và người lập (các cột NOT NULL của trips và vehicles).
+        company = Company.builder()
+                .companyCode("TRIP-STATUS")
+                .companyName("Trip Status Logistics")
+                .taxCode("TRIP-STATUS-TAX")
+                .billingEmail("billing@trip-status.test")
+                .status(CompanyStatus.ACTIVE)
+                .createdAt(Instant.now())
+                .build();
+        entityManager.persist(company);
         actor = User.builder()
                 .keycloakId("trip-status-actor")
+                .company(company)
                 .email("trip-status@loadmaster.test")
                 .fullName("Trip Status Actor")
                 .userRoleType(UserRole.DISPATCHER)
                 .status(UserStatus.ACTIVE)
                 .build();
         entityManager.persist(actor);
+        VehicleType vehicleType = VehicleType.builder()
+                .company(company)
+                .name("Status Truck")
+                .innerLength(6000)
+                .innerWidth(2400)
+                .innerHeight(2400)
+                .maxPayloadKg(new BigDecimal("10000"))
+                .build();
+        entityManager.persist(vehicleType);
+        vehicle = Vehicle.builder()
+                .company(company)
+                .vehicleType(vehicleType)
+                .name("Status Truck 01")
+                .licensePlate("51C-STATUS-01")
+                .build();
+        entityManager.persist(vehicle);
     }
 
     @Test
@@ -213,6 +248,9 @@ class TripStatusServiceIntegrationTest {
 
     private Trip persistTrip(TripStatus status, Map<String, Object> routePlan) {
         Trip trip = Trip.builder()
+                .company(company)
+                .vehicle(vehicle)
+                .createdByDispatcher(actor)
                 .tripCode("STATUS-" + status)
                 .status(status)
                 .routePlan(routePlan)

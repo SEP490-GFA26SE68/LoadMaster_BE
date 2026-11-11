@@ -1,0 +1,43 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop, 'feat/**', 'fix/**', 'feature/**', 'hotfix/**']
+  pull_request:
+    branches: [main, develop]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  loadmaster-service:
+    name: LoadMasterService (mvn test)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: LoadMasterService
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+
+      # Test chạy trên H2 với cấu hình src/test/resources/config/application.yml: không cần .env, Supabase hay Keycloak.
+      - name: Test
+        run: sh ./mvnw -B -ntp test
+
+      - name: Upload test reports
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: surefire-reports
+          path: LoadMasterService/target/surefire-reports
+          retention-days: 7

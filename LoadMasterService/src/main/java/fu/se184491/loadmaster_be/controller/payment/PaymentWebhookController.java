@@ -1,5 +1,8 @@
 package fu.se184491.loadmaster_be.controller.payment;
 
+import fu.se184491.loadmaster_be.client.VnPayClient;
+import fu.se184491.loadmaster_be.exception.AppException;
+import fu.se184491.loadmaster_be.exception.ErrorCode;
 import fu.se184491.loadmaster_be.service.payment.PaymentCallbackHandler;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -17,6 +20,7 @@ import java.util.Map;
 public class PaymentWebhookController {
 
     private final PaymentCallbackHandler paymentCallbackHandler;
+    private final VnPayClient vnPayClient;
 
     @PostMapping("/webhook/vnpay")
     public ResponseEntity<Map<String, String>> handleVnPayWebhookPost(@RequestParam Map<String, String> allParams) {
@@ -47,13 +51,20 @@ public class PaymentWebhookController {
                 .build();
     }
 
+    /**
+     * Xác nhận thanh toán giả lập. Chỉ dùng được khi máy chủ bật cấu hình {@code vnpay.mock}; tắt cấu hình đó
+     * (môi trường thật) thì endpoint trả "không tìm thấy giao dịch" và không đánh dấu giao dịch nào đã trả.
+     */
     @GetMapping("/api/payment/mock-checkout")
     public ResponseEntity<Map<String, Object>> mockCheckout(@RequestParam String txnRef) {
+        if (!vnPayClient.isMock()) {
+            log.warn("Rejected mock checkout for txnRef {}: vnpay.mock is disabled", txnRef);
+            throw new AppException(ErrorCode.PAYMENT_TRANSACTION_NOT_FOUND);
+        }
         log.info("Executing mock checkout for txnRef: {}", txnRef);
         Map<String, String> mockParams = new HashMap<>();
         mockParams.put("vnp_TxnRef", txnRef);
         mockParams.put("vnp_ResponseCode", "00");
-        mockParams.put("vnp_Mock", "true");
 
         Map<String, String> callbackResult = paymentCallbackHandler.handleVnPayCallback(mockParams);
 

@@ -1,6 +1,5 @@
 package fu.se184491.loadmaster_be.service.company;
 
-import fu.se184491.loadmaster_be.client.KeycloakAdminClient;
 import fu.se184491.loadmaster_be.constant.account.UserRole;
 import fu.se184491.loadmaster_be.constant.account.UserStatus;
 import fu.se184491.loadmaster_be.constant.company.AgreementStatus;
@@ -44,9 +43,6 @@ class CompanyAgreementServiceTest {
 
     @Mock
     private UserRepository userRepository;
-
-    @Mock
-    private KeycloakAdminClient keycloakAdminClient;
 
     @InjectMocks
     private CompanyAgreementServiceImpl agreementService;
@@ -244,68 +240,20 @@ class CompanyAgreementServiceTest {
     }
 
     @Test
-    @DisplayName("Seam 3 - Quá 72 giờ chưa ký: gắn cờ (FLAGGED) tài khoản dùng thử; sau 30 ngày xóa vĩnh viễn khỏi Keycloak và DB")
-    void processExpiredTrialAgreements_flagsAfter72hAndHardDeletesAfter30Days() {
-        // 1. Thỏa thuận PENDING đã quá hạn 72h (nhưng chưa tới 30 ngày) -> Gắn cờ FLAGGED
-        User flaggedUser = User.builder()
-                .id(301L)
-                .keycloakId("kc-flagged-301")
-                .company(testCompany)
-                .email("trial-72h@test.vn")
-                .userRoleType(UserRole.ADMIN)
-                .status(UserStatus.ACTIVE)
-                .createdAt(LocalDateTime.now().minusDays(4).withNano(0))
-                .updatedAt(LocalDateTime.now().minusDays(4).withNano(0))
-                .build();
+    @DisplayName("Mốc 30 ngày tính từ lúc thỏa thuận thật sự hết hạn (expiredAt), không từ hạn 72 giờ")
+    void signAgreement_shouldMeasureThirtyDaysFromExpiredAt() {
+        testAdminUser.setStatus(UserStatus.FLAGGED);
+        testAgreement.setStatus(AgreementStatus.EXPIRED);
+        testAgreement.setDeadlineAt(LocalDateTime.now().minusDays(40));
+        testAgreement.setExpiredAt(LocalDateTime.now().minusDays(5));
+        when(agreementRepository.findFirstByCompanyIdOrderByCreatedAtDesc(100L))
+                .thenReturn(Optional.of(testAgreement));
+        when(agreementRepository.save(any(CompanyAgreement.class))).thenAnswer(inv -> inv.getArgument(0));
 
-        CompanyAgreement pendingPast72h = CompanyAgreement.builder()
-                .id(601L)
-                .company(testCompany)
-                .user(flaggedUser)
-                .status(AgreementStatus.PENDING)
-                .deadlineAt(LocalDateTime.now().minusHours(5))
-                .build();
+        CompanyAgreementResponse response = agreementService.signAgreement(
+                testAdminUser, SignAgreementRequest.builder().confirmTerms(true).build(), "127.0.0.1");
 
-        // 2. Thỏa thuận EXPIRED đã quá 30 ngày kể từ deadline -> Xóa vĩnh viễn (Hard Delete)
-        User hardDeleteUser = User.builder()
-                .id(302L)
-                .keycloakId("kc-hard-302")
-                .company(testCompany)
-                .email("trial-30days@test.vn")
-                .userRoleType(UserRole.ADMIN)
-                .status(UserStatus.FLAGGED)
-                .createdAt(LocalDateTime.now().minusDays(40).withNano(0))
-                .updatedAt(LocalDateTime.now().minusDays(31).withNano(0))
-                .build();
-
-        CompanyAgreement expiredPast30Days = CompanyAgreement.builder()
-                .id(602L)
-                .company(testCompany)
-                .user(hardDeleteUser)
-                .status(AgreementStatus.EXPIRED)
-                .deadlineAt(LocalDateTime.now().minusDays(31))
-                .build();
-
-        when(agreementRepository.findByStatusAndDeadlineAtBefore(eq(AgreementStatus.PENDING), any(LocalDateTime.class)))
-                .thenReturn(List.of(pendingPast72h));
-        when(agreementRepository.findByStatusAndDeadlineAtBefore(eq(AgreementStatus.EXPIRED), any(LocalDateTime.class)))
-                .thenReturn(List.of(expiredPast30Days));
-
-        agreementService.processExpiredTrialAgreements();
-
-        // Kiểm tra bước 1: Gắn cờ sau 72h không ký
-        assertThat(pendingPast72h.getStatus()).isEqualTo(AgreementStatus.EXPIRED);
-        assertThat(flaggedUser.getStatus()).isEqualTo(UserStatus.FLAGGED);
-        assertThat(flaggedUser.getUpdatedAt()).isAfterOrEqualTo(flaggedUser.getCreatedAt());
-        verify(userRepository).save(flaggedUser);
-        verify(agreementRepository).save(pendingPast72h);
-        verify(keycloakAdminClient, never()).deleteUser("kc-flagged-301");
-        verify(userRepository, never()).delete(flaggedUser);
-
-        // Kiểm tra bước 2: Xóa vĩnh viễn sau 30 ngày
-        verify(keycloakAdminClient).deleteUser("kc-hard-302");
-        assertThat(expiredPast30Days.getUser()).isNull();
-        verify(agreementRepository).save(expiredPast30Days);
-        verify(userRepository).delete(hardDeleteUser);
+        assertThat(response.status()).isEqualTo(AgreementStatus.SIGNED);
+        assertThat(testAdminUser.getStatus()).isEqualTo(UserStatus.ACTIVE);
     }
 }

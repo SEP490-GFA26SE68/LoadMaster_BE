@@ -1,6 +1,9 @@
 package fu.se184491.loadmaster_be.config.security;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import fu.se184491.loadmaster_be.helpers.CurrentUserService;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Import;
@@ -9,6 +12,7 @@ import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationConverter;
+import org.springframework.security.oauth2.server.resource.web.authentication.BearerTokenAuthenticationFilter;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
@@ -16,6 +20,7 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
 import java.util.List;
 
+@Slf4j
 @Configuration
 @EnableWebSecurity
 @EnableMethodSecurity
@@ -32,7 +37,7 @@ public class WebSecurityConfig {
             JwtAuthenticationConverter jwtAuthenticationConverter,
             RestAuthenticationEntryPoint authenticationEntryPoint,
             RestAccessDeniedHandler accessDeniedHandler,
-            FlaggedUserEnforcementFilter flaggedUserEnforcementFilter
+            ObjectProvider<CurrentUserService> currentUserServiceProvider
     ) throws Exception {
 
         http
@@ -73,12 +78,19 @@ public class WebSecurityConfig {
                         .jwt(jwt -> jwt
                                 .jwtAuthenticationConverter(jwtAuthenticationConverter)
                         )
-                )
-
-                .addFilterAfter(
-                        flaggedUserEnforcementFilter,
-                        org.springframework.security.oauth2.server.resource.web.authentication.BearerTokenAuthenticationFilter.class
                 );
+
+        // Bộ lọc tài khoản bị gắn cờ chỉ sống trong chuỗi bảo mật này, không phải bean: là bean thì Spring Boot đăng ký
+        // nó thêm một lần làm servlet filter thường, và lát cắt @WebMvcTest kéo nó vào mà không có CurrentUserService.
+        CurrentUserService currentUserService = currentUserServiceProvider.getIfAvailable();
+        if (currentUserService != null) {
+            http.addFilterAfter(
+                    new FlaggedUserEnforcementFilter(currentUserService, new ObjectMapper()),
+                    BearerTokenAuthenticationFilter.class
+            );
+        } else {
+            log.warn("CurrentUserService is not available; FlaggedUserEnforcementFilter is not added to the security chain");
+        }
 
         return http.build();
     }
@@ -127,10 +139,5 @@ public class WebSecurityConfig {
         );
 
         return source;
-    }
-
-    @Bean
-    public ObjectMapper objectMapper() {
-        return new ObjectMapper();
     }
 }

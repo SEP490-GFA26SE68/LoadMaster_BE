@@ -37,12 +37,9 @@ public class PaymentCallbackHandler {
             return guestRegistrationService.handlePaymentCallback(params);
         }
 
-        boolean isMock = (txnRef != null && txnRef.startsWith("MOCK_"))
-                || "true".equalsIgnoreCase(params.get("vnp_Mock"))
-                || vnPayClient.isMock();
-
-        // 1. Verify Checksum (skip for mock dev transactions)
-        if (!isMock) {
+        // 1. Verify Checksum. Chỉ bỏ qua khi máy chủ bật cấu hình vnpay.mock; tham số của request
+        // (vnp_Mock, tiền tố MOCK_ của mã giao dịch) do người gọi tự đặt nên không bao giờ được tin.
+        if (!vnPayClient.isMock()) {
             boolean validSignature = vnPayClient.verifyCallback(params);
             if (!validSignature) {
                 log.warn("VNPay callback signature verification failed for params: {}", params);

@@ -54,13 +54,16 @@ import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.UUID;
+import java.util.regex.Pattern;
 
 @Slf4j
 @Service
 @RequiredArgsConstructor
 @Transactional
 public class TrialAccountRequestServiceImpl implements TrialAccountRequestService {
+
+    // Cùng mẫu với TrialRegistrationServiceImpl: 10 chữ số, 10-3 hoặc 13 chữ số.
+    private static final Pattern TAX_CODE_PATTERN = Pattern.compile("^([0-9]{10}|[0-9]{10}-[0-9]{3}|[0-9]{13})$");
 
     private final TrialAccountRequestRepository trialAccountRequestRepository;
     private final ContactOfGuestRepository contactOfGuestRepository;
@@ -243,11 +246,17 @@ public class TrialAccountRequestServiceImpl implements TrialAccountRequestServic
             compCode = compCode.trim();
         }
 
+        // Mã số thuế lấy từ người duyệt, không có thì từ đơn. Không tự sinh mã giả: DB chỉ nhận 10 / 13 chữ số
+        // (chk_companies_tax_code_format), mã trùng thì báo TAX_CODE_ALREADY_EXISTS ở dưới để người duyệt nhập mã khác.
         String taxCode = (request.getTaxCode() != null && !request.getTaxCode().trim().isEmpty())
                 ? request.getTaxCode().trim()
-                : (trial.getTaxCode() != null && !trial.getTaxCode().trim().isEmpty() && !companyRepository.existsByTaxCode(trial.getTaxCode().trim())
-                        ? trial.getTaxCode().trim()
-                        : "TAX-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase());
+                : (trial.getTaxCode() != null && !trial.getTaxCode().trim().isEmpty() ? trial.getTaxCode().trim() : null);
+        if (taxCode == null) {
+            throw new AppException(ErrorCode.TAX_CODE_REQUIRED);
+        }
+        if (!TAX_CODE_PATTERN.matcher(taxCode).matches()) {
+            throw new AppException(ErrorCode.INVALID_TAX_CODE_FORMAT);
+        }
 
         if (companyRepository.existsByCompanyCode(compCode)) {
             throw new AppException(ErrorCode.COMPANY_ALREADY_EXISTS, "Mã công ty '" + compCode + "' đã tồn tại trong hệ thống.");

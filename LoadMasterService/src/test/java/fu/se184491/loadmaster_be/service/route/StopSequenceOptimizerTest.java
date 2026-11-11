@@ -18,6 +18,9 @@ class StopSequenceOptimizerTest {
     private static final Instant NOW = Instant.parse("2026-10-02T01:00:00Z");
     private static final Clock CLOCK = Clock.fixed(NOW, ZoneOffset.UTC);
 
+    // Tổng thời gian gồm 15 phút xử lý hàng ở mỗi điểm (StopSequenceOptimizer.SERVICE_TIME_SECONDS), cộng sau khi tới điểm.
+    private static final int SERVICE_SECONDS = 15 * 60;
+
     @Test
     void visitsTheNearestUnvisitedStopAtEachStep() {
         StopSequenceOptimizer optimizer = new StopSequenceOptimizer(CLOCK);
@@ -39,7 +42,7 @@ class StopSequenceOptimizerTest {
         StopSequenceResult result = optimizer.optimize(request);
 
         assertEquals(List.of(102L, 103L, 101L), result.getOrderedStops());
-        assertEquals(20, result.getEstimatedTotalDuration());
+        assertEquals(20 + 3 * SERVICE_SECONDS, result.getEstimatedTotalDuration());
         assertEquals(List.of(), result.getDeadlineMissedStops());
     }
 
@@ -64,7 +67,7 @@ class StopSequenceOptimizerTest {
         StopSequenceResult result = optimizer.optimize(request);
 
         assertEquals(List.of(201L, 202L, 203L), result.getOrderedStops());
-        assertEquals(85_320, result.getEstimatedTotalDuration());
+        assertEquals(85_320 + 3 * SERVICE_SECONDS, result.getEstimatedTotalDuration());
         assertEquals(List.of(), result.getDeadlineMissedStops());
     }
 
@@ -87,7 +90,7 @@ class StopSequenceOptimizerTest {
         StopSequenceResult result = optimizer.optimize(request);
 
         assertEquals(List.of(301L, 302L), result.getOrderedStops());
-        assertEquals(780, result.getEstimatedTotalDuration());
+        assertEquals(780 + 2 * SERVICE_SECONDS, result.getEstimatedTotalDuration());
         assertEquals(List.of(301L), result.getDeadlineMissedStops());
     }
 }

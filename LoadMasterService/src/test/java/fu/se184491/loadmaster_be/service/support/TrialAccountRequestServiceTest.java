@@ -245,6 +245,38 @@ class TrialAccountRequestServiceTest {
     }
 
     @Test
+    @DisplayName("Approve trial request without any tax code fails instead of inventing one")
+    void approveTrialRequest_noTaxCode_throwsTaxCodeRequired() {
+        trialRequest.setTaxCode(null);
+        ApproveTrialAccountRequest request = ApproveTrialAccountRequest.builder().build();
+
+        when(trialAccountRequestRepository.findById(1L)).thenReturn(Optional.of(trialRequest));
+        when(userRepository.existsByEmail("khach@logistics.vn")).thenReturn(false);
+
+        assertThatThrownBy(() -> trialAccountRequestService.approveTrialRequest(1L, request, systemManager))
+                .isInstanceOf(AppException.class)
+                .hasFieldOrPropertyWithValue("errorCode", ErrorCode.TAX_CODE_REQUIRED);
+
+        verify(companyRepository, never()).save(any());
+        verify(keycloakAdminClient, never()).createUser(anyString(), anyString());
+    }
+
+    @Test
+    @DisplayName("Approve trial request rejects a tax code the database would refuse")
+    void approveTrialRequest_badTaxCodeFormat_throwsInvalidFormat() {
+        ApproveTrialAccountRequest request = ApproveTrialAccountRequest.builder().taxCode("TAX-123").build();
+
+        when(trialAccountRequestRepository.findById(1L)).thenReturn(Optional.of(trialRequest));
+        when(userRepository.existsByEmail("khach@logistics.vn")).thenReturn(false);
+
+        assertThatThrownBy(() -> trialAccountRequestService.approveTrialRequest(1L, request, systemManager))
+                .isInstanceOf(AppException.class)
+                .hasFieldOrPropertyWithValue("errorCode", ErrorCode.INVALID_TAX_CODE_FORMAT);
+
+        verify(companyRepository, never()).save(any());
+    }
+
+    @Test
     @DisplayName("Approve trial request fails when email is already registered in the system")
     void approveTrialRequest_emailAlreadyExists_throwsException() {
         ApproveTrialAccountRequest request = ApproveTrialAccountRequest.builder().build();
