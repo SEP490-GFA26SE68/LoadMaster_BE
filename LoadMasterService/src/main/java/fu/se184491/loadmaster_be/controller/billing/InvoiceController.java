@@ -20,7 +20,7 @@ public class InvoiceController {
     private final CurrentUserService currentUserService;
 
     @GetMapping
-    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'SYSTEM_MANAGER', 'SYSTEM_ADMIN') or hasAuthority('COMPANY_ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'SYSTEM_MANAGER', 'SYSTEM_ADMIN')")
     public ResponseEntity<List<InvoiceResponse>> getCompanyInvoices(
             @RequestParam(required = false) Long companyId,
             @RequestParam(required = false) InvoiceStatus status) {
@@ -30,7 +30,7 @@ public class InvoiceController {
     }
 
     @GetMapping("/{id}")
-    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'SYSTEM_MANAGER', 'SYSTEM_ADMIN') or hasAuthority('COMPANY_ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'SYSTEM_MANAGER', 'SYSTEM_ADMIN')")
     public ResponseEntity<InvoiceResponse> getInvoiceById(@PathVariable Long id) {
         boolean isPlatformStaff = currentUserService.hasRole("SYSTEM_ADMIN") || currentUserService.hasRole("SYSTEM_MANAGER");
         Long callerCompanyId = isPlatformStaff ? null : currentUserService.getCurrentCompanyId();

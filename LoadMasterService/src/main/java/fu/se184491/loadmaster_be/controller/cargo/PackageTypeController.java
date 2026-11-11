@@ -74,7 +74,7 @@ public class PackageTypeController {
     }
 
     @GetMapping("/{id}")
-    @PreAuthorize("hasAuthority('PACKAGE_TYPE_MANAGE')")
+    @PreAuthorize("hasAnyAuthority('PACKAGE_TYPE_MANAGE', 'ROLE_DISPATCHER', 'ROLE_MANAGER')")
     public ResponseEntity<ApiResponse<PackageTypeResponse>> getPackageTypeById(
             @PathVariable Long id) {
 

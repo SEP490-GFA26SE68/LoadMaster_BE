@@ -29,7 +29,7 @@ public class CreditController {
     private final CurrentUserService currentUserService;
 
     @GetMapping("/balance")
-    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'DISPATCHER', 'SYSTEM_ADMIN', 'SYSTEM_MANAGER', 'SYSTEM_SUPPORTER') or hasAnyAuthority('COMPANY_ADMIN', 'DISPATCHER', 'SYSTEM_ADMIN', 'SYSTEM_MANAGER', 'SYSTEM_SUPPORTER')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'DISPATCHER', 'SYSTEM_ADMIN', 'SYSTEM_MANAGER', 'SYSTEM_SUPPORTER')")
     public ResponseEntity<ApiResponse<CreditBalanceResponse>> getBalance(
             @RequestParam(required = false) Long companyId) {
         Long targetCompanyId = resolveTargetCompanyId(companyId);
@@ -41,7 +41,7 @@ public class CreditController {
     }
 
     @GetMapping("/transactions")
-    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'DISPATCHER', 'SYSTEM_ADMIN', 'SYSTEM_MANAGER', 'SYSTEM_SUPPORTER') or hasAnyAuthority('COMPANY_ADMIN', 'DISPATCHER', 'SYSTEM_ADMIN', 'SYSTEM_MANAGER', 'SYSTEM_SUPPORTER')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'DISPATCHER', 'SYSTEM_ADMIN', 'SYSTEM_MANAGER', 'SYSTEM_SUPPORTER')")
     public ResponseEntity<ApiResponse<Page<CreditTransactionResponse>>> getTransactions(
             @RequestParam(required = false) Long companyId,
             @PageableDefault(size = 20, sort = "createdAt", direction = Sort.Direction.DESC) Pageable pageable) {
@@ -64,7 +64,7 @@ public class CreditController {
     }
 
     @PostMapping("/topup")
-    @PreAuthorize("hasRole('ADMIN') or hasAuthority('COMPANY_ADMIN')")
+    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<ApiResponse<PaymentUrlResponse>> topup(
             @Valid @RequestBody CreditTopupRequest request,
             HttpServletRequest servletRequest) {

@@ -28,7 +28,7 @@ public class AuditLogController {
      * (chỉ quản trị hệ thống; quản trị công ty luôn đọc công ty mình).
      */
     @GetMapping("/api/audit-logs")
-    @PreAuthorize("hasAnyRole('SYSTEM_ADMIN', 'ADMIN') or hasAnyAuthority('AUDIT_READ', 'COMPANY_ADMIN')")
+    @PreAuthorize("hasAnyRole('SYSTEM_ADMIN', 'ADMIN') or hasAuthority('AUDIT_READ')")
     @Operation(summary = "Nhật ký hoạt động theo phạm vi của người xem")
     public PageResponse<AuditLogResponse> getAuditLogs(
             @RequestParam(defaultValue = "0") int page,

@@ -111,7 +111,7 @@ public class RoutePlanController {
 
 
     @GetMapping("/places/autocomplete")
-    @PreAuthorize("hasAnyRole('DISPATCHER', 'MANAGER')")
+    @PreAuthorize("hasAnyRole('DISPATCHER', 'MANAGER', 'DRIVER', 'ADMIN', 'SYSTEM_ADMIN')")
     public ResponseEntity<ApiResponse<PlaceAutocompleteResponse>> autocompletePlaces(
             @RequestParam("input") String input
     ) {
@@ -128,7 +128,7 @@ public class RoutePlanController {
     }
 
     @GetMapping("/places/detail")
-    @PreAuthorize("hasAnyRole('DISPATCHER', 'MANAGER')")
+    @PreAuthorize("hasAnyRole('DISPATCHER', 'MANAGER', 'DRIVER', 'ADMIN', 'SYSTEM_ADMIN')")
     public ResponseEntity<ApiResponse<PlaceDetailResponse>> getPlaceDetail(
             @RequestParam("placeId") String placeId
     ) {

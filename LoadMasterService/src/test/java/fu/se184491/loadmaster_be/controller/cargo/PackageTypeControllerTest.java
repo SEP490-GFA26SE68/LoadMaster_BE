@@ -189,4 +189,33 @@ public class PackageTypeControllerTest {
 
         verify(packageTypeService).deletePackageType(1L, 100L);
     }
+
+    @Test
+    @DisplayName("GET /api/package-types/{id}: điều phối viên và quản lý đọc được như danh sách")
+    @WithMockUser(roles = "DISPATCHER")
+    void getPackageTypeById_asDispatcher_isAllowed() throws Exception {
+        when(packageTypeService.getPackageTypeById(1L, 100L)).thenReturn(response);
+
+        mockMvc.perform(get("/api/package-types/100"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.id").value(100L));
+    }
+
+    @Test
+    @DisplayName("GET /api/package-types/{id}: quản lý công ty đọc được")
+    @WithMockUser(roles = "MANAGER")
+    void getPackageTypeById_asManager_isAllowed() throws Exception {
+        when(packageTypeService.getPackageTypeById(1L, 100L)).thenReturn(response);
+
+        mockMvc.perform(get("/api/package-types/100"))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    @DisplayName("GET /api/package-types/{id}: tài xế không đọc được")
+    @WithMockUser(roles = "DRIVER")
+    void getPackageTypeById_asDriver_isForbidden() throws Exception {
+        mockMvc.perform(get("/api/package-types/100"))
+                .andExpect(status().isForbidden());
+    }
 }

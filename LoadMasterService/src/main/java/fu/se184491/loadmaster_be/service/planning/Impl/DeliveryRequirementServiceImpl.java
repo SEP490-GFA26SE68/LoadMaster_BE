@@ -24,6 +24,7 @@ import fu.se184491.loadmaster_be.repository.customer.CustomerRepository;
 import fu.se184491.loadmaster_be.repository.planning.DeliveryRequirementRepository;
 import fu.se184491.loadmaster_be.repository.trip.DeliveryStopRepository;
 import fu.se184491.loadmaster_be.service.planning.DeliveryRequirementService;
+import fu.se184491.loadmaster_be.service.planning.RequirementPackageResolver;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -46,6 +47,7 @@ public class DeliveryRequirementServiceImpl implements DeliveryRequirementServic
     private final AuditLogRepository auditLogRepository;
     private final UserRepository userRepository;
     private final CargoPackageRepository cargoPackageRepository;
+    private final RequirementPackageResolver requirementPackageResolver;
 
     @Override
     @Transactional
@@ -76,7 +78,8 @@ public class DeliveryRequirementServiceImpl implements DeliveryRequirementServic
                 .note(request.getNote() == null ? null : request.getNote().trim())
                 .status(DeliveryRequirementStatus.PENDING)
                 .createdBy(User.builder().id(userId).build())
-                .packages(new LinkedHashSet<>())
+                // Kiện điều phối viên chọn từ kho kiện; kho vẫn bổ sung kiện sau khi tiếp nhận hàng.
+                .packages(requirementPackageResolver.resolve(companyId, null, request.getPackageIds()))
                 .build();
 
         DeliveryRequirement saved =
@@ -160,7 +163,8 @@ public class DeliveryRequirementServiceImpl implements DeliveryRequirementServic
                     || request.getDestinationLat() != null
                     || request.getDestinationLng() != null
                     || request.getExpectedPackageCount() != null
-                    || request.getNote() != null) {
+                    || request.getNote() != null
+                    || request.getPackageIds() != null) {
                 throw new AppException(ErrorCode.INVALID_INPUT);
             }
 
@@ -262,6 +266,13 @@ public class DeliveryRequirementServiceImpl implements DeliveryRequirementServic
 
         if (request.getNote() != null) {
             requirement.setNote(request.getNote().trim());
+        }
+
+        // Thay cả tập kiện của yêu cầu còn chờ xếp chuyến; kiện bỏ ra quay về kho kiện.
+        if (request.getPackageIds() != null) {
+            var packages = requirementPackageResolver.resolve(companyId, requirement.getId(), request.getPackageIds());
+            requirement.getPackages().clear();
+            requirement.getPackages().addAll(packages);
         }
 
         return toResponse(requirement);

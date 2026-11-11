@@ -21,7 +21,7 @@ public class CompanyAgreementController {
     private final CurrentUserService currentUserService;
 
     @GetMapping("/my-agreement")
-    @PreAuthorize("hasRole('ADMIN') or hasAuthority('COMPANY_ADMIN')")
+    @PreAuthorize("hasRole('ADMIN')")
     public ApiResponse<CompanyAgreementResponse> getMyAgreement() {
         User currentUser = currentUserService.getCurrentUser();
         CompanyAgreementResponse response = agreementService.getMyAgreement(currentUser);
@@ -29,7 +29,7 @@ public class CompanyAgreementController {
     }
 
     @PostMapping("/sign")
-    @PreAuthorize("hasRole('ADMIN') or hasAuthority('COMPANY_ADMIN')")
+    @PreAuthorize("hasRole('ADMIN')")
     public ApiResponse<CompanyAgreementResponse> signAgreement(
             @Valid @RequestBody SignAgreementRequest request,
             HttpServletRequest servletRequest
@@ -45,7 +45,7 @@ public class CompanyAgreementController {
     }
 
     @GetMapping("/company/{companyId}")
-    @PreAuthorize("hasAnyRole('SYSTEM_ADMIN', 'SYSTEM_MANAGER') or hasAuthority('COMPANIES_READ')")
+    @PreAuthorize("hasAnyRole('SYSTEM_ADMIN', 'SYSTEM_MANAGER')")
     public ApiResponse<CompanyAgreementResponse> getCompanyAgreement(@PathVariable Long companyId) {
         CompanyAgreementResponse response = agreementService.getCompanyAgreement(companyId);
         return ApiResponse.success(response);
