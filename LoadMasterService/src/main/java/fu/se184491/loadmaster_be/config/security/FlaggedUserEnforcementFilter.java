@@ -7,6 +7,7 @@ import fu.se184491.loadmaster_be.constant.billing.SubscriptionStatus;
 import fu.se184491.loadmaster_be.dto.ApiResponse;
 import fu.se184491.loadmaster_be.entity.account.User;
 import fu.se184491.loadmaster_be.entity.billing.CompanySubscription;
+import fu.se184491.loadmaster_be.exception.AppException;
 import fu.se184491.loadmaster_be.exception.ErrorCode;
 import fu.se184491.loadmaster_be.helpers.CurrentUserService;
 import fu.se184491.loadmaster_be.repository.billing.CompanySubscriptionRepository;
@@ -15,15 +16,17 @@ import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
-import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
 import java.time.LocalDateTime;
+import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 
 /**
@@ -40,10 +43,46 @@ import java.util.Optional;
  *    - Các nhân viên khác (MANAGER, DISPATCHER, DRIVER, WAREHOUSE_WORKER): Khóa toàn diện, chỉ cho phép
  *      /api/users/me và public endpoints để đọc hồ sơ và hiển thị màn hình khóa. Chặn mọi API nghiệp vụ khác
  *      với HTTP 403 SUBSCRIPTION_EXPIRED.
+ *
+ * <p>Không phải {@code @Component}: {@link WebSecurityConfig} tự dựng bộ lọc và gắn vào chuỗi Spring Security sau
+ * {@code BearerTokenAuthenticationFilter}. Là bean thì Spring Boot sẽ đăng ký nó thêm một lần làm servlet filter thường,
+ * và mọi lát cắt {@code @WebMvcTest} (không có {@link CurrentUserService}) sẽ không dựng được context.
  */
-@Component
 @Slf4j
 public class FlaggedUserEnforcementFilter extends OncePerRequestFilter {
+
+    private static final String FLAGGED_MESSAGE =
+            "Tài khoản của bạn đã bị gắn cờ do không ký thỏa thuận dịch vụ đúng hạn 72 giờ. Toàn bộ thông tin và chức năng đã bị khóa.";
+
+    private static final String SUBSCRIPTION_EXPIRED_ADMIN_MESSAGE =
+            "Gói cước dịch vụ của doanh nghiệp đã hết hạn. Vui lòng nâng cấp hoặc gia hạn gói cước tại mục Gói và Credit để tiếp tục sử dụng.";
+
+    private static final String SUBSCRIPTION_EXPIRED_EMPLOYEE_MESSAGE =
+            "Gói cước dùng thử của doanh nghiệp đã hết hạn. Vui lòng liên hệ Quản trị viên công ty (Company Admin) để nâng cấp hoặc gia hạn gói cước.";
+
+    /** Tiền tố đường dẫn luôn đi qua, kể cả khi tài khoản bị gắn cờ (public endpoint hoặc lối để ký / xin mở khóa). */
+    private static final List<String> ALLOWED_PREFIXES = List.of(
+            "/api/agreements/",
+            "/api/support-tickets",  // cho phép gửi ticket mở khóa và xem trạng thái ticket
+            "/v3/api-docs",
+            "/swagger-ui",
+            "/api/auth/",
+            "/api/guest-registration/",
+            "/api/trial-registration/",
+            "/webhook/",
+            "/api/payment/"
+    );
+
+    /** Tiền tố đường dẫn được phép cho Company Admin khi gói dịch vụ hết hạn. */
+    private static final List<String> BILLING_AND_SUPPORT_PREFIXES = List.of(
+            "/api/subscription",
+            "/api/credits",
+            "/api/invoices",
+            "/api/payment",
+            "/api/support-tickets",
+            "/api/agreements",
+            "/api/notifications"
+    );
 
     private final CurrentUserService currentUserService;
     private final ObjectMapper objectMapper;
@@ -54,9 +93,13 @@ public class FlaggedUserEnforcementFilter extends OncePerRequestFilter {
             ObjectMapper objectMapper,
             CompanySubscriptionRepository companySubscriptionRepository
     ) {
-        this.currentUserService = currentUserService;
+        this.currentUserService = Objects.requireNonNull(currentUserService, "currentUserService");
         this.objectMapper = objectMapper != null ? objectMapper : new ObjectMapper();
         this.companySubscriptionRepository = companySubscriptionRepository;
+    }
+
+    public FlaggedUserEnforcementFilter(CurrentUserService currentUserService, ObjectMapper objectMapper) {
+        this(currentUserService, objectMapper, null);
     }
 
     @Override
@@ -66,76 +109,67 @@ public class FlaggedUserEnforcementFilter extends OncePerRequestFilter {
             FilterChain filterChain
     ) throws ServletException, IOException {
 
-        String path = request.getRequestURI();
-
-        // 1. Endpoint dùng chung luôn mở cho mọi người dùng (để app đọc được hồ sơ, trạng thái cờ, hết hạn):
-        if (isAlwaysAllowed(path)) {
+        // Chỉ request đã xác thực bằng JWT mới có người dùng để kiểm; request ẩn danh và đường dẫn được phép
+        // đi thẳng, không truy vấn DB.
+        if (isAllowed(request) || !isJwtAuthenticated()) {
             filterChain.doFilter(request, response);
             return;
         }
 
-        // 2. Kiểm tra nếu request đã được xác thực qua JWT:
-        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
-        if (authentication instanceof JwtAuthenticationToken) {
-            try {
-                User currentUser = currentUserService.getCurrentUser();
-                if (currentUser != null) {
-                    // A. Kiểm tra tài khoản bị FLAGGED (72h chưa ký thỏa thuận):
-                    if (currentUser.getStatus() == UserStatus.FLAGGED) {
-                        if (isFlaggedWhitelisted(path)) {
-                            filterChain.doFilter(request, response);
+        User currentUser = findCurrentUser(request);
+        if (currentUser != null) {
+            // A. Kiểm tra tài khoản bị FLAGGED (72h chưa ký thỏa thuận):
+            if (currentUser.getStatus() == UserStatus.FLAGGED) {
+                log.warn("Blocked API call {} {} for FLAGGED user {}",
+                        request.getMethod(), request.getRequestURI(), currentUser.getEmail());
+                writeForbiddenResponse(response, ErrorCode.ACCOUNT_FLAGGED.name(), FLAGGED_MESSAGE);
+                return;
+            }
+
+            // B. Kiểm tra gói cước Doanh nghiệp hết hạn (Subscription EXPIRED):
+            if (currentUser.getCompany() != null && !isPlatformRole(currentUser.getUserRoleType())) {
+                boolean isSubscriptionExpired = checkSubscriptionExpired(currentUser.getCompany().getId());
+
+                if (isSubscriptionExpired) {
+                    String path = request.getRequestURI();
+                    if (currentUser.getUserRoleType() == UserRole.ADMIN) {
+                        // Company Admin: Cho phép các endpoint Gói & Credit + Hỗ trợ
+                        if (!isBillingAndSupportAllowed(path)) {
+                            log.warn("Blocked API call {} {} for Company Admin {} due to EXPIRED subscription",
+                                    request.getMethod(), path, currentUser.getEmail());
+                            writeForbiddenResponse(response, ErrorCode.SUBSCRIPTION_EXPIRED.name(), SUBSCRIPTION_EXPIRED_ADMIN_MESSAGE);
                             return;
                         }
-
-                        log.warn("Blocked API call {} for FLAGGED user {}", path, currentUser.getEmail());
-                        sendForbiddenResponse(response, ErrorCode.ACCOUNT_FLAGGED.name(),
-                                "Tài khoản của bạn đã bị gắn cờ do không ký thỏa thuận dịch vụ đúng hạn 72 giờ. Toàn bộ thông tin và chức năng đã bị khóa.");
+                    } else {
+                        // Các vai trò nhân viên khác (MANAGER, DISPATCHER, DRIVER, WAREHOUSE_WORKER): Khóa hoàn toàn
+                        log.warn("Blocked API call {} {} for employee {} due to EXPIRED company subscription",
+                                request.getMethod(), path, currentUser.getEmail());
+                        writeForbiddenResponse(response, ErrorCode.SUBSCRIPTION_EXPIRED.name(), SUBSCRIPTION_EXPIRED_EMPLOYEE_MESSAGE);
                         return;
                     }
-
-                    // B. Kiểm tra gói cước Doanh nghiệp hết hạn (Subscription EXPIRED):
-                    if (currentUser.getCompany() != null && !isPlatformRole(currentUser.getUserRoleType())) {
-                        boolean isSubscriptionExpired = checkSubscriptionExpired(currentUser.getCompany().getId());
-
-                        if (isSubscriptionExpired) {
-                            if (currentUser.getUserRoleType() == UserRole.ADMIN) {
-                                // Company Admin: Cho phép các endpoint Gói & Credit + Hỗ trợ
-                                if (!isBillingAndSupportWhitelisted(path)) {
-                                    log.warn("Blocked API call {} for Company Admin {} due to EXPIRED subscription", path, currentUser.getEmail());
-                                    sendForbiddenResponse(response, ErrorCode.SUBSCRIPTION_EXPIRED.name(),
-                                            "Gói cước dịch vụ của doanh nghiệp đã hết hạn. Vui lòng nâng cấp hoặc gia hạn gói cước tại mục Gói và Credit để tiếp tục sử dụng.");
-                                    return;
-                                }
-                            } else {
-                                // Các vai trò nhân viên khác (MANAGER, DISPATCHER, DRIVER, WAREHOUSE_WORKER):
-                                // Khóa hoàn toàn, chỉ cho phép /api/users/me và public endpoints
-                                if (!isNonAdminWhitelisted(path)) {
-                                    log.warn("Blocked API call {} for employee {} due to EXPIRED company subscription", path, currentUser.getEmail());
-                                    sendForbiddenResponse(response, ErrorCode.SUBSCRIPTION_EXPIRED.name(),
-                                            "Gói cước dùng thử của doanh nghiệp đã hết hạn. Vui lòng liên hệ Quản trị viên công ty (Company Admin) để nâng cấp hoặc gia hạn gói cước.");
-                                    return;
-                                }
-                            }
-                        }
-                    }
                 }
-            } catch (Exception ex) {
-                // Nếu không tìm thấy profile hoặc lỗi phụ, để filter chain xử lý tiếp
             }
         }
 
         filterChain.doFilter(request, response);
     }
 
-    private boolean isAlwaysAllowed(String path) {
-        if (path == null) {
-            return false;
+    private User findCurrentUser(HttpServletRequest request) {
+        try {
+            return currentUserService.getCurrentUser();
+        } catch (AppException ex) {
+            // Token hợp lệ nhưng chưa gắn hồ sơ người dùng: controller tự trả lỗi của nó, bộ lọc không chặn.
+            log.debug("Flagged/Subscription check skipped for {}: {}", request.getRequestURI(), ex.getErrorCode());
+            return null;
+        } catch (RuntimeException ex) {
+            log.warn("User lookup failed for {}; request continues without the check",
+                    request.getRequestURI(), ex);
+            return null;
         }
-        return path.equals("/api/users/me") || isPublicPath(path);
     }
 
     private boolean checkSubscriptionExpired(Long companyId) {
-        if (companySubscriptionRepository == null) {
+        if (companySubscriptionRepository == null || companyId == null) {
             return false;
         }
         Optional<CompanySubscription> subOpt = companySubscriptionRepository.findByCompanyId(companyId);
@@ -147,61 +181,57 @@ public class FlaggedUserEnforcementFilter extends OncePerRequestFilter {
                 || (sub.getExpiresAt() != null && sub.getExpiresAt().isBefore(LocalDateTime.now()));
     }
 
-    private boolean isPlatformRole(UserRole role) {
+    private static boolean isPlatformRole(UserRole role) {
         return role == UserRole.SYSTEM_ADMIN
                 || role == UserRole.SYSTEM_MANAGER
                 || role == UserRole.SYSTEM_SUPPORTER;
     }
 
-    private boolean isFlaggedWhitelisted(String path) {
+    private static boolean isBillingAndSupportAllowed(String path) {
         if (path == null) {
             return false;
         }
-        return path.equals("/api/users/me")
-                || path.startsWith("/api/agreements")
-                || path.startsWith("/api/support-tickets")
-                || isPublicPath(path);
-    }
-
-    private boolean isBillingAndSupportWhitelisted(String path) {
-        if (path == null) {
-            return false;
+        for (String prefix : BILLING_AND_SUPPORT_PREFIXES) {
+            if (path.startsWith(prefix)) {
+                return true;
+            }
         }
-        return path.equals("/api/users/me")
-                || path.startsWith("/api/subscription")
-                || path.startsWith("/api/credits")
-                || path.startsWith("/api/invoices")
-                || path.startsWith("/api/payment")
-                || path.startsWith("/api/support-tickets")
-                || path.startsWith("/api/agreements")
-                || path.startsWith("/api/notifications")
-                || isPublicPath(path);
+        return false;
     }
 
-    private boolean isNonAdminWhitelisted(String path) {
-        if (path == null) {
-            return false;
-        }
-        return path.equals("/api/users/me") || isPublicPath(path);
-    }
-
-    private boolean isPublicPath(String path) {
-        return path.startsWith("/v3/api-docs")
-                || path.startsWith("/swagger-ui")
-                || path.startsWith("/api/auth/")
-                || path.startsWith("/api/guest-registration/")
-                || path.startsWith("/api/trial-registration/")
-                || path.startsWith("/webhook/")
-                || path.startsWith("/api/payment/");
-    }
-
-    private void sendForbiddenResponse(HttpServletResponse response, String errorCode, String message) throws IOException {
+    private void writeForbiddenResponse(HttpServletResponse response, String errorCode, String message) throws IOException {
         response.setStatus(HttpServletResponse.SC_FORBIDDEN);
         response.setContentType(MediaType.APPLICATION_JSON_VALUE);
         response.setCharacterEncoding("UTF-8");
-
         ApiResponse<Void> apiResponse = ApiResponse.error(errorCode, message);
         response.getWriter().write(objectMapper.writeValueAsString(apiResponse));
     }
-}
 
+    /** BearerTokenAuthenticationFilter chỉ đặt JwtAuthenticationToken vào context khi token hợp lệ. */
+    private static boolean isJwtAuthenticated() {
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        return authentication instanceof JwtAuthenticationToken;
+    }
+
+    private static boolean isAllowed(HttpServletRequest request) {
+        String path = request.getRequestURI();
+        if (path == null) {
+            return false;
+        }
+        if (path.equals("/api/users/me") || path.equals("/swagger-ui.html")) {
+            return true;
+        }
+        for (String prefix : ALLOWED_PREFIXES) {
+            if (path.startsWith(prefix)) {
+                return true;
+            }
+        }
+        // Lối công khai chỉ đọc / gửi liên hệ, giống WebSecurityConfig (chỉ phương thức công khai, không mở lệnh ghi).
+        String method = request.getMethod();
+        if (HttpMethod.GET.matches(method)
+                && (path.equals("/api/vehicle-types") || path.startsWith("/api/subscription/plans"))) {
+            return true;
+        }
+        return HttpMethod.POST.matches(method) && path.equals("/api/contact-guests");
+    }
+}

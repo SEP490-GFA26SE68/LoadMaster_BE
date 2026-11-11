@@ -27,7 +27,12 @@ import fu.se184491.loadmaster_be.service.support.impl.SupportTicketServiceImpl;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import jakarta.persistence.criteria.CriteriaBuilder;
+import jakarta.persistence.criteria.CriteriaQuery;
+import jakarta.persistence.criteria.Path;
+import jakarta.persistence.criteria.Root;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -44,6 +49,11 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.argThat;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -180,6 +190,31 @@ class SupportTicketServiceTest {
     }
 
     @Test
+    @DisplayName("getTickets - Company user only gets tickets they sent themselves, not every ticket of the company")
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    void getTickets_whenCompanyUser_filtersByRequesterNotCompany() {
+        when(currentUserService.getCurrentUser()).thenReturn(companyAdmin);
+        when(supportTicketRepository.findAll(any(Specification.class), any(Sort.class))).thenReturn(List.of());
+
+        supportTicketService.getTickets(null, null);
+
+        ArgumentCaptor<Specification<SupportTicket>> captor = ArgumentCaptor.forClass(Specification.class);
+        verify(supportTicketRepository).findAll(captor.capture(), any(Sort.class));
+
+        Root root = mock(Root.class);
+        Path requesterPath = mock(Path.class);
+        Path requesterIdPath = mock(Path.class);
+        CriteriaBuilder cb = mock(CriteriaBuilder.class);
+        when(root.get("requester")).thenReturn(requesterPath);
+        when(requesterPath.get("id")).thenReturn(requesterIdPath);
+
+        captor.getValue().toPredicate(root, mock(CriteriaQuery.class), cb);
+
+        verify(cb).equal(requesterIdPath, 2L);
+        verify(requesterPath, never()).get("company");
+    }
+
+    @Test
     @DisplayName("updateTicket - Updates status to RESOLVED, sets resolutionNote, assignedTo, and resolvedAt truncated to seconds as LocalDateTime")
     void updateTicket_whenResolved_setsResolutionFieldsAndTimestamp() {
         SupportTicket existing = SupportTicket.builder()
@@ -192,6 +227,7 @@ class SupportTicketServiceTest {
                 .status(TicketStatus.OPEN)
                 .build();
 
+        when(currentUserService.getCurrentUser()).thenReturn(systemSupporter);
         when(supportTicketRepository.findById(101L)).thenReturn(Optional.of(existing));
         when(userRepository.findById(5L)).thenReturn(Optional.of(systemSupporter));
         when(supportTicketRepository.save(any(SupportTicket.class))).thenAnswer(inv -> inv.getArgument(0));
@@ -236,6 +272,7 @@ class SupportTicketServiceTest {
                         """)
                 .build();
 
+        when(currentUserService.getCurrentUser()).thenReturn(systemSupporter);
         when(supportTicketRepository.findById(105L)).thenReturn(Optional.of(existing));
         when(supportTicketRepository.save(any(SupportTicket.class))).thenAnswer(inv -> inv.getArgument(0));
 
@@ -297,7 +334,12 @@ class SupportTicketServiceTest {
                 .resolutionNote("[{\"text\":\"Ticket chưa đóng\",\"at\":\"2026-10-01 10:00:00\"}]")
                 .build();
 
-        when(supportTicketRepository.findAll()).thenReturn(List.of(closed16DaysAgo, closed5DaysAgo, stillInProgress));
+        // Truy vấn chỉ trả phiếu CLOSED / RESOLVED còn lịch sử; phiếu đang xử lý lọt vào vẫn không bị xoá.
+        when(supportTicketRepository.findByStatusInAndResolutionNoteIsNotNull(argThat(statuses ->
+                statuses.size() == 2
+                        && statuses.contains(TicketStatus.CLOSED)
+                        && statuses.contains(TicketStatus.RESOLVED))))
+                .thenReturn(List.of(closed16DaysAgo, closed5DaysAgo, stillInProgress));
 
         int cleanedCount = supportTicketService.cleanupClosedTicketChatHistory();
 
@@ -305,6 +347,21 @@ class SupportTicketServiceTest {
         org.junit.jupiter.api.Assertions.assertNull(closed16DaysAgo.getResolutionNote(), "Closed ticket older than 15 days must have resolutionNote cleared to null");
         assertNotNull(closed5DaysAgo.getResolutionNote(), "Closed ticket under 15 days must retain its resolutionNote");
         assertNotNull(stillInProgress.getResolutionNote(), "Open/In-progress ticket must retain its resolutionNote");
+        verify(supportTicketRepository, never()).findAll();
+        verify(supportTicketRepository).save(closed16DaysAgo);
+        verify(supportTicketRepository, never()).save(closed5DaysAgo);
+    }
+
+    @Test
+    @DisplayName("cleanupClosedTicketChatHistory - Runs hourly, not every 10 seconds")
+    void cleanupClosedTicketChatHistory_isScheduledHourly() throws Exception {
+        org.springframework.scheduling.annotation.Scheduled scheduled = SupportTicketServiceImpl.class
+                .getMethod("cleanupClosedTicketChatHistory")
+                .getAnnotation(org.springframework.scheduling.annotation.Scheduled.class);
+
+        assertNotNull(scheduled);
+        assertEquals("0 15 * * * *", scheduled.cron());
+        assertEquals(-1L, scheduled.fixedDelay());
     }
 
     @Test
@@ -343,6 +400,7 @@ class SupportTicketServiceTest {
                 .resolutionNote("[{\"authorId\":\"99\",\"authorName\":\"Beta Admin\",\"authorRole\":\"companyAdmin\",\"text\":\"Chat công ty Beta ngày 2/11\",\"at\":\"2026-11-02 10:00:00\"}]")
                 .build();
 
+        when(currentUserService.getCurrentUser()).thenReturn(systemSupporter);
         when(supportTicketRepository.findById(5L)).thenReturn(Optional.of(ticketNov4));
         when(supportTicketRepository.save(any(SupportTicket.class))).thenAnswer(inv -> inv.getArgument(0));
         when(supportTicketRepository.findAll()).thenReturn(List.of(ticketNov2, ticketNov3, ticketNov4, otherCompanyTicketNov2));
@@ -401,16 +459,17 @@ class SupportTicketServiceTest {
 
         String sixImagesNote = "[{\"authorId\":\"2\",\"authorName\":\"Acme Admin\",\"authorRole\":\"companyAdmin\",\"text\":\"Gửi 6 ảnh\",\"images\":[\"img1\",\"img2\",\"img3\",\"img4\",\"img5\",\"img6\"],\"at\":\"2026-11-04 20:05:00\"}]";
         UpdateSupportTicketRequest invalidUpdate = new UpdateSupportTicketRequest(
-                TicketStatus.IN_PROGRESS,
+                null,
                 null,
                 sixImagesNote
         );
 
-        assertThrows(
+        AppException ex = assertThrows(
                 AppException.class,
                 () -> supportTicketService.updateTicket(301L, invalidUpdate),
                 "Should reject when a message contains more than 5 images"
         );
+        assertEquals(ErrorCode.INVALID_INPUT, ex.getErrorCode());
     }
 
     @Test
@@ -540,6 +599,7 @@ class SupportTicketServiceTest {
 
         when(supportTicketRepository.findById(403L)).thenReturn(Optional.of(closedTicket));
 
+        when(currentUserService.getCurrentUser()).thenReturn(systemSupporter);
         AppException supporterEx = assertThrows(
                 AppException.class,
                 () -> supportTicketService.updateTicket(
@@ -549,6 +609,7 @@ class SupportTicketServiceTest {
         );
         assertEquals(fu.se184491.loadmaster_be.exception.ErrorCode.SUPPORT_TICKET_CLOSED, supporterEx.getErrorCode());
 
+        when(currentUserService.getCurrentUser()).thenReturn(companyAdmin);
         AppException clientEx = assertThrows(
                 AppException.class,
                 () -> supportTicketService.updateTicket(
@@ -561,6 +622,147 @@ class SupportTicketServiceTest {
                 )
         );
         assertEquals(fu.se184491.loadmaster_be.exception.ErrorCode.SUPPORT_TICKET_CLOSED, clientEx.getErrorCode());
+    }
+
+    // =========================================================================
+    // Quyền trên phiếu: nền tảng mọi phiếu, người khác chỉ phiếu của chính mình
+    // =========================================================================
+
+    private SupportTicket openTicketOf(User requester, long id) {
+        return SupportTicket.builder()
+                .id(id)
+                .ticketCode("TCK-20261111-" + id)
+                .requester(requester)
+                .subject("Không xuất được báo cáo")
+                .description("Nút xuất báo cáo không phản hồi")
+                .category(TicketCategory.SYSTEM_BUG)
+                .priority(TicketPriority.HIGH)
+                .status(TicketStatus.OPEN)
+                .resolutionNote("[{\"authorId\":\"2\",\"text\":\"Nội dung gốc\",\"at\":\"2026-11-11 08:00:00\"}]")
+                .build();
+    }
+
+    @Test
+    @DisplayName("updateTicket - A coworker in the same company cannot patch someone else's ticket (not found, nothing saved)")
+    void updateTicket_whenCoworkerPatchesOthersTicket_rejectedAsNotFound() {
+        User coworker = User.builder()
+                .id(3L).email("dispatcher@acme.vn").fullName("Acme Dispatcher")
+                .company(company10).userRoleType(UserRole.DISPATCHER).status(UserStatus.ACTIVE)
+                .build();
+        SupportTicket ticket = openTicketOf(companyAdmin, 601L);
+        String originalNote = ticket.getResolutionNote();
+
+        when(currentUserService.getCurrentUser()).thenReturn(coworker);
+        when(supportTicketRepository.findById(601L)).thenReturn(Optional.of(ticket));
+
+        AppException ex = assertThrows(AppException.class, () -> supportTicketService.updateTicket(
+                601L, new UpdateSupportTicketRequest(null, null, "[{\"text\":\"Ghi đè\"}]")));
+
+        assertEquals(ErrorCode.SUPPORT_TICKET_NOT_FOUND, ex.getErrorCode());
+        assertEquals(originalNote, ticket.getResolutionNote());
+        verify(supportTicketRepository, never()).save(any());
+        verifyNoInteractions(auditLogRepository);
+    }
+
+    @Test
+    @DisplayName("updateTicket - A user of another company cannot patch the ticket, even when it is CLOSED (no state leak)")
+    void updateTicket_whenOtherCompanyUserPatchesTicket_rejectedAsNotFound() {
+        Company otherCompany = Company.builder().id(20L).companyName("Beta Logistics").build();
+        User outsider = User.builder()
+                .id(30L).email("admin@beta.vn").fullName("Beta Admin")
+                .company(otherCompany).userRoleType(UserRole.ADMIN).status(UserStatus.ACTIVE)
+                .build();
+        SupportTicket ticket = openTicketOf(companyAdmin, 602L);
+        ticket.setStatus(TicketStatus.CLOSED);
+
+        when(currentUserService.getCurrentUser()).thenReturn(outsider);
+        when(supportTicketRepository.findById(602L)).thenReturn(Optional.of(ticket));
+
+        AppException ex = assertThrows(AppException.class, () -> supportTicketService.updateTicket(
+                602L, new UpdateSupportTicketRequest(null, null, "[{\"text\":\"Xin chào\"}]")));
+
+        assertEquals(ErrorCode.SUPPORT_TICKET_NOT_FOUND, ex.getErrorCode());
+        verify(supportTicketRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("updateTicket - A missing ticket answers the same not-found code as someone else's ticket")
+    void updateTicket_whenTicketMissing_returnsTicketNotFound() {
+        when(currentUserService.getCurrentUser()).thenReturn(companyAdmin);
+        when(supportTicketRepository.findById(999L)).thenReturn(Optional.empty());
+
+        AppException ex = assertThrows(AppException.class, () -> supportTicketService.updateTicket(
+                999L, new UpdateSupportTicketRequest(null, null, "[{\"text\":\"Xin chào\"}]")));
+
+        assertEquals(ErrorCode.SUPPORT_TICKET_NOT_FOUND, ex.getErrorCode());
+    }
+
+    @Test
+    @DisplayName("updateTicket - The owner can reply on their own ticket")
+    void updateTicket_whenOwnerReplies_updatesNote() {
+        SupportTicket ticket = openTicketOf(companyAdmin, 603L);
+        String reply = "[{\"authorId\":\"2\",\"text\":\"Em gửi thêm ảnh\",\"at\":\"2026-11-11 09:00:00\"}]";
+
+        when(currentUserService.getCurrentUser()).thenReturn(companyAdmin);
+        when(supportTicketRepository.findById(603L)).thenReturn(Optional.of(ticket));
+        when(supportTicketRepository.save(any(SupportTicket.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        SupportTicketResponse response = supportTicketService.updateTicket(
+                603L, new UpdateSupportTicketRequest(null, null, reply));
+
+        assertTrue(response.getResolutionNote().contains("Em gửi thêm ảnh"));
+        assertEquals(TicketStatus.OPEN, response.getStatus());
+        verify(supportTicketRepository).save(ticket);
+    }
+
+    @Test
+    @DisplayName("updateTicket - The owner cannot change status or assignee of their own ticket")
+    void updateTicket_whenOwnerChangesStatusOrAssignee_rejected() {
+        SupportTicket ticket = openTicketOf(companyAdmin, 604L);
+
+        when(currentUserService.getCurrentUser()).thenReturn(companyAdmin);
+        when(supportTicketRepository.findById(604L)).thenReturn(Optional.of(ticket));
+
+        AppException statusEx = assertThrows(AppException.class, () -> supportTicketService.updateTicket(
+                604L, new UpdateSupportTicketRequest(TicketStatus.RESOLVED, null, null)));
+        AppException assigneeEx = assertThrows(AppException.class, () -> supportTicketService.updateTicket(
+                604L, new UpdateSupportTicketRequest(null, 2L, null)));
+
+        assertEquals(ErrorCode.UNAUTHORIZED, statusEx.getErrorCode());
+        assertEquals(ErrorCode.UNAUTHORIZED, assigneeEx.getErrorCode());
+        assertEquals(TicketStatus.OPEN, ticket.getStatus());
+        verify(supportTicketRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("updateTicket - A system supporter can patch any company's ticket")
+    void updateTicket_whenSupporterPatchesAnyTicket_ok() {
+        SupportTicket ticket = openTicketOf(companyAdmin, 605L);
+        String reply = "[{\"authorId\":\"5\",\"text\":\"Đã kiểm tra\",\"at\":\"2026-11-11 10:00:00\"}]";
+
+        when(currentUserService.getCurrentUser()).thenReturn(systemSupporter);
+        when(supportTicketRepository.findById(605L)).thenReturn(Optional.of(ticket));
+        when(supportTicketRepository.save(any(SupportTicket.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        SupportTicketResponse response = supportTicketService.updateTicket(
+                605L, new UpdateSupportTicketRequest(null, null, reply));
+
+        assertEquals(TicketStatus.IN_PROGRESS, response.getStatus());
+        assertEquals(5L, response.getAssignedToId());
+        assertTrue(response.getResolutionNote().contains("Đã kiểm tra"));
+        verify(auditLogRepository).save(any());
+    }
+
+    @Test
+    @DisplayName("unlockTrialAccount - A company user cannot unlock an account through a ticket")
+    void unlockTrialAccount_whenCompanyUser_rejected() {
+        when(currentUserService.getCurrentUser()).thenReturn(companyAdmin);
+
+        AppException ex = assertThrows(AppException.class,
+                () -> supportTicketService.unlockTrialAccount(503L, "Tự mở khóa"));
+
+        assertEquals(ErrorCode.UNAUTHORIZED, ex.getErrorCode());
+        verifyNoInteractions(supportTicketRepository, userRepository, companyAgreementRepository);
     }
 
     // =========================================================================
@@ -578,6 +780,7 @@ class SupportTicketServiceTest {
                 .status(TicketStatus.OPEN)
                 .build();
 
+        when(currentUserService.getCurrentUser()).thenReturn(systemSupporter);
         when(supportTicketRepository.findById(500L)).thenReturn(Optional.of(billingTicket));
 
         AppException ex = assertThrows(AppException.class,
@@ -597,6 +800,7 @@ class SupportTicketServiceTest {
                 .resolvedAt(LocalDateTime.now().minusHours(1))
                 .build();
 
+        when(currentUserService.getCurrentUser()).thenReturn(systemSupporter);
         when(supportTicketRepository.findById(501L)).thenReturn(Optional.of(resolvedTicket));
 
         AppException ex = assertThrows(AppException.class,
@@ -619,6 +823,7 @@ class SupportTicketServiceTest {
                 .status(TicketStatus.OPEN)
                 .build();
 
+        when(currentUserService.getCurrentUser()).thenReturn(systemSupporter);
         when(supportTicketRepository.findById(502L)).thenReturn(Optional.of(ticket));
 
         AppException ex = assertThrows(AppException.class,
@@ -652,6 +857,7 @@ class SupportTicketServiceTest {
                 .title("Thỏa thuận dùng thử").content("Nội dung").agreementCode("AGR-001")
                 .build();
 
+        when(currentUserService.getCurrentUser()).thenReturn(systemSupporter);
         when(supportTicketRepository.findById(503L)).thenReturn(Optional.of(ticket));
         when(companySubscriptionRepository.findByCompanyId(10L)).thenReturn(Optional.of(activeSub));
         when(companyAgreementRepository.findFirstByCompanyIdOrderByCreatedAtDesc(10L))
@@ -692,6 +898,7 @@ class SupportTicketServiceTest {
                 .expiresAt(LocalDateTime.now().minusDays(3))
                 .build();
 
+        when(currentUserService.getCurrentUser()).thenReturn(systemSupporter);
         when(supportTicketRepository.findById(504L)).thenReturn(Optional.of(ticket));
         when(companySubscriptionRepository.findByCompanyId(10L)).thenReturn(Optional.of(expiredSub));
         when(supportTicketRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));

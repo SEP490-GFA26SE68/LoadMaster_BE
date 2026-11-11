@@ -7,6 +7,8 @@ import fu.se184491.loadmaster_be.constant.billing.SubscriptionStatus;
 import fu.se184491.loadmaster_be.entity.account.User;
 import fu.se184491.loadmaster_be.entity.billing.CompanySubscription;
 import fu.se184491.loadmaster_be.entity.company.Company;
+import fu.se184491.loadmaster_be.exception.AppException;
+import fu.se184491.loadmaster_be.exception.ErrorCode;
 import fu.se184491.loadmaster_be.helpers.CurrentUserService;
 import fu.se184491.loadmaster_be.repository.billing.CompanySubscriptionRepository;
 import jakarta.servlet.FilterChain;
@@ -108,13 +110,6 @@ class FlaggedUserEnforcementFilterTest {
     @DisplayName("Cho phép request /api/agreements/sign khi user có trạng thái FLAGGED để ký thỏa thuận")
     void doFilter_shouldAllowAgreementSignWhenUserFlagged() throws Exception {
         mockAuthentication();
-        User flaggedUser = User.builder()
-                .id(1L)
-                .email("trial@company.vn")
-                .status(UserStatus.FLAGGED)
-                .userRoleType(UserRole.ADMIN)
-                .build();
-        when(currentUserService.getCurrentUser()).thenReturn(flaggedUser);
 
         MockHttpServletRequest request = new MockHttpServletRequest("POST", "/api/agreements/sign");
         MockHttpServletResponse response = new MockHttpServletResponse();
@@ -122,6 +117,7 @@ class FlaggedUserEnforcementFilterTest {
         filter.doFilterInternal(request, response, filterChain);
 
         verify(filterChain).doFilter(request, response);
+        verify(currentUserService, never()).getCurrentUser();
     }
 
     @Test
@@ -148,13 +144,6 @@ class FlaggedUserEnforcementFilterTest {
     @DisplayName("Cho phép POST /api/support-tickets khi user FLAGGED để gửi ticket mở khóa")
     void doFilter_shouldAllowSupportTicketsWhenUserFlagged() throws Exception {
         mockAuthentication();
-        User flaggedUser = User.builder()
-                .id(1L)
-                .email("trial@company.vn")
-                .status(UserStatus.FLAGGED)
-                .userRoleType(UserRole.ADMIN)
-                .build();
-        when(currentUserService.getCurrentUser()).thenReturn(flaggedUser);
 
         MockHttpServletRequest request = new MockHttpServletRequest("POST", "/api/support-tickets");
         MockHttpServletResponse response = new MockHttpServletResponse();
@@ -162,19 +151,13 @@ class FlaggedUserEnforcementFilterTest {
         filter.doFilterInternal(request, response, filterChain);
 
         verify(filterChain).doFilter(request, response);
+        verify(currentUserService, never()).getCurrentUser();
     }
 
     @Test
     @DisplayName("Cho phép POST /api/support-tickets/{id}/unlock-trial khi user FLAGGED (vẫn trong whitelist)")
     void doFilter_shouldAllowSupportTicketUnlockWhenUserFlagged() throws Exception {
         mockAuthentication();
-        User flaggedUser = User.builder()
-                .id(1L)
-                .email("trial@company.vn")
-                .status(UserStatus.FLAGGED)
-                .userRoleType(UserRole.ADMIN)
-                .build();
-        when(currentUserService.getCurrentUser()).thenReturn(flaggedUser);
 
         MockHttpServletRequest request = new MockHttpServletRequest("POST", "/api/support-tickets/42/unlock-trial");
         MockHttpServletResponse response = new MockHttpServletResponse();
@@ -182,6 +165,7 @@ class FlaggedUserEnforcementFilterTest {
         filter.doFilterInternal(request, response, filterChain);
 
         verify(filterChain).doFilter(request, response);
+        verify(currentUserService, never()).getCurrentUser();
     }
 
     @Test
@@ -329,6 +313,66 @@ class FlaggedUserEnforcementFilterTest {
 
         verify(filterChain).doFilter(request, response);
         verify(companySubscriptionRepository, never()).findByCompanyId(any());
+    }
+
+    @Test
+    @DisplayName("Request chưa xác thực đi thẳng, không truy vấn người dùng")
+    void doFilter_shouldSkipLookupForUnauthenticatedRequest() throws Exception {
+        MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/trips");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        filter.doFilterInternal(request, response, filterChain);
+
+        verify(filterChain).doFilter(request, response);
+        verify(currentUserService, never()).getCurrentUser();
+    }
+
+    @Test
+    @DisplayName("Endpoint công khai GET /api/subscription/plans đi thẳng kể cả khi đã đăng nhập")
+    void doFilter_shouldSkipLookupForPublicPath() throws Exception {
+        mockAuthentication();
+        MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/subscription/plans");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        filter.doFilterInternal(request, response, filterChain);
+
+        verify(filterChain).doFilter(request, response);
+        verify(currentUserService, never()).getCurrentUser();
+    }
+
+    @Test
+    @DisplayName("Lệnh ghi tới đường dẫn chỉ công khai khi đọc (POST /api/vehicle-types) vẫn bị kiểm")
+    void doFilter_shouldCheckWriteToReadOnlyPublicPath() throws Exception {
+        mockAuthentication();
+        User flaggedUser = User.builder()
+                .id(1L)
+                .email("trial@company.vn")
+                .status(UserStatus.FLAGGED)
+                .userRoleType(UserRole.DISPATCHER)
+                .build();
+        when(currentUserService.getCurrentUser()).thenReturn(flaggedUser);
+
+        MockHttpServletRequest request = new MockHttpServletRequest("POST", "/api/vehicle-types");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        filter.doFilterInternal(request, response, filterChain);
+
+        assertThat(response.getStatus()).isEqualTo(HttpServletResponse.SC_FORBIDDEN);
+        verify(filterChain, never()).doFilter(any(), any());
+    }
+
+    @Test
+    @DisplayName("Không đọc được hồ sơ người dùng thì request đi tiếp (lỗi được ghi log, không nuốt im lặng)")
+    void doFilter_shouldContinueWhenUserLookupFails() throws Exception {
+        mockAuthentication();
+        when(currentUserService.getCurrentUser()).thenThrow(new AppException(ErrorCode.USER_PROFILE_NOT_FOUND));
+
+        MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/trips");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        filter.doFilterInternal(request, response, filterChain);
+
+        verify(filterChain).doFilter(request, response);
     }
 }
 

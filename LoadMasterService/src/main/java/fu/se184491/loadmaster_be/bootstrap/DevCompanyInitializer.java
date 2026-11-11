@@ -27,21 +27,21 @@ public class DevCompanyInitializer implements ApplicationRunner {
         createIfNotExists(
                 "LM-LOGISTICS",
                 "LoadMaster Logistics",
-                "TAX-LM-001",
+                "0319990001",
                 "billing@loadmaster.local"
         );
 
         createIfNotExists(
                 "FAST-MOVE",
                 "FastMove Transport",
-                "TAX-FM-001",
+                "0319990002",
                 "billing@fastmove.local"
         );
 
         createIfNotExists(
                 "TRANS-GLOBAL",
                 "TransGlobal Freight",
-                "TAX-TG-001",
+                "0319990003",
                 "billing@transglobal.local"
         );
     }

@@ -7,6 +7,7 @@ import fu.se184491.loadmaster_be.constant.cargo.HandlingClass;
 import fu.se184491.loadmaster_be.constant.company.CompanyStatus;
 import fu.se184491.loadmaster_be.constant.planning.DeliveryRequirementPriority;
 import fu.se184491.loadmaster_be.constant.planning.DeliveryRequirementStatus;
+import fu.se184491.loadmaster_be.entity.Customer;
 import fu.se184491.loadmaster_be.entity.account.User;
 import fu.se184491.loadmaster_be.entity.cargo.CargoPackage;
 import fu.se184491.loadmaster_be.entity.cargo.PackageType;
@@ -15,11 +16,13 @@ import fu.se184491.loadmaster_be.entity.order.TransportOrder;
 import fu.se184491.loadmaster_be.entity.planning.DeliveryRequirement;
 import jakarta.persistence.EntityManager;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
+import org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.JwtRequestPostProcessor;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.annotation.Transactional;
@@ -29,6 +32,7 @@ import fu.se184491.loadmaster_be.exception.AppException;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -55,6 +59,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @Transactional
 class DeliveryRequirementApiIntegrationTest {
 
+    // Jackson ghi LocalDateTime đủ giây; LocalDateTime.toString() bỏ ":00" khi giây bằng 0.
+    private static final DateTimeFormatter JSON_DATE_TIME = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss");
+
     @Autowired
     private MockMvc mockMvc;
 
@@ -72,6 +79,7 @@ class DeliveryRequirementApiIntegrationTest {
     private PackageType packageType;
     private Company company;
     private User manager;
+    private Customer customer;
 
     @BeforeEach
     void setUpTenantAndPackage() {
@@ -95,6 +103,8 @@ class DeliveryRequirementApiIntegrationTest {
                 .build();
         entityManager.persist(manager);
 
+        customer = persistCustomer(company, "Da Nang Retail");
+
         packageType = PackageType.builder()
                 .company(company)
                 .typeCode("BOX")
@@ -113,6 +123,7 @@ class DeliveryRequirementApiIntegrationTest {
         entityManager.persist(order);
 
         CargoPackage cargoPackage = CargoPackage.builder()
+                .company(company)
                 .order(order)
                 .packageType(packageType)
                 .trackingBarcode("PKG-001")
@@ -129,37 +140,38 @@ class DeliveryRequirementApiIntegrationTest {
         String deadline = LocalDateTime.now().plusDays(2).withNano(0).toString();
         String request = """
                 {
+                  "customerId": %d,
                   "destination": "Da Nang Distribution Center",
                   "destinationLat": 16.054407,
                   "destinationLng": 108.202167,
                   "deadline": "%s",
                   "priority": "HIGH",
-                  "packageIds": [%d]
+                  "expectedPackageCount": 3
                 }
-                """.formatted(deadline, packageId);
+                """.formatted(customer.getId(), deadline);
 
         String location = mockMvc.perform(post("/api/delivery-requirements")
-                        .with(jwt().jwt(token -> token.subject("manager-subject"))
-                                .authorities(() -> "DELIVERY_DEMAND_MANAGE"))
+                        .with(asManager())
                         .contentType("application/json")
                         .content(request))
                 .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.destination").value("Da Nang Distribution Center"))
-                .andExpect(jsonPath("$.priority").value("HIGH"))
-                .andExpect(jsonPath("$.status").value("PENDING"))
-                .andExpect(jsonPath("$.packageIds[0]").value(packageId))
+                .andExpect(jsonPath("$.data.destination").value("Da Nang Distribution Center"))
+                .andExpect(jsonPath("$.data.customerId").value(customer.getId()))
+                .andExpect(jsonPath("$.data.priority").value("HIGH"))
+                .andExpect(jsonPath("$.data.status").value("PENDING"))
+                .andExpect(jsonPath("$.data.expectedPackageCount").value(3))
+                // Tạo yêu cầu không kèm kiện: kho bổ sung kiện sau khi tiếp nhận hàng.
+                .andExpect(jsonPath("$.data.packageIds.length()").value(0))
                 .andReturn().getResponse().getHeader("Location");
 
-        mockMvc.perform(get(location)
-                        .with(jwt().jwt(token -> token.subject("manager-subject"))
-                                .authorities(() -> "DELIVERY_DEMAND_MANAGE")))
+        mockMvc.perform(get(location).with(asManager()))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.destination").value("Da Nang Distribution Center"))
-                .andExpect(jsonPath("$.packageIds[0]").value(packageId));
+                .andExpect(jsonPath("$.data.destination").value("Da Nang Distribution Center"))
+                .andExpect(jsonPath("$.data.customerId").value(customer.getId()));
     }
 
     @Test
-    void managerCannotCreateRequirementWithAnotherCompanyPackage() throws Exception {
+    void managerCannotCreateRequirementForAnotherCompanyCustomer() throws Exception {
         Company otherCompany = Company.builder()
                 .companyCode("OTHER")
                 .companyName("Other Logistics")
@@ -169,54 +181,34 @@ class DeliveryRequirementApiIntegrationTest {
                 .createdAt(Instant.now())
                 .build();
         entityManager.persist(otherCompany);
-
-        PackageType otherType = PackageType.builder()
-                .company(otherCompany)
-                .typeCode("OTHER-BOX")
-                .name("Other Box")
-                .length(100)
-                .width(100)
-                .height(100)
-                .build();
-        entityManager.persist(otherType);
-
-        TransportOrder otherOrder = TransportOrder.builder()
-                .company(otherCompany)
-                .orderCode("OTHER-ORDER")
-                .status(fu.se184491.loadmaster_be.constant.order.OrderStatus.PENDING)
-                .build();
-        entityManager.persist(otherOrder);
-
-        CargoPackage otherPackage = CargoPackage.builder()
-                .order(otherOrder)
-                .packageType(otherType)
-                .trackingBarcode("OTHER-PKG")
-                .actualWeightKg(BigDecimal.ONE)
-                .status(PackageStatus.PENDING)
-                .build();
-        entityManager.persist(otherPackage);
+        Customer otherCustomer = persistCustomer(otherCompany, "Other Retail");
         entityManager.flush();
 
         String request = """
                 {
+                  "customerId": %d,
                   "destination": "Da Nang Distribution Center",
                   "deadline": "%s",
                   "priority": "NORMAL",
-                  "packageIds": [%d]
+                  "expectedPackageCount": 1
                 }
-                """.formatted(LocalDateTime.now().plusDays(2).withNano(0), otherPackage.getId());
+                """.formatted(otherCustomer.getId(), LocalDateTime.now().plusDays(2).withNano(0));
 
         mockMvc.perform(post("/api/delivery-requirements")
-                        .with(jwt().jwt(token -> token.subject("manager-subject"))
-                                .authorities(() -> "DELIVERY_DEMAND_MANAGE"))
+                        .with(asManager())
                         .contentType("application/json")
                         .content(request))
-                .andExpect(status().isNotFound());
+                .andExpect(status().isBadRequest());
     }
 
     @Test
+    @Disabled("POST /api/delivery-requirements no longer accepts packages (packageIds is ignored; the warehouse attaches "
+            + "packages later). Mixing handling classes is now checked per trip by CargoSegregationService, covered by "
+            + "CargoSegregationServiceIntegrationTest. Kept until the team decides whether a requirement must reject "
+            + "mixed classes when packages are attached.")
     void managerCannotMixPackageHandlingClassesInOneRequirement() throws Exception {
         CargoPackage fragilePackage = CargoPackage.builder()
+                .company(company)
                 .order(order)
                 .packageType(packageType)
                 .trackingBarcode("PKG-FRAGILE")
@@ -229,19 +221,21 @@ class DeliveryRequirementApiIntegrationTest {
 
         String request = """
                 {
+                  "customerId": %d,
                   "destination": "Da Nang Distribution Center",
                   "deadline": "%s",
                   "priority": "NORMAL",
+                  "expectedPackageCount": 2,
                   "packageIds": [%d, %d]
                 }
                 """.formatted(
+                customer.getId(),
                 LocalDateTime.now().plusDays(2).withNano(0),
                 packageId,
                 fragilePackage.getId());
 
         mockMvc.perform(post("/api/delivery-requirements")
-                        .with(jwt().jwt(token -> token.subject("manager-subject"))
-                                .authorities(() -> "DELIVERY_DEMAND_MANAGE"))
+                        .with(asManager())
                         .contentType("application/json")
                         .content(request))
                 .andExpect(status().isBadRequest());
@@ -251,16 +245,16 @@ class DeliveryRequirementApiIntegrationTest {
     void managerCannotCreateRequirementWithPastDeadline() throws Exception {
         String request = """
                 {
+                  "customerId": %d,
                   "destination": "Da Nang Distribution Center",
                   "deadline": "%s",
                   "priority": "NORMAL",
-                  "packageIds": [%d]
+                  "expectedPackageCount": 1
                 }
-                """.formatted(LocalDateTime.now().minusMinutes(1).withNano(0), packageId);
+                """.formatted(customer.getId(), LocalDateTime.now().minusMinutes(1).withNano(0));
 
         mockMvc.perform(post("/api/delivery-requirements")
-                        .with(jwt().jwt(token -> token.subject("manager-subject"))
-                                .authorities(() -> "DELIVERY_DEMAND_MANAGE"))
+                        .with(asManager())
                         .contentType("application/json")
                         .content(request))
                 .andExpect(status().isBadRequest());
@@ -293,8 +287,7 @@ class DeliveryRequirementApiIntegrationTest {
                         .param("deadlineTo", to.toString())
                         .param("page", "0")
                         .param("size", "20")
-                        .with(jwt().jwt(token -> token.subject("manager-subject"))
-                                .authorities(() -> "DELIVERY_DEMAND_MANAGE")))
+                        .with(asManager()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.length()").value(1))
                 .andExpect(jsonPath("$.data[0].id").value(matching.getId()))
@@ -310,7 +303,7 @@ class DeliveryRequirementApiIntegrationTest {
                 LocalDateTime.now().plusDays(2).withNano(0),
                 DeliveryRequirementStatus.PENDING);
         entityManager.flush();
-        String newDeadline = LocalDateTime.now().plusDays(5).withNano(0).toString();
+        String newDeadline = LocalDateTime.now().plusDays(5).withNano(0).format(JSON_DATE_TIME);
 
         String request = """
                 {
@@ -320,15 +313,14 @@ class DeliveryRequirementApiIntegrationTest {
                 """.formatted(newDeadline);
 
         mockMvc.perform(patch("/api/delivery-requirements/{id}", requirement.getId())
-                        .with(jwt().jwt(token -> token.subject("manager-subject"))
-                                .authorities(() -> "DELIVERY_DEMAND_MANAGE"))
+                        .with(asManager())
                         .contentType("application/json")
                         .content(request))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.deadline").value(newDeadline))
-                .andExpect(jsonPath("$.priority").value("URGENT"))
-                .andExpect(jsonPath("$.destination").value("Original destination"))
-                .andExpect(jsonPath("$.status").value("PENDING"));
+                .andExpect(jsonPath("$.data.deadline").value(newDeadline))
+                .andExpect(jsonPath("$.data.priority").value("URGENT"))
+                .andExpect(jsonPath("$.data.destination").value("Original destination"))
+                .andExpect(jsonPath("$.data.status").value("PENDING"));
     }
 
     @Test
@@ -342,13 +334,11 @@ class DeliveryRequirementApiIntegrationTest {
         entityManager.flush();
 
         mockMvc.perform(delete("/api/delivery-requirements/{id}", requirement.getId())
-                        .with(jwt().jwt(token -> token.subject("manager-subject"))
-                                .authorities(() -> "DELIVERY_DEMAND_MANAGE")))
+                        .with(asManager()))
                 .andExpect(status().isNoContent());
 
         mockMvc.perform(get("/api/delivery-requirements/{id}", requirement.getId())
-                        .with(jwt().jwt(token -> token.subject("manager-subject"))
-                                .authorities(() -> "DELIVERY_DEMAND_MANAGE")))
+                        .with(asManager()))
                 .andExpect(status().isNotFound());
     }
 
@@ -363,13 +353,11 @@ class DeliveryRequirementApiIntegrationTest {
         entityManager.flush();
 
         mockMvc.perform(delete("/api/delivery-requirements/{id}", requirement.getId())
-                        .with(jwt().jwt(token -> token.subject("manager-subject"))
-                                .authorities(() -> "DELIVERY_DEMAND_MANAGE")))
+                        .with(asManager()))
                 .andExpect(status().isBadRequest());
 
         mockMvc.perform(get("/api/delivery-requirements/{id}", requirement.getId())
-                        .with(jwt().jwt(token -> token.subject("manager-subject"))
-                                .authorities(() -> "DELIVERY_DEMAND_MANAGE")))
+                        .with(asManager()))
                 .andExpect(status().isOk());
     }
 
@@ -419,6 +407,23 @@ class DeliveryRequirementApiIntegrationTest {
         mockMvc.perform(get("/api/delivery-requirements/{id}", requirement.getId())
                         .with(jwt().jwt(token -> token.subject("manager-subject"))))
                 .andExpect(status().isForbidden());
+    }
+
+    /** Ghi cần DELIVERY_DEMAND_MANAGE, đọc cần DELIVERY_READ. */
+    private static JwtRequestPostProcessor asManager() {
+        return jwt().jwt(token -> token.subject("manager-subject"))
+                .authorities(() -> "DELIVERY_DEMAND_MANAGE", () -> "DELIVERY_READ");
+    }
+
+    private Customer persistCustomer(Company owner, String name) {
+        Customer created = Customer.builder()
+                .company(owner)
+                .name(name)
+                .contactPhone("0900000000")
+                .address("Da Nang")
+                .build();
+        entityManager.persist(created);
+        return created;
     }
 
     private DeliveryRequirement persistRequirement(

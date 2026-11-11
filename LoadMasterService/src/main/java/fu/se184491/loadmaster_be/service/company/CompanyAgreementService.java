@@ -18,5 +18,4 @@ public interface CompanyAgreementService {
 
     CompanyAgreementResponse getCompanyAgreement(Long companyId);
 
-    void processExpiredTrialAgreements();
 }

@@ -15,6 +15,7 @@ import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationConverter;
+import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
@@ -25,6 +26,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @WebMvcTest(CreditInternalController.class)
 @Import(WebSecurityConfig.class)
 @AutoConfigureMockMvc(addFilters = false)
+// Controller chỉ mở cho service account của dịch vụ tối ưu (realm role OPTIMIZATION_CREDIT).
+@WithMockUser(authorities = "ROLE_OPTIMIZATION_CREDIT")
 public class CreditInternalControllerTest {
 
     @Autowired

@@ -2,13 +2,14 @@ package fu.se184491.loadmaster_be.service.cargo;
 
 import fu.se184491.loadmaster_be.dto.request.packagetype.PackageTypeRequest;
 import fu.se184491.loadmaster_be.dto.response.packagetype.PackageTypeResponse;
+import fu.se184491.loadmaster_be.entity.account.User;
 import fu.se184491.loadmaster_be.entity.cargo.PackageType;
 import fu.se184491.loadmaster_be.entity.company.Company;
 import fu.se184491.loadmaster_be.exception.AppException;
 import fu.se184491.loadmaster_be.exception.ErrorCode;
+import fu.se184491.loadmaster_be.helpers.CurrentUserService;
 import fu.se184491.loadmaster_be.repository.cargo.PackageTypeRepository;
 import fu.se184491.loadmaster_be.service.cargo.Impl.PackageTypeServiceImpl;
-import jakarta.persistence.EntityManager;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -36,7 +37,7 @@ public class PackageTypeServiceTest {
     private PackageTypeRepository packageTypeRepository;
 
     @Mock
-    private EntityManager entityManager;
+    private CurrentUserService currentUserService;
 
     @InjectMocks
     private PackageTypeServiceImpl packageTypeService;
@@ -48,6 +49,8 @@ public class PackageTypeServiceTest {
     @BeforeEach
     void setUp() {
         company = Company.builder().id(1L).build();
+        // Dịch vụ lấy công ty từ người đang đăng nhập, không tin companyId trên đường dẫn.
+        when(currentUserService.getCurrentUser()).thenReturn(User.builder().id(7L).company(company).build());
 
         request = PackageTypeRequest.builder()
                 .name("Thùng nhỏ")
@@ -75,7 +78,6 @@ public class PackageTypeServiceTest {
     @Test
     @DisplayName("Create PackageType should succeed with valid data")
     void createPackageType_success() {
-        when(entityManager.getReference(Company.class, 1L)).thenReturn(company);
         when(packageTypeRepository.save(any(PackageType.class))).thenReturn(packageType);
 
         PackageTypeResponse response = packageTypeService.createPackageType(1L, request);
@@ -98,9 +100,9 @@ public class PackageTypeServiceTest {
     @DisplayName("Update PackageType should succeed when entity exists")
     void updatePackageType_success() {
         when(packageTypeRepository.findByIdAndCompanyId(100L, 1L)).thenReturn(Optional.of(packageType));
-        when(packageTypeRepository.save(any(PackageType.class))).thenReturn(packageType);
 
         PackageTypeRequest updateRequest = PackageTypeRequest.builder()
+                .typeCode(" box-m ")
                 .name("Thùng trung")
                 .length(500)
                 .width(400)
@@ -120,8 +122,12 @@ public class PackageTypeServiceTest {
         assertEquals(BigDecimal.valueOf(20.00), packageType.getWeightKg());
         assertEquals(BigDecimal.valueOf(80.00), packageType.getMaxStackingWeightKg());
         assertTrue(packageType.getIsFragile());
+        // Mã loại kiện được chuẩn hoá giống lúc tạo (bỏ khoảng trắng, viết hoa).
+        assertEquals("BOX-M", packageType.getTypeCode());
+        assertEquals("BOX-M", response.getTypeCode());
 
-        verify(packageTypeRepository).save(packageType);
+        // Thực thể đang được quản lý: JPA tự ghi khi transaction kết thúc, dịch vụ không gọi save.
+        verify(packageTypeRepository, never()).save(any());
     }
 
     @Test
