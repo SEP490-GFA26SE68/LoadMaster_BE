@@ -3,6 +3,7 @@ package fu.se184491.loadmaster_be.controller.credit;
 import fu.se184491.loadmaster_be.dto.ApiResponse;
 import fu.se184491.loadmaster_be.dto.request.credit.CreditTopupRequest;
 import fu.se184491.loadmaster_be.dto.response.credit.CreditBalanceResponse;
+import fu.se184491.loadmaster_be.dto.response.credit.CreditPricingResponse;
 import fu.se184491.loadmaster_be.dto.response.credit.CreditTransactionResponse;
 import fu.se184491.loadmaster_be.dto.response.payment.PaymentUrlResponse;
 import fu.se184491.loadmaster_be.helpers.CurrentUserService;
@@ -48,6 +49,17 @@ public class CreditController {
         Long targetCompanyId = resolveTargetCompanyId(companyId);
         Page<CreditTransactionResponse> response = creditService.getTransactions(targetCompanyId, pageable);
         return ResponseEntity.ok(ApiResponse.<Page<CreditTransactionResponse> >builder()
+                .success(true)
+                .data(response)
+                .build());
+    }
+
+    /** Giá credit theo hạng gói của công ty đang gọi, credit một lần tối ưu và giới hạn nạp. */
+    @GetMapping("/pricing")
+    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'DISPATCHER')")
+    public ResponseEntity<ApiResponse<CreditPricingResponse>> getPricing() {
+        CreditPricingResponse response = creditService.getPricing(currentUserService.getCurrentCompanyId());
+        return ResponseEntity.ok(ApiResponse.<CreditPricingResponse>builder()
                 .success(true)
                 .data(response)
                 .build());

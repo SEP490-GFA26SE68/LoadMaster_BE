@@ -6,6 +6,7 @@ import fu.se184491.loadmaster_be.constant.billing.SubscriptionStatus;
 import fu.se184491.loadmaster_be.constant.billing.SubscriptionTier;
 import fu.se184491.loadmaster_be.dto.request.credit.CreditTopupRequest;
 import fu.se184491.loadmaster_be.dto.response.credit.CreditBalanceResponse;
+import fu.se184491.loadmaster_be.dto.response.credit.CreditPricingResponse;
 import fu.se184491.loadmaster_be.dto.response.credit.CreditTransactionResponse;
 import fu.se184491.loadmaster_be.dto.response.payment.PaymentUrlResponse;
 import fu.se184491.loadmaster_be.entity.billing.CompanySubscription;
@@ -34,6 +35,7 @@ import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
+import java.util.EnumMap;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Optional;
@@ -53,6 +55,8 @@ public class CreditServiceImpl implements CreditService {
     public static final BigDecimal PRICE_PER_CREDIT_BASIC_VND = new BigDecimal("400");
     public static final BigDecimal PRICE_PER_CREDIT_PRO_VND = new BigDecimal("326");
     public static final BigDecimal PRICE_PER_CREDIT_ULTIMATE_VND = new BigDecimal("263");
+    /** Số credit nhỏ nhất một lần nạp (như {@code CreditTopupRequest}); không có trần. */
+    public static final int MIN_TOPUP_CREDITS = 1;
 
     private final CreditAccountRepository creditAccountRepository;
     private final CreditTransactionRepository creditTransactionRepository;
@@ -84,6 +88,48 @@ public class CreditServiceImpl implements CreditService {
     }
 
     @Override
+    @Transactional(readOnly = true)
+    public CreditPricingResponse getPricing(Long companyId) {
+        Optional<CompanySubscription> subOpt = companySubscriptionRepository.findByCompanyId(companyId);
+        SubscriptionTier tier = tierOf(subOpt);
+        Map<SubscriptionTier, BigDecimal> prices = new EnumMap<>(SubscriptionTier.class);
+        for (SubscriptionTier each : SubscriptionTier.values()) {
+            prices.put(each, pricePerCredit(each));
+        }
+        boolean active = subOpt.map(sub -> sub.getStatus() == SubscriptionStatus.ACTIVE).orElse(false);
+        return CreditPricingResponse.builder()
+                .tier(tier)
+                .pricePerCreditVnd(pricePerCredit(tier))
+                .tierPrices(prices)
+                .optimizationCost(INITIAL_OPTIMIZATION_CREDIT_COST)
+                .rerunCost(RERUN_OPTIMIZATION_CREDIT_COST)
+                .minTopUpCredits(MIN_TOPUP_CREDITS)
+                .maxTopUpCredits(null)
+                .unlimited(active && tier == SubscriptionTier.ULTIMATE)
+                .topUpAllowed(subOpt.isEmpty() || active)
+                .lowBalanceThreshold(LOW_CREDIT_THRESHOLD)
+                .build();
+    }
+
+    /** Hạng gói hiện tại của công ty; chưa có gói (hoặc gói không ghi hạng) tính như Basic. */
+    private static SubscriptionTier tierOf(Optional<CompanySubscription> subOpt) {
+        return subOpt.map(CompanySubscription::getPlan)
+                .map(plan -> plan.getTier())
+                .orElse(SubscriptionTier.BASIC);
+    }
+
+    /** Đơn giá mua lẻ một credit theo hạng. */
+    public static BigDecimal pricePerCredit(SubscriptionTier tier) {
+        if (tier == SubscriptionTier.PRO) {
+            return PRICE_PER_CREDIT_PRO_VND;
+        }
+        if (tier == SubscriptionTier.ULTIMATE) {
+            return PRICE_PER_CREDIT_ULTIMATE_VND;
+        }
+        return PRICE_PER_CREDIT_BASIC_VND;
+    }
+
+    @Override
     @Transactional
     public PaymentUrlResponse topup(Long companyId, CreditTopupRequest request, String clientIp) {
         Company company = companyRepository.findById(companyId)
@@ -97,22 +143,11 @@ public class CreditServiceImpl implements CreditService {
             );
         }
 
-        SubscriptionTier tier = (subOpt.isPresent()
-                && subOpt.get().getPlan() != null
-                && subOpt.get().getPlan().getTier() != null)
-                ? subOpt.get().getPlan().getTier()
-                : SubscriptionTier.BASIC;
+        SubscriptionTier tier = tierOf(subOpt);
 
         int requestedCredits = request.getCredits();
 
-        BigDecimal pricePerCredit;
-        if (tier == SubscriptionTier.BASIC) {
-            pricePerCredit = PRICE_PER_CREDIT_BASIC_VND;
-        } else if (tier == SubscriptionTier.PRO) {
-            pricePerCredit = PRICE_PER_CREDIT_PRO_VND;
-        } else {
-            pricePerCredit = PRICE_PER_CREDIT_ULTIMATE_VND;
-        }
+        BigDecimal pricePerCredit = pricePerCredit(tier);
 
         BigDecimal totalAmount = pricePerCredit.multiply(BigDecimal.valueOf(requestedCredits));
         PaymentGateway gateway = request.getGateway() != null ? request.getGateway() : PaymentGateway.VNPAY;
