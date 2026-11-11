@@ -92,7 +92,8 @@ public class PaymentCallbackHandler {
             log.info("Payment SUCCESS for txnRef: {} (type: {}, targetId: {})",
                     txnRef, txn.getOrderType(), txn.getTargetId());
 
-            if ("SUBSCRIPTION".equalsIgnoreCase(txn.getOrderType()) && txn.getTargetId() != null) {
+            if (("SUBSCRIPTION".equalsIgnoreCase(txn.getOrderType())
+                    || "SUBSCRIPTION_RENEWAL".equalsIgnoreCase(txn.getOrderType())) && txn.getTargetId() != null) {
                 subscriptionService.activateSubscription(txn.getCompany().getId(), txn.getTargetId());
             } else if ("SUBSCRIPTION_YEARLY".equalsIgnoreCase(txn.getOrderType()) && txn.getTargetId() != null) {
                 subscriptionService.activateSubscription(

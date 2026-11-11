@@ -1,9 +1,11 @@
 package fu.se184491.loadmaster_be.controller.subscription;
 
 import fu.se184491.loadmaster_be.dto.ApiResponse;
+import fu.se184491.loadmaster_be.dto.request.subscription.RenewSubscriptionRequest;
 import fu.se184491.loadmaster_be.dto.request.subscription.SubscribeRequest;
 import fu.se184491.loadmaster_be.dto.response.payment.PaymentUrlResponse;
 import fu.se184491.loadmaster_be.dto.response.subscription.SubscriptionCurrentResponse;
+import fu.se184491.loadmaster_be.dto.response.subscription.SubscriptionRenewalResponse;
 import fu.se184491.loadmaster_be.helpers.CurrentUserService;
 import fu.se184491.loadmaster_be.service.subscription.SubscriptionService;
 import jakarta.servlet.http.HttpServletRequest;
@@ -56,6 +58,32 @@ public class SubscriptionController {
         return ResponseEntity.ok(ApiResponse.<Void>builder()
                 .success(true)
                 .message("Subscription cancelled successfully")
+                .build());
+    }
+
+    /** Gói của công ty có gia hạn được không (hết hạn, hoặc còn hạn trong 3 ngày cuối) và thanh toán gói còn chờ. */
+    @GetMapping("/renewal")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<ApiResponse<SubscriptionRenewalResponse>> getRenewal() {
+        Long companyId = currentUserService.getCurrentCompanyId();
+        return ResponseEntity.ok(ApiResponse.<SubscriptionRenewalResponse>builder()
+                .success(true)
+                .data(subscriptionService.getRenewal(companyId))
+                .build());
+    }
+
+    /** Gia hạn đúng gói đang (hoặc vừa) dùng thêm một kỳ qua cổng thanh toán. */
+    @PostMapping("/renew")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<ApiResponse<PaymentUrlResponse>> renew(
+            @RequestBody(required = false) RenewSubscriptionRequest request,
+            HttpServletRequest servletRequest) {
+        Long companyId = currentUserService.getCurrentCompanyId();
+        PaymentUrlResponse response = subscriptionService.renew(
+                companyId, request != null ? request.getGateway() : null, servletRequest.getRemoteAddr());
+        return ResponseEntity.ok(ApiResponse.<PaymentUrlResponse>builder()
+                .success(true)
+                .data(response)
                 .build());
     }
 }
