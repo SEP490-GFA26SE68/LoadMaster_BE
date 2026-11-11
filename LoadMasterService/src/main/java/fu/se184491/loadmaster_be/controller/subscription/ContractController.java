@@ -39,6 +39,7 @@ public class ContractController {
     }
 
     @PostMapping
+    @PreAuthorize("hasAnyRole('SYSTEM_MANAGER', 'SYSTEM_ADMIN') or hasAnyAuthority('SYSTEM_MANAGER', 'SYSTEM_ADMIN')")
     public ResponseEntity<ContractResponse> createOrActivateContract(
             @Valid @RequestBody CreateContractRequest request
     ) {
@@ -47,6 +48,7 @@ public class ContractController {
     }
 
     @PatchMapping("/{id}")
+    @PreAuthorize("hasAnyRole('SYSTEM_MANAGER', 'SYSTEM_ADMIN') or hasAnyAuthority('SYSTEM_MANAGER', 'SYSTEM_ADMIN')")
     public ResponseEntity<ContractResponse> updateContract(
             @PathVariable Long id,
             @RequestBody UpdateContractRequest request

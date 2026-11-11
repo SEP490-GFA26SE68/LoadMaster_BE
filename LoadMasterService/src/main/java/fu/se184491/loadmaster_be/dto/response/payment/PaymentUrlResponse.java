@@ -2,6 +2,8 @@ package fu.se184491.loadmaster_be.dto.response.payment;
 
 import lombok.*;
 
+import java.math.BigDecimal;
+
 @Getter
 @Setter
 @NoArgsConstructor
@@ -12,4 +14,5 @@ public class PaymentUrlResponse {
     private String transactionId;
     private Long id;
     private String status;
+    private BigDecimal amountVnd;
 }

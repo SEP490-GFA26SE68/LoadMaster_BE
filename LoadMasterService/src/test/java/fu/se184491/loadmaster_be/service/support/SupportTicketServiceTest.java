@@ -2,18 +2,26 @@ package fu.se184491.loadmaster_be.service.support;
 
 import fu.se184491.loadmaster_be.constant.account.UserRole;
 import fu.se184491.loadmaster_be.constant.account.UserStatus;
+import fu.se184491.loadmaster_be.constant.billing.SubscriptionStatus;
+import fu.se184491.loadmaster_be.constant.company.AgreementStatus;
 import fu.se184491.loadmaster_be.constant.support.TicketCategory;
 import fu.se184491.loadmaster_be.constant.support.TicketPriority;
 import fu.se184491.loadmaster_be.constant.support.TicketStatus;
 import fu.se184491.loadmaster_be.dto.request.support.CreateSupportTicketRequest;
 import fu.se184491.loadmaster_be.dto.request.support.UpdateSupportTicketRequest;
 import fu.se184491.loadmaster_be.dto.response.support.SupportTicketResponse;
+import fu.se184491.loadmaster_be.dto.response.support.UnlockTrialResponse;
 import fu.se184491.loadmaster_be.entity.account.User;
+import fu.se184491.loadmaster_be.entity.billing.CompanySubscription;
 import fu.se184491.loadmaster_be.entity.company.Company;
+import fu.se184491.loadmaster_be.entity.company.CompanyAgreement;
 import fu.se184491.loadmaster_be.entity.support.SupportTicket;
 import fu.se184491.loadmaster_be.exception.AppException;
+import fu.se184491.loadmaster_be.exception.ErrorCode;
 import fu.se184491.loadmaster_be.helpers.CurrentUserService;
 import fu.se184491.loadmaster_be.repository.account.UserRepository;
+import fu.se184491.loadmaster_be.repository.billing.CompanySubscriptionRepository;
+import fu.se184491.loadmaster_be.repository.company.CompanyAgreementRepository;
 import fu.se184491.loadmaster_be.repository.support.SupportTicketRepository;
 import fu.se184491.loadmaster_be.service.support.impl.SupportTicketServiceImpl;
 import org.junit.jupiter.api.BeforeEach;
@@ -31,6 +39,7 @@ import java.util.List;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -51,6 +60,12 @@ class SupportTicketServiceTest {
 
     @Mock
     private fu.se184491.loadmaster_be.repository.common.AuditLogRepository auditLogRepository;
+
+    @Mock
+    private CompanySubscriptionRepository companySubscriptionRepository;
+
+    @Mock
+    private CompanyAgreementRepository companyAgreementRepository;
 
     @InjectMocks
     private SupportTicketServiceImpl supportTicketService;
@@ -396,5 +411,298 @@ class SupportTicketServiceTest {
                 () -> supportTicketService.updateTicket(301L, invalidUpdate),
                 "Should reject when a message contains more than 5 images"
         );
+    }
+
+    @Test
+    @DisplayName("updateTicket - Supporter moving OPEN ticket to IN_PROGRESS locks ticket to that supporter and blocks a second supporter")
+    void updateTicket_whenSupporterMovesOpenToInProgress_locksTicketAndBlocksSecondSupporter() {
+        User secondSupporter = User.builder()
+                .id(6L)
+                .email("supporter2@loadmaster.vn")
+                .fullName("Second Supporter")
+                .userRoleType(UserRole.SYSTEM_SUPPORTER)
+                .status(UserStatus.ACTIVE)
+                .build();
+
+        SupportTicket ticket = SupportTicket.builder()
+                .id(401L)
+                .ticketCode("TCK-20261109-0401")
+                .requester(companyAdmin)
+                .subject("Cần kiểm tra tải trọng")
+                .category(TicketCategory.SYSTEM_BUG)
+                .priority(TicketPriority.HIGH)
+                .status(TicketStatus.OPEN)
+                .build();
+
+        when(supportTicketRepository.findById(401L)).thenReturn(Optional.of(ticket));
+        when(supportTicketRepository.save(any(SupportTicket.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        // Supporter 1 picks up the OPEN ticket and moves it to IN_PROGRESS
+        when(currentUserService.getCurrentUser()).thenReturn(systemSupporter);
+        SupportTicketResponse lockedResponse = supportTicketService.updateTicket(
+                401L,
+                new UpdateSupportTicketRequest(TicketStatus.IN_PROGRESS, null, null)
+        );
+        assertEquals(TicketStatus.IN_PROGRESS, lockedResponse.getStatus());
+        assertEquals(5L, lockedResponse.getAssignedToId(), "Ticket must be locked to Supporter 1 (id=5)");
+
+        // Supporter 2 tries to reply or change status while ticket is IN_PROGRESS -> rejected
+        when(currentUserService.getCurrentUser()).thenReturn(secondSupporter);
+        AppException lockEx = assertThrows(
+                AppException.class,
+                () -> supportTicketService.updateTicket(
+                        401L,
+                        new UpdateSupportTicketRequest(
+                                TicketStatus.RESOLVED,
+                                null,
+                                "[{\"authorId\":\"6\",\"authorName\":\"Second Supporter\",\"authorRole\":\"systemSupporter\",\"text\":\"Để tôi xử lý\",\"at\":\"2026-11-09 10:00:00\"}]"
+                        )
+                )
+        );
+        assertEquals(fu.se184491.loadmaster_be.exception.ErrorCode.SUPPORT_TICKET_LOCKED, lockEx.getErrorCode());
+
+        // Client (requester) CAN still reply while ticket is IN_PROGRESS
+        when(currentUserService.getCurrentUser()).thenReturn(companyAdmin);
+        SupportTicketResponse clientReplyResp = supportTicketService.updateTicket(
+                401L,
+                new UpdateSupportTicketRequest(
+                        null,
+                        null,
+                        "[{\"authorId\":\"2\",\"authorName\":\"Acme Admin\",\"authorRole\":\"companyAdmin\",\"text\":\"Em gửi thêm thông tin\",\"at\":\"2026-11-09 10:05:00\"}]"
+                )
+        );
+        assertEquals(TicketStatus.IN_PROGRESS, clientReplyResp.getStatus());
+        assertEquals(5L, clientReplyResp.getAssignedToId(), "Lock remains with Supporter 1 while IN_PROGRESS");
+    }
+
+    @Test
+    @DisplayName("updateTicket - RESOLVED ticket is unlocked for any supporter, and when client replies it transitions back to OPEN")
+    void updateTicket_whenResolved_anySupporterCanAccess_andClientReplyTransitionsBackToOpen() {
+        User secondSupporter = User.builder()
+                .id(6L)
+                .email("supporter2@loadmaster.vn")
+                .fullName("Second Supporter")
+                .userRoleType(UserRole.SYSTEM_SUPPORTER)
+                .status(UserStatus.ACTIVE)
+                .build();
+
+        SupportTicket ticket = SupportTicket.builder()
+                .id(402L)
+                .ticketCode("TCK-20261109-0402")
+                .requester(companyAdmin)
+                .assignedTo(systemSupporter)
+                .subject("Hỏi về cước phí")
+                .category(TicketCategory.BILLING)
+                .priority(TicketPriority.MEDIUM)
+                .status(TicketStatus.RESOLVED)
+                .resolvedAt(LocalDateTime.now().truncatedTo(java.time.temporal.ChronoUnit.SECONDS))
+                .build();
+
+        when(supportTicketRepository.findById(402L)).thenReturn(Optional.of(ticket));
+        when(supportTicketRepository.save(any(SupportTicket.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        // Client replies to RESOLVED ticket -> automatically transitions back to OPEN and clears assignedTo lock
+        when(currentUserService.getCurrentUser()).thenReturn(companyAdmin);
+        SupportTicketResponse reopened = supportTicketService.updateTicket(
+                402L,
+                new UpdateSupportTicketRequest(
+                        null,
+                        null,
+                        "[{\"authorId\":\"2\",\"authorName\":\"Acme Admin\",\"authorRole\":\"companyAdmin\",\"text\":\"Em vẫn còn thắc mắc thêm\",\"at\":\"2026-11-09 11:00:00\"}]"
+                )
+        );
+        assertEquals(TicketStatus.OPEN, reopened.getStatus(), "Client reply on RESOLVED ticket must move status back to OPEN");
+        org.junit.jupiter.api.Assertions.assertNull(reopened.getAssignedToId(), "Reopened OPEN ticket must not be locked to any supporter");
+
+        // Now Supporter 2 can pick it up and move to IN_PROGRESS, locking it to Supporter 2
+        when(currentUserService.getCurrentUser()).thenReturn(secondSupporter);
+        SupportTicketResponse pickedBySecond = supportTicketService.updateTicket(
+                402L,
+                new UpdateSupportTicketRequest(TicketStatus.IN_PROGRESS, null, null)
+        );
+        assertEquals(TicketStatus.IN_PROGRESS, pickedBySecond.getStatus());
+        assertEquals(6L, pickedBySecond.getAssignedToId());
+    }
+
+    @Test
+    @DisplayName("updateTicket - CLOSED ticket is strictly read-only for both supporter and client")
+    void updateTicket_whenClosed_rejectsUpdatesFromBothSupporterAndClient() {
+        SupportTicket closedTicket = SupportTicket.builder()
+                .id(403L)
+                .ticketCode("TCK-20261109-0403")
+                .requester(companyAdmin)
+                .subject("Phiếu đã đóng")
+                .category(TicketCategory.SYSTEM_BUG)
+                .priority(TicketPriority.HIGH)
+                .status(TicketStatus.CLOSED)
+                .resolvedAt(LocalDateTime.now().truncatedTo(java.time.temporal.ChronoUnit.SECONDS))
+                .build();
+
+        when(supportTicketRepository.findById(403L)).thenReturn(Optional.of(closedTicket));
+
+        AppException supporterEx = assertThrows(
+                AppException.class,
+                () -> supportTicketService.updateTicket(
+                        403L,
+                        new UpdateSupportTicketRequest(TicketStatus.OPEN, null, null)
+                )
+        );
+        assertEquals(fu.se184491.loadmaster_be.exception.ErrorCode.SUPPORT_TICKET_CLOSED, supporterEx.getErrorCode());
+
+        AppException clientEx = assertThrows(
+                AppException.class,
+                () -> supportTicketService.updateTicket(
+                        403L,
+                        new UpdateSupportTicketRequest(
+                                null,
+                                null,
+                                "[{\"authorId\":\"2\",\"authorName\":\"Acme Admin\",\"authorRole\":\"companyAdmin\",\"text\":\"Chat vào phiếu đã đóng\",\"at\":\"2026-11-09 12:00:00\"}]"
+                        )
+                )
+        );
+        assertEquals(fu.se184491.loadmaster_be.exception.ErrorCode.SUPPORT_TICKET_CLOSED, clientEx.getErrorCode());
+    }
+
+    // =========================================================================
+    // RED → GREEN: unlockTrialAccount — TDD Cycle
+    // =========================================================================
+
+    @Test
+    @DisplayName("unlockTrialAccount - Ticket không phải loại TRIAL_ACCOUNT_UNLOCK → ném UNLOCK_TRIAL_TICKET_NOT_ELIGIBLE")
+    void unlockTrialAccount_whenWrongCategory_throwsNotEligible() {
+        SupportTicket billingTicket = SupportTicket.builder()
+                .id(500L)
+                .ticketCode("TCK-20261110-0500")
+                .requester(companyAdmin)
+                .category(TicketCategory.BILLING)
+                .status(TicketStatus.OPEN)
+                .build();
+
+        when(supportTicketRepository.findById(500L)).thenReturn(Optional.of(billingTicket));
+
+        AppException ex = assertThrows(AppException.class,
+                () -> supportTicketService.unlockTrialAccount(500L, "Mở thử"));
+        assertEquals(ErrorCode.UNLOCK_TRIAL_TICKET_NOT_ELIGIBLE, ex.getErrorCode());
+    }
+
+    @Test
+    @DisplayName("unlockTrialAccount - Ticket đã RESOLVED → ném UNLOCK_TRIAL_TICKET_ALREADY_RESOLVED")
+    void unlockTrialAccount_whenTicketAlreadyResolved_throwsAlreadyResolved() {
+        SupportTicket resolvedTicket = SupportTicket.builder()
+                .id(501L)
+                .ticketCode("TCK-20261110-0501")
+                .requester(companyAdmin)
+                .category(TicketCategory.TRIAL_ACCOUNT_UNLOCK)
+                .status(TicketStatus.RESOLVED)
+                .resolvedAt(LocalDateTime.now().minusHours(1))
+                .build();
+
+        when(supportTicketRepository.findById(501L)).thenReturn(Optional.of(resolvedTicket));
+
+        AppException ex = assertThrows(AppException.class,
+                () -> supportTicketService.unlockTrialAccount(501L, "Thử mở lại"));
+        assertEquals(ErrorCode.UNLOCK_TRIAL_TICKET_ALREADY_RESOLVED, ex.getErrorCode());
+    }
+
+    @Test
+    @DisplayName("unlockTrialAccount - User không ở FLAGGED → ném UNLOCK_TRIAL_ALREADY_ACTIVE")
+    void unlockTrialAccount_whenUserNotFlagged_throwsAlreadyActive() {
+        User activeUser = User.builder()
+                .id(2L).email("admin@acme.vn").fullName("Acme Admin")
+                .company(company10).userRoleType(UserRole.ADMIN)
+                .status(UserStatus.ACTIVE)
+                .build();
+        SupportTicket ticket = SupportTicket.builder()
+                .id(502L).ticketCode("TCK-20261110-0502")
+                .requester(activeUser)
+                .category(TicketCategory.TRIAL_ACCOUNT_UNLOCK)
+                .status(TicketStatus.OPEN)
+                .build();
+
+        when(supportTicketRepository.findById(502L)).thenReturn(Optional.of(ticket));
+
+        AppException ex = assertThrows(AppException.class,
+                () -> supportTicketService.unlockTrialAccount(502L, "Thử mở lại"));
+        assertEquals(ErrorCode.UNLOCK_TRIAL_ALREADY_ACTIVE, ex.getErrorCode());
+    }
+
+    @Test
+    @DisplayName("unlockTrialAccount - User FLAGGED, subscription còn hạn → ACTIVE, trialStillValid=true, nextAction=SIGN_AGREEMENT")
+    void unlockTrialAccount_whenFlaggedAndTrialValid_returnsSignAgreementAction() {
+        User flaggedUser = User.builder()
+                .id(2L).email("admin@acme.vn").fullName("Acme Admin")
+                .company(company10).userRoleType(UserRole.ADMIN)
+                .status(UserStatus.FLAGGED)
+                .build();
+        SupportTicket ticket = SupportTicket.builder()
+                .id(503L).ticketCode("TCK-20261110-0503")
+                .requester(flaggedUser)
+                .category(TicketCategory.TRIAL_ACCOUNT_UNLOCK)
+                .status(TicketStatus.OPEN)
+                .build();
+        CompanySubscription activeSub = CompanySubscription.builder()
+                .company(company10)
+                .status(SubscriptionStatus.ACTIVE)
+                .expiresAt(LocalDateTime.now().plusDays(10))
+                .build();
+        CompanyAgreement expiredAgreement = CompanyAgreement.builder()
+                .company(company10).user(flaggedUser)
+                .status(AgreementStatus.EXPIRED)
+                .deadlineAt(LocalDateTime.now().minusDays(2))
+                .title("Thỏa thuận dùng thử").content("Nội dung").agreementCode("AGR-001")
+                .build();
+
+        when(supportTicketRepository.findById(503L)).thenReturn(Optional.of(ticket));
+        when(companySubscriptionRepository.findByCompanyId(10L)).thenReturn(Optional.of(activeSub));
+        when(companyAgreementRepository.findFirstByCompanyIdOrderByCreatedAtDesc(10L))
+                .thenReturn(Optional.of(expiredAgreement));
+        when(supportTicketRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        when(userRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        when(companyAgreementRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        UnlockTrialResponse result = supportTicketService.unlockTrialAccount(503L, "Hỗ trợ mở khóa cho khách");
+
+        assertNotNull(result);
+        assertEquals(2L, result.getUserId());
+        assertTrue(result.isTrialStillValid(), "Subscription còn hạn → trialStillValid phải true");
+        assertEquals("SIGN_AGREEMENT", result.getNextAction());
+        assertEquals("RESOLVED", result.getTicketStatus());
+        assertEquals(UserStatus.ACTIVE, flaggedUser.getStatus());
+        assertEquals(AgreementStatus.PENDING, expiredAgreement.getStatus(),
+                "Agreement phải được reset về PENDING để khách ký lại trong 72h");
+    }
+
+    @Test
+    @DisplayName("unlockTrialAccount - User FLAGGED, subscription hết hạn → ACTIVE, trialStillValid=false, nextAction=UPGRADE_PLAN")
+    void unlockTrialAccount_whenFlaggedAndTrialExpired_returnsUpgradePlanAction() {
+        User flaggedUser = User.builder()
+                .id(2L).email("admin@acme.vn").fullName("Acme Admin")
+                .company(company10).userRoleType(UserRole.ADMIN)
+                .status(UserStatus.FLAGGED)
+                .build();
+        SupportTicket ticket = SupportTicket.builder()
+                .id(504L).ticketCode("TCK-20261110-0504")
+                .requester(flaggedUser)
+                .category(TicketCategory.TRIAL_ACCOUNT_UNLOCK)
+                .status(TicketStatus.IN_PROGRESS)
+                .build();
+        CompanySubscription expiredSub = CompanySubscription.builder()
+                .company(company10)
+                .status(SubscriptionStatus.ACTIVE)
+                .expiresAt(LocalDateTime.now().minusDays(3))
+                .build();
+
+        when(supportTicketRepository.findById(504L)).thenReturn(Optional.of(ticket));
+        when(companySubscriptionRepository.findByCompanyId(10L)).thenReturn(Optional.of(expiredSub));
+        when(supportTicketRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        when(userRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        UnlockTrialResponse result = supportTicketService.unlockTrialAccount(504L, "Mở khóa, nhắc khách nâng cấp");
+
+        assertNotNull(result);
+        assertFalse(result.isTrialStillValid(), "Subscription hết hạn → trialStillValid phải false");
+        assertEquals("UPGRADE_PLAN", result.getNextAction());
+        assertEquals("RESOLVED", result.getTicketStatus());
+        assertEquals(UserStatus.ACTIVE, flaggedUser.getStatus());
     }
 }

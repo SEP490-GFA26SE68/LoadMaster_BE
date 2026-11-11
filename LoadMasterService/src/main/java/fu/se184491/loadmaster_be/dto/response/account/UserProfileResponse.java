@@ -2,6 +2,7 @@ package fu.se184491.loadmaster_be.dto.response.account;
 
 import fu.se184491.loadmaster_be.constant.account.UserRole;
 import fu.se184491.loadmaster_be.constant.account.UserStatus;
+import fu.se184491.loadmaster_be.constant.account.UserType;
 import lombok.Builder;
 
 @Builder
@@ -15,6 +16,7 @@ public record UserProfileResponse(
         Long companyId,
 
         UserRole userRoleType,
+        UserType userType,
         UserStatus status
 ) {
 }

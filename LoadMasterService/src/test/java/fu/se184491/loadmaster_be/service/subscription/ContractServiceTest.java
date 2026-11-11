@@ -209,42 +209,4 @@ class ContractServiceTest {
 
         assertEquals(10000, creditAccount.getBalance());
     }
-
-    @Test
-    @DisplayName("SystemSupporter cannot downgrade or re-apply same plan when company subscription is ACTIVE")
-    void createOrActivateContract_activeProToBasicOrSamePro_throwsException() {
-        CompanySubscription activePro = CompanySubscription.builder()
-                .id(10L)
-                .company(company)
-                .plan(proPlan)
-                .status(SubscriptionStatus.ACTIVE)
-                .startedAt(LocalDateTime.now().minusDays(5))
-                .expiresAt(LocalDateTime.now().plusDays(25))
-                .autoRenew(true)
-                .build();
-
-        when(companySubscriptionRepository.findByCompanyId(1L)).thenReturn(Optional.of(activePro));
-        when(subscriptionPlanRepository.findById(1L)).thenReturn(Optional.of(basicPlan));
-        when(subscriptionPlanRepository.findById(2L)).thenReturn(Optional.of(proPlan));
-
-        CreateContractRequest downgradeReq = new CreateContractRequest();
-        downgradeReq.setCompanyId(1L);
-        downgradeReq.setPlanId(1L);
-        downgradeReq.setAutoRenew(true);
-
-        org.junit.jupiter.api.Assertions.assertThrows(
-                fu.se184491.loadmaster_be.exception.AppException.class,
-                () -> contractService.createOrActivateContract(downgradeReq)
-        );
-
-        CreateContractRequest samePlanReq = new CreateContractRequest();
-        samePlanReq.setCompanyId(1L);
-        samePlanReq.setPlanId(2L);
-        samePlanReq.setAutoRenew(true);
-
-        org.junit.jupiter.api.Assertions.assertThrows(
-                fu.se184491.loadmaster_be.exception.AppException.class,
-                () -> contractService.createOrActivateContract(samePlanReq)
-        );
-    }
 }

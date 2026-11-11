@@ -1,5 +1,6 @@
 package fu.se184491.loadmaster_be.config.security;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Import;
@@ -31,7 +32,8 @@ public class WebSecurityConfig {
             HttpSecurity http,
             JwtAuthenticationConverter jwtAuthenticationConverter,
             RestAuthenticationEntryPoint authenticationEntryPoint,
-            RestAccessDeniedHandler accessDeniedHandler
+            RestAccessDeniedHandler accessDeniedHandler,
+            FlaggedUserEnforcementFilter flaggedUserEnforcementFilter
     ) throws Exception {
 
         http
@@ -60,7 +62,8 @@ public class WebSecurityConfig {
                                 "/api/driver/**",
                                 "/webhook/**",
                                 "/api/payment/**",
-                                "/api/guest-registration/**"
+                                "/api/guest-registration/**",
+                                "/api/trial-registration/**"
                         )
                         .permitAll()
 
@@ -80,6 +83,11 @@ public class WebSecurityConfig {
                         .jwt(jwt -> jwt
                                 .jwtAuthenticationConverter(jwtAuthenticationConverter)
                         )
+                )
+
+                .addFilterAfter(
+                        flaggedUserEnforcementFilter,
+                        org.springframework.security.oauth2.server.resource.web.authentication.BearerTokenAuthenticationFilter.class
                 );
 
         return http.build();
@@ -129,5 +137,10 @@ public class WebSecurityConfig {
         );
 
         return source;
+    }
+
+    @Bean
+    public ObjectMapper objectMapper() {
+        return new ObjectMapper();
     }
 }

@@ -1,6 +1,7 @@
 package fu.se184491.loadmaster_be.service.payment;
 
 import fu.se184491.loadmaster_be.client.VnPayClient;
+import fu.se184491.loadmaster_be.constant.billing.BillingCycle;
 import fu.se184491.loadmaster_be.constant.billing.PaymentStatus;
 import fu.se184491.loadmaster_be.entity.billing.PaymentTransaction;
 import fu.se184491.loadmaster_be.repository.billing.PaymentTransactionRepository;
@@ -96,6 +97,12 @@ public class PaymentCallbackHandler {
 
             if ("SUBSCRIPTION".equalsIgnoreCase(txn.getOrderType()) && txn.getTargetId() != null) {
                 subscriptionService.activateSubscription(txn.getCompany().getId(), txn.getTargetId());
+            } else if ("SUBSCRIPTION_YEARLY".equalsIgnoreCase(txn.getOrderType()) && txn.getTargetId() != null) {
+                subscriptionService.activateSubscription(
+                        txn.getCompany().getId(),
+                        txn.getTargetId(),
+                        BillingCycle.YEARLY
+                );
             } else if ("CREDIT_TOPUP".equalsIgnoreCase(txn.getOrderType()) && txn.getTargetId() != null) {
                 creditService.addCredits(txn.getCompany().getId(), txn.getTargetId().intValue(), txn.getGatewayTransactionId());
             }

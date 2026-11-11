@@ -35,13 +35,28 @@ public class KeycloakAdminClient {
     ) {
         String token = serviceTokenProvider.getKeycloakAdminToken();
 
+        String firstName = "";
+        String lastName = "";
+        if (fullName != null && !fullName.trim().isEmpty()) {
+            String trimmed = fullName.trim();
+            int lastSpace = trimmed.lastIndexOf(' ');
+            if (lastSpace > 0) {
+                lastName = trimmed.substring(0, lastSpace);
+                firstName = trimmed.substring(lastSpace + 1);
+            } else {
+                firstName = trimmed;
+                lastName = trimmed;
+            }
+        }
+
         Map<String, Object> body = new java.util.HashMap<>();
         body.put("username", email);
         body.put("email", email);
+        body.put("firstName", firstName);
+        body.put("lastName", lastName);
         body.put("emailVerified", true);
         body.put("enabled", true);
-        body.put("firstName", "System");
-        body.put("lastName", "Admin");
+        body.put("requiredActions", java.util.List.of());
 
         ResponseEntity<Void> response =
                 keycloakAdminRestClient
@@ -63,6 +78,40 @@ public class KeycloakAdminClient {
         String path = location.getPath();
 
         return path.substring(path.lastIndexOf("/") + 1);
+    }
+
+    public void updateUserProfile(String keycloakUserId, String fullName) {
+        String token = serviceTokenProvider.getKeycloakAdminToken();
+        String firstName = "";
+        String lastName = "";
+        if (fullName != null && !fullName.trim().isEmpty()) {
+            String trimmed = fullName.trim();
+            int lastSpace = trimmed.lastIndexOf(' ');
+            if (lastSpace > 0) {
+                lastName = trimmed.substring(0, lastSpace);
+                firstName = trimmed.substring(lastSpace + 1);
+            } else {
+                firstName = trimmed;
+                lastName = trimmed;
+            }
+        }
+
+        Map<String, Object> body = new java.util.HashMap<>();
+        body.put("firstName", firstName);
+        body.put("lastName", lastName);
+        body.put("requiredActions", java.util.List.of());
+
+        keycloakAdminRestClient
+                .put()
+                .uri(
+                        "/admin/realms/{realm}/users/{userId}",
+                        REALM,
+                        keycloakUserId
+                )
+                .headers(headers -> headers.setBearerAuth(token))
+                .body(body)
+                .retrieve()
+                .toBodilessEntity();
     }
 
     /**
@@ -89,6 +138,31 @@ public class KeycloakAdminClient {
                 .put()
                 .uri(
                         "/admin/realms/{realm}/users/{userId}/reset-password",
+                        REALM,
+                        keycloakUserId
+                )
+                .headers(headers -> headers.setBearerAuth(token))
+                .body(body)
+                .retrieve()
+                .toBodilessEntity();
+
+        if (!temporary) {
+            clearRequiredActions(keycloakUserId);
+        }
+    }
+
+    /**
+     * Xóa sạch các requiredActions (như UPDATE_PASSWORD) trên user Keycloak để tránh bị bắt đổi mật khẩu lặp lại
+     * khi đăng nhập qua Direct Access Grants.
+     */
+    public void clearRequiredActions(String keycloakUserId) {
+        String token = serviceTokenProvider.getKeycloakAdminToken();
+        Map<String, Object> body = Map.of("requiredActions", List.of());
+
+        keycloakAdminRestClient
+                .put()
+                .uri(
+                        "/admin/realms/{realm}/users/{userId}",
                         REALM,
                         keycloakUserId
                 )
@@ -191,51 +265,5 @@ public class KeycloakAdminClient {
         }
 
         return users[0].id();
-    }
-
-    public void ensureRealmRoleExists(String roleName) {
-        String token = serviceTokenProvider.getKeycloakAdminToken();
-
-        try {
-            keycloakAdminRestClient.get()
-                    .uri("/admin/realms/{realm}/roles/{role}",
-                            REALM, roleName)
-                    .headers(h -> h.setBearerAuth(token))
-                    .retrieve()
-                    .toBodilessEntity();
-
-        } catch (org.springframework.web.client.HttpClientErrorException.NotFound ex) {
-
-            keycloakAdminRestClient.post()
-                    .uri("/admin/realms/{realm}/roles", REALM)
-                    .headers(h -> h.setBearerAuth(token))
-                    .body(Map.of("name", roleName))
-                    .retrieve()
-                    .toBodilessEntity();
-        }
-    }
-
-    public boolean hasRealmRole(String userId, String roleName) {
-
-        String token = serviceTokenProvider.getKeycloakAdminToken();
-
-        KeycloakRoleRepresentation[] roles =
-                keycloakAdminRestClient
-                        .get()
-                        .uri(
-                                "/admin/realms/{realm}/users/{userId}/role-mappings/realm",
-                                REALM,
-                                userId
-                        )
-                        .headers(h -> h.setBearerAuth(token))
-                        .retrieve()
-                        .body(KeycloakRoleRepresentation[].class);
-
-        if (roles == null) {
-            return false;
-        }
-
-        return java.util.Arrays.stream(roles)
-                .anyMatch(role -> roleName.equals(role.name()));
     }
 }

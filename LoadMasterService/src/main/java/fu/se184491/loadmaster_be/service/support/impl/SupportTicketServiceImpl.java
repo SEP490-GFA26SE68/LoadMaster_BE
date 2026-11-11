@@ -1,21 +1,28 @@
 package fu.se184491.loadmaster_be.service.support.impl;
 
 import fu.se184491.loadmaster_be.constant.account.UserRole;
+import fu.se184491.loadmaster_be.constant.account.UserStatus;
+import fu.se184491.loadmaster_be.constant.company.AgreementStatus;
 import fu.se184491.loadmaster_be.constant.support.TicketCategory;
 import fu.se184491.loadmaster_be.constant.support.TicketPriority;
 import fu.se184491.loadmaster_be.constant.support.TicketStatus;
 import fu.se184491.loadmaster_be.dto.request.support.CreateSupportTicketRequest;
 import fu.se184491.loadmaster_be.dto.request.support.UpdateSupportTicketRequest;
 import fu.se184491.loadmaster_be.dto.response.support.SupportTicketResponse;
+import fu.se184491.loadmaster_be.dto.response.support.UnlockTrialResponse;
 import fu.se184491.loadmaster_be.entity.account.User;
+import fu.se184491.loadmaster_be.entity.billing.CompanySubscription;
 import fu.se184491.loadmaster_be.entity.common.AuditLog;
+import fu.se184491.loadmaster_be.entity.company.CompanyAgreement;
 import fu.se184491.loadmaster_be.entity.support.SupportTicket;
 import fu.se184491.loadmaster_be.exception.AppException;
 import fu.se184491.loadmaster_be.exception.ErrorCode;
 import fu.se184491.loadmaster_be.helpers.CurrentUserService;
 import fu.se184491.loadmaster_be.repository.account.UserRepository;
+import fu.se184491.loadmaster_be.repository.billing.CompanySubscriptionRepository;
 import fu.se184491.loadmaster_be.repository.common.AuditLogRepository;
 import fu.se184491.loadmaster_be.service.audit.AuditCompany;
+import fu.se184491.loadmaster_be.repository.company.CompanyAgreementRepository;
 import fu.se184491.loadmaster_be.repository.support.SupportTicketRepository;
 import fu.se184491.loadmaster_be.service.support.SupportTicketService;
 import lombok.RequiredArgsConstructor;
@@ -38,6 +45,7 @@ import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.stream.Collectors;
@@ -51,12 +59,16 @@ public class SupportTicketServiceImpl implements SupportTicketService {
     private static final int MAX_ACTIVE_CHAT_DAYS = 2;
     private static final int CLOSED_CHAT_RETENTION_DAYS = 15;
     private static final int MAX_IMAGES_PER_MESSAGE = 5;
+    /** Số giờ khách được cấp thêm để ký lại thỏa thuận sau khi mở khóa */
+    private static final long REOPEN_AGREEMENT_HOURS = 72L;
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
     private final SupportTicketRepository supportTicketRepository;
     private final UserRepository userRepository;
     private final CurrentUserService currentUserService;
     private final AuditLogRepository auditLogRepository;
+    private final CompanySubscriptionRepository companySubscriptionRepository;
+    private final CompanyAgreementRepository companyAgreementRepository;
 
     @Override
     @Transactional
@@ -127,8 +139,50 @@ public class SupportTicketServiceImpl implements SupportTicketService {
         SupportTicket ticket = supportTicketRepository.findById(id)
                 .orElseThrow(() -> new AppException(ErrorCode.RESOURCE_NOT_FOUND));
 
+        // 1. Phiếu đã đóng (CLOSED) chỉ đọc đối với cả nhân viên hỗ trợ và khách hàng
+        if (ticket.getStatus() == TicketStatus.CLOSED) {
+            throw new AppException(ErrorCode.SUPPORT_TICKET_CLOSED);
+        }
+
+        User actor = resolveCurrentUserSafely();
+        boolean actorIsSupporter = actor != null && isPlatformSupportOrManager(actor.getUserRoleType());
+        boolean actorIsClient = actor != null && !actorIsSupporter;
+
+        // 2. Khoá chống trùng khi phiếu đang ở trạng thái Đang xử lý (IN_PROGRESS):
+        // Nhân viên thứ 2 không được thao tác (đổi trạng thái hoặc trả lời) trên phiếu đã có nhân viên 1 nhận xử lý.
+        if (ticket.getStatus() == TicketStatus.IN_PROGRESS
+                && ticket.getAssignedTo() != null
+                && ticket.getAssignedTo().getId() != null
+                && actorIsSupporter
+                && !ticket.getAssignedTo().getId().equals(actor.getId())) {
+            String assigneeName = ticket.getAssignedTo().getFullName() != null
+                    ? ticket.getAssignedTo().getFullName()
+                    : ticket.getAssignedTo().getEmail();
+            throw new AppException(
+                    ErrorCode.SUPPORT_TICKET_LOCKED,
+                    "Phiếu hỗ trợ này đang được xử lý bởi nhân viên " + assigneeName + ". Bạn không thể thao tác trên phiếu này."
+            );
+        }
+
+        // 3. Khi phiếu đang ở Đã giải quyết (RESOLVED) mà khách hàng nhắn tiếp -> tự động mở lại (OPEN) và gỡ khoá
+        if (ticket.getStatus() == TicketStatus.RESOLVED
+                && request.resolutionNote() != null
+                && (actorIsClient || request.status() == null)) {
+            ticket.setStatus(TicketStatus.OPEN);
+            ticket.setAssignedTo(null);
+            ticket.setResolvedAt(null);
+        }
+
         if (request.status() != null) {
             ticket.setStatus(request.status());
+            if (request.status() == TicketStatus.OPEN) {
+                ticket.setAssignedTo(null);
+                ticket.setResolvedAt(null);
+            } else if (request.status() == TicketStatus.IN_PROGRESS && actorIsSupporter && request.assignedToId() == null) {
+                ticket.setAssignedTo(actor);
+            } else if (request.status() == TicketStatus.RESOLVED && request.assignedToId() == null) {
+                ticket.setAssignedTo(null);
+            }
             if ((request.status() == TicketStatus.RESOLVED || request.status() == TicketStatus.CLOSED)
                     && ticket.getResolvedAt() == null) {
                 LocalDateTime now = LocalDateTime.now().truncatedTo(ChronoUnit.SECONDS);
@@ -138,6 +192,9 @@ public class SupportTicketServiceImpl implements SupportTicketService {
                     ticket.setResolvedAt(now);
                 }
             }
+        } else if (actorIsSupporter && ticket.getStatus() == TicketStatus.OPEN && request.resolutionNote() != null) {
+            ticket.setStatus(TicketStatus.IN_PROGRESS);
+            ticket.setAssignedTo(actor);
         }
 
         if (request.assignedToId() != null) {
@@ -156,6 +213,14 @@ public class SupportTicketServiceImpl implements SupportTicketService {
         }
         auditUpdate(saved, request);
         return toResponse(saved);
+    }
+
+    private User resolveCurrentUserSafely() {
+        try {
+            return currentUserService.getCurrentUser();
+        } catch (Exception ignored) {
+            return null;
+        }
     }
 
     /**
@@ -191,6 +256,86 @@ public class SupportTicketServiceImpl implements SupportTicketService {
     public int cleanupClosedTicketChatHistory() {
         return cleanupExpiredClosedTickets(supportTicketRepository.findAll());
     }
+
+    // =========================================================================
+    // Mở khóa tài khoản dùng thử qua phiếu hỗ trợ
+    // =========================================================================
+
+    /**
+     * Mở khóa tài khoản dùng thử đang bị FLAGGED thông qua phiếu hỗ trợ.
+     * Luồng:
+     * 1. Kiểm tra ticket tồn tại, đúng loại TRIAL_ACCOUNT_UNLOCK, chưa RESOLVED/CLOSED.
+     * 2. Kiểm tra tài khoản người gửi đang ở FLAGGED.
+     * 3. Kiểm tra subscription còn hạn hay đã hết:
+     *    - Còn hạn: reset CompanyAgreement về PENDING, gia hạn deadline +72h → user ký lại.
+     *    - Hết hạn: chỉ mở ACTIVE, FE điều hướng về trang nâng cấp gói.
+     * 4. Chuyển ticket sang RESOLVED và trả về UnlockTrialResponse.
+     */
+    @Override
+    @Transactional
+    public UnlockTrialResponse unlockTrialAccount(Long ticketId, String staffNote) {
+        // 1. Lấy và kiểm tra ticket
+        SupportTicket ticket = supportTicketRepository.findById(ticketId)
+                .orElseThrow(() -> new AppException(ErrorCode.SUPPORT_TICKET_NOT_FOUND));
+
+        if (ticket.getCategory() != TicketCategory.TRIAL_ACCOUNT_UNLOCK) {
+            throw new AppException(ErrorCode.UNLOCK_TRIAL_TICKET_NOT_ELIGIBLE);
+        }
+        if (ticket.getStatus() == TicketStatus.RESOLVED || ticket.getStatus() == TicketStatus.CLOSED) {
+            throw new AppException(ErrorCode.UNLOCK_TRIAL_TICKET_ALREADY_RESOLVED);
+        }
+
+        // 2. Kiểm tra trạng thái người dùng
+        User requester = ticket.getRequester();
+        if (requester == null || requester.getStatus() != fu.se184491.loadmaster_be.constant.account.UserStatus.FLAGGED) {
+            throw new AppException(ErrorCode.UNLOCK_TRIAL_ALREADY_ACTIVE);
+        }
+
+        // 3. Kiểm tra subscription
+        boolean trialStillValid = false;
+        Long companyId = requester.getCompany() != null ? requester.getCompany().getId() : null;
+
+        if (companyId != null) {
+            Optional<CompanySubscription> subOpt = companySubscriptionRepository.findByCompanyId(companyId);
+            trialStillValid = subOpt.isPresent()
+                    && subOpt.get().getExpiresAt() != null
+                    && subOpt.get().getExpiresAt().isAfter(LocalDateTime.now());
+
+            if (trialStillValid) {
+                // Còn hạn → reset thỏa thuận về PENDING, gia hạn thêm 72h để ký lại
+                companyAgreementRepository.findFirstByCompanyIdOrderByCreatedAtDesc(companyId)
+                        .ifPresent(agreement -> {
+                            agreement.setStatus(AgreementStatus.PENDING);
+                            agreement.setDeadlineAt(LocalDateTime.now().plusHours(REOPEN_AGREEMENT_HOURS));
+                            agreement.setSignedAt(null);
+                            companyAgreementRepository.save(agreement);
+                        });
+            }
+        }
+
+        // 4. Mở khóa tài khoản
+        requester.setStatus(fu.se184491.loadmaster_be.constant.account.UserStatus.ACTIVE);
+        userRepository.save(requester);
+
+        // 5. Đánh dấu ticket là RESOLVED
+        ticket.setStatus(TicketStatus.RESOLVED);
+        ticket.setResolvedAt(LocalDateTime.now().truncatedTo(ChronoUnit.SECONDS));
+        if (staffNote != null && !staffNote.isBlank()) {
+            ticket.setResolutionNote(staffNote);
+        }
+        supportTicketRepository.save(ticket);
+
+        return UnlockTrialResponse.builder()
+                .userId(requester.getId())
+                .userEmail(requester.getEmail())
+                .trialStillValid(trialStillValid)
+                .nextAction(trialStillValid ? "SIGN_AGREEMENT" : "UPGRADE_PLAN")
+                .ticketCode(ticket.getTicketCode())
+                .ticketStatus(TicketStatus.RESOLVED.name())
+                .build();
+    }
+
+
 
     private int cleanupExpiredClosedTickets(List<SupportTicket> tickets) {
         LocalDateTime cutoff = LocalDateTime.now()

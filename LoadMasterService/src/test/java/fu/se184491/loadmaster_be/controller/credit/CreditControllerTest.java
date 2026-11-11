@@ -1,21 +1,12 @@
 package fu.se184491.loadmaster_be.controller.credit;
 
 import fu.se184491.loadmaster_be.constant.billing.PaymentGateway;
-import fu.se184491.loadmaster_be.constant.billing.SubscriptionStatus;
-import fu.se184491.loadmaster_be.constant.billing.SubscriptionTier;
 import fu.se184491.loadmaster_be.dto.ApiResponse;
 import fu.se184491.loadmaster_be.dto.request.credit.CreditTopupRequest;
 import fu.se184491.loadmaster_be.dto.response.credit.CreditBalanceResponse;
 import fu.se184491.loadmaster_be.dto.response.payment.PaymentUrlResponse;
-import fu.se184491.loadmaster_be.entity.billing.CompanySubscription;
-import fu.se184491.loadmaster_be.entity.billing.SubscriptionPlan;
-import fu.se184491.loadmaster_be.entity.company.Company;
-import fu.se184491.loadmaster_be.exception.AppException;
 import fu.se184491.loadmaster_be.helpers.CurrentUserService;
-import fu.se184491.loadmaster_be.repository.billing.CompanySubscriptionRepository;
-import fu.se184491.loadmaster_be.repository.company.CompanyRepository;
 import fu.se184491.loadmaster_be.service.credit.CreditService;
-import fu.se184491.loadmaster_be.service.payment.PaymentGatewayService;
 import jakarta.servlet.http.HttpServletRequest;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -26,11 +17,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.http.ResponseEntity;
 
-import java.math.BigDecimal;
-import java.util.Optional;
-
 import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
@@ -38,15 +25,6 @@ class CreditControllerTest {
 
     @Mock
     private CreditService creditService;
-
-    @Mock
-    private PaymentGatewayService paymentGatewayService;
-
-    @Mock
-    private CompanyRepository companyRepository;
-
-    @Mock
-    private CompanySubscriptionRepository companySubscriptionRepository;
 
     @Mock
     private CurrentUserService currentUserService;
@@ -57,138 +35,25 @@ class CreditControllerTest {
     @InjectMocks
     private CreditController creditController;
 
-    private Company company;
-
     @BeforeEach
     void setUp() {
-        company = Company.builder().id(1L).companyName("Acme Logistics").build();
         lenient().when(currentUserService.getCurrentCompanyId()).thenReturn(1L);
-        lenient().when(companyRepository.findById(1L)).thenReturn(Optional.of(company));
         lenient().when(servletRequest.getRemoteAddr()).thenReturn("127.0.0.1");
     }
 
     @Test
-    @DisplayName("topup - BASIC plan charges 400 VND/credit and blocks when balance + credits > 3000")
-    void topup_basicPlan_enforces3000CapAnd400VndPrice() {
-        SubscriptionPlan basicPlan = SubscriptionPlan.builder()
-                .id(1L)
-                .name("Basic")
-                .tier(SubscriptionTier.BASIC)
-                .build();
-        CompanySubscription sub = CompanySubscription.builder()
-                .company(company)
-                .plan(basicPlan)
-                .status(SubscriptionStatus.ACTIVE)
-                .build();
-        when(companySubscriptionRepository.findByCompanyId(1L)).thenReturn(Optional.of(sub));
-        when(creditService.getBalance(1L)).thenReturn(CreditBalanceResponse.builder()
-                .companyId(1L)
-                .balance(2500)
-                .build());
-
-        CreditTopupRequest overCapReq = CreditTopupRequest.builder()
-                .credits(600)
-                .gateway(PaymentGateway.VNPAY)
-                .build();
-        assertThrows(AppException.class, () -> creditController.topup(overCapReq, servletRequest));
-        verify(paymentGatewayService, never()).createPayment(any(), any(), any(), any(), any(), any(), any());
-
-        CreditTopupRequest validReq = CreditTopupRequest.builder()
-                .credits(500)
-                .gateway(PaymentGateway.VNPAY)
-                .build();
-        when(paymentGatewayService.createPayment(
-                eq(company),
-                eq(PaymentGateway.VNPAY),
-                eq("CREDIT_TOPUP"),
-                eq(500L),
-                eq(new BigDecimal("200000")),
-                anyString(),
-                anyString()
-        )).thenReturn(PaymentUrlResponse.builder().transactionId("TX_BASIC").status("PENDING").build());
-
-        ResponseEntity<ApiResponse<PaymentUrlResponse>> res = creditController.topup(validReq, servletRequest);
-        assertEquals("TX_BASIC", res.getBody().getData().getTransactionId());
-    }
-
-    @Test
-    @DisplayName("topup - PRO plan charges 326 VND/credit and blocks when balance + credits > 10000")
-    void topup_proPlan_enforces10000CapAnd326VndPrice() {
-        SubscriptionPlan proPlan = SubscriptionPlan.builder()
-                .id(2L)
-                .name("Pro")
-                .tier(SubscriptionTier.PRO)
-                .build();
-        CompanySubscription sub = CompanySubscription.builder()
-                .company(company)
-                .plan(proPlan)
-                .status(SubscriptionStatus.ACTIVE)
-                .build();
-        when(companySubscriptionRepository.findByCompanyId(1L)).thenReturn(Optional.of(sub));
-        when(creditService.getBalance(1L)).thenReturn(CreditBalanceResponse.builder()
-                .companyId(1L)
-                .balance(9500)
-                .build());
-
-        CreditTopupRequest overCapReq = CreditTopupRequest.builder()
-                .credits(600)
-                .gateway(PaymentGateway.VNPAY)
-                .build();
-        assertThrows(AppException.class, () -> creditController.topup(overCapReq, servletRequest));
-
-        CreditTopupRequest validReq = CreditTopupRequest.builder()
-                .credits(500)
-                .gateway(PaymentGateway.VNPAY)
-                .build();
-        when(paymentGatewayService.createPayment(
-                eq(company),
-                eq(PaymentGateway.VNPAY),
-                eq("CREDIT_TOPUP"),
-                eq(500L),
-                eq(new BigDecimal("163000")),
-                anyString(),
-                anyString()
-        )).thenReturn(PaymentUrlResponse.builder().transactionId("TX_PRO").status("PENDING").build());
-
-        ResponseEntity<ApiResponse<PaymentUrlResponse>> res = creditController.topup(validReq, servletRequest);
-        assertEquals("TX_PRO", res.getBody().getData().getTransactionId());
-    }
-
-    @Test
-    @DisplayName("topup - ULTIMATE plan charges 263 VND/credit with no cumulative cap")
-    void topup_ultimatePlan_allowsUnlimitedCapAnd263VndPrice() {
-        SubscriptionPlan ultimatePlan = SubscriptionPlan.builder()
-                .id(3L)
-                .name("Ultimate")
-                .tier(SubscriptionTier.ULTIMATE)
-                .build();
-        CompanySubscription sub = CompanySubscription.builder()
-                .company(company)
-                .plan(ultimatePlan)
-                .status(SubscriptionStatus.ACTIVE)
-                .build();
-        when(companySubscriptionRepository.findByCompanyId(1L)).thenReturn(Optional.of(sub));
-        when(creditService.getBalance(1L)).thenReturn(CreditBalanceResponse.builder()
-                .companyId(1L)
-                .balance(30000)
-                .build());
-
+    @DisplayName("topup - delegates to CreditService.topup with current companyId and client IP")
+    void topup_delegatesToCreditService() {
         CreditTopupRequest req = CreditTopupRequest.builder()
-                .credits(5000)
+                .credits(1500)
                 .gateway(PaymentGateway.VNPAY)
                 .build();
-        when(paymentGatewayService.createPayment(
-                eq(company),
-                eq(PaymentGateway.VNPAY),
-                eq("CREDIT_TOPUP"),
-                eq(5000L),
-                eq(new BigDecimal("1315000")),
-                anyString(),
-                anyString()
-        )).thenReturn(PaymentUrlResponse.builder().transactionId("TX_ULTIMATE").status("PENDING").build());
+        when(creditService.topup(1L, req, "127.0.0.1"))
+                .thenReturn(PaymentUrlResponse.builder().transactionId("TX_BASIC").status("PENDING").build());
 
         ResponseEntity<ApiResponse<PaymentUrlResponse>> res = creditController.topup(req, servletRequest);
-        assertEquals("TX_ULTIMATE", res.getBody().getData().getTransactionId());
+        assertEquals("TX_BASIC", res.getBody().getData().getTransactionId());
+        verify(creditService).topup(1L, req, "127.0.0.1");
     }
 
     @Test

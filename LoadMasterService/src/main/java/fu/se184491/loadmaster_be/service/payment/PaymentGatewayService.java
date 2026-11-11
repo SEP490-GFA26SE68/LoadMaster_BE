@@ -66,6 +66,7 @@ public class PaymentGatewayService {
                 .transactionId(gatewayTxnId)
                 .paymentUrl(paymentUrl)
                 .status(txn.getStatus().name())
+                .amountVnd(amountVnd)
                 .build();
     }
 }

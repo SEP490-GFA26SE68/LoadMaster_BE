@@ -2,10 +2,13 @@ package fu.se184491.loadmaster_be.service.credit;
 
 import com.fasterxml.jackson.annotation.JsonFormat;
 import fu.se184491.loadmaster_be.constant.billing.CreditTransactionType;
+import fu.se184491.loadmaster_be.constant.billing.PaymentGateway;
 import fu.se184491.loadmaster_be.constant.billing.SubscriptionStatus;
 import fu.se184491.loadmaster_be.constant.billing.SubscriptionTier;
+import fu.se184491.loadmaster_be.dto.request.credit.CreditTopupRequest;
 import fu.se184491.loadmaster_be.dto.response.credit.CreditBalanceResponse;
 import fu.se184491.loadmaster_be.dto.response.credit.CreditTransactionResponse;
+import fu.se184491.loadmaster_be.dto.response.payment.PaymentUrlResponse;
 import fu.se184491.loadmaster_be.entity.billing.CompanySubscription;
 import fu.se184491.loadmaster_be.entity.billing.CreditAccount;
 import fu.se184491.loadmaster_be.entity.billing.CreditTransaction;
@@ -16,7 +19,9 @@ import fu.se184491.loadmaster_be.exception.InsufficientCreditsException;
 import fu.se184491.loadmaster_be.repository.billing.CompanySubscriptionRepository;
 import fu.se184491.loadmaster_be.repository.billing.CreditAccountRepository;
 import fu.se184491.loadmaster_be.repository.billing.CreditTransactionRepository;
+import fu.se184491.loadmaster_be.repository.company.CompanyRepository;
 import fu.se184491.loadmaster_be.service.credit.Impl.CreditServiceImpl;
+import fu.se184491.loadmaster_be.service.payment.PaymentGatewayService;
 import jakarta.persistence.Convert;
 import org.hibernate.annotations.Check;
 import org.junit.jupiter.api.BeforeEach;
@@ -29,10 +34,11 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.lang.reflect.Field;
+import java.math.BigDecimal;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
@@ -46,6 +52,12 @@ public class CreditServiceTest {
 
     @Mock
     private CompanySubscriptionRepository companySubscriptionRepository;
+
+    @Mock
+    private CompanyRepository companyRepository;
+
+    @Mock
+    private PaymentGatewayService paymentGatewayService;
 
     @Mock
     private fu.se184491.loadmaster_be.repository.common.AuditLogRepository auditLogRepository;
@@ -127,17 +139,17 @@ public class CreditServiceTest {
     }
 
     @Test
-    @DisplayName("Deduct credit (initial run) should decrease balance by 1 and create USAGE transaction with -1")
+    @DisplayName("Deduct credit (initial run) should decrease balance by 2 and create USAGE transaction with -2")
     void deductCredit_success() {
         when(creditAccountRepository.findByCompanyIdForUpdate(1L)).thenReturn(Optional.of(creditAccount));
         when(creditAccountRepository.save(any(CreditAccount.class))).thenReturn(creditAccount);
 
         creditService.deductCredit(1L, "job-uuid-123");
 
-        assertEquals(4, creditAccount.getBalance());
+        assertEquals(3, creditAccount.getBalance());
         verify(creditAccountRepository).save(creditAccount);
         verify(creditTransactionRepository).save(argThat(tx ->
-                tx.getAmount() == -1 &&
+                tx.getAmount() == -2 &&
                 tx.getType() == CreditTransactionType.USAGE &&
                 "job-uuid-123".equals(tx.getReference())
         ));
@@ -175,7 +187,7 @@ public class CreditServiceTest {
     }
 
     @Test
-    @DisplayName("Deduct credit on ULTIMATE subscription should also deduct from credit pool")
+    @DisplayName("Deduct credit on ULTIMATE subscription should also deduct 2 credits from credit pool")
     void deductCredit_ultimatePlan_deductsFromPool() {
         subscription.setPlan(ultimatePlan);
         when(creditAccountRepository.findByCompanyIdForUpdate(1L)).thenReturn(Optional.of(creditAccount));
@@ -183,10 +195,10 @@ public class CreditServiceTest {
 
         creditService.deductCredit(1L, "job-uuid-123");
 
-        assertEquals(4, creditAccount.getBalance());
+        assertEquals(3, creditAccount.getBalance());
         verify(creditAccountRepository).save(creditAccount);
         verify(creditTransactionRepository).save(argThat(tx ->
-                tx.getAmount() == -1 &&
+                tx.getAmount() == -2 &&
                 tx.getType() == CreditTransactionType.USAGE
         ));
     }
@@ -282,5 +294,71 @@ public class CreditServiceTest {
 
         assertEquals(0, creditAccount.getBalance());
         verify(creditAccountRepository).save(creditAccount);
+    }
+
+    @Test
+    @DisplayName("Reset balance should set credit account balance to 0 even when subscription is ACTIVE")
+    void resetBalance_setsBalanceToZero() {
+        creditAccount.setBalance(2400);
+        when(creditAccountRepository.findByCompanyIdForUpdate(1L)).thenReturn(Optional.of(creditAccount));
+
+        creditService.resetBalance(1L);
+
+        assertEquals(0, creditAccount.getBalance());
+        verify(creditAccountRepository).save(creditAccount);
+    }
+
+    @Test
+    @DisplayName("Get balance when entering a new billing month of an active multi-month subscription resets balance back to plan monthlyCredits")
+    void getBalance_whenNewBillingMonthStartedInMultiMonthSubscription_resetsBalanceBackToPlanMonthlyCredits() {
+        proPlan.setMonthlyCredits(10000);
+        subscription.setStartedAt(java.time.LocalDateTime.now().minusMonths(1).minusDays(1).withNano(0));
+        subscription.setExpiresAt(subscription.getStartedAt().plusMonths(4));
+        creditAccount.setBalance(14500); // leftover from previous month including top-up
+
+        when(creditAccountRepository.findByCompanyId(1L)).thenReturn(Optional.of(creditAccount));
+        when(companySubscriptionRepository.findByCompanyId(1L)).thenReturn(Optional.of(subscription));
+        when(creditTransactionRepository.findByReferenceAndType("CYCLE-1-M2", CreditTransactionType.MONTHLY_GRANT))
+                .thenReturn(Optional.empty());
+
+        CreditBalanceResponse response = creditService.getBalance(1L);
+
+        assertNotNull(response);
+        assertEquals(10000, response.getBalance());
+        assertEquals(10000, creditAccount.getBalance());
+        verify(creditAccountRepository).save(creditAccount);
+        verify(creditTransactionRepository).save(argThat(tx ->
+                tx.getAmount() == 10000
+                        && tx.getType() == CreditTransactionType.MONTHLY_GRANT
+                        && "CYCLE-1-M2".equals(tx.getReference())
+        ));
+    }
+
+    @Test
+    @DisplayName("Topup in CreditServiceImpl holds PRICE_PER_CREDIT constants (400 / 326 / 263) and charges by tier without cumulative cap")
+    void topup_chargesByTierPriceInServiceImplWithoutCumulativeCap() {
+        assertEquals(new BigDecimal("400"), CreditServiceImpl.PRICE_PER_CREDIT_BASIC_VND);
+        assertEquals(new BigDecimal("326"), CreditServiceImpl.PRICE_PER_CREDIT_PRO_VND);
+        assertEquals(new BigDecimal("263"), CreditServiceImpl.PRICE_PER_CREDIT_ULTIMATE_VND);
+
+        when(companyRepository.findById(1L)).thenReturn(Optional.of(company));
+
+        // BASIC tier -> 400 VND * 5000 = 2,000,000 VND (no 3000 cap)
+        SubscriptionPlan basicPlan = SubscriptionPlan.builder().id(1L).tier(SubscriptionTier.BASIC).build();
+        subscription.setPlan(basicPlan);
+        when(companySubscriptionRepository.findByCompanyId(1L)).thenReturn(Optional.of(subscription));
+        when(paymentGatewayService.createPayment(
+                eq(company),
+                eq(PaymentGateway.MOCK),
+                eq("CREDIT_TOPUP"),
+                eq(5000L),
+                eq(new BigDecimal("2000000")),
+                anyString(),
+                eq("127.0.0.1")
+        )).thenReturn(PaymentUrlResponse.builder().transactionId("MOCK_BASIC_5000").status("PENDING").build());
+
+        CreditTopupRequest req = CreditTopupRequest.builder().credits(5000).gateway(PaymentGateway.MOCK).build();
+        PaymentUrlResponse basicRes = creditService.topup(1L, req, "127.0.0.1");
+        assertEquals("MOCK_BASIC_5000", basicRes.getTransactionId());
     }
 }
