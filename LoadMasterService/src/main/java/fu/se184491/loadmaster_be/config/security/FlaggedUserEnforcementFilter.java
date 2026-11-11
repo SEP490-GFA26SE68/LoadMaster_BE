@@ -89,7 +89,7 @@ public class FlaggedUserEnforcementFilter extends OncePerRequestFilter {
             return false;
         }
         return path.equals("/api/users/me")
-                || path.startsWith("/api/agreements/")
+                || path.startsWith("/api/agreements")
                 || path.startsWith("/api/support-tickets")  // cho phép gửi ticket mở khóa và xem trạng thái ticket
                 || path.startsWith("/v3/api-docs")
                 || path.startsWith("/swagger-ui")
