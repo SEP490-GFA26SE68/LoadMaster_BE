@@ -158,7 +158,7 @@ class LoadPlanQueryServiceImplTest {
         User dispatcher = new User();
         dispatcher.setId(42L);
         when(currentUserService.getCurrentUser()).thenReturn(dispatcher);
-        when(tripRepository.findById(10L)).thenReturn(Optional.of(tripIn(TripStatus.PLANNED)));
+        when(tripRepository.findByIdForUpdate(10L)).thenReturn(Optional.of(tripIn(TripStatus.PLANNED)));
 
         LoadPlanDetailResponse result = service.approvePlan(5L);
 
@@ -182,7 +182,7 @@ class LoadPlanQueryServiceImplTest {
     void planOfATripPastPlanningCannotBeApproved() {
         when(readRepository.findPlan(5L))
                 .thenReturn(Optional.of(new PlanWithCompany(plan(5L, false), COMPANY)));
-        when(tripRepository.findById(10L)).thenReturn(Optional.of(tripIn(TripStatus.LOADING)));
+        when(tripRepository.findByIdForUpdate(10L)).thenReturn(Optional.of(tripIn(TripStatus.LOADING)));
 
         assertThatThrownBy(() -> service.approvePlan(5L))
                 .isInstanceOf(AppException.class)

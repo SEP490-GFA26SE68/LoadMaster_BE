@@ -142,7 +142,12 @@ public class CreditServiceImpl implements CreditService {
                 .orElseThrow(() -> new AppException(ErrorCode.COMPANY_NOT_FOUND));
 
         Optional<CompanySubscription> subOpt = companySubscriptionRepository.findByCompanyId(companyId);
-        if (subOpt.isPresent() && subOpt.get().getStatus() != SubscriptionStatus.ACTIVE) {
+        SubscriptionStatus status = subOpt.map(CompanySubscription::getStatus).orElse(null);
+        // Mã riêng để web nói đúng lý do và mở lối gia hạn
+        if (status == SubscriptionStatus.EXPIRED || status == SubscriptionStatus.CANCELLED) {
+            throw new AppException(ErrorCode.SUBSCRIPTION_EXPIRED);
+        }
+        if (subOpt.isPresent() && status != SubscriptionStatus.ACTIVE) {
             throw new AppException(
                     ErrorCode.INVALID_INPUT,
                     "Gói cước của công ty không ở trạng thái hoạt động. Vui lòng gia hạn gói trước khi mua thêm credit."

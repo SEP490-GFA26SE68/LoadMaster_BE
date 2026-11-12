@@ -70,6 +70,7 @@ class TripLifecycleServiceTest {
     @Mock private TripPackageResolver tripPackageResolver;
     @Mock private TripExceptionRepository tripExceptionRepository;
     @Mock private fu.se184491.loadmaster_be.repository.pickup.PickupRequestRepository pickupRequestRepository;
+    @Mock private fu.se184491.loadmaster_be.repository.cargo.CargoPackageRepository cargoPackageRepository;
 
     @InjectMocks
     private TripLifecycleService service;
@@ -204,10 +205,60 @@ class TripLifecycleServiceTest {
         service.cancelTrip(10L, "Xe hỏng giữa đường");
 
         assertEquals(PackageStatus.RETURNED, picked.getStatus());
-        assertEquals(PackageStatus.PLANNED, notYetPicked.getStatus());
         assertEquals(PackageStatus.RETURNED, regular.getStatus());
         assertEquals(2, trip.getCancelReturnedCount());
         verify(pickupRequestRepository, never()).findByPickupStopId(41L);
+        // Một kiện đã lên xe: yêu cầu giữ APPROVED, chỉ kiện chưa nhận bị xoá
+        assertEquals(fu.se184491.loadmaster_be.constant.pickup.PickupRequestStatus.APPROVED, request.getStatus());
+        verify(cargoPackageRepository).deleteAll(List.of(notYetPicked));
+        assertNull(request.getPackages().get(1).getCargoPackage());
+        ArgumentCaptor<AuditLog> audit = ArgumentCaptor.forClass(AuditLog.class);
+        verify(auditLogRepository, org.mockito.Mockito.times(2)).save(audit.capture());
+        AuditLog pickupAudit = audit.getAllValues().get(0);
+        assertEquals("PICKUP_PACKAGES_DROPPED", pickupAudit.getActionType());
+        assertEquals(1, pickupAudit.getNewValues().get("droppedPackages"));
+    }
+
+    @Test
+    void cancellingInTransitRejectsApprovedPickupWhoseGoodsWereNeverPickedUp() {
+        trip.setStatus(TripStatus.IN_TRANSIT);
+        trip.setDriver(User.builder().id(13L).build());
+        when(tripExceptionRepository.existsByTripIdAndStatusIn(eq(10L), any())).thenReturn(true);
+        DeliveryStop pickupStop = DeliveryStop.builder().id(40L).trip(trip).stopSequence(2)
+                .stopType(fu.se184491.loadmaster_be.constant.trip.DeliveryStopType.PICKUP).build();
+        CargoPackage first = CargoPackage.builder().id(51L).status(PackageStatus.PLANNED).build();
+        CargoPackage second = CargoPackage.builder().id(52L).status(PackageStatus.PLANNED).build();
+        var request = fu.se184491.loadmaster_be.entity.pickup.PickupRequest.builder().id(60L)
+                .status(fu.se184491.loadmaster_be.constant.pickup.PickupRequestStatus.APPROVED).build();
+        request.getPackages().add(fu.se184491.loadmaster_be.entity.pickup.PickupRequestPackage.builder()
+                .cargoPackage(first).build());
+        request.getPackages().add(fu.se184491.loadmaster_be.entity.pickup.PickupRequestPackage.builder()
+                .cargoPackage(second).build());
+        var rejectedEarlier = fu.se184491.loadmaster_be.entity.pickup.PickupRequest.builder().id(61L)
+                .status(fu.se184491.loadmaster_be.constant.pickup.PickupRequestStatus.REJECTED).build();
+        when(deliveryStopRepository.findByTripIdOrderByStopSequenceAsc(10L)).thenReturn(List.of(pickupStop));
+        when(tripPackageResolver.packagesOfStop(40L)).thenReturn(List.of());
+        when(pickupRequestRepository.findByPickupStopId(40L)).thenReturn(List.of(request, rejectedEarlier));
+
+        service.cancelTrip(10L, "Xe hỏng giữa đường");
+
+        assertEquals(fu.se184491.loadmaster_be.constant.pickup.PickupRequestStatus.REJECTED, request.getStatus());
+        assertEquals("Chuyến đã huỷ", request.getRejectReason());
+        assertEquals(7L, request.getRejectedBy().getId());
+        assertEquals(0, trip.getCancelReturnedCount());
+        verify(cargoPackageRepository).deleteAll(List.of(first, second));
+        verify(pickupRequestRepository).save(request);
+        verify(pickupRequestRepository, never()).save(rejectedEarlier);
+
+        ArgumentCaptor<AuditLog> audit = ArgumentCaptor.forClass(AuditLog.class);
+        verify(auditLogRepository, org.mockito.Mockito.times(2)).save(audit.capture());
+        AuditLog pickupAudit = audit.getAllValues().get(0);
+        assertEquals("PICKUP_REJECTED", pickupAudit.getActionType());
+        assertEquals("PickupRequest", pickupAudit.getEntityName());
+        assertEquals("Chuyến đã huỷ", pickupAudit.getNewValues().get("reason"));
+        assertEquals(2, pickupAudit.getNewValues().get("droppedPackages"));
+        assertEquals(true, pickupAudit.getNewValues().get("tripCancelled"));
+        assertEquals("TRIP_CANCELLED", audit.getAllValues().get(1).getActionType());
     }
 
     @Test

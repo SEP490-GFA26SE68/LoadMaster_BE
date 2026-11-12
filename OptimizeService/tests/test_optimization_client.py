@@ -19,7 +19,7 @@ import pytest
 import httpx
 
 from app.config.settings import settings
-from app.dto.optimization.engine.problem_request import ProblemRequest, VehicleData, PackageData
+from app.dto.optimization.engine.problem_request import ProblemRequest, VehicleData, PackageData, StopData
 from app.dto.optimization.engine.engine_response import EngineOptimizationResponse
 from app.service.optimize.optimization_client import OptimizationClient
 
@@ -33,6 +33,16 @@ def sample_problem():
             inner_w=2400.0,
             inner_h=2400.0,
             max_payload_kg=5000.0,
+            # Bộ giải đòi khai cửa và trục xe
+            door_w=2400.0,
+            door_h=2400.0,
+            front_axle_x=0.0,
+            rear_axle_x=6000.0,
+            front_axle_limit_kg=10000.0,
+            rear_axle_limit_kg=10000.0,
+            empty_front_axle_load_kg=0.0,
+            empty_rear_axle_load_kg=0.0,
+            max_cog_offset_ratio=0.5,
         ),
         packages=[
             PackageData(
@@ -42,8 +52,10 @@ def sample_problem():
                 h=600.0,
                 weight=50.0,
                 allowed_rotations=[0],
+                stop_index=1,
             )
         ],
+        stops=[StopData(id="1", sequence=1)],
         objective="MAX_VOLUME_UTIL",
         time_limit_sec=60,
     )
@@ -161,14 +173,15 @@ class TestOptimizationClientInProcess:
     def test_solve_in_process_marks_oversized_packages_unplaced(self):
         """Kiện hàng vượt kích thước xe được đưa vào danh sách unplaced"""
         problem = ProblemRequest(
-            vehicle=VehicleData(inner_l=1.0, inner_w=1.0, inner_h=1.0, max_payload_kg=100.0),
+            vehicle=VehicleData(inner_l=100.0, inner_w=100.0, inner_h=100.0, max_payload_kg=100.0, door_w=100.0, door_h=100.0),
             packages=[
                 PackageData(
                     id=uuid.uuid4(),
-                    l=2.0,  # vượt chiều dài
-                    w=2.0,
-                    h=2.0,
+                    l=200.0,  # vượt chiều dài
+                    w=200.0,
+                    h=200.0,
                     weight=10.0,
+                    allowed_rotations=[0],
                 )
             ],
         )
@@ -178,4 +191,6 @@ class TestOptimizationClientInProcess:
 
         assert len(result.placements) == 0
         assert len(result.unplaced) == 1
-        assert "DOES_NOT_FIT" in result.unplaced[0].reason or "VOLUME" in result.unplaced[0].reason
+        # Không hướng đặt nào vừa thùng: bộ giải báo vi phạm ràng buộc kèm mã
+        assert result.unplaced[0].reason == "CONSTRAINT_VIOLATED"
+        assert result.unplaced[0].violated_constraints

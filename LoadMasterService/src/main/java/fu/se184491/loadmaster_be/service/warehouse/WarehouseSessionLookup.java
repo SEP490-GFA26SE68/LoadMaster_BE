@@ -22,6 +22,7 @@ import fu.se184491.loadmaster_be.repository.warehouse.LoadingExecutionRepository
 import fu.se184491.loadmaster_be.repository.warehouse.PlacementConfirmationRepository;
 import fu.se184491.loadmaster_be.service.audit.AuditCompany;
 import fu.se184491.loadmaster_be.service.trip.TripPackageResolver;
+import fu.se184491.loadmaster_be.service.trip.TripStatusService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
@@ -47,9 +48,15 @@ public class WarehouseSessionLookup {
     private final TripPackageResolver tripPackageResolver;
     private final WarehouseProgress warehouseProgress;
     private final AuditLogRepository auditLogRepository;
+    private final TripStatusService tripStatusService;
 
     /** Phiên của một chuyến: người làm, chuyến, phương án đang xếp, phiên xếp và các vị trí theo thứ tự xếp. */
     public record Session(User worker, Trip trip, LoadPlan plan, LoadingExecution execution, List<PackagePlacement> placements) {
+    }
+
+    /** Khoá dòng chuyến tới hết transaction và đọc lại chuyến cùng các bản ghi đã đọc trước khoá. */
+    public void lock(Trip trip, Object... readBefore) {
+        tripStatusService.lockForTransition(trip.getId(), readBefore);
     }
 
     /** Phiên của chuyến (Đang xếp hàng) thuộc công ty người đăng nhập, mọi trạng thái phiên. */
@@ -60,6 +67,8 @@ public class WarehouseSessionLookup {
         }
         Trip trip = tripRepository.findByIdAndCompanyId(tripId, worker.getCompany().getId())
                 .orElseThrow(() -> new AppException(ErrorCode.TRIP_NOT_FOUND));
+        // Việc của kho trên phiên chạy lần lượt với nhau và với huỷ chuyến: khoá rồi mới kiểm trạng thái
+        lock(trip);
         if (trip.getStatus() != TripStatus.LOADING) {
             throw new AppException(ErrorCode.TRIP_NOT_LOADING);
         }

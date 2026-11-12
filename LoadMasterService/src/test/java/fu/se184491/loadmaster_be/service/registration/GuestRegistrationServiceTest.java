@@ -66,6 +66,8 @@ class GuestRegistrationServiceTest {
     private OtpHasher otpHasher;
     @Mock
     private TemporaryPasswordGenerator temporaryPasswordGenerator;
+    @Mock
+    private GuestRegistrationSessionExpiry sessionExpiry;
 
     private GuestRegistrationServiceImpl service;
 
@@ -84,7 +86,8 @@ class GuestRegistrationServiceTest {
                 vnPayClient,
                 brevoClient,
                 otpHasher,
-                temporaryPasswordGenerator
+                temporaryPasswordGenerator,
+                sessionExpiry
         );
     }
 
@@ -498,6 +501,31 @@ class GuestRegistrationServiceTest {
         assertThat(session.getPaymentGateway()).isEqualTo(fu.se184491.loadmaster_be.constant.billing.PaymentGateway.VNPAY);
         assertThat(session.getExpiresAt()).isAfter(LocalDateTime.now().plusHours(2));
         verify(sessionRepository).save(session);
+    }
+
+    @Test
+    @DisplayName("initPayment: phiên quá hạn được ghi EXPIRED trong transaction riêng rồi mới báo lỗi")
+    void initPayment_expiredSession_marksExpiredInOwnTransaction() {
+        fu.se184491.loadmaster_be.dto.request.registration.InitPaymentRequest request =
+                new fu.se184491.loadmaster_be.dto.request.registration.InitPaymentRequest(
+                        "old-token",
+                        1L,
+                        fu.se184491.loadmaster_be.constant.billing.BillingCycle.MONTHLY
+                );
+        GuestRegistrationSession session = GuestRegistrationSession.builder()
+                .id(77L)
+                .token("old-token")
+                .status(RegistrationStatus.POLICY_ACCEPTED)
+                .expiresAt(LocalDateTime.now().minusMinutes(1))
+                .build();
+        when(sessionRepository.findByToken("old-token")).thenReturn(Optional.of(session));
+
+        assertThatThrownBy(() -> service.initPayment(request, "127.0.0.1"))
+                .isInstanceOf(AppException.class)
+                .extracting(ex -> ((AppException) ex).getErrorCode())
+                .isEqualTo(ErrorCode.REGISTRATION_SESSION_EXPIRED);
+        verify(sessionExpiry).markExpired(77L);
+        verifyNoInteractions(vnPayClient);
     }
 
     @Test

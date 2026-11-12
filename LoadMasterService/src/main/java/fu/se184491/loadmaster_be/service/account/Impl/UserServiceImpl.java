@@ -20,6 +20,8 @@ import fu.se184491.loadmaster_be.entity.company.CompanyAgreement;
 import fu.se184491.loadmaster_be.exception.AppException;
 import fu.se184491.loadmaster_be.exception.ErrorCode;
 import fu.se184491.loadmaster_be.helpers.CurrentUserService;
+import fu.se184491.loadmaster_be.helpers.AfterCommit;
+import fu.se184491.loadmaster_be.helpers.KeycloakAccounts;
 import fu.se184491.loadmaster_be.helpers.TemporaryPasswordGenerator;
 import fu.se184491.loadmaster_be.entity.common.AuditLog;
 import fu.se184491.loadmaster_be.repository.account.UserRepository;
@@ -300,68 +302,48 @@ public class UserServiceImpl implements UserService {
         String temporaryPassword =
                 temporaryPasswordGenerator.generate();
 
-        String keycloakUserId = null;
+        // Rollback (kể cả lúc commit) thì người dùng Keycloak vừa tạo bị xoá lại
+        String keycloakUserId = KeycloakAccounts.provision(
+                keycloakAdminClient,
+                userRepository,
+                targetEmail,
+                targetFullName,
+                temporaryPassword,
+                true,
+                request.role(),
+                false
+        );
 
-        try {
-            keycloakUserId =
-                    keycloakAdminClient.createUser(
-                            targetEmail,
-                            targetFullName
-                    );
+        User user = User.builder()
+                .keycloakId(keycloakUserId)
+                .company(company)
+                .email(targetEmail)
+                .fullName(targetFullName)
+                .phoneNumber(targetPhone)
+                .userRoleType(request.role())
+                .status(UserStatus.ACTIVE)
+                .build();
+        user.prePersist();
 
-            keycloakAdminClient.setPassword(
-                    keycloakUserId,
-                    temporaryPassword,
-                    true
-            );
+        user = userRepository.save(user);
 
-            keycloakAdminClient.assignRealmRole(
-                    keycloakUserId,
-                    request.role().name()
-            );
-
-            User user = User.builder()
-                    .keycloakId(keycloakUserId)
-                    .company(company)
-                    .email(targetEmail)
-                    .fullName(targetFullName)
-                    .phoneNumber(targetPhone)
-                    .userRoleType(request.role())
-                    .status(UserStatus.ACTIVE)
-                    .build();
-            user.prePersist();
-
-            user = userRepository.save(user);
-
-            if (currentUser.getUserRoleType() == UserRole.SYSTEM_ADMIN
-                    && user.getUserRoleType() == UserRole.ADMIN
-                    && company != null
-                    && brevoClient != null) {
-                String subject = "LoadMaster - Thông tin tài khoản Quản trị viên Doanh nghiệp (Company Admin)";
-                String htmlContent = buildCompanyAdminProvisionEmailHtml(company, user, temporaryPassword);
-                brevoClient.sendEmail(user.getEmail(), subject, htmlContent);
-            }
-
-            logAccount(ACTION_USER_CREATED, currentUser, user, null, accountSnapshot(user));
-
-            return new CreateUserResponse(
-                    toUserListItemResponse(user),
-                    temporaryPassword
-            );
-
-        } catch (Exception ex) {
-
-            if (keycloakUserId != null) {
-                try {
-                    keycloakAdminClient.deleteUser(
-                            keycloakUserId
-                    );
-                } catch (Exception ignored) {
-                }
-            }
-
-            throw ex;
+        if (currentUser.getUserRoleType() == UserRole.SYSTEM_ADMIN
+                && user.getUserRoleType() == UserRole.ADMIN
+                && company != null
+                && brevoClient != null) {
+            String subject = "LoadMaster - Thông tin tài khoản Quản trị viên Doanh nghiệp (Company Admin)";
+            String htmlContent = buildCompanyAdminProvisionEmailHtml(company, user, temporaryPassword);
+            String recipient = user.getEmail();
+            AfterCommit.run("email tài khoản quản trị công ty",
+                    () -> brevoClient.sendEmail(recipient, subject, htmlContent));
         }
+
+        logAccount(ACTION_USER_CREATED, currentUser, user, null, accountSnapshot(user));
+
+        return new CreateUserResponse(
+                toUserListItemResponse(user),
+                temporaryPassword
+        );
     }
 
     private String buildCompanyAdminProvisionEmailHtml(Company company, User adminUser, String temporaryPassword) {

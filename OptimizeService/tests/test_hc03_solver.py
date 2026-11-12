@@ -32,6 +32,14 @@ def make_problem(
         max_payload_kg=1000,
         door_w=150,
         door_h=100,
+        front_axle_x=0,
+        rear_axle_x=100,
+        front_axle_limit_kg=1000,
+        rear_axle_limit_kg=1000,
+        empty_front_axle_load_kg=0,
+        empty_rear_axle_load_kg=0,
+        # Một kiện đơn lẻ không nằm giữa thùng: nới giới hạn lệch trọng tâm để chỉ kiểm hướng xoay
+        max_cog_offset_ratio=0.5,
     )
 
     package = PackageData(
