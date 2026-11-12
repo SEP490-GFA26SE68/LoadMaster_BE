@@ -291,6 +291,52 @@ class GuestRegistrationServiceTest {
     }
 
     @Test
+    @DisplayName("verifyOtp: sai lần thứ 5 thì huỷ mã và báo OTP_ATTEMPTS_EXCEEDED; lần sau vẫn bị chặn dù đúng mã")
+    void verifyOtp_fifthWrongAttempt_invalidatesOtp() {
+        var wrong = new fu.se184491.loadmaster_be.dto.request.registration.VerifyOtpRequest("valid-token", "999999");
+        var right = new fu.se184491.loadmaster_be.dto.request.registration.VerifyOtpRequest("valid-token", "123456");
+        GuestRegistrationSession session = GuestRegistrationSession.builder()
+                .token("valid-token")
+                .email("guest@company.com")
+                .status(RegistrationStatus.PENDING_EMAIL_VERIFY)
+                .otpHash("hashed_123456")
+                .otpFailedAttempts(3)
+                .otpExpiresAt(LocalDateTime.now().plusMinutes(5))
+                .expiresAt(LocalDateTime.now().plusHours(2))
+                .build();
+        when(sessionRepository.findByToken("valid-token")).thenReturn(Optional.of(session));
+        when(otpHasher.hash("guest@company.com", "999999")).thenReturn("hashed_wrong");
+
+        assertThatThrownBy(() -> service.verifyOtp(wrong))
+                .hasFieldOrPropertyWithValue("errorCode", ErrorCode.OTP_INCORRECT);
+        assertThat(session.getOtpFailedAttempts()).isEqualTo(4);
+
+        assertThatThrownBy(() -> service.verifyOtp(wrong))
+                .hasFieldOrPropertyWithValue("errorCode", ErrorCode.OTP_ATTEMPTS_EXCEEDED);
+        assertThat(session.getOtpFailedAttempts()).isEqualTo(5);
+        assertThat(session.getOtpHash()).isNull();
+        verify(sessionRepository, times(2)).save(session);
+
+        assertThatThrownBy(() -> service.verifyOtp(right))
+                .hasFieldOrPropertyWithValue("errorCode", ErrorCode.OTP_ATTEMPTS_EXCEEDED);
+        assertThat(session.getStatus()).isEqualTo(RegistrationStatus.PENDING_EMAIL_VERIFY);
+    }
+
+    @Test
+    @DisplayName("verifyOtp, resendOtp, acceptPolicy giữ lại thay đổi khi ném lỗi nghiệp vụ (EXPIRED, bộ đếm sai)")
+    void businessErrorsDoNotRollBackSessionWrites() throws Exception {
+        Class<GuestRegistrationServiceImpl> type = GuestRegistrationServiceImpl.class;
+        for (var method : java.util.List.of(
+                type.getMethod("verifyOtp", fu.se184491.loadmaster_be.dto.request.registration.VerifyOtpRequest.class),
+                type.getMethod("resendOtp", String.class),
+                type.getMethod("acceptPolicy", fu.se184491.loadmaster_be.dto.request.registration.AcceptPolicyRequest.class, String.class))) {
+            var tx = method.getAnnotation(org.springframework.transaction.annotation.Transactional.class);
+            assertThat(tx).as(method.getName()).isNotNull();
+            assertThat(tx.noRollbackFor()).as(method.getName()).contains(AppException.class);
+        }
+    }
+
+    @Test
     @DisplayName("resendOtp: thành công gửi lại mã OTP mới")
     void resendOtp_success() {
         GuestRegistrationSession session = GuestRegistrationSession.builder()
