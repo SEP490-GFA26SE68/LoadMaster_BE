@@ -57,6 +57,10 @@ public class DeliveryStop {
     @Column(name = "actual_arrival")
     private LocalDateTime actualArrival;
 
+    /** Giờ tài xế hoàn tất điểm; điểm chưa hoàn tất, hoặc hoàn tất trước khi có cột này, thì null. */
+    @Column(name = "completed_at")
+    private LocalDateTime completedAt;
+
     /**
      * Điểm giao hàng, hoặc điểm nhận hàng dọc đường (chèn khi điều phối viên duyệt một yêu cầu nhận). Dòng cũ để trống là điểm giao.
      */

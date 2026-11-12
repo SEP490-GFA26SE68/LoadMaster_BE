@@ -1,6 +1,7 @@
 package fu.se184491.loadmaster_be.controller.warehouse;
 
 import fu.se184491.loadmaster_be.dto.ApiResponse;
+import fu.se184491.loadmaster_be.dto.request.cargo.LabelConfirmRequest;
 import fu.se184491.loadmaster_be.dto.request.warehouse.RecordDeviationRequest;
 import fu.se184491.loadmaster_be.dto.request.warehouse.StartLoadingRequest;
 import fu.se184491.loadmaster_be.dto.response.warehouse.CompleteLoadingResponse;
@@ -62,11 +63,13 @@ public class WarehouseController {
     }
 
     @PostMapping("/placements/{id}/confirm")
-    @Operation(summary = "Confirm placement", description = "Confirm that a package placement has been loaded correctly according to sequence")
+    @Operation(summary = "Confirm placement", description = "Confirm that a package placement has been loaded correctly according to sequence; optional body { method: QR | CODE } (default QR)")
     public ResponseEntity<ApiResponse<ConfirmPlacementResponse>> confirmPlacement(
             @PathVariable("id") Long id,
-            @RequestParam(value = "workerId", required = false) Long workerId) {
-        ConfirmPlacementResponse response = warehouseService.confirmPlacement(id, workerId);
+            @RequestParam(value = "workerId", required = false) Long workerId,
+            @RequestBody(required = false) LabelConfirmRequest request) {
+        ConfirmPlacementResponse response =
+                warehouseService.confirmPlacement(id, workerId, LabelConfirmRequest.methodOf(request));
         return ResponseEntity.ok(ApiResponse.success("Xác nhận vị trí kiện hàng thành công", response));
     }
 

@@ -74,6 +74,10 @@ public class Trip {
     @Column(name = "departure_time")
     private LocalDateTime departureTime;
 
+    /** Giờ tài xế bấm Xuất phát (chuyến thành IN_TRANSIT); chưa xuất phát, hoặc xuất phát trước khi có cột này, thì null. */
+    @Column(name = "departed_at")
+    private LocalDateTime departedAt;
+
     @Builder.Default
     @ColumnDefault("'DRAFT'")
     @Enumerated(EnumType.STRING) @Column(name = "status", length = 20, nullable = false)

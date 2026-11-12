@@ -1,6 +1,7 @@
 package fu.se184491.loadmaster_be.controller.driver;
 
 import fu.se184491.loadmaster_be.dto.ApiResponse;
+import fu.se184491.loadmaster_be.dto.request.cargo.LabelConfirmRequest;
 import fu.se184491.loadmaster_be.dto.request.driver.ManualUnloadRequest;
 import fu.se184491.loadmaster_be.dto.request.driver.ReportDeliveryIssueRequest;
 import fu.se184491.loadmaster_be.dto.request.monitoring.DriverLocationRequest;
@@ -70,18 +71,22 @@ public class DriverController {
     }
 
     @PostMapping("/packages/{id}/unload")
-    @Operation(summary = "Confirm package unload", description = "Driver confirms that a package has been unloaded at the current stop")
+    @Operation(summary = "Confirm package unload", description = "Driver confirms that a package has been unloaded at the current stop; optional body { method: QR | CODE } (default QR)")
     public ResponseEntity<ApiResponse<ConfirmUnloadResponse>> confirmUnload(
             @PathVariable("id") Long id,
-            @RequestParam(value = "driverId", required = false) Long driverId) {
-        ConfirmUnloadResponse response = driverService.confirmUnload(id, driverId);
+            @RequestParam(value = "driverId", required = false) Long driverId,
+            @RequestBody(required = false) LabelConfirmRequest request) {
+        ConfirmUnloadResponse response = driverService.confirmUnload(id, driverId, LabelConfirmRequest.methodOf(request));
         return ResponseEntity.ok(ApiResponse.success("Xác nhận dỡ kiện hàng thành công", response));
     }
 
     @PostMapping("/pickup-packages/{id}/pick")
-    @Operation(summary = "Confirm pickup package", description = "Driver confirms (QR or code) that an en-route pickup package is on the truck at the current pickup stop")
-    public ResponseEntity<ApiResponse<PickupRequestResponse>> pickPackage(@PathVariable("id") Long id) {
-        return ResponseEntity.ok(ApiResponse.success("Đã nhận kiện lên xe", pickupDriverService.pick(id)));
+    @Operation(summary = "Confirm pickup package", description = "Driver confirms (QR or code) that an en-route pickup package is on the truck at the current pickup stop; optional body { method: QR | CODE } (default QR)")
+    public ResponseEntity<ApiResponse<PickupRequestResponse>> pickPackage(
+            @PathVariable("id") Long id,
+            @RequestBody(required = false) LabelConfirmRequest request) {
+        return ResponseEntity.ok(ApiResponse.success("Đã nhận kiện lên xe",
+                pickupDriverService.pick(id, LabelConfirmRequest.methodOf(request))));
     }
 
     @PostMapping("/stops/{id}/arrive")
