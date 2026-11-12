@@ -1,11 +1,20 @@
-from fastapi import FastAPI
+import logging
+
+from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from sqlalchemy import text
+from sqlalchemy.orm import Session
+
+from app.config.database import get_db
 
 from app.config.settings import settings
 from app.controller.optimization.optimization_router import router as optimization_router
 from app.controller.optimization.load_plan_router import router as load_plan_router
 from app.controller.optimization.rerun_router import router as rerun_router
 from app.exception.global_exception_handler import register_exception_handlers
+
+logger = logging.getLogger(__name__)
 
 app = FastAPI(
     title=settings.APP_NAME,
@@ -33,7 +42,16 @@ app.include_router(rerun_router)
 
 
 @app.get("/health")
-def health_check():
+def health_check(db: Session = Depends(get_db)):
+    # Kiểm DB thật: DB không trả lời thì 503 để nơi theo dõi biết dịch vụ chưa dùng được.
+    try:
+        db.execute(text("SELECT 1"))
+    except Exception:
+        logger.exception("Health check: không truy vấn được DB")
+        return JSONResponse(
+            status_code=503,
+            content={"status": "DOWN", "service": settings.APP_NAME},
+        )
     return {"status": "UP", "service": settings.APP_NAME}
 
 
