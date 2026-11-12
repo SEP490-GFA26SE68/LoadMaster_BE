@@ -93,8 +93,12 @@ management:
     redis:
       enabled: false
 
+# Swagger UI và /v3/api-docs tắt mặc định: chỉ bật khi đặt API_DOCS_ENABLED=true (profile dev bật sẵn).
 springdoc:
+  api-docs:
+    enabled: ${API_DOCS_ENABLED:false}
   swagger-ui:
+    enabled: ${API_DOCS_ENABLED:false}
     oauth:
       client-id: loadmaster-web, loadmaster-mobile
 
