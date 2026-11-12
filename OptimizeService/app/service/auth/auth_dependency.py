@@ -156,6 +156,24 @@ def is_backend_service(payload: dict[str, Any]) -> bool:
     )
 
 
+def company_of_caller(payload: dict[str, Any], db) -> Optional[int]:
+    """
+    Công ty của người dùng gọi bằng token của chính họ: token Keycloak không mang công ty,
+    nên tra bảng users theo keycloak_id (= claim sub). Không có tài khoản hay không thuộc công ty nào: None.
+    """
+    subject = payload.get("sub")
+    if not subject or db is None:
+        return None
+    from app.entity.trip_model import AppUser
+
+    company_id = (
+        db.query(AppUser.company_id)
+        .filter(AppUser.keycloak_id == str(subject))
+        .scalar()
+    )
+    return int(company_id) if company_id is not None else None
+
+
 def require_plan_approver(
         credentials: Optional[
             HTTPAuthorizationCredentials

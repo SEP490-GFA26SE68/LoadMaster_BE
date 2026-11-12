@@ -125,6 +125,41 @@ class LoadPlanService:
         company_id = db.query(Trip.company_id).filter(Trip.id == job.trip_id).scalar()
         return int(company_id) if company_id is not None else None
 
+    def ensure_plans_of_company(
+        self,
+        plan_ids: List[Union[int, str]],
+        company_id: Optional[int],
+        db: Session,
+    ) -> None:
+        """
+        Phương án phải thuộc công ty của người gọi (công ty của chuyến; chuyến chưa ghi thì công ty trên job).
+        Không thuộc, không biết công ty, hay không tồn tại đều là LOAD_PLAN_NOT_FOUND: không lộ phương án công ty khác.
+        """
+        if company_id is None or db is None:
+            raise AppException(ErrorCode.LOAD_PLAN_NOT_FOUND)
+        for plan_id in plan_ids:
+            plan = None
+            if str(plan_id).isdigit():
+                plan = self.load_plan_repository.find_by_id(int(plan_id), db)
+            if plan is None or self._owner_company_of_plan(plan, db) != company_id:
+                raise AppException(ErrorCode.LOAD_PLAN_NOT_FOUND)
+
+    @staticmethod
+    def _owner_company_of_plan(plan: LoadPlan, db: Session) -> Optional[int]:
+        from app.entity.optimization.optimization_job import OptimizationJob
+        from app.entity.trip_model import Trip
+
+        job = db.query(OptimizationJob).filter(OptimizationJob.id == plan.job_id).first()
+        if job is None:
+            return None
+        if job.trip_id is not None:
+            trip_company = db.query(Trip.company_id).filter(Trip.id == job.trip_id).scalar()
+            if trip_company is not None:
+                return int(trip_company)
+        if job.company_id is not None and str(job.company_id).isdigit():
+            return int(job.company_id)
+        return None
+
     @staticmethod
     def _unapprove_other_plans_of_trip(plan: LoadPlan, db: Session) -> None:
         from app.entity.optimization.optimization_job import OptimizationJob
