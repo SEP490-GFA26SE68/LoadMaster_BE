@@ -14,6 +14,7 @@ import fu.se184491.loadmaster_be.dto.response.registration.PaymentLinkResponse;
 import fu.se184491.loadmaster_be.dto.response.registration.ResendOtpResponse;
 import fu.se184491.loadmaster_be.entity.registration.GuestRegistrationSession;
 import fu.se184491.loadmaster_be.exception.AppException;
+import fu.se184491.loadmaster_be.service.registration.GuestRegistrationSessionExpiry;
 import fu.se184491.loadmaster_be.service.registration.OtpAttempts;
 import fu.se184491.loadmaster_be.exception.ErrorCode;
 import fu.se184491.loadmaster_be.helpers.AfterCommit;
@@ -60,6 +61,7 @@ public class GuestRegistrationServiceImpl implements GuestRegistrationService {
     private final BrevoClient brevoClient;
     private final OtpHasher otpHasher;
     private final TemporaryPasswordGenerator temporaryPasswordGenerator;
+    private final GuestRegistrationSessionExpiry sessionExpiry;
 
     @Value(FrontendUrls.URL)
     private String frontendUrl = FrontendUrls.DEFAULT;
@@ -270,8 +272,9 @@ public class GuestRegistrationServiceImpl implements GuestRegistrationService {
                 .orElseThrow(() -> new AppException(ErrorCode.REGISTRATION_SESSION_NOT_FOUND));
 
         if (session.getExpiresAt() != null && session.getExpiresAt().isBefore(LocalDateTime.now())) {
+            // Lỗi bên dưới rollback transaction này, nên ghi EXPIRED trong transaction riêng
+            sessionExpiry.markExpired(session.getId());
             session.setStatus(RegistrationStatus.EXPIRED);
-            sessionRepository.save(session);
             throw new AppException(ErrorCode.REGISTRATION_SESSION_EXPIRED);
         }
 
