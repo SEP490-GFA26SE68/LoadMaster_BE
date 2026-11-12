@@ -116,7 +116,7 @@ public class CreditServiceTest {
     @Test
     @DisplayName("Get balance should return balance from credit account")
     void getBalance_success() {
-        when(creditAccountRepository.findByCompanyId(1L)).thenReturn(Optional.of(creditAccount));
+        when(creditAccountRepository.findByCompanyIdForUpdate(1L)).thenReturn(Optional.of(creditAccount));
 
         CreditBalanceResponse response = creditService.getBalance(1L);
 
@@ -126,16 +126,20 @@ public class CreditServiceTest {
     }
 
     @Test
-    @DisplayName("Get balance on ULTIMATE plan should return isUnlimited = false (uses 30,000 credit pool)")
+    @DisplayName("Get balance on an ACTIVE ULTIMATE plan is unlimited; once expired it is not")
     void getBalance_ultimatePlan() {
         subscription.setPlan(ultimatePlan);
-        when(creditAccountRepository.findByCompanyId(1L)).thenReturn(Optional.of(creditAccount));
+        when(creditAccountRepository.findByCompanyIdForUpdate(1L)).thenReturn(Optional.of(creditAccount));
+        when(companySubscriptionRepository.findByCompanyId(1L)).thenReturn(Optional.of(subscription));
 
         CreditBalanceResponse response = creditService.getBalance(1L);
 
         assertNotNull(response);
         assertEquals(5, response.getBalance());
-        assertFalse(response.getIsUnlimited());
+        assertTrue(response.getIsUnlimited());
+
+        subscription.setStatus(SubscriptionStatus.EXPIRED);
+        assertFalse(creditService.getBalance(1L).getIsUnlimited());
     }
 
     @Test
@@ -187,20 +191,89 @@ public class CreditServiceTest {
     }
 
     @Test
-    @DisplayName("Deduct credit on ULTIMATE subscription should also deduct 2 credits from credit pool")
-    void deductCredit_ultimatePlan_deductsFromPool() {
+    @DisplayName("Deduct credit on an ACTIVE ULTIMATE subscription records a 0-credit usage and keeps the balance")
+    void deductCredit_ultimatePlan_isUnlimited() {
         subscription.setPlan(ultimatePlan);
+        creditAccount.setBalance(0);
         when(creditAccountRepository.findByCompanyIdForUpdate(1L)).thenReturn(Optional.of(creditAccount));
-        when(creditAccountRepository.save(any(CreditAccount.class))).thenReturn(creditAccount);
+        when(companySubscriptionRepository.findByCompanyId(1L)).thenReturn(Optional.of(subscription));
 
         creditService.deductCredit(1L, "job-uuid-123");
 
-        assertEquals(3, creditAccount.getBalance());
-        verify(creditAccountRepository).save(creditAccount);
+        assertEquals(0, creditAccount.getBalance());
+        verify(creditAccountRepository, never()).save(any());
         verify(creditTransactionRepository).save(argThat(tx ->
-                tx.getAmount() == -2 &&
-                tx.getType() == CreditTransactionType.USAGE
+                tx.getAmount() == 0 &&
+                tx.getType() == CreditTransactionType.USAGE &&
+                "job-uuid-123".equals(tx.getReference())
         ));
+        verify(auditLogRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("Deduct credit takes the account lock before looking up the reference, and skips a duplicate")
+    void deductCredit_locksBeforeCheckingTheReference() {
+        CreditTransaction existing = CreditTransaction.builder()
+                .creditAccount(creditAccount).amount(-2).type(CreditTransactionType.USAGE).reference("job-dup").build();
+        when(creditAccountRepository.findByCompanyIdForUpdate(1L)).thenReturn(Optional.of(creditAccount));
+        when(creditTransactionRepository.findByReferenceAndType("job-dup", CreditTransactionType.USAGE))
+                .thenReturn(Optional.of(existing));
+
+        creditService.deductCredit(1L, "job-dup");
+
+        var order = inOrder(creditAccountRepository, creditTransactionRepository);
+        order.verify(creditAccountRepository).findByCompanyIdForUpdate(1L);
+        order.verify(creditTransactionRepository).findByReferenceAndType("job-dup", CreditTransactionType.USAGE);
+        assertEquals(5, creditAccount.getBalance());
+        verify(creditTransactionRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("Refunding a 0-credit (unlimited) usage marks it refunded without changing the balance")
+    void refundCredit_zeroUsage() {
+        CreditTransaction usage = CreditTransaction.builder().id(98L).creditAccount(creditAccount).amount(0)
+                .type(CreditTransactionType.USAGE).reference("job-u").refunded(false).build();
+        when(creditTransactionRepository.findByReferenceAndType("job-u", CreditTransactionType.USAGE))
+                .thenReturn(Optional.of(usage));
+        when(creditAccountRepository.findByCompanyIdForUpdate(1L)).thenReturn(Optional.of(creditAccount));
+
+        creditService.refundCredit(1L, "job-u");
+
+        assertTrue(usage.getRefunded());
+        assertEquals(5, creditAccount.getBalance());
+        verify(creditTransactionRepository, never()).save(argThat(tx -> tx.getType() == CreditTransactionType.REFUND));
+    }
+
+    @Test
+    @DisplayName("Low-credit warning fires once, when the balance first crosses 25% of the plan's monthly credits")
+    void lowBalanceWarningFiresOnCrossing() {
+        proPlan.setMonthlyCredits(10);  // ngưỡng ceil(2.5) = 3
+        creditAccount.setBalance(4);
+        when(creditAccountRepository.findByCompanyIdForUpdate(1L)).thenReturn(Optional.of(creditAccount));
+        when(companySubscriptionRepository.findByCompanyId(1L)).thenReturn(Optional.of(subscription));
+
+        creditService.deductCredit(1L, "job-a", 1);   // 4 -> 3: vừa qua ngưỡng
+        creditService.deductCredit(1L, "job-b", 1);   // 3 -> 2: đã dưới ngưỡng, không báo lại
+
+        verify(auditLogRepository, times(1)).save(argThat(log ->
+                "CREDIT_LOW_BALANCE".equals(log.getActionType())
+                        && Integer.valueOf(3).equals(log.getNewValues().get("threshold"))));
+    }
+
+    @Test
+    @DisplayName("Monthly grant and purchase with an already recorded reference are skipped")
+    void grantAndPurchaseAreIdempotentPerReference() {
+        when(creditAccountRepository.findByCompanyIdForUpdate(1L)).thenReturn(Optional.of(creditAccount));
+        when(creditTransactionRepository.findByReferenceAndType("RENEW-1", CreditTransactionType.MONTHLY_GRANT))
+                .thenReturn(Optional.of(CreditTransaction.builder().build()));
+        when(creditTransactionRepository.findByReferenceAndType("VNP-1", CreditTransactionType.PURCHASE))
+                .thenReturn(Optional.of(CreditTransaction.builder().build()));
+
+        creditService.grantMonthlyCredits(1L, 100, "RENEW-1");
+        creditService.addCredits(1L, 50, "VNP-1");
+
+        assertEquals(5, creditAccount.getBalance());
+        verify(creditTransactionRepository, never()).save(any());
     }
 
     @Test
@@ -265,35 +338,38 @@ public class CreditServiceTest {
     }
 
     @Test
-    @DisplayName("Get balance when subscription is EXPIRED should reset balance to 0 and return 0")
-    void getBalance_whenSubscriptionExpired_resetsBalanceToZero() {
-        creditAccount.setBalance(6000);
-        subscription.setStatus(SubscriptionStatus.EXPIRED);
-        when(creditAccountRepository.findByCompanyId(1L)).thenReturn(Optional.of(creditAccount));
-        when(companySubscriptionRepository.findByCompanyId(1L)).thenReturn(Optional.of(subscription));
-
-        CreditBalanceResponse response = creditService.getBalance(1L);
-
-        assertNotNull(response);
-        assertEquals(0, response.getBalance());
-        assertEquals(0, creditAccount.getBalance());
-        verify(creditAccountRepository).save(creditAccount);
-    }
-
-    @Test
-    @DisplayName("Deduct credit when subscription is EXPIRED should reset balance to 0 and throw InsufficientCreditsException")
-    void deductCredit_whenSubscriptionExpired_resetsBalanceAndThrowsInsufficientCredits() {
+    @DisplayName("Get balance when subscription is EXPIRED keeps the balance")
+    void getBalance_whenSubscriptionExpired_keepsBalance() {
         creditAccount.setBalance(6000);
         subscription.setStatus(SubscriptionStatus.EXPIRED);
         when(creditAccountRepository.findByCompanyIdForUpdate(1L)).thenReturn(Optional.of(creditAccount));
         when(companySubscriptionRepository.findByCompanyId(1L)).thenReturn(Optional.of(subscription));
 
-        assertThrows(InsufficientCreditsException.class, () ->
-                creditService.deductCredit(1L, "job-uuid-expired")
-        );
+        CreditBalanceResponse response = creditService.getBalance(1L);
 
-        assertEquals(0, creditAccount.getBalance());
-        verify(creditAccountRepository).save(creditAccount);
+        assertNotNull(response);
+        assertEquals(6000, response.getBalance());
+        verify(creditAccountRepository, never()).save(any());
+        verify(creditTransactionRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("Deduct credit when subscription is EXPIRED spends the kept balance; too little still throws InsufficientCredits")
+    void deductCredit_whenSubscriptionExpired_spendsKeptBalance() {
+        creditAccount.setBalance(6000);
+        subscription.setStatus(SubscriptionStatus.EXPIRED);
+        subscription.setPlan(ultimatePlan);
+        when(creditAccountRepository.findByCompanyIdForUpdate(1L)).thenReturn(Optional.of(creditAccount));
+        when(companySubscriptionRepository.findByCompanyId(1L)).thenReturn(Optional.of(subscription));
+
+        creditService.deductCredit(1L, "job-uuid-expired");
+        assertEquals(5998, creditAccount.getBalance());
+
+        creditAccount.setBalance(1);
+        assertThrows(InsufficientCreditsException.class, () ->
+                creditService.deductCredit(1L, "job-uuid-expired-2")
+        );
+        assertEquals(1, creditAccount.getBalance());
     }
 
     @Test
@@ -316,7 +392,7 @@ public class CreditServiceTest {
         subscription.setExpiresAt(subscription.getStartedAt().plusMonths(4));
         creditAccount.setBalance(14500); // leftover from previous month including top-up
 
-        when(creditAccountRepository.findByCompanyId(1L)).thenReturn(Optional.of(creditAccount));
+        when(creditAccountRepository.findByCompanyIdForUpdate(1L)).thenReturn(Optional.of(creditAccount));
         when(companySubscriptionRepository.findByCompanyId(1L)).thenReturn(Optional.of(subscription));
         when(creditTransactionRepository.findByReferenceAndType("CYCLE-1-M2", CreditTransactionType.MONTHLY_GRANT))
                 .thenReturn(Optional.empty());
@@ -379,6 +455,12 @@ public class CreditServiceTest {
         assertNull(pricing.getMaxTopUpCredits());
         assertFalse(pricing.getUnlimited());
         assertTrue(pricing.getTopUpAllowed());
+        assertNull(pricing.getLowBalanceThreshold(), "gói không ghi credit tháng thì không có ngưỡng");
+
+        proPlan.setMonthlyCredits(10000);
+        assertEquals(2500, creditService.getPricing(1L).getLowBalanceThreshold());
+        proPlan.setMonthlyCredits(3001);
+        assertEquals(751, creditService.getPricing(1L).getLowBalanceThreshold());
     }
 
     @Test
@@ -398,6 +480,8 @@ public class CreditServiceTest {
         subscription.setPlan(ultimatePlan);
         var ultimate = creditService.getPricing(1L);
         assertTrue(ultimate.getUnlimited());
+        assertNull(ultimate.getLowBalanceThreshold());
+        assertNull(none.getLowBalanceThreshold());
         assertEquals(new BigDecimal("263"), ultimate.getPricePerCreditVnd());
     }
 }
