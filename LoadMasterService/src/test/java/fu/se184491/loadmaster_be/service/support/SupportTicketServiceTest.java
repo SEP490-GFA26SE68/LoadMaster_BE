@@ -379,18 +379,6 @@ class SupportTicketServiceTest {
     }
 
     @Test
-    @DisplayName("cleanupClosedTicketChatHistory - Runs hourly, not every 10 seconds")
-    void cleanupClosedTicketChatHistory_isScheduledHourly() throws Exception {
-        org.springframework.scheduling.annotation.Scheduled scheduled = SupportTicketServiceImpl.class
-                .getMethod("cleanupClosedTicketChatHistory")
-                .getAnnotation(org.springframework.scheduling.annotation.Scheduled.class);
-
-        assertNotNull(scheduled);
-        assertEquals("0 15 * * * *", scheduled.cron());
-        assertEquals(-1L, scheduled.fixedDelay());
-    }
-
-    @Test
     @DisplayName("updateTicket - Seam 1b: When a company has tickets across 3 dates (2/11, 3/11, 4/11), updating 4/11 automatically clears 2/11 chat history and leaves other companies untouched")
     void updateTicket_whenCompanyHasTicketsAcrossThreeActiveDates_automaticallyClearsOldestTicketChatHistoryAndKeepsOtherCompanyIntact() {
         SupportTicket ticketNov2 = SupportTicket.builder()

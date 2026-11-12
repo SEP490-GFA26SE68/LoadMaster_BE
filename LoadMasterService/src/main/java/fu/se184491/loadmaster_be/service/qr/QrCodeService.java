@@ -38,12 +38,13 @@ public interface QrCodeService {
     CargoPackage lookupByToken(String qrToken, Long companyId);
 
     /**
-     * Looks up a CargoPackage by its database ID.
+     * Looks up a CargoPackage by its database ID within the caller's company.
      *
-     * @param id the package ID
+     * @param id        the package ID
+     * @param companyId the caller's company
      * @return the matching CargoPackage entity
      * @throws fu.se184491.loadmaster_be.exception.AppException with ErrorCode.PACKAGE_NOT_FOUND
-     *         if no package has this ID
+     *         if no package has this ID or it belongs to another company
      */
-    CargoPackage findById(Long id);
+    CargoPackage findById(Long id, Long companyId);
 }

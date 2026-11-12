@@ -88,9 +88,11 @@ public class QrCodeServiceImpl implements QrCodeService {
     // -------------------------------------------------------------------------
 
     @Override
-    public CargoPackage findById(Long id) {
+    public CargoPackage findById(Long id, Long companyId) {
+        // Kiện của công ty khác trả về như không tồn tại.
         return cargoPackageRepository
                 .findById(id)
+                .filter(pkg -> packageOwnershipService.belongsToCompany(pkg, companyId))
                 .orElseThrow(() -> new AppException(ErrorCode.PACKAGE_NOT_FOUND));
     }
 }

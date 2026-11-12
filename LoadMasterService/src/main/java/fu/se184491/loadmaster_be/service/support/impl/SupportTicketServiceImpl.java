@@ -29,7 +29,6 @@ import fu.se184491.loadmaster_be.service.support.SupportTicketService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.domain.Specification;
-import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -268,7 +267,6 @@ public class SupportTicketServiceImpl implements SupportTicketService {
      */
     @Override
     @Transactional
-    @Scheduled(cron = "0 15 * * * *")
     public int cleanupClosedTicketChatHistory() {
         return cleanupExpiredClosedTickets(supportTicketRepository.findWithChatHistoryByStatusIn(
                 List.of(TicketStatus.CLOSED, TicketStatus.RESOLVED)));

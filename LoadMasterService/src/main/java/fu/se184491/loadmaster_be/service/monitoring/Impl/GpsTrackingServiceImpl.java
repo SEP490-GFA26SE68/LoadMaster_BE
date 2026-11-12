@@ -16,7 +16,10 @@ import fu.se184491.loadmaster_be.service.monitoring.TripLookupHelper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -30,10 +33,28 @@ public class GpsTrackingServiceImpl implements GpsTrackingService {
     private final GpsTrackingRepository gpsTrackingRepository;
     private final TripLookupHelper tripLookupHelper;
     private final EtaCalculationService etaCalculationService;
+    private final PlatformTransactionManager transactionManager;
 
+    /**
+     * Điểm GPS lưu và commit trước; tính lại ETA chạy ở giao dịch riêng sau đó, hỏng thì chỉ ghi cảnh báo, điểm GPS
+     * vẫn còn.
+     */
     @Override
-    @Transactional
     public LocationPointResponse recordLocation(DriverLocationRequest request) {
+        GpsTracking saved = new TransactionTemplate(transactionManager).execute(status -> saveLocation(request));
+
+        TransactionTemplate etaTx = new TransactionTemplate(transactionManager);
+        etaTx.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
+        try {
+            etaTx.executeWithoutResult(status -> etaCalculationService.recalculateAndAlert(saved.getTrip(), saved));
+        } catch (RuntimeException ex) {
+            log.warn("ETA recalculation failed for trip {}: {}", saved.getTrip().getId(), ex.getMessage());
+        }
+
+        return toResponse(saved);
+    }
+
+    private GpsTracking saveLocation(DriverLocationRequest request) {
         Trip trip = tripLookupHelper.requireTripByIdOrCode(request.getTripId());
         if (trip.getStatus() != TripStatus.IN_TRANSIT) {
             throw new AppException(ErrorCode.GPS_TRIP_NOT_IN_TRANSIT);
@@ -49,15 +70,7 @@ public class GpsTrackingServiceImpl implements GpsTrackingService {
                 .recordedAt(MonitoringTime.now())
                 .build();
 
-        GpsTracking saved = gpsTrackingRepository.save(tracking);
-
-        try {
-            etaCalculationService.recalculateAndAlert(trip, saved);
-        } catch (Exception ex) {
-            log.warn("ETA recalculation failed for trip {}: {}", trip.getId(), ex.getMessage());
-        }
-
-        return toResponse(saved);
+        return gpsTrackingRepository.save(tracking);
     }
 
     @Override

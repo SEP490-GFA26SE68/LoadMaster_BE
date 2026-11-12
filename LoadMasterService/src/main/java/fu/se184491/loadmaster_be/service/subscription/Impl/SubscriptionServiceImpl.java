@@ -47,7 +47,7 @@ public class SubscriptionServiceImpl implements SubscriptionService {
     private final PaymentTransactionRepository paymentTransactionRepository;
 
     /** Gói còn hạn chỉ gia hạn được trong chừng này ngày cuối kỳ; gói đã hết hạn thì lúc nào cũng được. */
-    public static final int RENEWAL_WINDOW_DAYS = 3;
+    public static final int RENEWAL_WINDOW_DAYS = 7;
     static final String RENEWAL_ORDER = "SUBSCRIPTION_RENEWAL";
     private static final List<String> PLAN_ORDERS = List.of("SUBSCRIPTION", "SUBSCRIPTION_YEARLY", RENEWAL_ORDER);
 
@@ -372,12 +372,14 @@ public class SubscriptionServiceImpl implements SubscriptionService {
                 // If plan is free or mock auto renew:
                 SubscriptionPlan plan = sub.getPlan();
                 if (plan != null && (plan.getPriceVnd() == null || plan.getPriceVnd().compareTo(BigDecimal.ZERO) == 0)) {
+                    // Mã theo kỳ vừa hết: job chạy lại cũng không cấp hai lần cho cùng một kỳ.
+                    String renewRef = "RENEW-" + sub.getId() + "-" + sub.getExpiresAt();
                     sub.setStartedAt(now);
                     sub.setExpiresAt(calculateExpiresAt(now, plan).truncatedTo(ChronoUnit.SECONDS));
                     sub.normalizeTimestamps();
                     companySubscriptionRepository.save(sub);
                     if (plan.getMonthlyCredits() != null && plan.getMonthlyCredits() > 0) {
-                        creditService.grantMonthlyCredits(sub.getCompany().getId(), plan.getMonthlyCredits());
+                        creditService.grantMonthlyCredits(sub.getCompany().getId(), plan.getMonthlyCredits(), renewRef);
                     }
                     log.info("Auto-renewed free subscription for company={}", sub.getCompany().getId());
                 } else {

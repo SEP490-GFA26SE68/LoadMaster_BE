@@ -150,6 +150,27 @@ class LoadingOptimizationServiceImplTest {
         assertThat(sentRequest()).containsEntry("subscription_tier", "BASIC");
     }
 
+    @Test
+    void cancelledUltimateRunsAsBasicAndNeedsCredit() {
+        subscription(SubscriptionTier.ULTIMATE, SubscriptionStatus.CANCELLED);
+        balance(1);
+
+        assertThatThrownBy(() -> service.startLoadingOptimization(10L))
+                .extracting(LoadingOptimizationServiceImplTest::codeOf)
+                .isEqualTo(ErrorCode.INSUFFICIENT_CREDITS);
+        verify(optimizationClient, never()).createJob(any());
+    }
+
+    @Test
+    void neverHadASubscriptionRunsAsBasicWithItsBalance() {
+        when(companySubscriptionRepository.findByCompanyId(COMPANY)).thenReturn(Optional.empty());
+        balance(2);
+
+        service.startLoadingOptimization(10L);
+
+        assertThat(sentRequest()).containsEntry("subscription_tier", "BASIC");
+    }
+
     private Trip plannedTrip(long id, TripStatus status) {
         Trip trip = new Trip();
         trip.setId(id);

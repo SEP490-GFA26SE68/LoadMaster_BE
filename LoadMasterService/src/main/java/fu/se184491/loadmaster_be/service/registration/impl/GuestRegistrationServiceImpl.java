@@ -14,6 +14,7 @@ import fu.se184491.loadmaster_be.dto.response.registration.PaymentLinkResponse;
 import fu.se184491.loadmaster_be.dto.response.registration.ResendOtpResponse;
 import fu.se184491.loadmaster_be.entity.registration.GuestRegistrationSession;
 import fu.se184491.loadmaster_be.exception.AppException;
+import fu.se184491.loadmaster_be.service.registration.OtpAttempts;
 import fu.se184491.loadmaster_be.exception.ErrorCode;
 import fu.se184491.loadmaster_be.helpers.TemporaryPasswordGenerator;
 import fu.se184491.loadmaster_be.repository.account.UserRepository;
@@ -125,6 +126,7 @@ public class GuestRegistrationServiceImpl implements GuestRegistrationService {
                     .taxCode(taxCode)
                     .status(RegistrationStatus.PENDING_EMAIL_VERIFY)
                     .otpHash(hashedOtp)
+                    .otpFailedAttempts(0)
                     .otpExpiresAt(otpExpiresAt)
                     .otpResendAllowedAt(otpResendAllowedAt)
                     .createdAt(now)
@@ -137,6 +139,7 @@ public class GuestRegistrationServiceImpl implements GuestRegistrationService {
             session.setCompanyCode(companyCode);
             session.setTaxCode(taxCode);
             session.setOtpHash(hashedOtp);
+            session.setOtpFailedAttempts(0);
             session.setOtpExpiresAt(otpExpiresAt);
             session.setOtpResendAllowedAt(otpResendAllowedAt);
             session.setStatus(RegistrationStatus.PENDING_EMAIL_VERIFY);
@@ -150,6 +153,7 @@ public class GuestRegistrationServiceImpl implements GuestRegistrationService {
     }
 
     @Override
+    @Transactional(noRollbackFor = AppException.class)
     public GuestRegistrationSessionResponse verifyOtp(VerifyOtpRequest request) {
         GuestRegistrationSession session = sessionRepository.findByToken(request.getToken())
                 .orElseThrow(() -> new AppException(ErrorCode.REGISTRATION_SESSION_NOT_FOUND));
@@ -164,6 +168,10 @@ public class GuestRegistrationServiceImpl implements GuestRegistrationService {
             throw new AppException(ErrorCode.REGISTRATION_INVALID_STATUS, "Phiên đăng ký không ở trạng thái chờ xác thực OTP.");
         }
 
+        if (OtpAttempts.exhausted(session.getOtpFailedAttempts()) || session.getOtpHash() == null) {
+            throw new AppException(ErrorCode.OTP_ATTEMPTS_EXCEEDED);
+        }
+
         LocalDateTime now = LocalDateTime.now();
         if (session.getOtpExpiresAt() == null || session.getOtpExpiresAt().isBefore(now)) {
             throw new AppException(ErrorCode.OTP_EXPIRED);
@@ -171,6 +179,14 @@ public class GuestRegistrationServiceImpl implements GuestRegistrationService {
 
         String calculatedHash = otpHasher.hash(session.getEmail(), request.getOtp().trim());
         if (!calculatedHash.equals(session.getOtpHash())) {
+            int attempts = OtpAttempts.next(session.getOtpFailedAttempts());
+            session.setOtpFailedAttempts(attempts);
+            if (OtpAttempts.exhausted(attempts)) {
+                session.setOtpHash(null);
+                sessionRepository.save(session);
+                throw new AppException(ErrorCode.OTP_ATTEMPTS_EXCEEDED);
+            }
+            sessionRepository.save(session);
             throw new AppException(ErrorCode.OTP_INCORRECT);
         }
 
@@ -182,6 +198,7 @@ public class GuestRegistrationServiceImpl implements GuestRegistrationService {
     }
 
     @Override
+    @Transactional(noRollbackFor = AppException.class)
     public ResendOtpResponse resendOtp(String token) {
         GuestRegistrationSession session = sessionRepository.findByToken(token)
                 .orElseThrow(() -> new AppException(ErrorCode.REGISTRATION_SESSION_NOT_FOUND));
@@ -207,6 +224,7 @@ public class GuestRegistrationServiceImpl implements GuestRegistrationService {
         LocalDateTime otpResendAllowedAt = now.plusSeconds(60);
 
         session.setOtpHash(hashedOtp);
+        session.setOtpFailedAttempts(0);
         session.setOtpExpiresAt(otpExpiresAt);
         session.setOtpResendAllowedAt(otpResendAllowedAt);
         sessionRepository.save(session);
@@ -221,6 +239,7 @@ public class GuestRegistrationServiceImpl implements GuestRegistrationService {
     }
 
     @Override
+    @Transactional(noRollbackFor = AppException.class)
     public GuestRegistrationSessionResponse acceptPolicy(AcceptPolicyRequest request, String ipAddress) {
         GuestRegistrationSession session = sessionRepository.findByToken(request.getToken())
                 .orElseThrow(() -> new AppException(ErrorCode.REGISTRATION_SESSION_NOT_FOUND));
@@ -309,7 +328,8 @@ public class GuestRegistrationServiceImpl implements GuestRegistrationService {
         }
 
         // 2. Find Registration Session
-        GuestRegistrationSession session = sessionRepository.findByPaymentRef(txnRef)
+        // Khoá phiên tới hết giao dịch để hai lượt callback không cùng tạo công ty, tài khoản.
+        GuestRegistrationSession session = sessionRepository.findByPaymentRefForUpdate(txnRef)
                 .orElse(null);
 
         if (session == null) {

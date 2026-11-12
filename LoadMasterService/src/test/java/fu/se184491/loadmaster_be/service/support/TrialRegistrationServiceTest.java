@@ -175,6 +175,41 @@ class TrialRegistrationServiceTest {
     }
 
     @Test
+    @DisplayName("verifyOtp - the 5th wrong OTP invalidates the code; resend issues a fresh one with the counter reset")
+    void verifyOtp_FifthWrongAttempt_InvalidatesOtp() {
+        session.setOtpFailedAttempts(4);
+        when(sessionRepository.findByToken("test-session-token")).thenReturn(Optional.of(session));
+        when(otpHasher.hash("test@example.com", "999999")).thenReturn("different-hash");
+        GuestTrialVerifyOtpRequest wrong = GuestTrialVerifyOtpRequest.builder()
+                .token("test-session-token").otp("999999").build();
+
+        assertThatThrownBy(() -> trialRegistrationService.verifyOtp(wrong))
+                .hasFieldOrPropertyWithValue("errorCode", ErrorCode.OTP_ATTEMPTS_EXCEEDED);
+        assertThat(session.getOtpHash()).isNull();
+        assertThat(session.getOtpFailedAttempts()).isEqualTo(5);
+        verify(sessionRepository).save(session);
+        verify(trialAccountRequestRepository, never()).save(any());
+
+        assertThatThrownBy(() -> trialRegistrationService.verifyOtp(GuestTrialVerifyOtpRequest.builder()
+                .token("test-session-token").otp("123456").build()))
+                .hasFieldOrPropertyWithValue("errorCode", ErrorCode.OTP_ATTEMPTS_EXCEEDED);
+
+        when(otpHasher.hash(eq("test@example.com"), anyString())).thenReturn("hashed-new");
+        trialRegistrationService.resendOtp(GuestTrialResendOtpRequest.builder().token("test-session-token").build());
+        assertThat(session.getOtpFailedAttempts()).isZero();
+        assertThat(session.getOtpHash()).isEqualTo("hashed-new");
+    }
+
+    @Test
+    @DisplayName("verifyOtp keeps the attempt counter when it throws a business error")
+    void verifyOtp_DoesNotRollBackOnBusinessErrors() throws Exception {
+        var tx = TrialRegistrationServiceImpl.class
+                .getMethod("verifyOtp", GuestTrialVerifyOtpRequest.class)
+                .getAnnotation(org.springframework.transaction.annotation.Transactional.class);
+        assertThat(tx.noRollbackFor()).contains(AppException.class);
+    }
+
+    @Test
     @DisplayName("verifyOtp - succeeds and invokes AI pre-validation")
     void verifyOtp_WhenOtpCorrect_ShouldCreateTrialRequestAndPreValidate() {
         when(sessionRepository.findByToken("test-session-token")).thenReturn(Optional.of(session));

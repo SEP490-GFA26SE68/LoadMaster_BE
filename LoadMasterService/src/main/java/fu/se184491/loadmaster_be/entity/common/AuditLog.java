@@ -13,7 +13,9 @@ import java.time.Instant;
 import java.util.Map;
 
 @Entity
-@Table(name = "audit_logs")
+@Table(name = "audit_logs", indexes = {
+        @Index(name = "idx_audit_logs_company_created", columnList = "company_id, created_at")
+})
 @Immutable
 @Getter @Setter @NoArgsConstructor @AllArgsConstructor @Builder
 public class AuditLog {

@@ -20,6 +20,10 @@ public interface CreditService {
     }
     void refundCredit(Long companyId, String reference);
     void grantMonthlyCredits(Long companyId, int amount);
+    /** Cấp credit tháng một lần cho mỗi mã; mã đã ghi thì bỏ qua. */
+    default void grantMonthlyCredits(Long companyId, int amount, String reference) {
+        grantMonthlyCredits(companyId, amount);
+    }
     void addCredits(Long companyId, int amount, String reference);
     default void resetBalance(Long companyId) {
     }

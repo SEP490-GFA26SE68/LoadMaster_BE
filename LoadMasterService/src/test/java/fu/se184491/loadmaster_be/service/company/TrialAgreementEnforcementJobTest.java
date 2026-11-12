@@ -70,7 +70,7 @@ class TrialAgreementEnforcementJobTest {
     void setUp() {
         enforcementJob = new TrialAgreementEnforcementJob(
                 agreementRepository, userRepository, companyRepository, supportTicketRepository, ticketReplyRepository,
-                keycloakAdminClient, transactionManager);
+                keycloakAdminClient, transactionManager, true);
         company = Company.builder().id(10L).companyCode("COMP-10").build();
     }
 
@@ -173,6 +173,25 @@ class TrialAgreementEnforcementJobTest {
         ArgumentCaptor<LocalDateTime> cutoff = ArgumentCaptor.forClass(LocalDateTime.class);
         verify(agreementRepository).findIdsByStatusAndExpiredAtBefore(eq(AgreementStatus.EXPIRED), cutoff.capture());
         assertThat(cutoff.getValue()).isEqualTo(filledWith.getValue().minusDays(30));
+        verify(userRepository, never()).delete(any(User.class));
+        verify(keycloakAdminClient, never()).deleteUser(anyString());
+    }
+
+    @Test
+    @DisplayName("Tắt app.trial.hard-delete-enabled (mặc định): vẫn gắn cờ, không tìm và không xóa tài khoản nào")
+    void hardDeleteIsSkippedWhenDisabled() {
+        TrialAgreementEnforcementJob disabled = new TrialAgreementEnforcementJob(
+                agreementRepository, userRepository, companyRepository, supportTicketRepository, ticketReplyRepository,
+                keycloakAdminClient, transactionManager, false);
+        User trialAdmin = user(20L, "kc-20", UserType.TRIAL, UserStatus.ACTIVE);
+        when(agreementRepository.findIdsByStatusAndDeadlineAtBefore(eq(AgreementStatus.PENDING), any()))
+                .thenReturn(List.of(100L));
+        when(agreementRepository.findById(100L)).thenReturn(Optional.of(pending(100L, trialAdmin)));
+
+        assertThat(disabled.enforceUnsignedAgreements()).isEqualTo(1);
+
+        assertThat(trialAdmin.getStatus()).isEqualTo(UserStatus.FLAGGED);
+        verify(agreementRepository, never()).findIdsByStatusAndExpiredAtBefore(any(), any());
         verify(userRepository, never()).delete(any(User.class));
         verify(keycloakAdminClient, never()).deleteUser(anyString());
     }

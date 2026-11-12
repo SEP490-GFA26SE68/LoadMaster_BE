@@ -49,8 +49,9 @@ public class PaymentCallbackHandler {
             }
         }
 
-        // 2. Find Payment Transaction
-        Optional<PaymentTransaction> txnOpt = paymentTransactionRepository.findByGatewayTransactionId(txnRef);
+        // 2. Find Payment Transaction — khoá dòng tới hết giao dịch: IPN và trang trả về có thể tới cùng lúc,
+        // lượt sau chờ lượt trước commit rồi thấy SUCCESS ở bước 3, không cấp credit / kích hoạt gói lần hai.
+        Optional<PaymentTransaction> txnOpt = paymentTransactionRepository.findByGatewayTransactionIdForUpdate(txnRef);
         if (txnOpt.isEmpty()) {
             log.warn("VNPay callback order not found for txnRef: {}", txnRef);
             response.put("RspCode", "01");

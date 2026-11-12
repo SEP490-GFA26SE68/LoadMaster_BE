@@ -94,6 +94,7 @@ class SubscriptionRenewalTest {
 
     @Test
     void aPlanFarFromItsEndIsNotRenewable() {
+        // 20 ngày còn lại: ngoài 7 ngày cuối
         subscription(SubscriptionStatus.ACTIVE, LocalDateTime.now().plusDays(20));
 
         assertThatThrownBy(() -> service.renew(COMPANY, PaymentGateway.MOCK, "127.0.0.1"))
@@ -141,7 +142,7 @@ class SubscriptionRenewalTest {
         assertThat(view.getRenewable()).isTrue();
         assertThat(view.getPlanName()).isEqualTo("Pro");
         assertThat(view.getAmountVnd()).isEqualByComparingTo("1000000");
-        assertThat(view.getRenewalWindowDays()).isEqualTo(3);
+        assertThat(view.getRenewalWindowDays()).isEqualTo(7);
         assertThat(view.getPendingPayment())
                 .extracting(SubscriptionRenewalResponse.PendingPayment::getTransactionId,
                         SubscriptionRenewalResponse.PendingPayment::getOrderType,

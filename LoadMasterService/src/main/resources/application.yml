@@ -86,6 +86,9 @@ springdoc:
 app:
   security:
     qr-aes-secret: ${QR_AES_SECRET}
+  # Tài khoản dùng thử không ký thoả thuận: luôn gắn cờ; xoá cứng sau 30 ngày chỉ khi bật cờ này (mặc định tắt).
+  trial:
+    hard-delete-enabled: ${TRIAL_HARD_DELETE_ENABLED:false}
   # Web app: origin được gọi API (CORS, ngăn bằng dấu phẩy) và địa chỉ dùng trong chuyển hướng sau thanh toán, email, hoá đơn.
   frontend:
     url: ${FRONTEND_URL:http://localhost:5173}
