@@ -78,10 +78,10 @@ class LoadMasterCreditClient:
 
     async def deduct_credit(self, company_id: Union[str, int], reference: str) -> bool:
         """
-        Gọi POST /api/credits/deduct để trừ 1 credit của company.
+        Gọi POST /api/internal/credits/deduct để trừ credit của company.
         Ném AppException(ErrorCode.INSUFFICIENT_CREDITS) nếu công ty không đủ credit (HTTP 402 hoặc code INSUFFICIENT_CREDITS).
         """
-        url = f"{self.base_url}/api/credits/deduct"
+        url = f"{self.base_url}/api/internal/credits/deduct"
         payload = {"company_id": str(company_id), "reference": str(reference)}
         headers = await self._get_headers()
 
@@ -162,7 +162,7 @@ class LoadMasterCreditClient:
         """
         Hoàn trả credit cho job thất bại.
         Hỗ trợ cả 2 signature:
-        - refund_credit(company_id, reference) -> gọi POST /api/credits/refund (S5b-05)
+        - refund_credit(company_id, reference) -> gọi POST /api/internal/credits/refund (S5b-05)
         - refund_credit(job_uuid) -> gọi POST /api/internal/credits/refund với retry (S8-08)
         """
         actual_company_id = company_id
@@ -175,7 +175,7 @@ class LoadMasterCreditClient:
             actual_ref = str(company_id_or_ref)
 
         if actual_company_id is not None:
-            url = f"{self.base_url}/api/credits/refund"
+            url = f"{self.base_url}/api/internal/credits/refund"
             payload = {"company_id": str(actual_company_id), "reference": str(actual_ref)}
             headers = await self._get_headers()
             try:

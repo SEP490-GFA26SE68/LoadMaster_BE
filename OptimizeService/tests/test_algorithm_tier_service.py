@@ -59,7 +59,7 @@ class TestLoadMasterCreditClient:
         assert result is True
         mock_http.post.assert_called_once()
         args, kwargs = mock_http.post.call_args
-        assert "/api/credits/deduct" in args[0]
+        assert "/api/internal/credits/deduct" in args[0]
         assert kwargs["json"] == {"company_id": "comp-123", "reference": "job-abc"}
 
     async def test_deduct_credit_insufficient_raises_error(self):
@@ -86,7 +86,7 @@ class TestLoadMasterCreditClient:
         assert result is True
         mock_http.post.assert_called_once()
         args, kwargs = mock_http.post.call_args
-        assert "/api/credits/refund" in args[0]
+        assert "/api/internal/credits/refund" in args[0]
 
 
 @pytest.mark.anyio
