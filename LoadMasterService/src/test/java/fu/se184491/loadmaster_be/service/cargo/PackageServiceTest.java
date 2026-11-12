@@ -9,7 +9,7 @@ import fu.se184491.loadmaster_be.entity.company.Company;
 import fu.se184491.loadmaster_be.entity.order.TransportOrder;
 import fu.se184491.loadmaster_be.exception.AppException;
 import fu.se184491.loadmaster_be.exception.ErrorCode;
-import fu.se184491.loadmaster_be.repository.cargo.PackageRepository;
+import fu.se184491.loadmaster_be.repository.cargo.CargoPackageRepository;
 import fu.se184491.loadmaster_be.repository.cargo.PackageTypeRepository;
 import fu.se184491.loadmaster_be.repository.company.CompanyRepository;
 import fu.se184491.loadmaster_be.repository.order.OrderRepository;
@@ -35,7 +35,7 @@ import static org.mockito.Mockito.*;
 public class PackageServiceTest {
 
     @Mock
-    private PackageRepository packageRepository;
+    private CargoPackageRepository packageRepository;
 
     @Mock
     private OrderRepository orderRepository;

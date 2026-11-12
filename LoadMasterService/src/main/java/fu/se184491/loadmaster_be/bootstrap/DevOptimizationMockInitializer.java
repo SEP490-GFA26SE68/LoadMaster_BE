@@ -34,7 +34,7 @@ import fu.se184491.loadmaster_be.repository.account.UserRepository;
 import fu.se184491.loadmaster_be.repository.billing.CompanySubscriptionRepository;
 import fu.se184491.loadmaster_be.repository.billing.CreditAccountRepository;
 import fu.se184491.loadmaster_be.repository.billing.SubscriptionPlanRepository;
-import fu.se184491.loadmaster_be.repository.cargo.PackageRepository;
+import fu.se184491.loadmaster_be.repository.cargo.CargoPackageRepository;
 import fu.se184491.loadmaster_be.repository.cargo.PackageTypeRepository;
 import fu.se184491.loadmaster_be.repository.company.CompanyRepository;
 import fu.se184491.loadmaster_be.repository.company.CompanyWarehouseRepository;
@@ -90,7 +90,7 @@ public class DevOptimizationMockInitializer implements ApplicationRunner {
     private final VehicleTypeRepository vehicleTypeRepository;
     private final VehicleRepository vehicleRepository;
     private final PackageTypeRepository packageTypeRepository;
-    private final PackageRepository packageRepository;
+    private final CargoPackageRepository packageRepository;
     private final CustomerRepository customerRepository;
     private final DeliveryRequirementRepository deliveryRequirementRepository;
     private final DeliveryStopRepository deliveryStopRepository;

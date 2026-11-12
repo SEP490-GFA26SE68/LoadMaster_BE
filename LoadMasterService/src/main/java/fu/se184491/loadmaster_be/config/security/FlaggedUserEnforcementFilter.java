@@ -126,10 +126,10 @@ public class FlaggedUserEnforcementFilter extends OncePerRequestFilter {
                 return true;
             }
         }
-        // Lối công khai chỉ đọc / gửi liên hệ, giống WebSecurityConfig (chỉ phương thức công khai, không mở lệnh ghi).
+        // Lối công khai chỉ đọc bảng giá / gửi liên hệ, giống WebSecurityConfig (chỉ phương thức công khai, không mở lệnh ghi).
         String method = request.getMethod();
         if (HttpMethod.GET.matches(method)
-                && (path.equals("/api/vehicle-types") || path.startsWith("/api/subscription/plans"))) {
+                && path.startsWith("/api/subscription/plans")) {
             return true;
         }
         return HttpMethod.POST.matches(method) && path.equals("/api/contact-guests");
