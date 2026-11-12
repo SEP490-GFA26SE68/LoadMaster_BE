@@ -77,6 +77,18 @@ class NotificationRulesTest {
         assertThat(NotificationRules.concerns(
                 event("TRIP_CANCELLED", 10L, Map.of("status", "LOADING"), Map.of("driverId", 13L), 13L), DRIVER))
                 .isTrue();
+        assertThat(NotificationRules.concerns(
+                event("TRIP_CANCELLED", 10L, Map.of("status", "IN_TRANSIT"), Map.of("driverId", 13L, "returned", 4), 13L),
+                DRIVER)).as("huỷ lúc xe đang chạy báo tài xế của chuyến").isTrue();
+    }
+
+    @Test
+    void managerHearsTripCancelledWhileInTransitAndWarehouseDoesNot() {
+        NotificationRules.Event cancelled = event("TRIP_CANCELLED", 10L,
+                Map.of("status", "IN_TRANSIT"), Map.of("returned", 4), null);
+        assertThat(NotificationRules.concerns(cancelled,
+                new NotificationRules.Viewer(40L, UserRole.MANAGER))).isTrue();
+        assertThat(NotificationRules.concerns(cancelled, WORKER)).isFalse();
     }
 
     @Test

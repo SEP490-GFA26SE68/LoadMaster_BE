@@ -95,7 +95,8 @@ public enum ErrorCode {
     // Vòng đời chuyến
     INVALID_TRIP_STATUS_TRANSITION("Chuyển trạng thái chuyến không hợp lệ", HttpStatus.CONFLICT),
     TRIP_NOT_EDITABLE("Chỉ sửa được chuyến ở trạng thái Nháp hoặc Đã lập kế hoạch", HttpStatus.CONFLICT),
-    TRIP_NOT_CANCELLABLE("Chỉ huỷ được chuyến ở trạng thái Nháp, Đã lập kế hoạch hoặc Đang xếp hàng", HttpStatus.CONFLICT),
+    TRIP_NOT_CANCELLABLE("Chỉ huỷ được chuyến ở trạng thái Nháp, Đã lập kế hoạch, Đang xếp hàng, hoặc Đang vận chuyển khi có sự cố chưa xử lý", HttpStatus.CONFLICT),
+    TRIP_CANCEL_NEEDS_OPEN_EXCEPTION("Chuyến đang vận chuyển chỉ huỷ được khi có sự cố trên đường chưa xử lý", HttpStatus.CONFLICT),
     TRIP_HAS_NO_STOPS("Chuyến chưa có điểm giao nào", HttpStatus.BAD_REQUEST),
     TRIP_HAS_NO_PACKAGES("Chuyến chưa có kiện nào", HttpStatus.BAD_REQUEST),
     DELIVERY_REQUIREMENT_NOT_IN_TRIP("Yêu cầu giao không thuộc chuyến này", HttpStatus.BAD_REQUEST),

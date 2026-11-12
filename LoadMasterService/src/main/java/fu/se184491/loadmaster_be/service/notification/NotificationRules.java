@@ -128,7 +128,8 @@ public final class NotificationRules {
             case "TRIP_STATUS_TRANSITION" -> TripStatus.LOADING.name().equals(text(value(event.newValues(), "status")))
                     && sameId(driverOf(event), driverId);
             case "LOADING_COMPLETED" -> sameId(driverOf(event), driverId);
-            case "TRIP_CANCELLED" -> wasLoading(event) && sameId(driverOf(event), driverId);
+            // Huỷ lúc kho đang xếp, hoặc lúc xe đang chạy (có sự cố chưa xử lý): tài xế của chuyến đã biết chuyến
+            case "TRIP_CANCELLED" -> (wasLoading(event) || cancelledInTransit(event)) && sameId(driverOf(event), driverId);
             // Quyết định về yêu cầu nhận dọc đường: tài xế của chuyến lúc quyết định
             case "PICKUP_APPROVED", "PICKUP_REJECTED" -> sameId(value(event.newValues(), "driverId"), driverId);
             // Điều phối viên đổi thứ tự điểm khi xe đang chạy: tài xế của chuyến lúc đổi
@@ -159,6 +160,10 @@ public final class NotificationRules {
     private static boolean wasLoading(Event event) {
         return !"TRIP_CANCELLED".equals(event.action())
                 || TripStatus.LOADING.name().equals(text(value(event.oldValues(), "status")));
+    }
+
+    private static boolean cancelledInTransit(Event event) {
+        return TripStatus.IN_TRANSIT.name().equals(text(value(event.oldValues(), "status")));
     }
 
     private static Object driverOf(Event event) {

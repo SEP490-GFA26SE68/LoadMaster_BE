@@ -104,4 +104,8 @@ public class Trip {
     @Enumerated(EnumType.STRING)
     @Column(name = "cancelled_from_status", length = 20)
     private TripStatus cancelledFromStatus;
+
+    /** Số kiện thành hoàn trả khi chuyến bị huỷ lúc đang vận chuyển; chuyến khác thì null. */
+    @Column(name = "cancel_returned_count")
+    private Integer cancelReturnedCount;
 }
