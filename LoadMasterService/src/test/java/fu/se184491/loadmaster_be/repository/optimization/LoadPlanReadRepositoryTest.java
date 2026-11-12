@@ -137,6 +137,10 @@ class LoadPlanReadRepositoryTest {
         ArgumentCaptor<String> sql = ArgumentCaptor.forClass(String.class);
         verify(jdbc).query(sql.capture(), eq(Map.of("id", 42L)), any(RowMapper.class));
         assertThat(sql.getValue()).contains("COALESCE(lp.packed_items_count, 0) > 0");
+        // created_at không múi giờ là giờ Việt Nam (hai dịch vụ ghi cùng cách)
+        ArgumentCaptor<Calendar> calendar = ArgumentCaptor.forClass(Calendar.class);
+        verify(rs).getTimestamp(eq("created_at"), calendar.capture());
+        assertThat(calendar.getValue().getTimeZone().getID()).isEqualTo("Asia/Ho_Chi_Minh");
     }
 
     /** Dòng kiện đã xếp giả: số đọc theo tên cột; loại kiện vắng thì cột package_type_id là NULL. */
