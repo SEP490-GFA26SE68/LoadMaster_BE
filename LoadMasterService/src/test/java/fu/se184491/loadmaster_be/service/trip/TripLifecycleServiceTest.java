@@ -69,6 +69,7 @@ class TripLifecycleServiceTest {
     @Mock private LoadPlanRepository loadPlanRepository;
     @Mock private TripPackageResolver tripPackageResolver;
     @Mock private TripExceptionRepository tripExceptionRepository;
+    @Mock private fu.se184491.loadmaster_be.repository.pickup.PickupRequestRepository pickupRequestRepository;
 
     @InjectMocks
     private TripLifecycleService service;
@@ -176,6 +177,37 @@ class TripLifecycleServiceTest {
         assertEquals(3, audit.getValue().getNewValues().get("returned"));
         assertEquals(13L, audit.getValue().getNewValues().get("driverId"));
         assertEquals("IN_TRANSIT", audit.getValue().getOldValues().get("status"));
+    }
+
+    @Test
+    void cancellingInTransitReturnsPackagesAlreadyPickedAtAnOpenPickupStop() {
+        trip.setStatus(TripStatus.IN_TRANSIT);
+        when(tripExceptionRepository.existsByTripIdAndStatusIn(eq(10L), any())).thenReturn(true);
+        DeliveryStop pickupStop = DeliveryStop.builder().id(40L).trip(trip).stopSequence(2)
+                .stopType(fu.se184491.loadmaster_be.constant.trip.DeliveryStopType.PICKUP)
+                .status(DeliveryStopStatus.ARRIVED).build();
+        DeliveryStop dropStop = DeliveryStop.builder().id(41L).trip(trip).stopSequence(3).build();
+        CargoPackage picked = CargoPackage.builder().id(50L).status(PackageStatus.LOADED).build();
+        CargoPackage notYetPicked = CargoPackage.builder().id(51L).status(PackageStatus.PLANNED).build();
+        CargoPackage regular = CargoPackage.builder().id(52L).status(PackageStatus.LOADED).build();
+        var request = fu.se184491.loadmaster_be.entity.pickup.PickupRequest.builder().id(60L)
+                .status(fu.se184491.loadmaster_be.constant.pickup.PickupRequestStatus.APPROVED).build();
+        request.getPackages().add(fu.se184491.loadmaster_be.entity.pickup.PickupRequestPackage.builder()
+                .cargoPackage(picked).pickedAt(LocalDateTime.of(2026, 11, 6, 10, 0)).build());
+        request.getPackages().add(fu.se184491.loadmaster_be.entity.pickup.PickupRequestPackage.builder()
+                .cargoPackage(notYetPicked).build());
+        when(deliveryStopRepository.findByTripIdOrderByStopSequenceAsc(10L)).thenReturn(List.of(pickupStop, dropStop));
+        when(tripPackageResolver.packagesOfStop(40L)).thenReturn(List.of());
+        when(tripPackageResolver.packagesOfStop(41L)).thenReturn(List.of(regular));
+        when(pickupRequestRepository.findByPickupStopId(40L)).thenReturn(List.of(request));
+
+        service.cancelTrip(10L, "Xe hỏng giữa đường");
+
+        assertEquals(PackageStatus.RETURNED, picked.getStatus());
+        assertEquals(PackageStatus.PLANNED, notYetPicked.getStatus());
+        assertEquals(PackageStatus.RETURNED, regular.getStatus());
+        assertEquals(2, trip.getCancelReturnedCount());
+        verify(pickupRequestRepository, never()).findByPickupStopId(41L);
     }
 
     @Test
