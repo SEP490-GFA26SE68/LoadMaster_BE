@@ -95,6 +95,14 @@ class TestPinnedSolver:
             assert by_id[key].pinned is False
             assert not overlaps(by_id[key], pinned)
 
+    def test_solver_logs_debug_instead_of_printing(self, capsys, caplog):
+        with caplog.at_level("DEBUG", logger="app.service.optimize.optimization_client"):
+            OptimizationClient().solve_in_process(problem())
+
+        assert capsys.readouterr().out == ""
+        assert any("BEFORE HC-11 / HC-12" in r.getMessage() and r.levelname == "DEBUG"
+                   for r in caplog.records)
+
     def test_pinned_package_outside_trip_is_ignored(self):
         pin = PinnedData(package_id="999", pos_x=0, pos_y=0, pos_z=0)
         result = OptimizationClient().solve_in_process(problem([pin]))
