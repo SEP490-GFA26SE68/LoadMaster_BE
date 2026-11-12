@@ -309,7 +309,8 @@ public class GuestRegistrationServiceImpl implements GuestRegistrationService {
         }
 
         // 2. Find Registration Session
-        GuestRegistrationSession session = sessionRepository.findByPaymentRef(txnRef)
+        // Khoá phiên tới hết giao dịch để hai lượt callback không cùng tạo công ty, tài khoản.
+        GuestRegistrationSession session = sessionRepository.findByPaymentRefForUpdate(txnRef)
                 .orElse(null);
 
         if (session == null) {

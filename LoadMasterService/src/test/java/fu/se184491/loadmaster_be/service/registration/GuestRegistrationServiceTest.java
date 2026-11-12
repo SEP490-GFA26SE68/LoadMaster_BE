@@ -542,7 +542,7 @@ class GuestRegistrationServiceTest {
         params.put("vnp_SecureHash", "mock_hash");
 
         when(vnPayClient.isMock()).thenReturn(true);
-        when(sessionRepository.findByPaymentRef("REG_12345")).thenReturn(Optional.of(session));
+        when(sessionRepository.findByPaymentRefForUpdate("REG_12345")).thenReturn(Optional.of(session));
         when(companyRepository.save(any(fu.se184491.loadmaster_be.entity.company.Company.class))).thenAnswer(i -> {
             fu.se184491.loadmaster_be.entity.company.Company comp = i.getArgument(0);
             comp.setId(10L);
@@ -613,7 +613,7 @@ class GuestRegistrationServiceTest {
         java.util.Map<String, String> result = service.handlePaymentCallback(params);
 
         assertThat(result.get("RspCode")).isEqualTo("97");
-        verify(sessionRepository, never()).findByPaymentRef(any());
+        verify(sessionRepository, never()).findByPaymentRefForUpdate(any());
         verify(companyRepository, never()).save(any());
     }
 
@@ -631,7 +631,7 @@ class GuestRegistrationServiceTest {
         java.util.Map<String, String> result = service.handlePaymentCallback(params);
 
         assertThat(result.get("RspCode")).isEqualTo("97");
-        verify(sessionRepository, never()).findByPaymentRef(any());
+        verify(sessionRepository, never()).findByPaymentRefForUpdate(any());
         verify(companyRepository, never()).save(any());
     }
 
@@ -660,7 +660,7 @@ class GuestRegistrationServiceTest {
         );
 
         when(vnPayClient.isMock()).thenReturn(true);
-        when(sessionRepository.findByPaymentRef("REG_NOT_FOUND")).thenReturn(Optional.empty());
+        when(sessionRepository.findByPaymentRefForUpdate("REG_NOT_FOUND")).thenReturn(Optional.empty());
 
         java.util.Map<String, String> result = service.handlePaymentCallback(params);
 
@@ -681,7 +681,7 @@ class GuestRegistrationServiceTest {
         );
 
         when(vnPayClient.isMock()).thenReturn(true);
-        when(sessionRepository.findByPaymentRef("REG_12345")).thenReturn(Optional.of(session));
+        when(sessionRepository.findByPaymentRefForUpdate("REG_12345")).thenReturn(Optional.of(session));
 
         java.util.Map<String, String> result = service.handlePaymentCallback(params);
 
@@ -707,7 +707,7 @@ class GuestRegistrationServiceTest {
         );
 
         when(vnPayClient.isMock()).thenReturn(true);
-        when(sessionRepository.findByPaymentRef("REG_12345")).thenReturn(Optional.of(session));
+        when(sessionRepository.findByPaymentRefForUpdate("REG_12345")).thenReturn(Optional.of(session));
 
         java.util.Map<String, String> result = service.handlePaymentCallback(params);
 
