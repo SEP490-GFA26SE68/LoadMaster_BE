@@ -16,20 +16,24 @@ from app.exception.global_exception_handler import register_exception_handlers
 
 logger = logging.getLogger(__name__)
 
+# Tài liệu API chỉ mở ở máy dev hoặc khi API_DOCS_ENABLED=true.
+_docs_enabled = settings.api_docs_enabled()
+
 app = FastAPI(
     title=settings.APP_NAME,
     version="1.0.0",
-    docs_url="/docs",
-    redoc_url="/redoc",
+    docs_url="/docs" if _docs_enabled else None,
+    redoc_url="/redoc" if _docs_enabled else None,
+    openapi_url="/openapi.json" if _docs_enabled else None,
 )
 
-# CORS
+# CORS: chỉ origin đã khai; xác thực bằng Bearer token nên không cần gửi cookie.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=settings.cors_origins(),
+    allow_credentials=False,
+    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type"],
 )
 
 # Exception handlers
