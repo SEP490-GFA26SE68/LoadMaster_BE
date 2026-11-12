@@ -95,7 +95,8 @@ public enum ErrorCode {
     // Vòng đời chuyến
     INVALID_TRIP_STATUS_TRANSITION("Chuyển trạng thái chuyến không hợp lệ", HttpStatus.CONFLICT),
     TRIP_NOT_EDITABLE("Chỉ sửa được chuyến ở trạng thái Nháp hoặc Đã lập kế hoạch", HttpStatus.CONFLICT),
-    TRIP_NOT_CANCELLABLE("Chỉ huỷ được chuyến ở trạng thái Nháp, Đã lập kế hoạch hoặc Đang xếp hàng", HttpStatus.CONFLICT),
+    TRIP_NOT_CANCELLABLE("Chỉ huỷ được chuyến ở trạng thái Nháp, Đã lập kế hoạch, Đang xếp hàng, hoặc Đang vận chuyển khi có sự cố chưa xử lý", HttpStatus.CONFLICT),
+    TRIP_CANCEL_NEEDS_OPEN_EXCEPTION("Chuyến đang vận chuyển chỉ huỷ được khi có sự cố trên đường chưa xử lý", HttpStatus.CONFLICT),
     TRIP_HAS_NO_STOPS("Chuyến chưa có điểm giao nào", HttpStatus.BAD_REQUEST),
     TRIP_HAS_NO_PACKAGES("Chuyến chưa có kiện nào", HttpStatus.BAD_REQUEST),
     DELIVERY_REQUIREMENT_NOT_IN_TRIP("Yêu cầu giao không thuộc chuyến này", HttpStatus.BAD_REQUEST),
@@ -116,6 +117,7 @@ public enum ErrorCode {
     TRIP_REPORT_NOT_AVAILABLE("Chỉ xem báo cáo của chuyến đã giao hoặc bị huỷ khi đang vận chuyển", HttpStatus.CONFLICT),
     TRIP_NOT_IN_TRANSIT("Chuyến không ở trạng thái Đang vận chuyển", HttpStatus.CONFLICT),
     STOP_ORDER_INVALID("Thứ tự điểm giao không hợp lệ", HttpStatus.BAD_REQUEST),
+    MISSING_STOP_COORDINATES("Còn điểm giao chưa có toạ độ", HttpStatus.BAD_REQUEST),
     STOP_NOT_MOVABLE("Điểm đã hoàn tất hoặc xe đã tới không đổi chỗ được", HttpStatus.CONFLICT),
     PICKUP_AFTER_DELIVERY("Điểm nhận hàng phải đứng trước điểm giao của nó", HttpStatus.CONFLICT),
     STOP_ORDER_BLOCKS_CARGO("Thứ tự mới làm kiện bị che kín lối dỡ", HttpStatus.CONFLICT),

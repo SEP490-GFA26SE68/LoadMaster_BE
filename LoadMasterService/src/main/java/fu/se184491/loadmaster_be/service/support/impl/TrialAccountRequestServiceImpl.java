@@ -2,6 +2,7 @@ package fu.se184491.loadmaster_be.service.support.impl;
 
 import fu.se184491.loadmaster_be.client.BrevoClient;
 import fu.se184491.loadmaster_be.client.KeycloakAdminClient;
+import fu.se184491.loadmaster_be.config.FrontendUrls;
 import fu.se184491.loadmaster_be.constant.account.UserRole;
 import fu.se184491.loadmaster_be.constant.account.UserStatus;
 import fu.se184491.loadmaster_be.constant.account.UserType;
@@ -39,6 +40,7 @@ import fu.se184491.loadmaster_be.service.support.TrialAccountRequestService;
 import jakarta.persistence.criteria.Predicate;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
@@ -77,6 +79,9 @@ public class TrialAccountRequestServiceImpl implements TrialAccountRequestServic
     private final CompanyCodeGenerator companyCodeGenerator;
     private final BrevoClient brevoClient;
     private final CompanyAgreementService companyAgreementService;
+
+    @Value(FrontendUrls.URL)
+    private String frontendUrl = FrontendUrls.DEFAULT;
 
     @Override
     public TrialAccountRequestResponse createTrialRequest(CreateTrialAccountRequest request, User requestedBy) {
@@ -412,7 +417,7 @@ public class TrialAccountRequestServiceImpl implements TrialAccountRequestServic
 
                 HƯỚNG DẪN BẮT ĐẦU:
                 Vui lòng truy cập hệ thống để đăng nhập và tiến hành đổi mật khẩu ở lần đầu tiên.
-                Đường dẫn truy cập: http://localhost:5173/dang-nhap
+                Đường dẫn truy cập: %s
 
                 Nếu cần hỗ trợ kỹ thuật trong quá trình trải nghiệm, vui lòng liên hệ đội ngũ hỗ trợ của chúng tôi.
 
@@ -428,7 +433,8 @@ public class TrialAccountRequestServiceImpl implements TrialAccountRequestServic
                 planName,
                 trialDays,
                 expiresAt.toLocalDate(),
-                credits
+                credits,
+                FrontendUrls.join(frontendUrl, "/dang-nhap")
         );
 
         brevoClient.sendEmail(trial.getEmail(), "LoadMaster - Thông tin tài khoản trải nghiệm dịch vụ", emailContent);

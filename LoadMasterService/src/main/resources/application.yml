@@ -1,6 +1,7 @@
+# Không bật profile nào mặc định: Spring Boot tự đọc biến SPRING_PROFILES_ACTIVE. Máy dev đặt SPRING_PROFILES_ACTIVE=dev
+# để tạo admin, công ty và dữ liệu mẫu (DevAdminInitializer, DevCompanyInitializer, DevOptimizationMockInitializer);
+# chạy không đặt biến đó thì không ghi dữ liệu mẫu nào vào DB.
 spring:
-  profiles:
-    active: ${SPRING_PROFILES_ACTIVE:dev}
   servlet:
     multipart:
       max-file-size: 10MB
@@ -31,8 +32,9 @@ spring:
     url: ${DATABASE_URL:jdbc:postgresql://localhost:5432/loadmaster}
     username: ${POSTGRES_USER}
     password: ${POSTGRES_PASSWORD}
+    # Pooler Supabase dùng chung cả nhóm chỉ có khoảng 15 kết nối: giữ pool nhỏ, máy nào cần hơn thì đặt biến.
     hikari:
-      maximum-pool-size: ${DB_MAX_POOL_SIZE:3}
+      maximum-pool-size: ${DB_MAX_POOL_SIZE:5}
       minimum-idle: ${DB_MIN_IDLE:1}
       idle-timeout: 30000
       max-lifetime: 600000
@@ -49,6 +51,10 @@ spring:
     baseline-version: 0
 
   jpa:
+    # Giữ bật có chủ ý: còn service không có @Transactional mà vẫn đi qua quan hệ lazy (ví dụ xuất nhãn PDF đọc
+    # kiện → đơn → điểm giao), tắt là LazyInitializationException. Chỉ tắt khi đã rà hết các đường đọc đó.
+    # Ghi rõ để Spring không cảnh báo lúc khởi động.
+    open-in-view: true
     hibernate:
       ddl-auto: update
     properties:
@@ -80,3 +86,18 @@ springdoc:
 app:
   security:
     qr-aes-secret: ${QR_AES_SECRET}
+  # Web app: origin được gọi API (CORS, ngăn bằng dấu phẩy) và địa chỉ dùng trong chuyển hướng sau thanh toán, email, hoá đơn.
+  frontend:
+    url: ${FRONTEND_URL:http://localhost:5173}
+    cors-origins: ${CORS_ALLOWED_ORIGINS:${FRONTEND_URL:http://localhost:5173}}
+  password:
+    generator:
+      upper: ${UPPER:ABCDEFGHIJKLMNOPQRSTUVWXYZ}
+      lower: ${LOWER:abcdefghijklmnopqrstuvwxyz}
+      digits: ${DIGITS:0123456789}
+  brevo:
+    api-key: ${BREVO_API_KEY}
+    sender-email: ${BREVO_SENDER_EMAIL}
+    sender-name: ${BREVO_SENDER_NAME:loadmaster}
+    security:
+      otp-hmac-secret: ${OTP_HMAC_SECRET}

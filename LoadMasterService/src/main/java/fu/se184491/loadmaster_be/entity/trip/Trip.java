@@ -74,6 +74,10 @@ public class Trip {
     @Column(name = "departure_time")
     private LocalDateTime departureTime;
 
+    /** Giờ tài xế bấm Xuất phát (chuyến thành IN_TRANSIT); chưa xuất phát, hoặc xuất phát trước khi có cột này, thì null. */
+    @Column(name = "departed_at")
+    private LocalDateTime departedAt;
+
     @Builder.Default
     @ColumnDefault("'DRAFT'")
     @Enumerated(EnumType.STRING) @Column(name = "status", length = 20, nullable = false)
@@ -104,4 +108,8 @@ public class Trip {
     @Enumerated(EnumType.STRING)
     @Column(name = "cancelled_from_status", length = 20)
     private TripStatus cancelledFromStatus;
+
+    /** Số kiện thành hoàn trả khi chuyến bị huỷ lúc đang vận chuyển; chuyến khác thì null. */
+    @Column(name = "cancel_returned_count")
+    private Integer cancelReturnedCount;
 }

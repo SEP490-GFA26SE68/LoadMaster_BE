@@ -3,6 +3,7 @@ package fu.se184491.loadmaster_be.service.registration.impl;
 import fu.se184491.loadmaster_be.client.BrevoClient;
 import fu.se184491.loadmaster_be.client.KeycloakAdminClient;
 import fu.se184491.loadmaster_be.client.VnPayClient;
+import fu.se184491.loadmaster_be.config.FrontendUrls;
 import fu.se184491.loadmaster_be.constant.registration.RegistrationStatus;
 import fu.se184491.loadmaster_be.dto.request.registration.AcceptPolicyRequest;
 import fu.se184491.loadmaster_be.dto.request.registration.GuestRegistrationInitRequest;
@@ -27,6 +28,7 @@ import fu.se184491.loadmaster_be.service.registration.GuestRegistrationService;
 import fu.se184491.loadmaster_be.service.security.OtpHasher;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -55,6 +57,9 @@ public class GuestRegistrationServiceImpl implements GuestRegistrationService {
     private final BrevoClient brevoClient;
     private final OtpHasher otpHasher;
     private final TemporaryPasswordGenerator temporaryPasswordGenerator;
+
+    @Value(FrontendUrls.URL)
+    private String frontendUrl = FrontendUrls.DEFAULT;
 
     private static final SecureRandom RANDOM = new SecureRandom();
 
@@ -505,7 +510,7 @@ public class GuestRegistrationServiceImpl implements GuestRegistrationService {
             document.add(new com.itextpdf.text.Paragraph("Trang thai / Status: DA THANH TOAN (PAID)", boldFont));
 
             document.add(new com.itextpdf.text.Paragraph("----------------------------------------------------------------------------------------------------", normalFont));
-            com.itextpdf.text.Paragraph footer = new com.itextpdf.text.Paragraph("Cam on ban da su dung dich vu cua LoadMaster Platform!\nWebsite: http://localhost:5173", normalFont);
+            com.itextpdf.text.Paragraph footer = new com.itextpdf.text.Paragraph("Cam on ban da su dung dich vu cua LoadMaster Platform!\nWebsite: " + FrontendUrls.join(frontendUrl, ""), normalFont);
             footer.setSpacingBefore(30);
             document.add(footer);
 
@@ -547,7 +552,7 @@ public class GuestRegistrationServiceImpl implements GuestRegistrationService {
 
                 HƯỚNG DẪN ĐĂNG NHẬP:
                 Vui lòng truy cập đường dẫn bên dưới để đăng nhập và đổi mật khẩu ở lần đầu tiên:
-                http://localhost:5173/dang-nhap
+                %s
 
                 Hóa đơn thanh toán chi tiết được đính kèm cùng email này (file PDF).
 
@@ -561,7 +566,8 @@ public class GuestRegistrationServiceImpl implements GuestRegistrationService {
                 user.getEmail(),
                 temporaryPassword,
                 plan != null ? plan.getName() : "Gói dịch vụ SaaS",
-                billingCycle != null ? billingCycle.name() : "MONTHLY"
+                billingCycle != null ? billingCycle.name() : "MONTHLY",
+                FrontendUrls.join(frontendUrl, "/dang-nhap")
         );
 
         brevoClient.sendEmailWithAttachment(user.getEmail(), subject, content, "hoa-don-loadmaster.pdf", invoicePdf);

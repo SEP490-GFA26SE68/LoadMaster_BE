@@ -1,6 +1,7 @@
 package fu.se184491.loadmaster_be.entity.pickup;
 
 import fu.se184491.loadmaster_be.constant.cargo.HandlingClass;
+import fu.se184491.loadmaster_be.constant.cargo.LabelMethod;
 import fu.se184491.loadmaster_be.entity.account.User;
 import fu.se184491.loadmaster_be.entity.cargo.CargoPackage;
 import jakarta.persistence.*;
@@ -56,6 +57,11 @@ public class PickupRequestPackage {
 
     @Column(name = "picked_at")
     private LocalDateTime pickedAt;
+
+    /** Cách tài xế đối chiếu kiện lúc nhận lên xe; dòng cũ để trống là QR. */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "pick_method", length = 10)
+    private LabelMethod pickMethod;
 
     @ManyToOne(fetch = FetchType.LAZY) @JoinColumn(name = "picked_by")
     private User pickedBy;

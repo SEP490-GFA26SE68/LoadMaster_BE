@@ -22,7 +22,9 @@ public record TripReportResponse(
         LocalDateTime departureTime,
         /** Giờ tài xế hoàn tất điểm cuối; null khi chưa có. */
         LocalDateTime completedAt,
-        /** Chuyến đã huỷ: lý do và trạng thái lúc huỷ; null khi chuyến không bị huỷ. */
+        /** Phút từ lúc tài xế xuất phát tới khi hoàn tất điểm cuối; null khi thiếu một trong hai mốc (chuyến bị huỷ, dữ liệu cũ). */
+        Integer deliveryMinutes,
+        /** Chuyến đã huỷ: lý do, trạng thái lúc huỷ và số kiện thành hoàn trả lúc huỷ; null khi chuyến không bị huỷ. */
         Cancellation cancellation,
         /** Phiên xếp hàng đã hoàn tất của chuyến; null khi kho chưa xếp xong. */
         Loading loading,
@@ -32,13 +34,16 @@ public record TripReportResponse(
         Packages packages,
         /** Số kiện theo cách đối chiếu có hiệu lực ở từng bước: soạn, xếp, dỡ. */
         List<Verification> verifications,
+        /** Số kiện theo từng cách đối chiếu ở từng bước: soạn, xếp, dỡ, nhận dọc đường. */
+        List<VerificationMethods> verificationMethods,
         List<ManualConfirmation> manualConfirmations,
         List<TripExceptionItem> exceptions,
         List<Reroute> reroutes
 ) {
 
+    /** {@code returned}: số kiện thành hoàn trả lúc huỷ khi đang vận chuyển; null với chuyến huỷ trước khi xe chạy hoặc dữ liệu cũ. */
     @Builder
-    public record Cancellation(String reason, TripStatus fromStatus) {
+    public record Cancellation(String reason, TripStatus fromStatus, Integer returned) {
     }
 
     @Builder
@@ -58,6 +63,8 @@ public record TripReportResponse(
             int issues,
             LocalDateTime plannedArrival,
             LocalDateTime actualArrival,
+            /** Giờ tài xế hoàn tất điểm; null khi chưa hoàn tất hoặc dữ liệu cũ. */
+            LocalDateTime completedAt,
             LocalDateTime deadline,
             /** Mức hạn theo giờ đến kế hoạch: ON_TIME, AT_RISK, MISSED; null khi không có hạn hoặc không có giờ kế hoạch. */
             String plannedStatus,
@@ -74,6 +81,11 @@ public record TripReportResponse(
     /** {@code label}: đối chiếu bằng nhãn (quét hoặc gõ mã); {@code manual}: xác nhận tay chưa bị từ chối. */
     @Builder
     public record Verification(String step, int label, int manual) {
+    }
+
+    /** {@code qr}: quét mã QR; {@code code}: gõ mã in trên nhãn (bản ghi cũ không ghi cách là QR); {@code manual}: xác nhận tay chưa bị từ chối. */
+    @Builder
+    public record VerificationMethods(String step, int qr, int code, int manual) {
     }
 
     @Builder

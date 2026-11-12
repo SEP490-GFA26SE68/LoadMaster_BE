@@ -3,7 +3,11 @@ package fu.se184491.loadmaster_be.service.trip;
 import fu.se184491.loadmaster_be.constant.cargo.PackageStatus;
 import fu.se184491.loadmaster_be.constant.optimization.LoadingExecutionStatus;
 import fu.se184491.loadmaster_be.constant.planning.DeliveryRequirementStatus;
+import fu.se184491.loadmaster_be.constant.trip.DeliveryStopStatus;
 import fu.se184491.loadmaster_be.constant.trip.TripStatus;
+import fu.se184491.loadmaster_be.entity.common.AuditLog;
+import fu.se184491.loadmaster_be.repository.monitoring.TripExceptionRepository;
+import org.mockito.ArgumentCaptor;
 import fu.se184491.loadmaster_be.dto.request.trip.TripUpdateRequest;
 import fu.se184491.loadmaster_be.entity.account.User;
 import fu.se184491.loadmaster_be.entity.cargo.CargoPackage;
@@ -44,6 +48,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -63,6 +68,7 @@ class TripLifecycleServiceTest {
     @Mock private TripStatusService tripStatusService;
     @Mock private LoadPlanRepository loadPlanRepository;
     @Mock private TripPackageResolver tripPackageResolver;
+    @Mock private TripExceptionRepository tripExceptionRepository;
 
     @InjectMocks
     private TripLifecycleService service;
@@ -109,13 +115,67 @@ class TripLifecycleServiceTest {
     }
 
     @Test
-    void tripInTransitCannotBeCancelled() {
+    void tripInTransitWithoutUnresolvedExceptionCannotBeCancelled() {
         trip.setStatus(TripStatus.IN_TRANSIT);
+        when(tripExceptionRepository.existsByTripIdAndStatusIn(eq(10L), any())).thenReturn(false);
 
         AppException error = assertThrows(AppException.class, () -> service.cancelTrip(10L, "Hỏng xe"));
 
+        assertEquals(ErrorCode.TRIP_CANCEL_NEEDS_OPEN_EXCEPTION, error.getErrorCode());
+        verify(tripStatusService, never()).transitionTo(any(), any(), any());
+        verify(deliveryStopRepository, never()).findByTripIdOrderByStopSequenceAsc(any());
+    }
+
+    @Test
+    void deliveredTripCannotBeCancelled() {
+        trip.setStatus(TripStatus.DELIVERED);
+
+        AppException error = assertThrows(AppException.class, () -> service.cancelTrip(10L, "Nhầm"));
+
         assertEquals(ErrorCode.TRIP_NOT_CANCELLABLE, error.getErrorCode());
         verify(tripStatusService, never()).transitionTo(any(), any(), any());
+    }
+
+    @Test
+    void cancellingInTransitTripWithOpenExceptionReturnsUndeliveredPackagesAndKeepsRequirements() {
+        trip.setStatus(TripStatus.IN_TRANSIT);
+        trip.setDriver(User.builder().id(13L).build());
+        when(tripExceptionRepository.existsByTripIdAndStatusIn(eq(10L), any())).thenReturn(true);
+        DeliveryStop done = DeliveryStop.builder().id(30L).trip(trip).stopSequence(1)
+                .status(DeliveryStopStatus.COMPLETED).build();
+        DeliveryStop current = DeliveryStop.builder().id(31L).trip(trip).stopSequence(2)
+                .status(DeliveryStopStatus.ARRIVED).build();
+        DeliveryStop next = DeliveryStop.builder().id(32L).trip(trip).stopSequence(3).build();
+        CargoPackage delivered = CargoPackage.builder().id(1L).status(PackageStatus.DELIVERED).build();
+        CargoPackage unloadedAtCurrent = CargoPackage.builder().id(2L).status(PackageStatus.DELIVERED).build();
+        CargoPackage onBoardAtCurrent = CargoPackage.builder().id(3L).status(PackageStatus.LOADED).build();
+        CargoPackage onBoardLater = CargoPackage.builder().id(4L).status(PackageStatus.LOADED).build();
+        DeliveryRequirement requirement = requirement(DeliveryRequirementStatus.IN_TRIP, onBoardLater);
+        when(deliveryStopRepository.findByTripIdOrderByStopSequenceAsc(10L)).thenReturn(List.of(done, current, next));
+        when(tripPackageResolver.packagesOfStop(31L)).thenReturn(List.of(unloadedAtCurrent, onBoardAtCurrent));
+        when(tripPackageResolver.packagesOfStop(32L)).thenReturn(List.of(onBoardLater));
+
+        service.cancelTrip(10L, "Xe hỏng giữa đường");
+
+        assertEquals(PackageStatus.DELIVERED, delivered.getStatus());
+        assertEquals(PackageStatus.RETURNED, unloadedAtCurrent.getStatus());
+        assertEquals(PackageStatus.RETURNED, onBoardAtCurrent.getStatus());
+        assertEquals(PackageStatus.RETURNED, onBoardLater.getStatus());
+        assertEquals(trip, requirement.getTrip());
+        assertEquals(DeliveryRequirementStatus.IN_TRIP, requirement.getStatus());
+        assertEquals(3, trip.getCancelReturnedCount());
+        assertEquals(TripStatus.IN_TRANSIT, trip.getCancelledFromStatus());
+        assertEquals("Xe hỏng giữa đường", trip.getCancelReason());
+        verify(tripPackageResolver, never()).packagesOfStop(30L);
+        verify(deliveryRequirementRepository, never()).findByTripId(any());
+        verify(tripStatusService).transitionTo(10L, TripStatus.CANCELLED, 7L);
+
+        ArgumentCaptor<AuditLog> audit = ArgumentCaptor.forClass(AuditLog.class);
+        verify(auditLogRepository).save(audit.capture());
+        assertEquals("TRIP_CANCELLED", audit.getValue().getActionType());
+        assertEquals(3, audit.getValue().getNewValues().get("returned"));
+        assertEquals(13L, audit.getValue().getNewValues().get("driverId"));
+        assertEquals("IN_TRANSIT", audit.getValue().getOldValues().get("status"));
     }
 
     @Test

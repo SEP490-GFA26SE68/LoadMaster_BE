@@ -79,6 +79,15 @@ public class StopReorderService {
         }
 
         List<DeliveryStop> stops = deliveryStopRepository.findByTripIdOrderByStopSequenceAsc(trip.getId());
+        // Điểm xe còn phải tới mà chưa có toạ độ thì không tính lại được giờ đến: từ chối trước khi đổi gì
+        List<String> missingCoordinates = stops.stream()
+                .filter(stop -> stop.getStatus() != DeliveryStopStatus.COMPLETED && stop.getActualArrival() == null)
+                .filter(stop -> stop.getLatitude() == null || stop.getLongitude() == null)
+                .map(stop -> String.valueOf(stop.getId()))
+                .toList();
+        if (!missingCoordinates.isEmpty()) {
+            throw new AppException(ErrorCode.MISSING_STOP_COORDINATES, Map.of("stopIds", missingCoordinates));
+        }
         List<Long> current = stops.stream().map(DeliveryStop::getId).toList();
         int fixedCount = 0;
         for (int index = 0; index < stops.size(); index++) {

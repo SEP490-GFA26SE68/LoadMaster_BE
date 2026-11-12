@@ -2,6 +2,7 @@ package fu.se184491.loadmaster_be.service.warehouse.Impl;
 
 import fu.se184491.loadmaster_be.service.audit.AuditCompany;
 import fu.se184491.loadmaster_be.constant.optimization.LoadingExecutionStatus;
+import fu.se184491.loadmaster_be.constant.cargo.LabelMethod;
 import fu.se184491.loadmaster_be.constant.cargo.PackageStatus;
 import fu.se184491.loadmaster_be.constant.trip.TripStatus;
 import fu.se184491.loadmaster_be.dto.request.warehouse.RecordDeviationRequest;
@@ -373,7 +374,7 @@ public class WarehouseServiceImpl implements WarehouseService {
 
     @Override
     @Transactional
-    public ConfirmPlacementResponse confirmPlacement(Long placementId, Long workerId) {
+    public ConfirmPlacementResponse confirmPlacement(Long placementId, Long workerId, LabelMethod method) {
         User worker = currentUserService.getCurrentUser();
         if (workerId != null && !workerId.equals(worker.getId())) {
             throw new AppException(ErrorCode.UNAUTHORIZED);
@@ -393,6 +394,7 @@ public class WarehouseServiceImpl implements WarehouseService {
                 .placement(placement)
                 .confirmedBy(worker)
                 .confirmedAt(LocalDateTime.now())
+                .method(LabelMethod.orQr(method))
                 .build();
 
         confirmation = placementConfirmationRepository.save(confirmation);

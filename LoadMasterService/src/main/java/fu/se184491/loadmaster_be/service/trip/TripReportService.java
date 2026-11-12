@@ -1,5 +1,6 @@
 package fu.se184491.loadmaster_be.service.trip;
 
+import fu.se184491.loadmaster_be.constant.cargo.LabelMethod;
 import fu.se184491.loadmaster_be.constant.cargo.PackageStatus;
 import fu.se184491.loadmaster_be.constant.driver.ManualConfirmStatus;
 import fu.se184491.loadmaster_be.constant.driver.ManualConfirmStep;
@@ -17,6 +18,7 @@ import fu.se184491.loadmaster_be.entity.driver.UnloadConfirmation;
 import fu.se184491.loadmaster_be.entity.monitoring.TripException;
 import fu.se184491.loadmaster_be.entity.monitoring.TripReroute;
 import fu.se184491.loadmaster_be.entity.optimization.LoadingExecution;
+import fu.se184491.loadmaster_be.entity.pickup.PickupRequestPackage;
 import fu.se184491.loadmaster_be.entity.trip.DeliveryStop;
 import fu.se184491.loadmaster_be.entity.trip.Trip;
 import fu.se184491.loadmaster_be.entity.warehouse.PlacementConfirmation;
@@ -29,6 +31,7 @@ import fu.se184491.loadmaster_be.repository.driver.ManualUnloadConfirmationRepos
 import fu.se184491.loadmaster_be.repository.driver.UnloadConfirmationRepository;
 import fu.se184491.loadmaster_be.repository.monitoring.TripExceptionRepository;
 import fu.se184491.loadmaster_be.repository.monitoring.TripRerouteRepository;
+import fu.se184491.loadmaster_be.repository.pickup.PickupRequestRepository;
 import fu.se184491.loadmaster_be.repository.trip.DeliveryStopRepository;
 import fu.se184491.loadmaster_be.repository.warehouse.LoadingDamageRepository;
 import fu.se184491.loadmaster_be.repository.warehouse.LoadingExecutionRepository;
@@ -40,6 +43,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -70,6 +74,13 @@ public class TripReportService {
     private final LoadingDamageRepository loadingDamageRepository;
     private final TripExceptionRepository tripExceptionRepository;
     private final TripRerouteRepository tripRerouteRepository;
+    private final PickupRequestRepository pickupRequestRepository;
+
+    /** Bước nhận dọc đường ở {@code verificationMethods}; xác nhận tay không có bước này. */
+    static final String PICKUP_STEP = "PICKUP";
+    private static final int QR = 0;
+    private static final int CODE = 1;
+    private static final int MANUAL = 2;
 
     /** Báo cáo có được không: đã giao, hoặc bị huỷ khi đang vận chuyển. */
     public static boolean reportAvailable(Trip trip) {
@@ -95,13 +106,17 @@ public class TripReportService {
         Set<Long> withIssue = new HashSet<>();
         List<UnloadConfirmation> unloads = new ArrayList<>();
         List<TripReportResponse.Stop> stopRows = new ArrayList<>();
+        boolean cancelledOnRoad = trip.getStatus() == TripStatus.CANCELLED;
         for (DeliveryStop stop : stops) {
             List<CargoPackage> packages = tripPackageResolver.packagesOfStop(stop.getId());
             List<UnloadConfirmation> stopUnloads = unloadConfirmationRepository.findByDeliveryStopId(stop.getId());
             List<DeliveryIssue> issues = deliveryIssueRepository.findByDeliveryStopIdOrderByReportedAtAsc(stop.getId());
-            int stopReturned = count(packages, PackageStatus.RETURNED);
+            boolean settled = stop.getStatus() == DeliveryStopStatus.COMPLETED;
+            // Chuyến bị huỷ giữa đường: kiện của điểm chưa hoàn tất là hoàn trả, "đã giao" chỉ tính điểm đã hoàn tất
+            boolean allReturned = cancelledOnRoad && !settled;
+            int stopReturned = allReturned ? packages.size() : count(packages, PackageStatus.RETURNED);
             total += packages.size();
-            delivered += count(packages, PackageStatus.DELIVERED);
+            delivered += allReturned ? 0 : count(packages, PackageStatus.DELIVERED);
             returned += stopReturned;
             unloads.addAll(stopUnloads);
             issues.stream().map(issue -> issue.getCargoPackage() == null ? null : issue.getCargoPackage().getId())
@@ -121,14 +136,18 @@ public class TripReportService {
                     .issues(issues.size())
                     .plannedArrival(stop.getPlannedArrival())
                     .actualArrival(stop.getActualArrival())
+                    .completedAt(stop.getCompletedAt())
                     .deadline(deadline)
                     .plannedStatus(plannedStatus != null ? plannedStatus.name() : null)
                     .arrivedOnTime(stop.getActualArrival() == null || deadline == null
                             ? null
                             : !stop.getActualArrival().isAfter(deadline))
-                    .completed(stop.getStatus() == DeliveryStopStatus.COMPLETED)
+                    .completed(settled)
                     .build());
         }
+        List<PickupRequestPackage> picked = pickupRequestRepository.findByTripIdOrderByIdAsc(trip.getId()).stream()
+                .flatMap(request -> request.getPackages().stream())
+                .toList();
 
         List<StagingConfirmation> staged = stagingConfirmationRepository.findByTripId(trip.getId());
         List<PlacementConfirmation> placed = execution == null
@@ -147,8 +166,10 @@ public class TripReportService {
                 .driverName(nameOf(trip.getDriver()))
                 .departureTime(trip.getDepartureTime())
                 .completedAt(trip.getCompletedAt())
+                .deliveryMinutes(deliveryMinutes(trip.getDepartedAt(), trip.getCompletedAt()))
                 .cancellation(trip.getStatus() == TripStatus.CANCELLED
-                        ? new TripReportResponse.Cancellation(trip.getCancelReason(), trip.getCancelledFromStatus())
+                        ? new TripReportResponse.Cancellation(trip.getCancelReason(), trip.getCancelledFromStatus(),
+                        trip.getCancelReturnedCount())
                         : null)
                 .loading(execution == null ? null : TripReportResponse.Loading.builder()
                         .startedAt(execution.getStartedAt())
@@ -168,6 +189,7 @@ public class TripReportService {
                         .withIssue(withIssue.size())
                         .build())
                 .verifications(verifications(staged, placed, unloads, manuals))
+                .verificationMethods(verificationMethods(staged, placed, unloads, manuals, picked))
                 .manualConfirmations(manuals.stream().map(TripReportService::manualRow).toList())
                 .exceptions(tripExceptionRepository.findByTripIdOrderByReportedAtAsc(trip.getId()).stream()
                         .map(TripReportService::exceptionRow).toList())
@@ -194,7 +216,27 @@ public class TripReportService {
             List<UnloadConfirmation> unloads,
             List<ManualUnloadConfirmation> manuals
     ) {
-        int stagedManual = (int) staged.stream().filter(item -> item.getMethod() == StagingMethod.MANUAL).count();
+        return verificationMethods(staged, placed, unloads, manuals, List.of()).stream()
+                .filter(row -> !PICKUP_STEP.equals(row.step()))
+                .map(row -> new TripReportResponse.Verification(row.step(), row.qr() + row.code(), row.manual()))
+                .toList();
+    }
+
+    /**
+     * Như {@link #verifications} nhưng tách đối chiếu bằng nhãn theo cách: quét QR hay gõ mã (bản ghi cũ không ghi cách là QR), và thêm
+     * bước nhận dọc đường (máy chủ chưa có xác nhận tay ở điểm nhận nên {@code manual} luôn là 0).
+     */
+    static List<TripReportResponse.VerificationMethods> verificationMethods(
+            List<StagingConfirmation> staged,
+            List<PlacementConfirmation> placed,
+            List<UnloadConfirmation> unloads,
+            List<ManualUnloadConfirmation> manuals,
+            List<PickupRequestPackage> picked
+    ) {
+        int[] staging = new int[3];
+        for (StagingConfirmation item : staged) {
+            staging[item.getMethod() == StagingMethod.MANUAL ? MANUAL : item.getMethod() == StagingMethod.CODE ? CODE : QR]++;
+        }
 
         Set<Long> manualPlacements = new HashSet<>();
         Set<Long> manualUnloads = new HashSet<>();
@@ -209,16 +251,48 @@ public class TripReportService {
                 manualUnloads.add(manual.getCargoPackage().getId());
             }
         }
-        int placedManual = (int) placed.stream()
-                .filter(item -> item.getPlacement() != null && manualPlacements.contains(item.getPlacement().getId())).count();
-        int unloadManual = (int) unloads.stream()
-                .filter(item -> item.getCargoPackage() != null && manualUnloads.contains(item.getCargoPackage().getId())).count();
+        int[] loading = new int[3];
+        for (PlacementConfirmation item : placed) {
+            boolean manual = item.getPlacement() != null && manualPlacements.contains(item.getPlacement().getId());
+            loading[manual ? MANUAL : labelIndex(item.getMethod())]++;
+        }
+        int[] unloading = new int[3];
+        for (UnloadConfirmation item : unloads) {
+            boolean manual = item.getCargoPackage() != null && manualUnloads.contains(item.getCargoPackage().getId());
+            unloading[manual ? MANUAL : labelIndex(item.getMethod())]++;
+        }
+        int[] pickup = new int[3];
+        for (PickupRequestPackage line : picked) {
+            if (line.getPickedAt() != null) {
+                pickup[labelIndex(line.getPickMethod())]++;
+            }
+        }
 
         return List.of(
-                new TripReportResponse.Verification(ManualConfirmStep.STAGING.name(), staged.size() - stagedManual, stagedManual),
-                new TripReportResponse.Verification(ManualConfirmStep.LOADING.name(), placed.size() - placedManual, placedManual),
-                new TripReportResponse.Verification(ManualConfirmStep.UNLOADING.name(), unloads.size() - unloadManual, unloadManual)
+                methodsRow(ManualConfirmStep.STAGING.name(), staging),
+                methodsRow(ManualConfirmStep.LOADING.name(), loading),
+                methodsRow(ManualConfirmStep.UNLOADING.name(), unloading),
+                methodsRow(PICKUP_STEP, pickup)
         );
+    }
+
+    private static int labelIndex(LabelMethod method) {
+        return LabelMethod.orQr(method) == LabelMethod.CODE ? CODE : QR;
+    }
+
+    private static TripReportResponse.VerificationMethods methodsRow(String step, int[] counts) {
+        return new TripReportResponse.VerificationMethods(step, counts[QR], counts[CODE], counts[MANUAL]);
+    }
+
+    /**
+     * Phút từ lúc tài xế xuất phát tới khi hoàn tất điểm cuối; null khi thiếu một trong hai mốc (chuyến bị huỷ giữa đường, chuyến chạy
+     * trước khi máy chủ ghi giờ xuất phát) hoặc hai mốc ngược nhau.
+     */
+    static Integer deliveryMinutes(LocalDateTime departedAt, LocalDateTime completedAt) {
+        if (departedAt == null || completedAt == null || completedAt.isBefore(departedAt)) {
+            return null;
+        }
+        return (int) Duration.between(departedAt, completedAt).toMinutes();
     }
 
     private static TripReportResponse.ManualConfirmation manualRow(ManualUnloadConfirmation manual) {

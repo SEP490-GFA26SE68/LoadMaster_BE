@@ -1,9 +1,11 @@
 package fu.se184491.loadmaster_be.config.security;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import fu.se184491.loadmaster_be.config.FrontendUrls;
 import fu.se184491.loadmaster_be.helpers.CurrentUserService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Import;
@@ -30,6 +32,10 @@ import java.util.List;
         RestAccessDeniedHandler.class
 })
 public class WebSecurityConfig {
+
+    /** Origin được gọi API, ngăn bằng dấu phẩy (app.frontend.cors-origins). */
+    @Value(FrontendUrls.CORS_ORIGINS)
+    private String corsOrigins = FrontendUrls.DEFAULT;
 
     @Bean
     public SecurityFilterChain securityFilterChain(
@@ -102,9 +108,7 @@ public class WebSecurityConfig {
                 new CorsConfiguration();
 
         configuration.setAllowedOrigins(
-                List.of(
-                        "http://localhost:5173"
-                )
+                FrontendUrls.origins(corsOrigins)
         );
 
         configuration.setAllowedMethods(
