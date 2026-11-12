@@ -61,7 +61,7 @@ public class SubscriptionController {
                 .build());
     }
 
-    /** Gói của công ty có gia hạn được không (hết hạn, hoặc còn hạn trong 3 ngày cuối) và thanh toán gói còn chờ. */
+    /** Gói của công ty có gia hạn được không (hết hạn, hoặc còn hạn trong 7 ngày cuối) và thanh toán gói còn chờ. */
     @GetMapping("/renewal")
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<ApiResponse<SubscriptionRenewalResponse>> getRenewal() {
