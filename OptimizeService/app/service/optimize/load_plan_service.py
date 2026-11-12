@@ -161,6 +161,26 @@ class LoadPlanService:
         return None
 
     @staticmethod
+    def _stop_deadlines(stop_ids: List[int], db: Session) -> dict:
+        """
+        Hạn của từng điểm giao = hạn sớm nhất của các yêu cầu giao ở điểm đó (điểm nối yêu cầu qua
+        delivery_requirement_id). Điểm thêm tay hay điểm nhận dọc đường không có yêu cầu: không có hạn.
+        """
+        if not stop_ids:
+            return {}
+        from sqlalchemy import func
+        from app.entity.trip_model import DeliveryRequirement, DeliveryStop
+
+        rows = (
+            db.query(DeliveryStop.id, func.min(DeliveryRequirement.deadline))
+            .join(DeliveryRequirement, DeliveryRequirement.id == DeliveryStop.delivery_requirement_id)
+            .filter(DeliveryStop.id.in_(stop_ids), DeliveryRequirement.deadline.isnot(None))
+            .group_by(DeliveryStop.id)
+            .all()
+        )
+        return {stop_id: deadline for stop_id, deadline in rows if deadline is not None}
+
+    @staticmethod
     def _unapprove_other_plans_of_trip(plan: LoadPlan, db: Session) -> None:
         from app.entity.optimization.optimization_job import OptimizationJob
 
@@ -293,9 +313,11 @@ class LoadPlanService:
         stop_feasibility_list: List[StopDeadlineFeasibility] = []
         overall_feasible = True
 
+        deadlines = self._stop_deadlines([s.id for s in stops], db)
+
         for s in stops:
             arr = getattr(s, "planned_arrival", None)
-            dead = getattr(s, "deadline", None)
+            dead = deadlines.get(s.id)
             is_f = True
             delay_min = 0.0
 
