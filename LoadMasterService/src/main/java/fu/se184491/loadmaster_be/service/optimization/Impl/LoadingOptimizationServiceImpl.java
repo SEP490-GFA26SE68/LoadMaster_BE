@@ -134,11 +134,10 @@ public class LoadingOptimizationServiceImpl implements LoadingOptimizationServic
         return loadPlanQueryService.getJobStatus(jobUuid);
     }
 
-    /** Hạng của gói đang hiệu lực (ACTIVE hoặc TRIAL); không có gói hiệu lực thì BASIC. */
+    /** Hạng của gói đang hoạt động (ACTIVE); gói hết hạn, đã huỷ hay chưa có gói thì BASIC (EP_DBLF). */
     private SubscriptionTier currentTier(Long companyId) {
         return companySubscriptionRepository.findByCompanyId(companyId)
-                .filter(sub -> sub.getStatus() == SubscriptionStatus.ACTIVE
-                        || sub.getStatus() == SubscriptionStatus.TRIAL)
+                .filter(sub -> sub.getStatus() == SubscriptionStatus.ACTIVE)
                 .filter(sub -> sub.getPlan() != null && sub.getPlan().getTier() != null)
                 .map(sub -> sub.getPlan().getTier())
                 .orElse(SubscriptionTier.BASIC);

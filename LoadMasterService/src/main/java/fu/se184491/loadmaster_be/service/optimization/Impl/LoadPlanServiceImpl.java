@@ -35,10 +35,13 @@ import fu.se184491.loadmaster_be.repository.optimization.PackagePlacementReposit
 import fu.se184491.loadmaster_be.repository.optimization.UnplacedPackageRepository;
 import fu.se184491.loadmaster_be.service.optimization.LoadPlanService;
 import fu.se184491.loadmaster_be.service.optimization.OptimizationEngineClient;
+import fu.se184491.loadmaster_be.service.credit.Impl.CreditServiceImpl;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -62,8 +65,9 @@ public class LoadPlanServiceImpl implements LoadPlanService {
     private final fu.se184491.loadmaster_be.repository.trip.DeliveryStopRepository deliveryStopRepository;
     private final CurrentUserService currentUserService;
     private final CompanySubscriptionRepository companySubscriptionRepository;
+    private final PlatformTransactionManager transactionManager;
 
-    /** Hạng của gói đang hiệu lực (ACTIVE hoặc TRIAL) của công ty sở hữu chuyến; không có thì BASIC. */
+    /** Hạng của gói đang hoạt động (ACTIVE) của công ty sở hữu chuyến; gói hết hạn, đã huỷ hay chưa có gói thì BASIC. */
     private SubscriptionTier currentTier(Trip trip) {
         Long companyId = trip != null && trip.getCompany() != null
                 ? trip.getCompany().getId()
@@ -72,8 +76,7 @@ public class LoadPlanServiceImpl implements LoadPlanService {
             return SubscriptionTier.BASIC;
         }
         return companySubscriptionRepository.findByCompanyId(companyId)
-                .filter(sub -> sub.getStatus() == SubscriptionStatus.ACTIVE
-                        || sub.getStatus() == SubscriptionStatus.TRIAL)
+                .filter(sub -> sub.getStatus() == SubscriptionStatus.ACTIVE)
                 .filter(sub -> sub.getPlan() != null && sub.getPlan().getTier() != null)
                 .map(sub -> sub.getPlan().getTier())
                 .orElse(SubscriptionTier.BASIC);
@@ -146,9 +149,60 @@ public class LoadPlanServiceImpl implements LoadPlanService {
         return mapToResponse(savedPlacement);
     }
 
+    /**
+     * Ba bước, không giữ giao dịch DB trong lúc chờ dịch vụ tối ưu: (1) tạo job và trừ credit trong một giao dịch
+     * ngắn, (2) gọi dịch vụ ngoài giao dịch, (3) lưu kết quả trong giao dịch mới; hỏng ở (2) hay (3) thì đánh dấu job
+     * FAILED và hoàn credit, mỗi việc một giao dịch riêng nên không bị cuộn lại cùng lỗi.
+     */
     @Override
-    @Transactional
     public LoadPlanResponse rerunOptimization(Long loadPlanId, RerunOptimizationRequest request) {
+        TransactionTemplate tx = new TransactionTemplate(transactionManager);
+        RerunStart start = tx.execute(status -> startRerun(loadPlanId, request));
+
+        OptimizationResultDto engineResult;
+        try {
+            engineResult = optimizationEngineClient.rerunOptimization(start.engineRequest());
+        } catch (RuntimeException e) {
+            log.error("Optimization engine failed for job {}: {}", start.job().getJobUuid(), e.getMessage());
+            failRerun(tx, start);
+            throw e;
+        }
+
+        try {
+            return tx.execute(status -> finishRerun(start, engineResult));
+        } catch (RuntimeException e) {
+            log.error("Saving rerun result failed for job {}: {}", start.job().getJobUuid(), e.getMessage());
+            failRerun(tx, start);
+            throw e;
+        }
+    }
+
+    /** Job mới, yêu cầu gửi dịch vụ tối ưu và những gì bước lưu kết quả cần. */
+    private record RerunStart(LoadPlan currentPlan, OptimizationJob job, int pinnedCount, int nextVersion,
+                              Long companyId, RerunEngineRequest engineRequest) {
+    }
+
+    private void failRerun(TransactionTemplate tx, RerunStart start) {
+        try {
+            tx.executeWithoutResult(status -> {
+                start.job().setStatus(OptimizationJobStatus.FAILED);
+                optimizationJobRepository.save(start.job());
+            });
+        } catch (RuntimeException ex) {
+            log.error("Failed to mark rerun job {} as FAILED: {}", start.job().getJobUuid(), ex.getMessage());
+        }
+        if (start.companyId() == null) {
+            return;
+        }
+        try {
+            // Giao dịch riêng của refundCredit: hoàn credit được giữ lại dù lỗi ở trên.
+            creditService.refundCredit(start.companyId(), start.job().getJobUuid());
+        } catch (RuntimeException refundEx) {
+            log.error("Failed to refund credit for rerun job {}: {}", start.job().getJobUuid(), refundEx.getMessage());
+        }
+    }
+
+    private RerunStart startRerun(Long loadPlanId, RerunOptimizationRequest request) {
         LoadPlan currentPlan = editablePlan(loadPlanId);
 
         // 1. Load pinned placements from current plan
@@ -206,27 +260,19 @@ public class LoadPlanServiceImpl implements LoadPlanService {
                 .build();
 
         // S8-08 Credit check & deduction before sending to Engine (Rerun = 1 credit)
-        if (newJob.getTrip() != null && newJob.getTrip().getCompany() != null) {
-            creditService.deductCredit(newJob.getTrip().getCompany().getId(), jobUuid, 1);
+        Long companyId = newJob.getTrip() != null && newJob.getTrip().getCompany() != null
+                ? newJob.getTrip().getCompany().getId()
+                : null;
+        if (companyId != null) {
+            creditService.deductCredit(companyId, jobUuid, CreditServiceImpl.RERUN_OPTIMIZATION_CREDIT_COST);
         }
+        return new RerunStart(currentPlan, newJob, pinnedPlacements.size(), nextVersion, companyId, engineRequest);
+    }
 
-        // 4. Send to Engine
-        OptimizationResultDto engineResult;
-        try {
-            engineResult = optimizationEngineClient.rerunOptimization(engineRequest);
-        } catch (Exception e) {
-            log.error("Optimization engine failed for job {}: {}", jobUuid, e.getMessage());
-            newJob.setStatus(OptimizationJobStatus.FAILED);
-            optimizationJobRepository.save(newJob);
-            if (newJob.getTrip() != null && newJob.getTrip().getCompany() != null) {
-                try {
-                    creditService.refundCredit(newJob.getTrip().getCompany().getId(), jobUuid);
-                } catch (Exception refundEx) {
-                    log.error("Failed to refund credit on engine failure for job {}: {}", jobUuid, refundEx.getMessage());
-                }
-            }
-            throw e;
-        }
+    private LoadPlanResponse finishRerun(RerunStart start, OptimizationResultDto engineResult) {
+        LoadPlan currentPlan = start.currentPlan();
+        OptimizationJob newJob = start.job();
+        int nextVersion = start.nextVersion();
 
         // Update Job status
         newJob.setStatus(OptimizationJobStatus.COMPLETED);
@@ -291,7 +337,7 @@ public class LoadPlanServiceImpl implements LoadPlanService {
         Map<String, Object> newValues = new HashMap<>();
         newValues.put("newPlanId", newPlan.getId());
         newValues.put("version", nextVersion);
-        newValues.put("pinnedCount", pinnedPlacements.size());
+        newValues.put("pinnedCount", start.pinnedCount());
 
         AuditLog auditLog = AuditLog.builder()
                 .actionType("RERUN_OPTIMIZATION")
