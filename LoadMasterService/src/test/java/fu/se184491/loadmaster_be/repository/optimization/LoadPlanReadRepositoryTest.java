@@ -120,6 +120,7 @@ class LoadPlanReadRepositoryTest {
                 .thenReturn(Timestamp.from(Instant.parse("2026-11-05T03:15:00Z")));
         when(rs.getInt("packed_plans")).thenReturn(0);
         when(rs.getString("algorithm_name")).thenReturn("EP_DBLF_GA_AI");
+        when(rs.getString("failure_code")).thenReturn("JOB_INTERRUPTED");
         rows(rs);
 
         Optional<OptimizationJobStatusResponse> status = repository.findJobStatus(42L);
@@ -133,6 +134,7 @@ class LoadPlanReadRepositoryTest {
             assertThat(job.getCreatedAt()).isEqualTo(Instant.parse("2026-11-05T03:15:00Z"));
             assertThat(job.getPackedPlanCount()).isZero();
             assertThat(job.getRunAlgorithm()).isEqualTo("EP_DBLF_GA_AI");
+            assertThat(job.getFailureCode()).isEqualTo("JOB_INTERRUPTED");
         });
         ArgumentCaptor<String> sql = ArgumentCaptor.forClass(String.class);
         verify(jdbc).query(sql.capture(), eq(Map.of("id", 42L)), any(RowMapper.class));
