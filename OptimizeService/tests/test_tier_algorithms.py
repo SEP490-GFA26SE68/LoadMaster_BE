@@ -178,6 +178,16 @@ class TestTierRouting:
         assert run.layouts == [] and run.tried == []
         assert set(run.skipped.values()) == {"PINNED"}
 
+    def test_lumo_models_without_torch_warn_with_install_hint(self, monkeypatch, caplog):
+        monkeypatch.setattr(lumo_models, "torch_available", lambda: False)
+        with caplog.at_level("WARNING", logger="app.ml.lumo_models"):
+            run = lumo_models.run_lumo_models(
+                _problem("EP_DBLF_GA_AI"), ["LUMO_R1"], OptimizationClient(engine_url=""),
+            )
+        assert run.skipped == {"LUMO_R1": "TORCH_MISSING"}
+        warnings = [r for r in caplog.records if r.levelname == "WARNING"]
+        assert warnings and "requirements-ai.txt" in warnings[0].getMessage()
+
 
 class TestGaSa:
     def test_layouts_respect_constraints_and_carry_their_code(self):

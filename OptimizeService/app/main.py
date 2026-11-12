@@ -36,6 +36,15 @@ app.add_middleware(
     allow_headers=["Authorization", "Content-Type"],
 )
 
+# Gói ULTIMATE cần torch (requirements-ai.txt): báo ngay lúc khởi động, không để job âm thầm chạy heuristic.
+from app.ml.lumo_models import torch_available
+
+if not torch_available():
+    logger.warning(
+        "Chưa cài torch / numpy: gói ULTIMATE (EP_DBLF_GA_AI) sẽ chạy heuristic, không có mô hình Lumo. "
+        "Cài bằng: pip install -r requirements-ai.txt"
+    )
+
 # Exception handlers
 register_exception_handlers(app)
 
