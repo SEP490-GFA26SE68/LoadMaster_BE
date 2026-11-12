@@ -321,17 +321,7 @@ public class GuestRegistrationServiceImpl implements GuestRegistrationService {
         Map<String, String> response = new java.util.HashMap<>();
         String txnRef = params.get("vnp_TxnRef");
 
-        // 1. Verify Checksum. Chỉ bỏ qua khi máy chủ bật cấu hình vnpay.mock; tham số của request
-        // (vnp_Mock, tiền tố MOCK_ của mã giao dịch) do người gọi tự đặt nên không bao giờ được tin.
-        if (!vnPayClient.isMock()) {
-            boolean validSignature = vnPayClient.verifyCallback(params);
-            if (!validSignature) {
-                log.warn("VNPay callback signature verification failed for params: {}", LogMasks.vnpayParams(params));
-                response.put("RspCode", "97");
-                response.put("Message", "Invalid Checksum");
-                return response;
-            }
-        }
+        // Chữ ký VNPay đã kiểm ở PaymentCallbackHandler, lối vào duy nhất của callback.
 
         // 2. Find Registration Session
         // Khoá phiên tới hết giao dịch để hai lượt callback không cùng tạo công ty, tài khoản.

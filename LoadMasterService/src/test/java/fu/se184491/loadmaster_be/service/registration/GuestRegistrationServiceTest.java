@@ -615,7 +615,6 @@ class GuestRegistrationServiceTest {
         params.put("vnp_Amount", "200000000"); // 2,000,000 * 100
         params.put("vnp_SecureHash", "mock_hash");
 
-        when(vnPayClient.isMock()).thenReturn(true);
         when(sessionRepository.findByPaymentRefForUpdate("REG_12345")).thenReturn(Optional.of(session));
         when(companyRepository.save(any(fu.se184491.loadmaster_be.entity.company.Company.class))).thenAnswer(i -> {
             fu.se184491.loadmaster_be.entity.company.Company comp = i.getArgument(0);
@@ -672,68 +671,12 @@ class GuestRegistrationServiceTest {
     }
 
     @Test
-    @DisplayName("handlePaymentCallback: vnpay.mock tắt thì vnp_Mock=true không bỏ qua được chữ ký")
-    void handlePaymentCallback_mockParamIgnoredWhenMockConfigOff() {
-        java.util.Map<String, String> params = java.util.Map.of(
-                "vnp_TxnRef", "REG_12345",
-                "vnp_ResponseCode", "00",
-                "vnp_Mock", "true",
-                "vnp_SecureHash", "forged"
-        );
-
-        when(vnPayClient.isMock()).thenReturn(false);
-        when(vnPayClient.verifyCallback(params)).thenReturn(false);
-
-        java.util.Map<String, String> result = service.handlePaymentCallback(params);
-
-        assertThat(result.get("RspCode")).isEqualTo("97");
-        verify(sessionRepository, never()).findByPaymentRefForUpdate(any());
-        verify(companyRepository, never()).save(any());
-    }
-
-    @Test
-    @DisplayName("handlePaymentCallback: vnpay.mock tắt thì mã giao dịch MOCK_ không bỏ qua được chữ ký")
-    void handlePaymentCallback_mockPrefixIgnoredWhenMockConfigOff() {
-        java.util.Map<String, String> params = java.util.Map.of(
-                "vnp_TxnRef", "MOCK_REG_12345",
-                "vnp_ResponseCode", "00"
-        );
-
-        when(vnPayClient.isMock()).thenReturn(false);
-        when(vnPayClient.verifyCallback(params)).thenReturn(false);
-
-        java.util.Map<String, String> result = service.handlePaymentCallback(params);
-
-        assertThat(result.get("RspCode")).isEqualTo("97");
-        verify(sessionRepository, never()).findByPaymentRefForUpdate(any());
-        verify(companyRepository, never()).save(any());
-    }
-
-    @Test
-    @DisplayName("handlePaymentCallback: thất bại khi sai chữ ký checksum")
-    void handlePaymentCallback_invalidSignature() {
-        java.util.Map<String, String> params = java.util.Map.of(
-                "vnp_TxnRef", "REG_12345",
-                "vnp_SecureHash", "invalid"
-        );
-
-        when(vnPayClient.isMock()).thenReturn(false);
-        when(vnPayClient.verifyCallback(params)).thenReturn(false);
-
-        java.util.Map<String, String> result = service.handlePaymentCallback(params);
-
-        assertThat(result.get("RspCode")).isEqualTo("97");
-        assertThat(result.get("Message")).isEqualTo("Invalid Checksum");
-    }
-
-    @Test
     @DisplayName("handlePaymentCallback: thất bại khi không tìm thấy đơn")
     void handlePaymentCallback_orderNotFound() {
         java.util.Map<String, String> params = java.util.Map.of(
                 "vnp_TxnRef", "REG_NOT_FOUND"
         );
 
-        when(vnPayClient.isMock()).thenReturn(true);
         when(sessionRepository.findByPaymentRefForUpdate("REG_NOT_FOUND")).thenReturn(Optional.empty());
 
         java.util.Map<String, String> result = service.handlePaymentCallback(params);
@@ -754,7 +697,6 @@ class GuestRegistrationServiceTest {
                 "vnp_TxnRef", "REG_12345"
         );
 
-        when(vnPayClient.isMock()).thenReturn(true);
         when(sessionRepository.findByPaymentRefForUpdate("REG_12345")).thenReturn(Optional.of(session));
 
         java.util.Map<String, String> result = service.handlePaymentCallback(params);
@@ -780,7 +722,6 @@ class GuestRegistrationServiceTest {
                 "vnp_ResponseCode", "24" // Customer cancelled
         );
 
-        when(vnPayClient.isMock()).thenReturn(true);
         when(sessionRepository.findByPaymentRefForUpdate("REG_12345")).thenReturn(Optional.of(session));
 
         java.util.Map<String, String> result = service.handlePaymentCallback(params);

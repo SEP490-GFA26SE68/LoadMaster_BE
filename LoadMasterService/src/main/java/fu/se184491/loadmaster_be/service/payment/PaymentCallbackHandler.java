@@ -34,11 +34,9 @@ public class PaymentCallbackHandler {
         Map<String, String> response = new HashMap<>();
 
         String txnRef = params.get("vnp_TxnRef");
-        if (txnRef != null && txnRef.startsWith("REG_")) {
-            return guestRegistrationService.handlePaymentCallback(params);
-        }
 
-        // 1. Verify Checksum. Chỉ bỏ qua khi máy chủ bật cấu hình vnpay.mock; tham số của request
+        // 1. Verify Checksum — chỗ kiểm chữ ký duy nhất của mọi callback VNPay (cả đăng ký trả phí REG_…).
+        // Chỉ bỏ qua khi máy chủ bật cấu hình vnpay.mock; tham số của request
         // (vnp_Mock, tiền tố MOCK_ của mã giao dịch) do người gọi tự đặt nên không bao giờ được tin.
         if (!vnPayClient.isMock()) {
             boolean validSignature = vnPayClient.verifyCallback(params);
@@ -48,6 +46,10 @@ public class PaymentCallbackHandler {
                 response.put("Message", "Invalid Checksum");
                 return response;
             }
+        }
+
+        if (txnRef != null && txnRef.startsWith("REG_")) {
+            return guestRegistrationService.handlePaymentCallback(params);
         }
 
         // 2. Find Payment Transaction — khoá dòng tới hết giao dịch: IPN và trang trả về có thể tới cùng lúc,
