@@ -30,6 +30,7 @@ import fu.se184491.loadmaster_be.entity.trip.DeliveryStop;
 import fu.se184491.loadmaster_be.entity.trip.Trip;
 import fu.se184491.loadmaster_be.entity.vehicle.Vehicle;
 import fu.se184491.loadmaster_be.entity.vehicle.VehicleType;
+import fu.se184491.loadmaster_be.helpers.KeycloakAccounts;
 import fu.se184491.loadmaster_be.repository.account.UserRepository;
 import fu.se184491.loadmaster_be.repository.billing.CompanySubscriptionRepository;
 import fu.se184491.loadmaster_be.repository.billing.CreditAccountRepository;
@@ -156,20 +157,25 @@ public class DevOptimizationMockInitializer implements ApplicationRunner {
         }
 
         String keycloakUserId = keycloakAdminClient.findUserIdByEmail(dispatcherEmail);
-        if (keycloakUserId == null) {
-            keycloakUserId = keycloakAdminClient.createUser(dispatcherEmail, dispatcherFullName);
-            keycloakAdminClient.setPassword(keycloakUserId, dispatcherPassword, false);
-            keycloakAdminClient.assignRealmRole(keycloakUserId, UserRole.DISPATCHER.name());
+        if (keycloakUserId != null) {
+            return userRepository.save(dispatcherUser(keycloakUserId, company));
         }
+        // Tạo trên Keycloak và lưu DB trong một transaction: lưu lỗi thì tài khoản Keycloak vừa tạo bị xoá lại
+        return new TransactionTemplate(transactionManager).execute(status -> userRepository.save(dispatcherUser(
+                KeycloakAccounts.provision(keycloakAdminClient, userRepository, dispatcherEmail, dispatcherFullName,
+                        dispatcherPassword, false, UserRole.DISPATCHER, false),
+                company)));
+    }
 
-        return userRepository.save(User.builder()
+    private User dispatcherUser(String keycloakUserId, Company company) {
+        return User.builder()
                 .keycloakId(keycloakUserId)
                 .email(dispatcherEmail)
                 .fullName(dispatcherFullName)
                 .status(UserStatus.ACTIVE)
                 .userRoleType(UserRole.DISPATCHER)
                 .company(company)
-                .build());
+                .build();
     }
 
     private void ensureCredits(Company company) {

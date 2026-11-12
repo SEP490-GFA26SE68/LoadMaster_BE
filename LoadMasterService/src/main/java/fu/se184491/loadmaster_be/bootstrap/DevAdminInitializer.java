@@ -4,6 +4,7 @@ import fu.se184491.loadmaster_be.client.KeycloakAdminClient;
 import fu.se184491.loadmaster_be.constant.account.UserRole;
 import fu.se184491.loadmaster_be.constant.account.UserStatus;
 import fu.se184491.loadmaster_be.entity.account.User;
+import fu.se184491.loadmaster_be.helpers.KeycloakAccounts;
 import fu.se184491.loadmaster_be.repository.account.UserRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -13,6 +14,8 @@ import org.springframework.boot.ApplicationRunner;
 import org.springframework.context.annotation.Profile;
 import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.util.function.Consumer;
 
@@ -32,6 +35,7 @@ public class DevAdminInitializer implements ApplicationRunner {
 
     private final UserRepository userRepository;
     private final KeycloakAdminClient keycloakAdminClient;
+    private final PlatformTransactionManager transactionManager;
 
     @Value("${app.bootstrap.admin.email}")
     private String adminEmail;
@@ -103,44 +107,17 @@ public class DevAdminInitializer implements ApplicationRunner {
                 + "đặt DEV_ADMIN_RELINK=true nếu muốn gắn lại admin vào Keycloak này.", adminEmail);
     }
 
-    /** Tạo admin trên Keycloak rồi chạy {@code saveToDb}; lưu DB lỗi thì xoá tài khoản Keycloak vừa tạo. */
+    /**
+     * Tạo admin trên Keycloak rồi chạy {@code saveToDb} trong cùng một transaction: lưu DB lỗi thì rollback và
+     * {@link KeycloakAccounts#provision} xoá lại tài khoản Keycloak vừa tạo.
+     */
     private void createInKeycloak(Consumer<String> saveToDb) {
-        String createdKeycloakUserId = null;
-
-        try {
-            createdKeycloakUserId =
-                    keycloakAdminClient.createUser(
-                            adminEmail,
-                            adminFullName
-                    );
-
+        new TransactionTemplate(transactionManager).executeWithoutResult(status -> {
             // Mật khẩu lấy từ DEV_ADMIN_PASSWORD: không bắt đổi, để đăng nhập ngay trên màn của app được
-            keycloakAdminClient.setPassword(
-                    createdKeycloakUserId,
-                    adminPassword,
-                    false
-            );
-
-            keycloakAdminClient.assignRealmRole(
-                    createdKeycloakUserId,
-                    UserRole.SYSTEM_ADMIN.name()
-            );
-
-            saveToDb.accept(createdKeycloakUserId);
-
-        } catch (Exception ex) {
-
-            if (createdKeycloakUserId != null) {
-                try {
-                    keycloakAdminClient.deleteUser(
-                            createdKeycloakUserId
-                    );
-                } catch (Exception ignored) {
-                }
-            }
-
-            throw ex;
-        }
+            String keycloakUserId = KeycloakAccounts.provision(keycloakAdminClient, userRepository, adminEmail,
+                    adminFullName, adminPassword, false, UserRole.SYSTEM_ADMIN, false);
+            saveToDb.accept(keycloakUserId);
+        });
     }
 
     private User newAdmin(String keycloakUserId) {
