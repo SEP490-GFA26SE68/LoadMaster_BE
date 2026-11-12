@@ -69,6 +69,7 @@ class TestOptimizationAuth:
         )
         assert response.status_code == 401
 
+    @pytest.mark.integration  # cần token RS256 do Keycloak thật ký (JWKS)
     def test_submit_job_with_unauthorized_role_returns_403(self, client, driver_headers):
         """User có role DRIVER (không phải DISPATCHER/ADMIN) -> 403 Forbidden"""
         response = client.post(
@@ -79,6 +80,7 @@ class TestOptimizationAuth:
         assert response.status_code == 403
 
 
+@pytest.mark.integration  # cần token RS256 do Keycloak thật ký (JWKS)
 class TestSubmitJob:
     def test_submit_job_success_returns_202_and_job_id(self, client, dispatcher_headers):
         """DISPATCHER gửi job hợp lệ -> 202 Accepted + { job_id }"""
@@ -149,6 +151,7 @@ class TestSubmitJob:
             app.dependency_overrides.clear()
 
 
+@pytest.mark.integration  # cần token RS256 do Keycloak thật ký (JWKS)
 class TestGetJobStatus:
     def test_get_job_success_returns_200_and_status(self, client, dispatcher_headers):
         """Lấy thông tin job -> 200 + status, metadata"""
@@ -210,6 +213,7 @@ class TestGetJobStatus:
             app.dependency_overrides.clear()
 
 
+@pytest.mark.integration  # cần token RS256 do Keycloak thật ký (JWKS)
 class TestGetJobPlans:
     def test_get_job_plans_success_returns_200_and_plans(self, client, dispatcher_headers):
         """Lấy danh sách plans của job -> 200 + danh sách LoadPlan"""
