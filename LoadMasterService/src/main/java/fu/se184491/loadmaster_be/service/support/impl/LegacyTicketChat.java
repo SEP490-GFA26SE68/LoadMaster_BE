@@ -1,5 +1,6 @@
 package fu.se184491.loadmaster_be.service.support.impl;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import fu.se184491.loadmaster_be.dto.response.support.TicketReplyResponse;
@@ -7,6 +8,7 @@ import fu.se184491.loadmaster_be.entity.support.SupportTicket;
 
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -45,7 +47,8 @@ final class LegacyTicketChat {
                         .build());
             }
             return out;
-        } catch (Exception ignored) {
+        } catch (JsonProcessingException notChatJson) {
+            // Ghi chú cũ không phải mảng trao đổi: không có lần trả lời nào
             return List.of();
         }
     }
@@ -78,7 +81,7 @@ final class LegacyTicketChat {
         String raw = value.toString().trim().replace('T', ' ');
         try {
             return LocalDateTime.parse(raw.length() > 19 ? raw.substring(0, 19) : raw, FORMAT);
-        } catch (Exception ignored) {
+        } catch (DateTimeParseException unreadable) {
             return null;
         }
     }

@@ -27,11 +27,13 @@ import fu.se184491.loadmaster_be.repository.support.SupportTicketRepository;
 import fu.se184491.loadmaster_be.repository.support.TicketReplyRepository;
 import fu.se184491.loadmaster_be.service.support.SupportTicketService;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.Instant;
@@ -40,6 +42,7 @@ import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
 import java.time.temporal.ChronoUnit;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
@@ -51,6 +54,7 @@ import java.util.concurrent.ThreadLocalRandom;
 import java.util.stream.Collectors;
 
 @Service
+@Slf4j
 @RequiredArgsConstructor
 public class SupportTicketServiceImpl implements SupportTicketService {
 
@@ -449,9 +453,8 @@ public class SupportTicketServiceImpl implements SupportTicketService {
                     .map(LinkedHashMap::new)
                     .collect(Collectors.toList());
             return OBJECT_MAPPER.writeValueAsString(pruned);
-        } catch (AppException e) {
-            throw e;
-        } catch (Exception ignored) {
+        } catch (JsonProcessingException e) {
+            log.warn("Support ticket note is not a valid chat history, kept unchanged: {}", e.getOriginalMessage());
             return rawNote;
         }
     }
@@ -490,7 +493,9 @@ public class SupportTicketServiceImpl implements SupportTicketService {
                         allDates.add(at.toString().substring(0, 10));
                     }
                 }
-            } catch (Exception ignored) {
+            } catch (JsonProcessingException e) {
+                log.warn("Support ticket {} has an unreadable chat history, skipped when pruning: {}",
+                        t.getId(), e.getOriginalMessage());
             }
         }
 
@@ -530,7 +535,9 @@ public class SupportTicketServiceImpl implements SupportTicketService {
                     t.setResolutionNote(OBJECT_MAPPER.writeValueAsString(pruned));
                     supportTicketRepository.save(t);
                 }
-            } catch (Exception ignored) {
+            } catch (JsonProcessingException e) {
+                log.warn("Support ticket {} has an unreadable chat history, not pruned: {}",
+                        t.getId(), e.getOriginalMessage());
             }
         }
     }
@@ -550,7 +557,7 @@ public class SupportTicketServiceImpl implements SupportTicketService {
                 return LocalDateTime.ofInstant(Instant.parse(v), ZoneOffset.UTC)
                         .truncatedTo(ChronoUnit.SECONDS)
                         .format(CHAT_TIME_FORMATTER);
-            } catch (Exception ignored) {
+            } catch (DateTimeParseException unreadable) {
                 return v.length() >= 19 ? v.substring(0, 19).replace('T', ' ') : v;
             }
         }
