@@ -17,6 +17,8 @@ import fu.se184491.loadmaster_be.repository.route.RoutePlanRepository;
 import fu.se184491.loadmaster_be.repository.trip.TripRepository;
 import fu.se184491.loadmaster_be.repository.trip.DeliveryStopRepository;
 import fu.se184491.loadmaster_be.repository.warehouse.LoadingExecutionRepository;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.PersistenceContext;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -37,6 +39,10 @@ import java.util.Map;
  * IN_TRANSIT → DELIVERED   mọi điểm giao COMPLETED
  * mọi trạng thái trừ DELIVERED, CANCELLED → CANCELLED
  * </pre>
+ *
+ * Mọi lần đổi trạng thái khoá dòng chuyến (SELECT … FOR UPDATE), nên huỷ, xuất phát, hoàn tất điểm, bắt đầu xếp,
+ * duyệt… trên cùng một chuyến chạy lần lượt. Lệnh nào kiểm trạng thái trước khi đổi thì gọi
+ * {@link #lockForTransition} ngay đầu transaction.
  */
 @Service
 @RequiredArgsConstructor
@@ -49,13 +55,35 @@ public class TripStatusService {
     private final DeliveryStopRepository deliveryStopRepository;
     private final RoutePlanRepository routePlanRepository;
 
+    @PersistenceContext
+    private EntityManager entityManager;
+
+    /**
+     * Khoá dòng chuyến tới hết transaction rồi đọc lại từ DB: lệnh khác có thể vừa đổi chuyến trong lúc chờ khoá.
+     * Gọi ở đầu lệnh, trước khi sửa gì trên chuyến (đọc lại bỏ thay đổi chưa ghi của chuyến).
+     *
+     * @param readBefore bản ghi của chuyến lệnh đã đọc trước khi có khoá (điểm giao, phiên xếp…), đọc lại cùng lúc
+     */
+    @Transactional
+    public Trip lockForTransition(Long tripId, Object... readBefore) {
+        Trip trip = lockedTrip(tripId);
+        if (entityManager != null) {
+            entityManager.refresh(trip);
+            for (Object entity : readBefore) {
+                if (entity != null) {
+                    entityManager.refresh(entity);
+                }
+            }
+        }
+        return trip;
+    }
+
     /**
      * @param userId người làm, ghi vào nhật ký; {@code null} khi là việc của hệ thống.
      */
     @Transactional
     public Trip transitionTo(Long tripId, TripStatus newStatus, Long userId) {
-        Trip trip = tripRepository.findById(tripId)
-                .orElseThrow(() -> new AppException(ErrorCode.TRIP_NOT_FOUND));
+        Trip trip = lockedTrip(tripId);
         TripStatus currentStatus = trip.getStatus();
         if (!isValidTransition(trip, currentStatus, newStatus)) {
             throw new InvalidTripStatusTransitionException(currentStatus, newStatus);
@@ -103,6 +131,11 @@ public class TripStatusService {
         } else {
             tripRepository.save(trip);
         }
+    }
+
+    private Trip lockedTrip(Long tripId) {
+        return tripRepository.findByIdForUpdate(tripId)
+                .orElseThrow(() -> new AppException(ErrorCode.TRIP_NOT_FOUND));
     }
 
     private boolean isValidTransition(Trip trip, TripStatus currentStatus, TripStatus newStatus) {
