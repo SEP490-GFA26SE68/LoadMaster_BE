@@ -1,5 +1,6 @@
 package fu.se184491.loadmaster_be.service.support.impl;
 
+import fu.se184491.loadmaster_be.helpers.LogMasks;
 import fu.se184491.loadmaster_be.client.BrevoClient;
 import fu.se184491.loadmaster_be.constant.support.AiPrecheckStatus;
 import fu.se184491.loadmaster_be.constant.support.TrialRequestStatus;
@@ -142,8 +143,8 @@ public class TrialPreValidationServiceImpl implements TrialPreValidationService 
         }
         trialAccountRequestRepository.save(request);
 
-        log.info("AI Pre-check FAILED for trial request id={} taxCode={} email={}: {}",
-                request.getId(), request.getTaxCode(), request.getEmail(), reason);
+        log.info("AI Pre-check FAILED for trial request id={} taxCode={}: {}",
+                request.getId(), LogMasks.taxCode(request.getTaxCode()), reason);
 
         sendRejectionEmail(request, reason);
     }
@@ -155,8 +156,8 @@ public class TrialPreValidationServiceImpl implements TrialPreValidationService 
         request.setHandledByName(null);
         trialAccountRequestRepository.save(request);
 
-        log.info("AI Pre-check PASSED for trial request id={} taxCode={} email={}",
-                request.getId(), request.getTaxCode(), request.getEmail());
+        log.info("AI Pre-check PASSED for trial request id={} taxCode={}",
+                request.getId(), LogMasks.taxCode(request.getTaxCode()));
     }
 
     private void sendRejectionEmail(TrialAccountRequest request, String reason) {
@@ -182,7 +183,8 @@ public class TrialPreValidationServiceImpl implements TrialPreValidationService 
         try {
             brevoClient.sendEmail(request.getEmail(), subject, content);
         } catch (Exception ex) {
-            log.error("Failed to send rejection email via Brevo to {}: {}", request.getEmail(), ex.getMessage());
+            log.error("Failed to send rejection email via Brevo for trial request {} to {}: {}", request.getId(),
+                    LogMasks.email(request.getEmail()), ex.getMessage());
         }
     }
 }

@@ -1,5 +1,6 @@
 package fu.se184491.loadmaster_be.service.registration.impl;
 
+import fu.se184491.loadmaster_be.helpers.LogMasks;
 import fu.se184491.loadmaster_be.client.BrevoClient;
 import fu.se184491.loadmaster_be.client.KeycloakAdminClient;
 import fu.se184491.loadmaster_be.client.VnPayClient;
@@ -325,7 +326,7 @@ public class GuestRegistrationServiceImpl implements GuestRegistrationService {
         if (!vnPayClient.isMock()) {
             boolean validSignature = vnPayClient.verifyCallback(params);
             if (!validSignature) {
-                log.warn("VNPay callback signature verification failed for params: {}", params);
+                log.warn("VNPay callback signature verification failed for params: {}", LogMasks.vnpayParams(params));
                 response.put("RspCode", "97");
                 response.put("Message", "Invalid Checksum");
                 return response;
@@ -417,7 +418,8 @@ public class GuestRegistrationServiceImpl implements GuestRegistrationService {
         } catch (AppException ex) {
             throw ex;
         } catch (Exception ex) {
-            log.error("Failed to provision Keycloak account for email: {}", session.getEmail(), ex);
+            log.error("Failed to provision Keycloak account for registration session {} ({})", session.getId(),
+                    LogMasks.email(session.getEmail()), ex);
             throw new AppException(ErrorCode.INTERNAL_SERVER_ERROR, "Không thể khởi tạo tài khoản trên hệ thống định danh: " + ex.getMessage());
         }
 

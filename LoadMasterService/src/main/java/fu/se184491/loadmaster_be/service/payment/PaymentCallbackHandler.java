@@ -1,5 +1,6 @@
 package fu.se184491.loadmaster_be.service.payment;
 
+import fu.se184491.loadmaster_be.helpers.LogMasks;
 import fu.se184491.loadmaster_be.client.VnPayClient;
 import fu.se184491.loadmaster_be.constant.billing.BillingCycle;
 import fu.se184491.loadmaster_be.constant.billing.PaymentStatus;
@@ -42,7 +43,7 @@ public class PaymentCallbackHandler {
         if (!vnPayClient.isMock()) {
             boolean validSignature = vnPayClient.verifyCallback(params);
             if (!validSignature) {
-                log.warn("VNPay callback signature verification failed for params: {}", params);
+                log.warn("VNPay callback signature verification failed for params: {}", LogMasks.vnpayParams(params));
                 response.put("RspCode", "97");
                 response.put("Message", "Invalid Checksum");
                 return response;

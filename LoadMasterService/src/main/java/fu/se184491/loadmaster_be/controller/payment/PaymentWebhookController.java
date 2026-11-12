@@ -1,5 +1,6 @@
 package fu.se184491.loadmaster_be.controller.payment;
 
+import fu.se184491.loadmaster_be.helpers.LogMasks;
 import fu.se184491.loadmaster_be.client.VnPayClient;
 import fu.se184491.loadmaster_be.config.FrontendUrls;
 import fu.se184491.loadmaster_be.exception.AppException;
@@ -31,21 +32,21 @@ public class PaymentWebhookController {
 
     @PostMapping("/webhook/vnpay")
     public ResponseEntity<Map<String, String>> handleVnPayWebhookPost(@RequestParam Map<String, String> allParams) {
-        log.info("Received VNPay webhook (POST): {}", allParams);
+        log.info("Received VNPay webhook (POST): {}", LogMasks.vnpayParams(allParams));
         Map<String, String> response = paymentCallbackHandler.handleVnPayCallback(allParams);
         return ResponseEntity.ok(response);
     }
 
     @GetMapping("/webhook/vnpay")
     public ResponseEntity<Map<String, String>> handleVnPayWebhookGet(@RequestParam Map<String, String> allParams) {
-        log.info("Received VNPay webhook (GET): {}", allParams);
+        log.info("Received VNPay webhook (GET): {}", LogMasks.vnpayParams(allParams));
         Map<String, String> response = paymentCallbackHandler.handleVnPayCallback(allParams);
         return ResponseEntity.ok(response);
     }
 
     @GetMapping("/webhook/vnpay-return")
     public ResponseEntity<Void> handleVnPayReturn(@RequestParam Map<String, String> allParams) {
-        log.info("Received VNPay Return redirect: {}", allParams);
+        log.info("Received VNPay Return redirect: {}", LogMasks.vnpayParams(allParams));
         paymentCallbackHandler.handleVnPayCallback(allParams);
 
         String txnRef = allParams.get("vnp_TxnRef");

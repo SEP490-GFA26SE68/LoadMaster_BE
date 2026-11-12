@@ -468,7 +468,7 @@ public class TrialAccountRequestServiceImpl implements TrialAccountRequestServic
         trial.setHandledByName(manager != null ? manager.getFullName() : "System Manager");
 
         log.info("System Manager {} approved trial request id={} and forwarded to System Admin",
-                manager != null ? manager.getEmail() : "unknown", trial.getId());
+                manager != null ? manager.getId() : "unknown", trial.getId());
 
         TrialAccountRequest saved = trialAccountRequestRepository.save(trial);
         return mapToResponse(saved);

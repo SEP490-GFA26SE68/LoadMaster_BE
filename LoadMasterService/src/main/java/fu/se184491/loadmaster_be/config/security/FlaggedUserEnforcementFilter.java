@@ -77,7 +77,7 @@ public class FlaggedUserEnforcementFilter extends OncePerRequestFilter {
         User currentUser = findCurrentUser(request);
         if (currentUser != null && currentUser.getStatus() == UserStatus.FLAGGED) {
             log.warn("Blocked API call {} {} for FLAGGED user {}",
-                    request.getMethod(), request.getRequestURI(), currentUser.getEmail());
+                    request.getMethod(), request.getRequestURI(), currentUser.getId());
             writeFlaggedResponse(response);
             return;
         }
