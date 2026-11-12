@@ -14,7 +14,6 @@ import fu.se184491.loadmaster_be.repository.company.CompanyRepository;
 import fu.se184491.loadmaster_be.repository.support.SupportTicketRepository;
 import fu.se184491.loadmaster_be.repository.support.TicketReplyRepository;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.TransactionDefinition;
@@ -80,7 +79,6 @@ public class TrialAgreementEnforcementJob {
      *
      * @return số tài khoản vừa bị gắn cờ trong lần chạy này
      */
-    @Scheduled(cron = "0 0/30 * * * ?")
     public int enforceUnsignedAgreements() {
         LocalDateTime now = LocalDateTime.now();
         int flagged = flagOverdueAgreements(now);

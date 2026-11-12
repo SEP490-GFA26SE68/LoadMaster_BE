@@ -5,7 +5,6 @@ import fu.se184491.loadmaster_be.entity.registration.GuestRegistrationSession;
 import fu.se184491.loadmaster_be.repository.registration.GuestRegistrationSessionRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -19,7 +18,6 @@ public class ExpiredRegistrationSessionCleanupJob {
 
     private final GuestRegistrationSessionRepository sessionRepository;
 
-    @Scheduled(cron = "0 0 * * * *") // Run every hour
     @Transactional
     public void cleanupExpiredSessions() {
         LocalDateTime now = LocalDateTime.now();

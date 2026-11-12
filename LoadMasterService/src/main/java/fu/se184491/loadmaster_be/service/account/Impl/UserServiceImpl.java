@@ -648,7 +648,6 @@ public class UserServiceImpl implements UserService {
 
     @Override
     @Transactional
-    @org.springframework.scheduling.annotation.Scheduled(cron = "0 0 * * * *")
     public void purgeInactiveUsersAfterThreeMonths() {
         java.time.LocalDateTime cutoff = java.time.LocalDateTime.now()
                 .minusMonths(3)
