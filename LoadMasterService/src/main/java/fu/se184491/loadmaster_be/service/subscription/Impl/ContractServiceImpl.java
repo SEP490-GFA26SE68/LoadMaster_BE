@@ -138,7 +138,8 @@ public class ContractServiceImpl implements ContractService {
                     .creditAccount(creditAccount)
                     .amount(newPlanCredits)
                     .type(CreditTransactionType.MONTHLY_GRANT)
-                    .reference("CONTRACT-" + savedSubscription.getId())
+                    // Mỗi lần kích hoạt một mã riêng (khoá duy nhất reference + type)
+                    .reference("CONTRACT-" + savedSubscription.getId() + "-" + invoiceNumber)
                     .refunded(false)
                     .createdAt(now)
                     .build();

@@ -19,7 +19,9 @@ import java.time.LocalDateTime;
 import java.util.Map;
 
 @Entity
-@Table(name = "trips")
+@Table(name = "trips", indexes = {
+        @Index(name = "idx_trips_company_id", columnList = "company_id")
+})
 @Getter @Setter @NoArgsConstructor @AllArgsConstructor @Builder
 public class Trip {
     @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
