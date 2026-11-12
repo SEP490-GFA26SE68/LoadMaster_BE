@@ -44,6 +44,9 @@ public class OrderControllerTest {
     @MockitoBean
     private JwtAuthenticationConverter jwtAuthenticationConverter;
 
+    @MockitoBean
+    private fu.se184491.loadmaster_be.helpers.CurrentUserService currentUserService;
+
     private ObjectMapper objectMapper;
     private OrderRequest request;
     private OrderResponse response;
@@ -51,6 +54,7 @@ public class OrderControllerTest {
     @BeforeEach
     void setUp() {
         objectMapper = new ObjectMapper();
+        when(currentUserService.getCurrentCompanyId()).thenReturn(1L);
 
         request = OrderRequest.builder()
                 .customerId(10L)
@@ -133,5 +137,29 @@ public class OrderControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.content[0].id").value(100L))
                 .andExpect(jsonPath("$.content[0].orderCode").value("ORD-CMP01-20261004-0001"));
+    }
+
+    @Test
+    @WithMockUser(roles = "DISPATCHER")
+    void userWithoutCompany_isRejected_neverFallsBackToAnotherCompany() throws Exception {
+        when(currentUserService.getCurrentCompanyId()).thenThrow(
+                new fu.se184491.loadmaster_be.exception.AppException(
+                        fu.se184491.loadmaster_be.exception.ErrorCode.USER_COMPANY_NOT_FOUND));
+
+        mockMvc.perform(get("/api/orders/100"))
+                .andExpect(status().isNotFound());
+
+        org.mockito.Mockito.verifyNoInteractions(orderService);
+    }
+
+    @Test
+    @WithMockUser(roles = "DISPATCHER")
+    void nonJwtPrincipal_isUnauthenticated() throws Exception {
+        when(currentUserService.getCurrentCompanyId()).thenThrow(new IllegalStateException("no jwt"));
+
+        mockMvc.perform(get("/api/orders/100"))
+                .andExpect(status().isUnauthorized());
+
+        org.mockito.Mockito.verifyNoInteractions(orderService);
     }
 }

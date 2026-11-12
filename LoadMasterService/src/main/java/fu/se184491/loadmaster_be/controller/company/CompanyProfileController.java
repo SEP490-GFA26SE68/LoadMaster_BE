@@ -19,14 +19,14 @@ public class CompanyProfileController {
     private final CurrentUserService currentUserService;
 
     @GetMapping
-    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'DISPATCHER') or hasAuthority('COMPANY_ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'DISPATCHER')")
     public ResponseEntity<CompanyResponse> getCompanyProfile() {
         Long companyId = currentUserService.getCurrentCompanyId();
         return ResponseEntity.ok(companyService.getCompanyProfile(companyId));
     }
 
     @PatchMapping
-    @PreAuthorize("hasRole('ADMIN') or hasAuthority('COMPANY_ADMIN')")
+    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<CompanyResponse> updateCompanyProfile(
             @Valid @RequestBody UpdateCompanyProfileRequest request) {
         Long companyId = currentUserService.getCurrentCompanyId();

@@ -6,8 +6,16 @@ import fu.se184491.loadmaster_be.constant.account.UserStatus;
 import fu.se184491.loadmaster_be.constant.cargo.PackageStatus;
 import fu.se184491.loadmaster_be.constant.optimization.LoadingExecutionStatus;
 import fu.se184491.loadmaster_be.constant.planning.DeliveryRequirementStatus;
+import fu.se184491.loadmaster_be.constant.monitoring.TripExceptionStatus;
+import fu.se184491.loadmaster_be.constant.trip.DeliveryStopStatus;
 import fu.se184491.loadmaster_be.constant.trip.TripStatus;
 import fu.se184491.loadmaster_be.constant.vehicle.VehicleStatus;
+import fu.se184491.loadmaster_be.repository.monitoring.TripExceptionRepository;
+import fu.se184491.loadmaster_be.repository.pickup.PickupRequestRepository;
+import fu.se184491.loadmaster_be.constant.pickup.PickupRequestStatus;
+import fu.se184491.loadmaster_be.constant.trip.DeliveryStopType;
+import fu.se184491.loadmaster_be.entity.pickup.PickupRequest;
+import fu.se184491.loadmaster_be.entity.pickup.PickupRequestPackage;
 import fu.se184491.loadmaster_be.dto.request.trip.TripUpdateRequest;
 import fu.se184491.loadmaster_be.entity.account.User;
 import fu.se184491.loadmaster_be.entity.cargo.CargoPackage;
@@ -39,6 +47,7 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -55,6 +64,9 @@ public class TripLifecycleService {
     private static final Set<TripStatus> CANCELLABLE =
             EnumSet.of(TripStatus.DRAFT, TripStatus.PLANNED, TripStatus.LOADING);
     private static final Set<TripStatus> VEHICLE_BUSY = EnumSet.of(TripStatus.LOADING, TripStatus.IN_TRANSIT);
+    /** Sự cố trên đường chưa xử lý: cho phép huỷ chuyến Đang vận chuyển. */
+    private static final Set<TripExceptionStatus> UNRESOLVED_EXCEPTIONS =
+            EnumSet.of(TripExceptionStatus.OPEN, TripExceptionStatus.ESCALATED);
 
     private final TripRepository tripRepository;
     private final DeliveryStopRepository deliveryStopRepository;
@@ -68,6 +80,8 @@ public class TripLifecycleService {
     private final TripStatusService tripStatusService;
     private final LoadPlanRepository loadPlanRepository;
     private final TripPackageResolver tripPackageResolver;
+    private final TripExceptionRepository tripExceptionRepository;
+    private final PickupRequestRepository pickupRequestRepository;
 
     /**
      * Sửa tên, giờ xuất phát, xe, tài xế, kho xuất phát của chuyến Nháp / Đã lập kế hoạch.
@@ -166,20 +180,31 @@ public class TripLifecycleService {
     /**
      * Huỷ chuyến Nháp / Đã lập kế hoạch / Đang xếp hàng. Yêu cầu giao về Chờ xử lý và rời
      * chuyến, kiện về Chờ xử lý; phiên xếp đang mở bị dừng. Điểm giao ở lại làm lịch sử.
+     * Chuyến Đang vận chuyển chỉ huỷ được khi còn sự cố trên đường chưa xử lý ({@link #cancelInTransit}).
      */
     @Transactional
     public void cancelTrip(Long tripId, String reason) {
         User actor = currentUserService.getCurrentUser();
         Long companyId = companyOf(actor);
         Trip trip = requireTripForUpdate(tripId, companyId);
-        if (!CANCELLABLE.contains(trip.getStatus())) {
+        boolean inTransit = trip.getStatus() == TripStatus.IN_TRANSIT;
+        if (!inTransit && !CANCELLABLE.contains(trip.getStatus())) {
             throw new AppException(ErrorCode.TRIP_NOT_CANCELLABLE);
+        }
+        if (inTransit && !tripExceptionRepository.existsByTripIdAndStatusIn(tripId, UNRESOLVED_EXCEPTIONS)) {
+            throw new AppException(ErrorCode.TRIP_CANCEL_NEEDS_OPEN_EXCEPTION);
         }
         String trimmedReason = reason == null ? "" : reason.trim();
         if (trimmedReason.isEmpty()) {
             throw new AppException(ErrorCode.INVALID_INPUT, "Vui lòng nhập lý do huỷ chuyến");
         }
         TripStatus previousStatus = trip.getStatus();
+        trip.setCancelReason(trimmedReason);
+        trip.setCancelledFromStatus(previousStatus);
+        if (inTransit) {
+            cancelInTransit(trip, actor, trimmedReason);
+            return;
+        }
 
         int loadedCount = 0;
         int requirementCount = 0;
@@ -215,6 +240,61 @@ public class TripLifecycleService {
             after.put("driverId", trip.getDriver().getId());
         }
         audit("TRIP_CANCELLED", trip, actor, Map.of("status", previousStatus.name()), after);
+    }
+
+    /**
+     * Huỷ chuyến Đang vận chuyển: kiện của mọi điểm chưa hoàn tất (còn trên xe, hoặc đã dỡ mà điểm chưa hoàn tất) thành
+     * Hoàn trả và vẫn gắn với chuyến; kiện nhận dọc đường đã lên xe ở điểm nhận chưa hoàn tất cũng thành Hoàn trả; yêu cầu giao
+     * giữ chuyến nên đọc ra là giao thiếu; sự cố chưa xử lý ở lại như đã ghi.
+     * Xe hết bận khi chuyến không còn Đang vận chuyển.
+     */
+    private void cancelInTransit(Trip trip, User actor, String reason) {
+        Long tripId = trip.getId();
+        Set<Long> returnedIds = new HashSet<>();
+        for (DeliveryStop stop : deliveryStopRepository.findByTripIdOrderByStopSequenceAsc(tripId)) {
+            if (stop.getStatus() == DeliveryStopStatus.COMPLETED) {
+                continue;
+            }
+            for (CargoPackage cargoPackage : tripPackageResolver.packagesOfStop(stop.getId())) {
+                if (cargoPackage.getStatus() == PackageStatus.LOADED
+                        || cargoPackage.getStatus() == PackageStatus.DELIVERED) {
+                    cargoPackage.setStatus(PackageStatus.RETURNED);
+                    returnedIds.add(cargoPackage.getId());
+                }
+            }
+            if (stop.kind() == DeliveryStopType.PICKUP) {
+                returnPickedAtOpenPickupStop(stop, returnedIds);
+            }
+        }
+        trip.setCancelReturnedCount(returnedIds.size());
+
+        tripStatusService.transitionTo(tripId, TripStatus.CANCELLED, actor.getId());
+
+        Map<String, Object> after = new HashMap<>();
+        after.put("status", TripStatus.CANCELLED.name());
+        after.put("reason", reason);
+        after.put("returned", returnedIds.size());
+        if (trip.getDriver() != null) {
+            after.put("driverId", trip.getDriver().getId());
+        }
+        audit("TRIP_CANCELLED", trip, actor, Map.of("status", TripStatus.IN_TRANSIT.name()), after);
+    }
+
+    /** Kiện đã lên xe ở điểm nhận chưa hoàn tất (yêu cầu còn APPROVED nên chưa nằm trong kiện của điểm giao). */
+    private void returnPickedAtOpenPickupStop(DeliveryStop stop, Set<Long> returnedIds) {
+        for (PickupRequest request : pickupRequestRepository.findByPickupStopId(stop.getId())) {
+            if (request.getStatus() != PickupRequestStatus.APPROVED) {
+                continue;
+            }
+            for (PickupRequestPackage line : request.getPackages()) {
+                CargoPackage cargoPackage = line.getCargoPackage();
+                if (line.getPickedAt() != null && cargoPackage != null
+                        && cargoPackage.getStatus() == PackageStatus.LOADED) {
+                    cargoPackage.setStatus(PackageStatus.RETURNED);
+                    returnedIds.add(cargoPackage.getId());
+                }
+            }
+        }
     }
 
     /**

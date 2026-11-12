@@ -2,6 +2,7 @@ package fu.se184491.loadmaster_be.controller.planning;
 
 import fu.se184491.loadmaster_be.constant.account.UserRole;
 import fu.se184491.loadmaster_be.constant.account.UserStatus;
+import fu.se184491.loadmaster_be.constant.cargo.PackageFlag;
 import fu.se184491.loadmaster_be.constant.cargo.PackageStatus;
 import fu.se184491.loadmaster_be.constant.cargo.HandlingClass;
 import fu.se184491.loadmaster_be.constant.company.CompanyStatus;
@@ -202,8 +203,8 @@ class DeliveryRequirementApiIntegrationTest {
     }
 
     @Test
-    @Disabled("POST /api/delivery-requirements no longer accepts packages (packageIds is ignored; the warehouse attaches "
-            + "packages later). Mixing handling classes is now checked per trip by CargoSegregationService, covered by "
+    @Disabled("Packages picked from the pool are accepted again, but a requirement does not reject mixed handling "
+            + "classes. Mixing handling classes is now checked per trip by CargoSegregationService, covered by "
             + "CargoSegregationServiceIntegrationTest. Kept until the team decides whether a requirement must reject "
             + "mixed classes when packages are attached.")
     void managerCannotMixPackageHandlingClassesInOneRequirement() throws Exception {
@@ -407,6 +408,121 @@ class DeliveryRequirementApiIntegrationTest {
         mockMvc.perform(get("/api/delivery-requirements/{id}", requirement.getId())
                         .with(jwt().jwt(token -> token.subject("manager-subject"))))
                 .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void dispatcherCanCreateRequirementWithPoolPackages() throws Exception {
+        mockMvc.perform(post("/api/delivery-requirements")
+                        .with(asManager())
+                        .contentType("application/json")
+                        .content(requirementWithPackages(packageId)))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.data.packageIds.length()").value(1))
+                .andExpect(jsonPath("$.data.packageIds[0]").value(packageId));
+    }
+
+    @Test
+    void packageHeldByAnotherRequirementIsRejected() throws Exception {
+        DeliveryRequirement holder = persistRequirement(
+                company, manager, "Holder", LocalDateTime.now().plusDays(2), DeliveryRequirementStatus.PENDING);
+        holder.getPackages().add(entityManager.find(CargoPackage.class, packageId));
+        entityManager.flush();
+
+        mockMvc.perform(post("/api/delivery-requirements")
+                        .with(asManager())
+                        .contentType("application/json")
+                        .content(requirementWithPackages(packageId)))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("PACKAGE_IN_OTHER_REQUIREMENT"));
+    }
+
+    @Test
+    void flaggedPackageIsRejected() throws Exception {
+        entityManager.find(CargoPackage.class, packageId).setFlag(PackageFlag.NOT_FOUND);
+        entityManager.flush();
+
+        mockMvc.perform(post("/api/delivery-requirements")
+                        .with(asManager())
+                        .contentType("application/json")
+                        .content(requirementWithPackages(packageId)))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("PACKAGE_FLAGGED"));
+    }
+
+    @Test
+    void packageNotWaitingAtWarehouseIsRejected() throws Exception {
+        entityManager.find(CargoPackage.class, packageId).setStatus(PackageStatus.LOADED);
+        entityManager.flush();
+
+        mockMvc.perform(post("/api/delivery-requirements")
+                        .with(asManager())
+                        .contentType("application/json")
+                        .content(requirementWithPackages(packageId)))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("PACKAGE_NOT_AVAILABLE"));
+    }
+
+    @Test
+    void anotherCompanyPackageReadsAsNotFound() throws Exception {
+        Company otherCompany = Company.builder()
+                .companyCode("OTHER-PKG")
+                .companyName("Other Logistics")
+                .taxCode("OTHER-PKG-TAX")
+                .billingEmail("billing@other-pkg.test")
+                .status(CompanyStatus.ACTIVE)
+                .createdAt(Instant.now())
+                .build();
+        entityManager.persist(otherCompany);
+        CargoPackage foreign = CargoPackage.builder()
+                .company(otherCompany)
+                .trackingBarcode("PKG-OTHER")
+                .actualWeightKg(BigDecimal.ONE)
+                .status(PackageStatus.PENDING)
+                .build();
+        entityManager.persist(foreign);
+        entityManager.flush();
+
+        mockMvc.perform(post("/api/delivery-requirements")
+                        .with(asManager())
+                        .contentType("application/json")
+                        .content(requirementWithPackages(foreign.getId())))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("PACKAGE_NOT_FOUND"));
+    }
+
+    @Test
+    void updateReplacesPackagesOfPendingRequirement() throws Exception {
+        DeliveryRequirement requirement = persistRequirement(
+                company, manager, "Pending", LocalDateTime.now().plusDays(2), DeliveryRequirementStatus.PENDING);
+        entityManager.flush();
+
+        mockMvc.perform(patch("/api/delivery-requirements/{id}", requirement.getId())
+                        .with(asManager())
+                        .contentType("application/json")
+                        .content("{\"packageIds\": [%d]}".formatted(packageId)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.packageIds.length()").value(1));
+
+        // Danh sách rỗng bỏ mọi kiện: kiện quay về kho kiện.
+        mockMvc.perform(patch("/api/delivery-requirements/{id}", requirement.getId())
+                        .with(asManager())
+                        .contentType("application/json")
+                        .content("{\"packageIds\": []}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.packageIds.length()").value(0));
+    }
+
+    private String requirementWithPackages(Long id) {
+        return """
+                {
+                  "customerId": %d,
+                  "destination": "Da Nang Distribution Center",
+                  "deadline": "%s",
+                  "priority": "NORMAL",
+                  "expectedPackageCount": 1,
+                  "packageIds": [%d]
+                }
+                """.formatted(customer.getId(), LocalDateTime.now().plusDays(2).withNano(0), id);
     }
 
     /** Ghi cần DELIVERY_DEMAND_MANAGE, đọc cần DELIVERY_READ. */

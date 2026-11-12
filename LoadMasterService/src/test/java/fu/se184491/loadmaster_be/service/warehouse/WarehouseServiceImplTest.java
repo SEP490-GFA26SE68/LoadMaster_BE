@@ -3,6 +3,7 @@ package fu.se184491.loadmaster_be.service.warehouse;
 import fu.se184491.loadmaster_be.constant.warehouse.ExecutionAbortReason;
 import fu.se184491.loadmaster_be.dto.response.warehouse.WarehouseTaskResponse;
 import fu.se184491.loadmaster_be.repository.warehouse.LoadingDamageRepository;
+import fu.se184491.loadmaster_be.constant.cargo.LabelMethod;
 import fu.se184491.loadmaster_be.constant.cargo.PackageStatus;
 import fu.se184491.loadmaster_be.constant.optimization.LoadingExecutionStatus;
 import fu.se184491.loadmaster_be.constant.trip.TripStatus;
@@ -259,6 +260,32 @@ class WarehouseServiceImplTest {
         });
 
         assertEquals("CONFIRMED", service.confirmPlacement(72L, null).getStatus());
+    }
+
+    @Test
+    void confirmingAPlacementRecordsHowTheLabelWasChecked() {
+        PackagePlacement first = loadingPlacement(71L, 1);
+        when(packagePlacementRepository.findByLoadPlanIdOrderByStepSequenceAsc(50L)).thenReturn(List.of(first));
+        when(placementConfirmationRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+
+        service.confirmPlacement(71L, null, LabelMethod.CODE);
+
+        org.mockito.ArgumentCaptor<PlacementConfirmation> saved = org.mockito.ArgumentCaptor.forClass(PlacementConfirmation.class);
+        verify(placementConfirmationRepository).save(saved.capture());
+        assertEquals(LabelMethod.CODE, saved.getValue().getMethod());
+    }
+
+    @Test
+    void confirmingAPlacementWithoutAMethodCountsAsScanned() {
+        PackagePlacement first = loadingPlacement(71L, 1);
+        when(packagePlacementRepository.findByLoadPlanIdOrderByStepSequenceAsc(50L)).thenReturn(List.of(first));
+        when(placementConfirmationRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+
+        service.confirmPlacement(71L, null);
+
+        org.mockito.ArgumentCaptor<PlacementConfirmation> saved = org.mockito.ArgumentCaptor.forClass(PlacementConfirmation.class);
+        verify(placementConfirmationRepository).save(saved.capture());
+        assertEquals(LabelMethod.QR, saved.getValue().getMethod());
     }
 
     @Test

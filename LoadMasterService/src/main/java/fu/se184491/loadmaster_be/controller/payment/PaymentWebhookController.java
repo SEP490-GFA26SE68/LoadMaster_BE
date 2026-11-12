@@ -1,11 +1,13 @@
 package fu.se184491.loadmaster_be.controller.payment;
 
 import fu.se184491.loadmaster_be.client.VnPayClient;
+import fu.se184491.loadmaster_be.config.FrontendUrls;
 import fu.se184491.loadmaster_be.exception.AppException;
 import fu.se184491.loadmaster_be.exception.ErrorCode;
 import fu.se184491.loadmaster_be.service.payment.PaymentCallbackHandler;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -21,6 +23,9 @@ public class PaymentWebhookController {
 
     private final PaymentCallbackHandler paymentCallbackHandler;
     private final VnPayClient vnPayClient;
+
+    @Value(FrontendUrls.URL)
+    private String frontendUrl = FrontendUrls.DEFAULT;
 
     @PostMapping("/webhook/vnpay")
     public ResponseEntity<Map<String, String>> handleVnPayWebhookPost(@RequestParam Map<String, String> allParams) {
@@ -42,9 +47,9 @@ public class PaymentWebhookController {
         paymentCallbackHandler.handleVnPayCallback(allParams);
 
         String txnRef = allParams.get("vnp_TxnRef");
-        String redirectUrl = (txnRef != null && txnRef.startsWith("REG_"))
-                ? "http://localhost:5173/dang-ky-thanh-cong"
-                : "http://localhost:5173/goi-cuoc";
+        String redirectUrl = FrontendUrls.join(frontendUrl, (txnRef != null && txnRef.startsWith("REG_"))
+                ? "/dang-ky-thanh-cong"
+                : "/goi-cuoc");
 
         return ResponseEntity.status(HttpStatus.FOUND)
                 .location(URI.create(redirectUrl))

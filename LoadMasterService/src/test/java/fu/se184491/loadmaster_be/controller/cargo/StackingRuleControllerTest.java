@@ -49,6 +49,9 @@ public class StackingRuleControllerTest {
     private JwtAuthenticationConverter jwtAuthenticationConverter;
 
     @MockitoBean
+    private fu.se184491.loadmaster_be.helpers.CurrentUserService currentUserService;
+
+    @MockitoBean
     private RestAuthenticationEntryPoint restAuthenticationEntryPoint;
 
     @MockitoBean
@@ -64,6 +67,7 @@ public class StackingRuleControllerTest {
     @BeforeEach
     void setUp() {
         objectMapper = new ObjectMapper();
+        when(currentUserService.getCurrentCompanyId()).thenReturn(1L);
 
         request = StackingRuleRequest.builder()
                 .bottomPackageTypeId(10L)
@@ -168,5 +172,29 @@ public class StackingRuleControllerTest {
                         .param("topPackageTypeId", "20"))
                 .andExpect(status().isOk())
                 .andExpect(content().string("false"));
+    }
+
+    @Test
+    @WithMockUser(authorities = "PACKAGE_TYPE_MANAGE")
+    void userWithoutCompany_isRejected_neverFallsBackToAnotherCompany() throws Exception {
+        when(currentUserService.getCurrentCompanyId()).thenThrow(
+                new fu.se184491.loadmaster_be.exception.AppException(
+                        fu.se184491.loadmaster_be.exception.ErrorCode.USER_COMPANY_NOT_FOUND));
+
+        mockMvc.perform(get("/api/stacking-rules/100"))
+                .andExpect(status().isNotFound());
+
+        org.mockito.Mockito.verifyNoInteractions(stackingRuleService);
+    }
+
+    @Test
+    @WithMockUser(authorities = "PACKAGE_TYPE_MANAGE")
+    void nonJwtPrincipal_isUnauthenticated() throws Exception {
+        when(currentUserService.getCurrentCompanyId()).thenThrow(new IllegalStateException("no jwt"));
+
+        mockMvc.perform(get("/api/stacking-rules/100"))
+                .andExpect(status().isUnauthorized());
+
+        org.mockito.Mockito.verifyNoInteractions(stackingRuleService);
     }
 }

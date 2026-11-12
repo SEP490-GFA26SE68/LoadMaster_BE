@@ -224,6 +224,28 @@ public class PackageServiceTest {
     }
 
     @Test
+    void reportFound_ClearsTheNotFoundFlag() {
+        cargoPackage.setFlag(PackageFlag.NOT_FOUND);
+        when(packageRepository.findByIdAndCompany_Id(100L, 1L)).thenReturn(Optional.of(cargoPackage));
+
+        PackageResponse response = packageService.reportFound(1L, 100L);
+
+        assertNull(response.getFlag());
+        assertNull(cargoPackage.getFlag());
+        verify(packageRepository).save(cargoPackage);
+    }
+
+    @Test
+    void reportFound_DamagedOrUnflaggedPackageIsRejected() {
+        cargoPackage.setFlag(PackageFlag.DAMAGED);
+        when(packageRepository.findByIdAndCompany_Id(100L, 1L)).thenReturn(Optional.of(cargoPackage));
+
+        AppException ex = assertThrows(AppException.class, () -> packageService.reportFound(1L, 100L));
+        assertEquals(ErrorCode.PACKAGE_NOT_FLAGGED, ex.getErrorCode());
+        verify(packageRepository, never()).save(any(CargoPackage.class));
+    }
+
+    @Test
     void clearFlag_PackageWithoutFlagIsRejected() {
         when(packageRepository.findByIdAndCompany_Id(100L, 1L)).thenReturn(Optional.of(cargoPackage));
 

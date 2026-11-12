@@ -196,6 +196,9 @@ public class WarehouseStagingServiceImpl implements WarehouseStagingService {
         values.put("packageId", shortage.getCargoPackage() != null ? shortage.getCargoPackage().getId() : null);
         values.put("tripId", trip.getId());
         values.put("decision", request.getDecision().name());
+        // Người báo thiếu và tài xế lúc quyết định: chuông của họ đọc hai mã này
+        values.put("reportedBy", shortage.getReportedBy() != null ? shortage.getReportedBy().getId() : null);
+        values.put("driverId", trip.getDriver() != null ? trip.getDriver().getId() : null);
         lookup.audit(trip, dispatcher, "STAGING_SHORTAGE_RESOLVED", "StagingShortage", shortage.getId(), values);
         return toResponse(shortage, stop);
     }

@@ -14,6 +14,7 @@ import fu.se184491.loadmaster_be.entity.billing.SubscriptionPlan;
 import fu.se184491.loadmaster_be.entity.support.TrialAccountRequest;
 import fu.se184491.loadmaster_be.entity.support.TrialRegistrationSession;
 import fu.se184491.loadmaster_be.exception.AppException;
+import fu.se184491.loadmaster_be.service.registration.OtpAttempts;
 import fu.se184491.loadmaster_be.exception.ErrorCode;
 import fu.se184491.loadmaster_be.helpers.CompanyCodeGenerator;
 import fu.se184491.loadmaster_be.repository.account.UserRepository;
@@ -120,6 +121,7 @@ public class TrialRegistrationServiceImpl implements TrialRegistrationService {
                 .interestedPlan(basicPlan)
                 .note(request.getNote())
                 .otpHash(hashedOtp)
+                .otpFailedAttempts(0)
                 .otpExpiresAt(otpExpiresAt)
                 .otpResendAllowedAt(otpResendAllowedAt)
                 .verified(false)
@@ -145,7 +147,7 @@ public class TrialRegistrationServiceImpl implements TrialRegistrationService {
     }
 
     @Override
-    @Transactional
+    @Transactional(noRollbackFor = AppException.class)
     public GuestTrialVerifyResponse verifyOtp(GuestTrialVerifyOtpRequest request) {
         TrialRegistrationSession session = sessionRepository.findByToken(request.getToken())
                 .orElseThrow(() -> new AppException(ErrorCode.REGISTRATION_SESSION_NOT_FOUND, "Phiên đăng ký không hợp lệ hoặc đã hết hạn"));
@@ -159,13 +161,25 @@ public class TrialRegistrationServiceImpl implements TrialRegistrationService {
             throw new AppException(ErrorCode.REGISTRATION_INVALID_STATUS, "Phiên đăng ký này đã được xác thực thành công trước đó.");
         }
 
+        if (OtpAttempts.exhausted(session.getOtpFailedAttempts()) || session.getOtpHash() == null) {
+            throw new AppException(ErrorCode.OTP_ATTEMPTS_EXCEEDED);
+        }
+
         if (session.getOtpExpiresAt() == null || session.getOtpExpiresAt().isBefore(now)) {
             throw new AppException(ErrorCode.OTP_EXPIRED, "Mã OTP đã hết hiệu lực. Vui lòng yêu cầu gửi lại mã mới.");
         }
 
-        // Kiểm tra mã OTP khớp
+        // Kiểm tra mã OTP khớp; sai đủ số lần thì huỷ mã, phải gửi lại mã mới
         String inputHashed = otpHasher.hash(session.getEmail(), request.getOtp().trim());
         if (!inputHashed.equals(session.getOtpHash())) {
+            int attempts = OtpAttempts.next(session.getOtpFailedAttempts());
+            session.setOtpFailedAttempts(attempts);
+            if (OtpAttempts.exhausted(attempts)) {
+                session.setOtpHash(null);
+                sessionRepository.save(session);
+                throw new AppException(ErrorCode.OTP_ATTEMPTS_EXCEEDED);
+            }
+            sessionRepository.save(session);
             throw new AppException(ErrorCode.OTP_INCORRECT, "Mã OTP không chính xác. Vui lòng kiểm tra lại.");
         }
 
@@ -227,6 +241,7 @@ public class TrialRegistrationServiceImpl implements TrialRegistrationService {
         LocalDateTime otpResendAllowedAt = now.plus(OTP_RESEND_COOLDOWN_SECONDS, ChronoUnit.SECONDS).truncatedTo(ChronoUnit.SECONDS);
 
         session.setOtpHash(hashedOtp);
+        session.setOtpFailedAttempts(0);
         session.setOtpExpiresAt(otpExpiresAt);
         session.setOtpResendAllowedAt(otpResendAllowedAt);
         sessionRepository.save(session);

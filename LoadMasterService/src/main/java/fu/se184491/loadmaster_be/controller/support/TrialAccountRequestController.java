@@ -32,7 +32,7 @@ public class TrialAccountRequestController {
     private final UserRepository userRepository;
 
     @PostMapping
-    @PreAuthorize("hasRole('SYSTEM_ADMIN') or hasAuthority('SYSTEM_ADMIN')")
+    @PreAuthorize("hasRole('SYSTEM_ADMIN')")
     public ResponseEntity<ApiResponse<TrialAccountRequestResponse>> createTrialRequest(
             @Valid @RequestBody CreateTrialAccountRequest request,
             @AuthenticationPrincipal Jwt jwt
@@ -44,7 +44,7 @@ public class TrialAccountRequestController {
     }
 
     @GetMapping
-    @PreAuthorize("hasAnyRole('SYSTEM_MANAGER', 'SYSTEM_ADMIN') or hasAnyAuthority('SYSTEM_MANAGER', 'SYSTEM_ADMIN')")
+    @PreAuthorize("hasAnyRole('SYSTEM_MANAGER', 'SYSTEM_ADMIN')")
     public ResponseEntity<PageResponse<TrialAccountRequestResponse>> getTrialRequests(
             @RequestParam(required = false) String search,
             @RequestParam(required = false) TrialRequestStatus status,
@@ -57,14 +57,14 @@ public class TrialAccountRequestController {
     }
 
     @GetMapping("/{id}")
-    @PreAuthorize("hasAnyRole('SYSTEM_MANAGER', 'SYSTEM_ADMIN') or hasAnyAuthority('SYSTEM_MANAGER', 'SYSTEM_ADMIN')")
+    @PreAuthorize("hasAnyRole('SYSTEM_MANAGER', 'SYSTEM_ADMIN')")
     public ResponseEntity<ApiResponse<TrialAccountRequestResponse>> getTrialRequestById(@PathVariable Long id) {
         TrialAccountRequestResponse response = trialAccountRequestService.getTrialRequestById(id);
         return ResponseEntity.ok(ApiResponse.success("Trial account request retrieved successfully", response));
     }
 
     @PostMapping("/{id}/manager-approve")
-    @PreAuthorize("hasRole('SYSTEM_MANAGER') or hasAuthority('SYSTEM_MANAGER')")
+    @PreAuthorize("hasRole('SYSTEM_MANAGER')")
     public ResponseEntity<ApiResponse<TrialAccountRequestResponse>> managerApprove(
             @PathVariable Long id,
             @Valid @RequestBody(required = false) ManagerApproveTrialRequest request,
@@ -76,7 +76,7 @@ public class TrialAccountRequestController {
     }
 
     @PostMapping("/{id}/manager-reject")
-    @PreAuthorize("hasRole('SYSTEM_MANAGER') or hasAuthority('SYSTEM_MANAGER')")
+    @PreAuthorize("hasRole('SYSTEM_MANAGER')")
     public ResponseEntity<ApiResponse<TrialAccountRequestResponse>> managerReject(
             @PathVariable Long id,
             @Valid @RequestBody(required = false) RejectTrialAccountRequest request,
@@ -89,7 +89,7 @@ public class TrialAccountRequestController {
     }
 
     @PostMapping("/{id}/approve")
-    @PreAuthorize("hasRole('SYSTEM_ADMIN') or hasAuthority('SYSTEM_ADMIN')")
+    @PreAuthorize("hasRole('SYSTEM_ADMIN')")
     public ResponseEntity<ApiResponse<TrialAccountRequestResponse>> approveTrialRequest(
             @PathVariable Long id,
             @Valid @RequestBody(required = false) ApproveTrialAccountRequest request,
@@ -104,7 +104,7 @@ public class TrialAccountRequestController {
     }
 
     @PostMapping("/{id}/reject")
-    @PreAuthorize("hasRole('SYSTEM_ADMIN') or hasAuthority('SYSTEM_ADMIN')")
+    @PreAuthorize("hasRole('SYSTEM_ADMIN')")
     public ResponseEntity<ApiResponse<TrialAccountRequestResponse>> rejectTrialRequest(
             @PathVariable Long id,
             @Valid @RequestBody(required = false) RejectTrialAccountRequest request,

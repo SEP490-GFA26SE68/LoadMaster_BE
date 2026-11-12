@@ -10,7 +10,9 @@ import jakarta.persistence.*;
 import lombok.*;
 
 @Entity
-@Table(name = "optimization_jobs")
+@Table(name = "optimization_jobs", indexes = {
+        @Index(name = "idx_optimization_jobs_trip_id", columnList = "trip_id")
+})
 @Getter @Setter @NoArgsConstructor @AllArgsConstructor @Builder
 public class OptimizationJob {
     @Id @GeneratedValue(strategy = GenerationType.IDENTITY)

@@ -77,6 +77,9 @@ class SupportTicketServiceTest {
     @Mock
     private CompanyAgreementRepository companyAgreementRepository;
 
+    @Mock
+    private fu.se184491.loadmaster_be.repository.support.TicketReplyRepository ticketReplyRepository;
+
     @InjectMocks
     private SupportTicketServiceImpl supportTicketService;
 
@@ -335,7 +338,7 @@ class SupportTicketServiceTest {
                 .build();
 
         // Truy vấn chỉ trả phiếu CLOSED / RESOLVED còn lịch sử; phiếu đang xử lý lọt vào vẫn không bị xoá.
-        when(supportTicketRepository.findByStatusInAndResolutionNoteIsNotNull(argThat(statuses ->
+        when(supportTicketRepository.findWithChatHistoryByStatusIn(argThat(statuses ->
                 statuses.size() == 2
                         && statuses.contains(TicketStatus.CLOSED)
                         && statuses.contains(TicketStatus.RESOLVED))))
@@ -353,15 +356,26 @@ class SupportTicketServiceTest {
     }
 
     @Test
-    @DisplayName("cleanupClosedTicketChatHistory - Runs hourly, not every 10 seconds")
-    void cleanupClosedTicketChatHistory_isScheduledHourly() throws Exception {
-        org.springframework.scheduling.annotation.Scheduled scheduled = SupportTicketServiceImpl.class
-                .getMethod("cleanupClosedTicketChatHistory")
-                .getAnnotation(org.springframework.scheduling.annotation.Scheduled.class);
+    @DisplayName("cleanupClosedTicketChatHistory - Replies in ticket_replies of an expired ticket are deleted with it; recent ones stay")
+    void cleanupClosedTicketChatHistory_deletesTheTableRepliesOfExpiredTickets() {
+        LocalDateTime now = LocalDateTime.now().truncatedTo(java.time.temporal.ChronoUnit.SECONDS);
+        // Phiếu mới: lịch sử chỉ nằm ở bảng ticket_replies, ghi chú trống
+        SupportTicket expiredWithRows = SupportTicket.builder()
+                .id(301L).ticketCode("TCK-301").requester(companyAdmin)
+                .status(TicketStatus.RESOLVED).resolvedAt(now.minusDays(20)).build();
+        SupportTicket recentWithRows = SupportTicket.builder()
+                .id(302L).ticketCode("TCK-302").requester(companyAdmin)
+                .status(TicketStatus.CLOSED).resolvedAt(now.minusDays(3)).build();
+        when(supportTicketRepository.findWithChatHistoryByStatusIn(any()))
+                .thenReturn(List.of(expiredWithRows, recentWithRows));
+        when(ticketReplyRepository.findTicketIdsWithReplies(List.of(301L, 302L))).thenReturn(java.util.Set.of(301L, 302L));
 
-        assertNotNull(scheduled);
-        assertEquals("0 15 * * * *", scheduled.cron());
-        assertEquals(-1L, scheduled.fixedDelay());
+        int cleanedCount = supportTicketService.cleanupClosedTicketChatHistory();
+
+        assertEquals(1, cleanedCount);
+        verify(ticketReplyRepository).deleteByTicketIdIn(List.of(301L));
+        // Không có ghi chú để xoá: phiếu không phải lưu lại
+        verify(supportTicketRepository, never()).save(any());
     }
 
     @Test

@@ -1,9 +1,6 @@
+# Chỉ máy dev (SPRING_PROFILES_ACTIVE=dev): tài khoản mẫu do các initializer @Profile("dev") tạo, và thanh toán giả lập.
+# Cấu hình dùng chung cho mọi môi trường nằm ở application.yml.
 app:
-  password:
-    generator:
-      upper: ${UPPER:ABCDEFGHIJKLMNOPQRSTUVWXYZ}
-      lower: ${LOWER:abcdefghijklmnopqrstuvwxyz}
-      digits: ${DIGITS:0123456789}
   bootstrap:
     admin:
       email: ${DEV_ADMIN_EMAIL}
@@ -15,13 +12,6 @@ app:
       email: ${DEV_DISPATCHER_EMAIL:dispatcher@loadmaster.local}
       password: ${DEV_DISPATCHER_PASSWORD:${DEV_ADMIN_PASSWORD}}
       full-name: ${DEV_DISPATCHER_FULL_NAME:LoadMaster Dispatcher}
-  brevo:
-    api-key: ${BREVO_API_KEY}
-    sender-email: ${BREVO_SENDER_EMAIL}
-    sender-name: ${BREVO_SENDER_NAME}
-
-    security:
-      otp-hmac-secret: ${OTP_HMAC_SECRET}
 
 # Máy dev chạy thanh toán giả lập (mock-checkout, bỏ kiểm chữ ký). Môi trường thật đặt VNPAY_MOCK=false
 # hoặc không bật profile dev.

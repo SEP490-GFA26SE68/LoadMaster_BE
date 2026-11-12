@@ -118,6 +118,18 @@ class LoadingOptimizationServiceImplTest {
     }
 
     @Test
+    void oneCreditIsNotEnoughForARunThatCostsTwo() {
+        subscription(SubscriptionTier.BASIC, SubscriptionStatus.ACTIVE);
+        balance(1);
+
+        assertThatThrownBy(() -> service.startLoadingOptimization(10L))
+                .isInstanceOf(AppException.class)
+                .extracting(LoadingOptimizationServiceImplTest::codeOf)
+                .isEqualTo(ErrorCode.INSUFFICIENT_CREDITS);
+        verify(optimizationClient, never()).createJob(any());
+    }
+
+    @Test
     void ultimateSkipsTheBalanceCheck() {
         subscription(SubscriptionTier.ULTIMATE, SubscriptionStatus.ACTIVE);
         balance(0);
@@ -132,6 +144,27 @@ class LoadingOptimizationServiceImplTest {
     void expiredSubscriptionRunsAsBasic() {
         subscription(SubscriptionTier.PRO, SubscriptionStatus.EXPIRED);
         balance(3);
+
+        service.startLoadingOptimization(10L);
+
+        assertThat(sentRequest()).containsEntry("subscription_tier", "BASIC");
+    }
+
+    @Test
+    void cancelledUltimateRunsAsBasicAndNeedsCredit() {
+        subscription(SubscriptionTier.ULTIMATE, SubscriptionStatus.CANCELLED);
+        balance(1);
+
+        assertThatThrownBy(() -> service.startLoadingOptimization(10L))
+                .extracting(LoadingOptimizationServiceImplTest::codeOf)
+                .isEqualTo(ErrorCode.INSUFFICIENT_CREDITS);
+        verify(optimizationClient, never()).createJob(any());
+    }
+
+    @Test
+    void neverHadASubscriptionRunsAsBasicWithItsBalance() {
+        when(companySubscriptionRepository.findByCompanyId(COMPANY)).thenReturn(Optional.empty());
+        balance(2);
 
         service.startLoadingOptimization(10L);
 

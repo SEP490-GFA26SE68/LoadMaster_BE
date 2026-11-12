@@ -1,6 +1,7 @@
 package fu.se184491.loadmaster_be.service.driver.Impl;
 
 import fu.se184491.loadmaster_be.service.audit.AuditCompany;
+import fu.se184491.loadmaster_be.constant.cargo.LabelMethod;
 import fu.se184491.loadmaster_be.constant.cargo.PackageStatus;
 import fu.se184491.loadmaster_be.constant.optimization.LoadingExecutionStatus;
 import fu.se184491.loadmaster_be.constant.planning.DeliveryRequirementStatus;
@@ -120,6 +121,7 @@ public class DriverServiceImpl implements DriverService {
                 requirement.setStatus(DeliveryRequirementStatus.IN_TRIP);
             }
         }
+        trip.setDepartedAt(LocalDateTime.now());
         Trip started = tripStatusService.transitionTo(trip.getId(), TripStatus.IN_TRANSIT, driver.getId());
         log.info("Driver {} started trip {}", driver.getId(), started.getTripCode());
         return toTripResponse(started);
@@ -253,7 +255,7 @@ public class DriverServiceImpl implements DriverService {
 
     @Override
     @Transactional
-    public ConfirmUnloadResponse confirmUnload(Long packageId, Long driverId) {
+    public ConfirmUnloadResponse confirmUnload(Long packageId, Long driverId, LabelMethod method) {
         User driver = currentDriver(driverId);
         CargoPackage pkg = cargoPackageRepository.findById(packageId)
                 .orElseThrow(() -> new AppException(ErrorCode.PACKAGE_NOT_FOUND));
@@ -285,12 +287,17 @@ public class DriverServiceImpl implements DriverService {
                 throw new WrongStopException("Kiện hàng không thuộc điểm dừng hiện tại");
             }
         }
+        // Dỡ chỉ sau khi tài xế báo đã đến điểm (như dỡ qua hộp đối chiếu và xác nhận tay)
+        if (currentStop.getActualArrival() == null) {
+            throw new AppException(ErrorCode.DELIVERY_STOP_NOT_ARRIVED);
+        }
 
         UnloadConfirmation confirmation = UnloadConfirmation.builder()
                 .cargoPackage(pkg)
                 .deliveryStop(packageStop)
                 .driver(driver)
                 .unloadedAt(LocalDateTime.now())
+                .method(LabelMethod.orQr(method))
                 .build();
         UnloadConfirmation savedConfirmation = unloadConfirmationRepository.save(confirmation);
 
@@ -389,6 +396,7 @@ public class DriverServiceImpl implements DriverService {
             stop.setActualArrival(LocalDateTime.now());
         }
         stop.setStatus(DeliveryStopStatus.COMPLETED);
+        stop.setCompletedAt(LocalDateTime.now());
         deliveryStopRepository.save(stop);
         pickupDriverService.onStopCompleted(stop, driver);
 

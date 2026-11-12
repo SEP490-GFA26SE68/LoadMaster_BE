@@ -27,4 +27,7 @@ public interface ContactOfGuestService {
     ContactOfGuestResponse updateContact(Long id, UpdateContactOfGuestRequest request, User currentUser);
 
     ContactOfGuestResponse replyToContact(Long id, ReplyContactOfGuestRequest request, User sender);
+
+    /** Người nhận việc được: quản trị hệ thống và hỗ trợ khách hàng đang hoạt động, theo tên. */
+    List<fu.se184491.loadmaster_be.dto.response.support.ContactHandlerResponse> listHandlers();
 }

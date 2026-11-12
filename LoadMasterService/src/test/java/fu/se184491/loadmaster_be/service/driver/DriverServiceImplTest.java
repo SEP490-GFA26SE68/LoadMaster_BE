@@ -1,5 +1,6 @@
 package fu.se184491.loadmaster_be.service.driver;
 
+import fu.se184491.loadmaster_be.constant.cargo.LabelMethod;
 import fu.se184491.loadmaster_be.constant.cargo.PackageStatus;
 import fu.se184491.loadmaster_be.constant.optimization.LoadingExecutionStatus;
 import fu.se184491.loadmaster_be.constant.planning.DeliveryRequirementStatus;
@@ -124,6 +125,7 @@ class DriverServiceImplTest {
 
         assertEquals("IN_TRANSIT", service.startTrip(10L).getStatus());
         assertEquals(DeliveryRequirementStatus.IN_TRIP, requirement.getStatus());
+        assertNotNull(trip.getDepartedAt());
     }
 
     @Test
@@ -143,9 +145,27 @@ class DriverServiceImplTest {
     }
 
     @Test
-    void unloadFindsStopThroughDeliveryRequirement() {
+    void unloadBeforeArrivalIsRejected() {
         trip.setStatus(TripStatus.IN_TRANSIT);
         DeliveryStop stop = DeliveryStop.builder().id(30L).trip(trip).stopSequence(1).build();
+        CargoPackage pkg = CargoPackage.builder().id(1L).trackingBarcode("PK-1").status(PackageStatus.LOADED).build();
+        when(cargoPackageRepository.findById(1L)).thenReturn(Optional.of(pkg));
+        when(tripPackageResolver.stopOfPackage(pkg)).thenReturn(Optional.of(stop));
+        when(deliveryStopRepository.findFirstByTripIdAndStatusNotOrderByStopSequenceAsc(10L, DeliveryStopStatus.COMPLETED))
+                .thenReturn(Optional.of(stop));
+
+        AppException error = assertThrows(AppException.class, () -> service.confirmUnload(1L, null));
+
+        assertEquals(ErrorCode.DELIVERY_STOP_NOT_ARRIVED, error.getErrorCode());
+        verify(unloadConfirmationRepository, never()).save(any());
+        assertEquals(PackageStatus.LOADED, pkg.getStatus());
+    }
+
+    @Test
+    void unloadFindsStopThroughDeliveryRequirement() {
+        trip.setStatus(TripStatus.IN_TRANSIT);
+        DeliveryStop stop = DeliveryStop.builder().id(30L).trip(trip).stopSequence(1)
+                .actualArrival(LocalDateTime.of(2026, 11, 6, 9, 0)).build();
         CargoPackage pkg = CargoPackage.builder().id(1L).trackingBarcode("PK-1").status(PackageStatus.LOADED).build();
         when(cargoPackageRepository.findById(1L)).thenReturn(Optional.of(pkg));
         when(tripPackageResolver.stopOfPackage(pkg)).thenReturn(Optional.of(stop));
@@ -164,6 +184,33 @@ class DriverServiceImplTest {
         assertEquals(30L, response.getStopId());
         assertEquals(0, response.getRemainingPackagesCount());
         assertEquals(PackageStatus.DELIVERED, pkg.getStatus());
+        ArgumentCaptor<UnloadConfirmation> saved = ArgumentCaptor.forClass(UnloadConfirmation.class);
+        verify(unloadConfirmationRepository).save(saved.capture());
+        assertEquals(LabelMethod.QR, saved.getValue().getMethod(), "không gửi cách đối chiếu là quét QR");
+    }
+
+    @Test
+    void unloadByTypedCodeRecordsTheMethod() {
+        trip.setStatus(TripStatus.IN_TRANSIT);
+        DeliveryStop stop = DeliveryStop.builder().id(30L).trip(trip).stopSequence(1)
+                .actualArrival(LocalDateTime.of(2026, 11, 6, 9, 0)).build();
+        CargoPackage pkg = CargoPackage.builder().id(1L).trackingBarcode("PK-1").status(PackageStatus.LOADED).build();
+        when(cargoPackageRepository.findById(1L)).thenReturn(Optional.of(pkg));
+        when(tripPackageResolver.stopOfPackage(pkg)).thenReturn(Optional.of(stop));
+        when(deliveryStopRepository.findFirstByTripIdAndStatusNotOrderByStopSequenceAsc(10L, DeliveryStopStatus.COMPLETED))
+                .thenReturn(Optional.of(stop));
+        when(unloadConfirmationRepository.save(any())).thenAnswer(invocation -> {
+            UnloadConfirmation saved = invocation.getArgument(0);
+            saved.setId(40L);
+            return saved;
+        });
+        when(tripPackageResolver.packagesOfStop(30L)).thenReturn(List.of(pkg));
+
+        service.confirmUnload(1L, null, LabelMethod.CODE);
+
+        ArgumentCaptor<UnloadConfirmation> saved = ArgumentCaptor.forClass(UnloadConfirmation.class);
+        verify(unloadConfirmationRepository).save(saved.capture());
+        assertEquals(LabelMethod.CODE, saved.getValue().getMethod());
     }
 
     @Test
@@ -187,6 +234,7 @@ class DriverServiceImplTest {
         assertTrue(response.getTripCompleted());
         assertEquals("DELIVERED", response.getTripStatus());
         assertEquals(DeliveryStopStatus.COMPLETED, stop.getStatus());
+        assertNotNull(stop.getCompletedAt());
         assertNotNull(trip.getCompletedAt());
         verify(pickupDriverService).requireComplete(stop);
         verify(pickupDriverService).onStopCompleted(stop, driver);

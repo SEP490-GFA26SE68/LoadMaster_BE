@@ -12,6 +12,8 @@ import fu.se184491.loadmaster_be.entity.company.CompanyAgreement;
 import fu.se184491.loadmaster_be.repository.account.UserRepository;
 import fu.se184491.loadmaster_be.repository.company.CompanyAgreementRepository;
 import fu.se184491.loadmaster_be.repository.company.CompanyRepository;
+import fu.se184491.loadmaster_be.repository.support.SupportTicketRepository;
+import fu.se184491.loadmaster_be.repository.support.TicketReplyRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -48,6 +50,12 @@ class TrialAgreementEnforcementJobTest {
     private CompanyRepository companyRepository;
 
     @Mock
+    private SupportTicketRepository supportTicketRepository;
+
+    @Mock
+    private TicketReplyRepository ticketReplyRepository;
+
+    @Mock
     private KeycloakAdminClient keycloakAdminClient;
 
     // Transaction manager giả: TransactionTemplate gọi getTransaction → callback → commit (hoặc rollback khi lỗi),
@@ -61,7 +69,8 @@ class TrialAgreementEnforcementJobTest {
     @BeforeEach
     void setUp() {
         enforcementJob = new TrialAgreementEnforcementJob(
-                agreementRepository, userRepository, companyRepository, keycloakAdminClient, transactionManager);
+                agreementRepository, userRepository, companyRepository, supportTicketRepository, ticketReplyRepository,
+                keycloakAdminClient, transactionManager, true);
         company = Company.builder().id(10L).companyCode("COMP-10").build();
     }
 
@@ -168,6 +177,25 @@ class TrialAgreementEnforcementJobTest {
         verify(keycloakAdminClient, never()).deleteUser(anyString());
     }
 
+    @Test
+    @DisplayName("Tắt app.trial.hard-delete-enabled (mặc định): vẫn gắn cờ, không tìm và không xóa tài khoản nào")
+    void hardDeleteIsSkippedWhenDisabled() {
+        TrialAgreementEnforcementJob disabled = new TrialAgreementEnforcementJob(
+                agreementRepository, userRepository, companyRepository, supportTicketRepository, ticketReplyRepository,
+                keycloakAdminClient, transactionManager, false);
+        User trialAdmin = user(20L, "kc-20", UserType.TRIAL, UserStatus.ACTIVE);
+        when(agreementRepository.findIdsByStatusAndDeadlineAtBefore(eq(AgreementStatus.PENDING), any()))
+                .thenReturn(List.of(100L));
+        when(agreementRepository.findById(100L)).thenReturn(Optional.of(pending(100L, trialAdmin)));
+
+        assertThat(disabled.enforceUnsignedAgreements()).isEqualTo(1);
+
+        assertThat(trialAdmin.getStatus()).isEqualTo(UserStatus.FLAGGED);
+        verify(agreementRepository, never()).findIdsByStatusAndExpiredAtBefore(any(), any());
+        verify(userRepository, never()).delete(any(User.class));
+        verify(keycloakAdminClient, never()).deleteUser(anyString());
+    }
+
     // ── Xóa cứng ─────────────────────────────────────────────────────────────────────────────────────────────────
 
     @Test
@@ -188,6 +216,26 @@ class TrialAgreementEnforcementJobTest {
         order.verify(transactionManager).commit(any());
         order.verify(keycloakAdminClient).deleteUser("kc-20");
         order.verify(companyRepository).deleteById(10L);
+        order.verify(transactionManager).commit(any());
+    }
+
+    @Test
+    @DisplayName("Xóa cứng tài khoản TRIAL: trả lời của các yêu cầu hỗ trợ xóa trước, rồi phiếu, rồi tài khoản — cùng một transaction")
+    void deletesTheTrialAccountsTicketRepliesBeforeTheTicketsAndTheAccount() {
+        User trialAdmin = user(20L, "kc-20", UserType.TRIAL, UserStatus.FLAGGED);
+        CompanyAgreement agreement = expired(200L, trialAdmin, LocalDateTime.now().minusDays(31));
+        when(agreementRepository.findIdsByStatusAndExpiredAtBefore(eq(AgreementStatus.EXPIRED), any()))
+                .thenReturn(List.of(200L));
+        when(agreementRepository.findById(200L)).thenReturn(Optional.of(agreement));
+        when(supportTicketRepository.findIdsByRequesterId(20L)).thenReturn(List.of(7L, 8L));
+        when(userRepository.findByCompanyId(10L)).thenReturn(List.of());
+
+        enforcementJob.enforceUnsignedAgreements();
+
+        InOrder order = inOrder(ticketReplyRepository, supportTicketRepository, userRepository, transactionManager);
+        order.verify(ticketReplyRepository).deleteByTicketIdIn(List.of(7L, 8L));
+        order.verify(supportTicketRepository).deleteAllByIdInBatch(List.of(7L, 8L));
+        order.verify(userRepository).delete(trialAdmin);
         order.verify(transactionManager).commit(any());
     }
 

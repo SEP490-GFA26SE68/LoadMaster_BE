@@ -9,6 +9,9 @@ public class AppException extends RuntimeException {
 
     private ErrorCode errorCode;
 
+    /** Tham số của lỗi, trả ở trường {@code errors} của phong bì. */
+    private Object details;
+
     public AppException(ErrorCode errorCode) {
         super(errorCode.getMessage());
         this.errorCode = errorCode;
@@ -17,6 +20,12 @@ public class AppException extends RuntimeException {
     public AppException(ErrorCode errorCode, String customMessage) {
         super(customMessage);
         this.errorCode = errorCode;
+    }
+
+    public AppException(ErrorCode errorCode, Object details) {
+        super(errorCode.getMessage());
+        this.errorCode = errorCode;
+        this.details = details;
     }
 }
 

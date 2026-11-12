@@ -6,6 +6,7 @@ import fu.se184491.loadmaster_be.constant.billing.SubscriptionStatus;
 import fu.se184491.loadmaster_be.constant.billing.SubscriptionTier;
 import fu.se184491.loadmaster_be.dto.request.credit.CreditTopupRequest;
 import fu.se184491.loadmaster_be.dto.response.credit.CreditBalanceResponse;
+import fu.se184491.loadmaster_be.dto.response.credit.CreditPricingResponse;
 import fu.se184491.loadmaster_be.dto.response.credit.CreditTransactionResponse;
 import fu.se184491.loadmaster_be.dto.response.payment.PaymentUrlResponse;
 import fu.se184491.loadmaster_be.entity.billing.CompanySubscription;
@@ -28,12 +29,14 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
+import java.util.EnumMap;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Optional;
@@ -46,13 +49,15 @@ public class CreditServiceImpl implements CreditService {
     /** Mỗi lần tối ưu 3D (ba phương án ứng viên) xài 2 credit; chạy lại tốn 1 credit. */
     public static final int INITIAL_OPTIMIZATION_CREDIT_COST = 2;
     public static final int RERUN_OPTIMIZATION_CREDIT_COST = 1;
-    /** Số dư sau một lần trừ xuống tới mức này thì báo "Sắp hết credit" cho quản trị công ty (đề xuất, chờ chốt). */
-    public static final int LOW_CREDIT_THRESHOLD = 10;
+    /** Ngưỡng "Sắp hết credit" = 25 % credit tháng của gói hiện tại (làm tròn lên). */
+    public static final double LOW_CREDIT_RATIO = 0.25;
 
     /** Đơn giá mua lẻ credit (VND/credit) theo hạng gói hiện tại của công ty. */
     public static final BigDecimal PRICE_PER_CREDIT_BASIC_VND = new BigDecimal("400");
     public static final BigDecimal PRICE_PER_CREDIT_PRO_VND = new BigDecimal("326");
     public static final BigDecimal PRICE_PER_CREDIT_ULTIMATE_VND = new BigDecimal("263");
+    /** Số credit nhỏ nhất một lần nạp (như {@code CreditTopupRequest}); không có trần. */
+    public static final int MIN_TOPUP_CREDITS = 1;
 
     private final CreditAccountRepository creditAccountRepository;
     private final CreditTransactionRepository creditTransactionRepository;
@@ -61,16 +66,21 @@ public class CreditServiceImpl implements CreditService {
     private final AuditLogRepository auditLogRepository;
     private final PaymentGatewayService paymentGatewayService;
 
+    /**
+     * Giao dịch riêng: có thể cấp credit kỳ mới (ghi DB) dù nơi gọi đang ở giao dịch chỉ đọc. Nơi gọi không được
+     * đang giữ khoá tài khoản credit của công ty.
+     */
     @Override
-    @Transactional
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public CreditBalanceResponse getBalance(Long companyId) {
-        CreditAccount account = getOrCreateAccount(companyId);
-        resetBalanceIfSubscriptionInactive(companyId, account);
+        CreditAccount account = lockAccount(companyId);
+        Optional<CompanySubscription> subOpt = companySubscriptionRepository.findByCompanyId(companyId);
+        applyCycleGrantIfDue(companyId, account, subOpt);
 
         return CreditBalanceResponse.builder()
                 .companyId(companyId)
                 .balance(account.getBalance())
-                .isUnlimited(false)
+                .isUnlimited(isUnlimited(subOpt))
                 .build();
     }
 
@@ -81,6 +91,48 @@ public class CreditServiceImpl implements CreditService {
                 .map(account -> creditTransactionRepository.findByCreditAccountIdOrderByCreatedAtDesc(account.getId(), pageable)
                         .map(this::toResponse))
                 .orElseGet(() -> Page.empty(pageable));
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public CreditPricingResponse getPricing(Long companyId) {
+        Optional<CompanySubscription> subOpt = companySubscriptionRepository.findByCompanyId(companyId);
+        SubscriptionTier tier = tierOf(subOpt);
+        Map<SubscriptionTier, BigDecimal> prices = new EnumMap<>(SubscriptionTier.class);
+        for (SubscriptionTier each : SubscriptionTier.values()) {
+            prices.put(each, pricePerCredit(each));
+        }
+        boolean active = subOpt.map(sub -> sub.getStatus() == SubscriptionStatus.ACTIVE).orElse(false);
+        return CreditPricingResponse.builder()
+                .tier(tier)
+                .pricePerCreditVnd(pricePerCredit(tier))
+                .tierPrices(prices)
+                .optimizationCost(INITIAL_OPTIMIZATION_CREDIT_COST)
+                .rerunCost(RERUN_OPTIMIZATION_CREDIT_COST)
+                .minTopUpCredits(MIN_TOPUP_CREDITS)
+                .maxTopUpCredits(null)
+                .unlimited(isUnlimited(subOpt))
+                .topUpAllowed(subOpt.isEmpty() || active)
+                .lowBalanceThreshold(lowBalanceThreshold(subOpt))
+                .build();
+    }
+
+    /** Hạng gói hiện tại của công ty; chưa có gói (hoặc gói không ghi hạng) tính như Basic. */
+    private static SubscriptionTier tierOf(Optional<CompanySubscription> subOpt) {
+        return subOpt.map(CompanySubscription::getPlan)
+                .map(plan -> plan.getTier())
+                .orElse(SubscriptionTier.BASIC);
+    }
+
+    /** Đơn giá mua lẻ một credit theo hạng. */
+    public static BigDecimal pricePerCredit(SubscriptionTier tier) {
+        if (tier == SubscriptionTier.PRO) {
+            return PRICE_PER_CREDIT_PRO_VND;
+        }
+        if (tier == SubscriptionTier.ULTIMATE) {
+            return PRICE_PER_CREDIT_ULTIMATE_VND;
+        }
+        return PRICE_PER_CREDIT_BASIC_VND;
     }
 
     @Override
@@ -97,22 +149,11 @@ public class CreditServiceImpl implements CreditService {
             );
         }
 
-        SubscriptionTier tier = (subOpt.isPresent()
-                && subOpt.get().getPlan() != null
-                && subOpt.get().getPlan().getTier() != null)
-                ? subOpt.get().getPlan().getTier()
-                : SubscriptionTier.BASIC;
+        SubscriptionTier tier = tierOf(subOpt);
 
         int requestedCredits = request.getCredits();
 
-        BigDecimal pricePerCredit;
-        if (tier == SubscriptionTier.BASIC) {
-            pricePerCredit = PRICE_PER_CREDIT_BASIC_VND;
-        } else if (tier == SubscriptionTier.PRO) {
-            pricePerCredit = PRICE_PER_CREDIT_PRO_VND;
-        } else {
-            pricePerCredit = PRICE_PER_CREDIT_ULTIMATE_VND;
-        }
+        BigDecimal pricePerCredit = pricePerCredit(tier);
 
         BigDecimal totalAmount = pricePerCredit.multiply(BigDecimal.valueOf(requestedCredits));
         PaymentGateway gateway = request.getGateway() != null ? request.getGateway() : PaymentGateway.VNPAY;
@@ -144,52 +185,42 @@ public class CreditServiceImpl implements CreditService {
             );
         }
 
-        // Không trừ credit lần thứ hai cho cùng một Optimization Job.
+        int creditsToDeduct = amount > 0 ? amount : INITIAL_OPTIMIZATION_CREDIT_COST;
+
+        // Khoá tài khoản trước rồi mới kiểm mã: hai lượt trừ cùng mã không lọt qua nhau.
+        CreditAccount account = lockAccount(companyId);
+
         Optional<CreditTransaction> existingUsage =
-                creditTransactionRepository.findByReferenceAndType(
-                        reference,
-                        CreditTransactionType.USAGE
-                );
-
+                creditTransactionRepository.findByReferenceAndType(reference, CreditTransactionType.USAGE);
         if (existingUsage.isPresent()) {
-            CreditTransaction existing = existingUsage.get();
-
-            Long existingCompanyId = existing.getCreditAccount()
-                    .getCompany()
-                    .getId();
-
+            Long existingCompanyId = existingUsage.get().getCreditAccount().getCompany().getId();
             if (!existingCompanyId.equals(companyId)) {
-                throw new IllegalStateException(
-                        "Credit reference belongs to another company"
-                );
+                throw new IllegalStateException("Credit reference belongs to another company");
             }
-
-            log.info(
-                    "Credit already deducted for reference {}. Skipping duplicate.",
-                    reference
-            );
+            log.info("Credit already deducted for reference {}. Skipping duplicate.", reference);
             return;
         }
 
-        int creditsToDeduct = amount > 0 ? amount : INITIAL_OPTIMIZATION_CREDIT_COST;
+        Optional<CompanySubscription> subOpt = companySubscriptionRepository.findByCompanyId(companyId);
+        applyCycleGrantIfDue(companyId, account, subOpt);
 
-        CreditAccount account = creditAccountRepository.findByCompanyIdForUpdate(companyId)
-                .orElseGet(() -> getOrCreateAccount(companyId));
-
-        resetBalanceIfSubscriptionInactive(companyId, account);
-
-        if (account.getBalance() < creditsToDeduct) {
+        // Gói Ultimate đang hoạt động: ghi lượt dùng 0 credit để giữ dấu vết và hoàn được.
+        int charged = isUnlimited(subOpt) ? 0 : creditsToDeduct;
+        int before = account.getBalance() == null ? 0 : account.getBalance();
+        if (before < charged) {
             log.warn("Company {} has insufficient credits (balance: {}, required: {}) for reference {}",
-                    companyId, account.getBalance(), creditsToDeduct, reference);
+                    companyId, before, charged, reference);
             throw new InsufficientCreditsException();
         }
 
-        account.setBalance(account.getBalance() - creditsToDeduct);
-        creditAccountRepository.save(account);
+        if (charged > 0) {
+            account.setBalance(before - charged);
+            creditAccountRepository.save(account);
+        }
 
         CreditTransaction tx = CreditTransaction.builder()
                 .creditAccount(account)
-                .amount(-creditsToDeduct)
+                .amount(-charged)
                 .type(CreditTransactionType.USAGE)
                 .reference(reference)
                 .refunded(false)
@@ -197,18 +228,19 @@ public class CreditServiceImpl implements CreditService {
                 .build();
         tx.prePersist();
         creditTransactionRepository.save(tx);
-        log.info("Deducted {} credit(s) for company {}. New balance: {}", creditsToDeduct, companyId, account.getBalance());
-        auditLowBalance(companyId, account.getBalance());
+        log.info("Deducted {} credit(s) for company {}. New balance: {}", charged, companyId, account.getBalance());
+        auditLowBalance(companyId, before, account.getBalance(), lowBalanceThreshold(subOpt));
     }
 
     /** Sự kiện của hệ thống (không người làm), thuộc công ty: nguồn của thông báo "Sắp hết credit". */
-    private void auditLowBalance(Long companyId, Integer balance) {
-        if (balance == null || balance > LOW_CREDIT_THRESHOLD || isUnlimitedPlan(companyId)) {
+    private void auditLowBalance(Long companyId, int before, Integer balance, Integer threshold) {
+        // Chỉ báo lúc số dư vừa đi xuống qua ngưỡng, không báo lại ở mỗi lượt trừ sau đó.
+        if (threshold == null || balance == null || balance > threshold || before <= threshold) {
             return;
         }
         Map<String, Object> values = new LinkedHashMap<>();
         values.put("balance", balance);
-        values.put("threshold", LOW_CREDIT_THRESHOLD);
+        values.put("threshold", threshold);
         auditLogRepository.save(AuditLog.builder()
                 .companyId(companyId)
                 .actionType("CREDIT_LOW_BALANCE")
@@ -294,10 +326,11 @@ public class CreditServiceImpl implements CreditService {
         // 6. Tính đúng số credit đã trừ ban đầu.
         int refundAmount = Math.abs(originalUsage.getAmount());
 
-        if (refundAmount <= 0) {
-            throw new IllegalStateException(
-                    "Invalid original credit transaction amount"
-            );
+        if (refundAmount == 0) {
+            // Lượt của gói không giới hạn: không có gì để cộng lại.
+            originalUsage.setRefunded(true);
+            creditTransactionRepository.save(originalUsage);
+            return;
         }
 
         // 7. Hoàn credit.
@@ -333,8 +366,17 @@ public class CreditServiceImpl implements CreditService {
     @Override
     @Transactional
     public void grantMonthlyCredits(Long companyId, int amount) {
-        CreditAccount account = creditAccountRepository.findByCompanyIdForUpdate(companyId)
-                .orElseGet(() -> getOrCreateAccount(companyId));
+        grantMonthlyCredits(companyId, amount, null);
+    }
+
+    @Override
+    @Transactional
+    public void grantMonthlyCredits(Long companyId, int amount, String reference) {
+        CreditAccount account = lockAccount(companyId);
+        if (alreadyRecorded(reference, CreditTransactionType.MONTHLY_GRANT)) {
+            log.info("Monthly grant {} already recorded. Skipping duplicate.", reference);
+            return;
+        }
         account.setBalance(account.getBalance() + amount);
         creditAccountRepository.save(account);
 
@@ -342,6 +384,7 @@ public class CreditServiceImpl implements CreditService {
                 .creditAccount(account)
                 .amount(amount)
                 .type(CreditTransactionType.MONTHLY_GRANT)
+                .reference(reference)
                 .createdAt(LocalDateTime.now().truncatedTo(ChronoUnit.SECONDS))
                 .build();
         tx.prePersist();
@@ -352,8 +395,11 @@ public class CreditServiceImpl implements CreditService {
     @Override
     @Transactional
     public void addCredits(Long companyId, int amount, String reference) {
-        CreditAccount account = creditAccountRepository.findByCompanyIdForUpdate(companyId)
-                .orElseGet(() -> getOrCreateAccount(companyId));
+        CreditAccount account = lockAccount(companyId);
+        if (alreadyRecorded(reference, CreditTransactionType.PURCHASE)) {
+            log.info("Purchase {} already credited. Skipping duplicate.", reference);
+            return;
+        }
         account.setBalance(account.getBalance() + amount);
         creditAccountRepository.save(account);
 
@@ -369,11 +415,16 @@ public class CreditServiceImpl implements CreditService {
         log.info("Purchased/Added {} credits to company {}. New balance: {}", amount, companyId, account.getBalance());
     }
 
+    /** Kiểm sau khi đã khoá tài khoản; mã trống thì không coi là trùng. */
+    private boolean alreadyRecorded(String reference, CreditTransactionType type) {
+        return reference != null && !reference.isBlank()
+                && creditTransactionRepository.findByReferenceAndType(reference, type).isPresent();
+    }
+
     @Override
     @Transactional
     public void resetBalance(Long companyId) {
-        CreditAccount account = creditAccountRepository.findByCompanyIdForUpdate(companyId)
-                .orElseGet(() -> getOrCreateAccount(companyId));
+        CreditAccount account = lockAccount(companyId);
         if (account.getBalance() != null && account.getBalance() > 0) {
             log.info("Resetting credit balance for company {} from {} to 0 upon plan change/activation.", companyId, account.getBalance());
             account.setBalance(0);
@@ -394,59 +445,76 @@ public class CreditServiceImpl implements CreditService {
                 });
     }
 
-    private void resetBalanceIfSubscriptionInactive(Long companyId, CreditAccount account) {
-        Optional<CompanySubscription> subOpt = companySubscriptionRepository.findByCompanyId(companyId);
+    private CreditAccount lockAccount(Long companyId) {
+        return creditAccountRepository.findByCompanyIdForUpdate(companyId)
+                .orElseGet(() -> getOrCreateAccount(companyId));
+    }
+
+    /**
+     * Gói nhiều tháng đang hoạt động: sang tháng mới thì đưa số dư về credit tháng của gói, một lần cho mỗi tháng
+     * (mã CYCLE-…). Gói hết hạn hoặc đã huỷ giữ nguyên số dư, không cấp. Gọi khi đã khoá tài khoản.
+     */
+    private void applyCycleGrantIfDue(Long companyId, CreditAccount account, Optional<CompanySubscription> subOpt) {
         if (subOpt.isEmpty()) {
             return;
         }
         CompanySubscription sub = subOpt.get();
-        boolean inactive = sub.getStatus() == SubscriptionStatus.EXPIRED || sub.getStatus() == SubscriptionStatus.CANCELLED;
-        if (inactive && account.getBalance() != null && account.getBalance() > 0) {
-            log.info("Company {} subscription is EXPIRED/CANCELLED. Resetting credit balance from {} to 0.", companyId, account.getBalance());
-            account.setBalance(0);
-            creditAccountRepository.save(account);
+        LocalDateTime now = LocalDateTime.now().truncatedTo(ChronoUnit.SECONDS);
+        if (sub.getStatus() != SubscriptionStatus.ACTIVE
+                || sub.getId() == null
+                || sub.getStartedAt() == null
+                || sub.getExpiresAt() == null
+                || !now.isBefore(sub.getExpiresAt())
+                || sub.getPlan() == null
+                || sub.getPlan().getMonthlyCredits() == null
+                || sub.getPlan().getMonthlyCredits() <= 0) {
             return;
         }
-
-        LocalDateTime now = LocalDateTime.now().truncatedTo(ChronoUnit.SECONDS);
-        if (sub.getStatus() == SubscriptionStatus.ACTIVE
-                && sub.getId() != null
-                && sub.getStartedAt() != null
-                && sub.getExpiresAt() != null
-                && now.isBefore(sub.getExpiresAt())
-                && sub.getPlan() != null
-                && sub.getPlan().getMonthlyCredits() != null
-                && sub.getPlan().getMonthlyCredits() > 0) {
-            long completedMonths = ChronoUnit.MONTHS.between(sub.getStartedAt(), now);
-            if (completedMonths >= 1) {
-                long cycleMonth = completedMonths + 1;
-                String cycleRef = "CYCLE-" + sub.getId() + "-M" + cycleMonth;
-                if (creditTransactionRepository.findByReferenceAndType(cycleRef, CreditTransactionType.MONTHLY_GRANT).isEmpty()) {
-                    int baseMonthlyCredits = sub.getPlan().getMonthlyCredits();
-                    account.setBalance(baseMonthlyCredits);
-                    creditAccountRepository.save(account);
-
-                    CreditTransaction tx = CreditTransaction.builder()
-                            .creditAccount(account)
-                            .amount(baseMonthlyCredits)
-                            .type(CreditTransactionType.MONTHLY_GRANT)
-                            .reference(cycleRef)
-                            .refunded(false)
-                            .createdAt(now)
-                            .build();
-                    tx.prePersist();
-                    creditTransactionRepository.save(tx);
-                    log.info("Reset credit balance for company {} entering billing month {} back to plan base credits {}.",
-                            companyId, cycleMonth, baseMonthlyCredits);
-                }
-            }
+        long completedMonths = ChronoUnit.MONTHS.between(sub.getStartedAt(), now);
+        if (completedMonths < 1) {
+            return;
         }
+        long cycleMonth = completedMonths + 1;
+        String cycleRef = "CYCLE-" + sub.getId() + "-M" + cycleMonth;
+        if (alreadyRecorded(cycleRef, CreditTransactionType.MONTHLY_GRANT)) {
+            return;
+        }
+        int baseMonthlyCredits = sub.getPlan().getMonthlyCredits();
+        account.setBalance(baseMonthlyCredits);
+        creditAccountRepository.save(account);
+
+        CreditTransaction tx = CreditTransaction.builder()
+                .creditAccount(account)
+                .amount(baseMonthlyCredits)
+                .type(CreditTransactionType.MONTHLY_GRANT)
+                .reference(cycleRef)
+                .refunded(false)
+                .createdAt(now)
+                .build();
+        tx.prePersist();
+        creditTransactionRepository.save(tx);
+        log.info("Reset credit balance for company {} entering billing month {} back to plan base credits {}.",
+                companyId, cycleMonth, baseMonthlyCredits);
     }
 
-    private boolean isUnlimitedPlan(Long companyId) {
-        return companySubscriptionRepository.findByCompanyIdAndStatus(companyId, SubscriptionStatus.ACTIVE)
-                .map(sub -> sub.getPlan() != null && sub.getPlan().getTier() == SubscriptionTier.ULTIMATE)
+    /** Không giới hạn: gói Ultimate đang hoạt động. Hết hạn hay đã huỷ thì trừ credit như mọi gói. */
+    private static boolean isUnlimited(Optional<CompanySubscription> subOpt) {
+        return subOpt
+                .filter(sub -> sub.getStatus() == SubscriptionStatus.ACTIVE && sub.getPlan() != null)
+                .map(sub -> sub.getPlan().getTier() == SubscriptionTier.ULTIMATE)
                 .orElse(false);
+    }
+
+    /** Ngưỡng báo sắp hết credit; chưa có gói, gói không giới hạn hay gói không ghi credit tháng thì {@code null}. */
+    static Integer lowBalanceThreshold(Optional<CompanySubscription> subOpt) {
+        if (subOpt.isEmpty() || isUnlimited(subOpt)) {
+            return null;
+        }
+        CompanySubscription sub = subOpt.get();
+        if (sub.getPlan() == null || sub.getPlan().getMonthlyCredits() == null || sub.getPlan().getMonthlyCredits() <= 0) {
+            return null;
+        }
+        return (int) Math.ceil(sub.getPlan().getMonthlyCredits() * LOW_CREDIT_RATIO);
     }
 
     private CreditTransactionResponse toResponse(CreditTransaction tx) {

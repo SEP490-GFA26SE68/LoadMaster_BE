@@ -14,7 +14,9 @@ import java.math.BigDecimal;
 import java.util.UUID;
 
 @Entity
-@Table(name = "packages")
+@Table(name = "packages", indexes = {
+        @Index(name = "idx_packages_company_id", columnList = "company_id")
+})
 @Getter @Setter @NoArgsConstructor @AllArgsConstructor @Builder
 public class CargoPackage {
     @Id @GeneratedValue(strategy = GenerationType.IDENTITY)

@@ -52,7 +52,15 @@ import java.util.Optional;
 public class RerouteServiceImpl implements RerouteService {
 
     private static final double FALLBACK_SPEED_KMH = 30.0;
-    private static final double HIGHWAY_MIN_KM = 15.0;
+    /** Tuyến thay thế (ước lượng): quãng đường dài thêm so với đường gốc và tốc độ trung bình. */
+    static final double BYPASS_DISTANCE_FACTOR = 1.15;
+    static final double BYPASS_SPEED_KMH = 50.0;
+    static final double RING_ROAD_DISTANCE_FACTOR = 1.30;
+    static final double RING_ROAD_SPEED_KMH = 55.0;
+    static final double HIGHWAY_DISTANCE_FACTOR = 1.50;
+    static final double HIGHWAY_SPEED_KMH = 80.0;
+    /** Cao tốc chỉ đề xuất khi chặng còn lại từ chừng này km. */
+    static final double HIGHWAY_MIN_KM = 15.0;
 
     private final TripLookupHelper tripLookupHelper;
     private final GpsTrackingRepository gpsTrackingRepository;
@@ -282,24 +290,25 @@ public class RerouteServiceImpl implements RerouteService {
         return new LegMetrics(haversineKm, haversineSeconds);
     }
 
-    private List<RerouteOptionResponse> buildOptions(LegMetrics baseline, LocalDateTime requestedAt) {
+    /** Hai tuyến (đường tránh, vành đai), thêm cao tốc khi chặng đủ dài; thời gian = quãng đường / tốc độ của loại đường. */
+    static List<RerouteOptionResponse> buildOptions(LegMetrics baseline, LocalDateTime requestedAt) {
         List<RerouteOptionResponse> options = new ArrayList<>();
-        // Fastest (Goong / baseline)
-        options.add(option(0, RerouteRouteType.BYPASS, baseline.distanceKm * 1.15, baseline.durationSeconds * 1.15, baseline, requestedAt));
-        options.add(option(1, RerouteRouteType.RING_ROAD, baseline.distanceKm * 1.30, baseline.durationSeconds * 1.30, baseline, requestedAt));
+        options.add(routeOption(0, RerouteRouteType.BYPASS, BYPASS_DISTANCE_FACTOR, BYPASS_SPEED_KMH, baseline, requestedAt));
+        options.add(routeOption(1, RerouteRouteType.RING_ROAD, RING_ROAD_DISTANCE_FACTOR, RING_ROAD_SPEED_KMH, baseline, requestedAt));
         if (baseline.distanceKm >= HIGHWAY_MIN_KM) {
-            // Longer distance but faster effective speed (~70 km/h vs 30)
-            double highwayKm = baseline.distanceKm * 1.50;
-            long highwaySeconds = Math.max(1, Math.round((highwayKm / 70.0) * 3600));
-            options.add(option(2, RerouteRouteType.HIGHWAY, highwayKm, highwaySeconds, baseline, requestedAt));
-        } else {
-            // Ensure at least 2–3 options: slight variant of baseline
-            options.add(option(2, RerouteRouteType.BYPASS, baseline.distanceKm * 1.05, baseline.durationSeconds * 0.95, baseline, requestedAt));
+            options.add(routeOption(2, RerouteRouteType.HIGHWAY, HIGHWAY_DISTANCE_FACTOR, HIGHWAY_SPEED_KMH, baseline, requestedAt));
         }
         return options;
     }
 
-    private RerouteOptionResponse option(
+    private static RerouteOptionResponse routeOption(int index, RerouteRouteType route, double distanceFactor,
+                                                     double speedKmh, LegMetrics baseline, LocalDateTime requestedAt) {
+        double km = baseline.distanceKm * distanceFactor;
+        double seconds = Math.max(1, Math.round(km / speedKmh * 3600));
+        return option(index, route, km, seconds, baseline, requestedAt);
+    }
+
+    private static RerouteOptionResponse option(
             int index,
             RerouteRouteType route,
             double distanceKm,
@@ -417,6 +426,6 @@ public class RerouteServiceImpl implements RerouteService {
         return value != null ? Long.parseLong(String.valueOf(value)) : null;
     }
 
-    private record LegMetrics(double distanceKm, long durationSeconds) {
+    record LegMetrics(double distanceKm, long durationSeconds) {
     }
 }

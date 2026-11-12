@@ -32,7 +32,7 @@ public class PackageImportController {
     // -------------------------------------------------------------------------
 
     @PostMapping(value = "/import/preview", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    @PreAuthorize("hasRole('WAREHOUSE_WORKER')")
+    @PreAuthorize("hasAnyAuthority('PACKAGE_MANAGE', 'ROLE_DISPATCHER')")
     public ResponseEntity<ApiResponse<ImportPreviewResult>> preview(@RequestPart("file") MultipartFile file) {
         ImportPreviewResult result = packageImportService.preview(file, currentUserService.getCurrentCompanyId());
         return ResponseEntity.ok(ApiResponse.success("Xem trước import package thành công", result));
@@ -43,7 +43,7 @@ public class PackageImportController {
             value = "/import/confirm",
             consumes = MediaType.MULTIPART_FORM_DATA_VALUE
     )
-    @PreAuthorize("hasRole('WAREHOUSE_WORKER')")
+    @PreAuthorize("hasAnyAuthority('PACKAGE_MANAGE', 'ROLE_DISPATCHER')")
     public ResponseEntity<ApiResponse<ImportConfirmResult>> confirm(
             @RequestPart("file") MultipartFile file,
             @RequestParam("deliveryRequirementId") Long deliveryRequirementId
@@ -61,9 +61,9 @@ public class PackageImportController {
     }
 
 
-    //PACKAGE_MANAGE
+    // Nhập file theo cùng người được ghi kiện (PACKAGE_MANAGE của nhân viên kho, và điều phối viên).
     @GetMapping("/import/template")
-    @PreAuthorize("hasRole('WAREHOUSE_WORKER')")
+    @PreAuthorize("hasAnyAuthority('PACKAGE_MANAGE', 'ROLE_DISPATCHER')")
     public ResponseEntity<byte[]> downloadTemplate() {
         byte[] template = buildTemplateBytes();
         return ResponseEntity.ok()
@@ -83,7 +83,7 @@ public class PackageImportController {
     @GetMapping(value = "/{id}/qr", produces = MediaType.IMAGE_PNG_VALUE)
     @PreAuthorize("hasAnyRole('DISPATCHER', 'WAREHOUSE_WORKER')")
     public ResponseEntity<byte[]> getQrImage(@PathVariable Long id) {
-        CargoPackage pkg = qrCodeService.findById(id);
+        CargoPackage pkg = qrCodeService.findById(id, currentUserService.getCurrentCompanyId());
         byte[] png = qrCodeService.generateQrPng(pkg.getQrToken());
         return ResponseEntity.ok()
                 .contentType(MediaType.IMAGE_PNG)

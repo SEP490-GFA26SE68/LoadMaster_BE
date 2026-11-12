@@ -7,6 +7,7 @@ import lombok.*;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.List;
 
 @Getter
 @Setter
@@ -37,4 +38,10 @@ public class UpdateDeliveryRequirementRequest {
 
     @Size(max = 500)
     private String note;
+
+    /**
+     * Thay cả tập kiện của yêu cầu còn chờ xếp chuyến (kiện chờ xử lý, không cờ, chưa thuộc yêu cầu khác). Vắng là giữ nguyên;
+     * danh sách rỗng là bỏ hết kiện.
+     */
+    private List<@NotNull @Positive Long> packageIds;
 }

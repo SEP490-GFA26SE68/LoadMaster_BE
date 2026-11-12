@@ -4,6 +4,7 @@ import fu.se184491.loadmaster_be.constant.account.UserRole;
 import fu.se184491.loadmaster_be.constant.trip.TripStatus;
 
 import java.util.EnumMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -35,6 +36,8 @@ public final class NotificationRules {
     public static final int LIMIT = 20;
 
     static final String TICKET_UPDATED = "SUPPORT_TICKET_UPDATED";
+    static final String SHORTAGE_RESOLVED = "STAGING_SHORTAGE_RESOLVED";
+    static final String DAMAGE_REPORTED = "LOADING_DAMAGE_REPORTED";
 
     private static final List<String> ACCOUNT = List.of(
             "USER_CREATED", "USER_UPDATED", "USER_LOCKED", "USER_UNLOCKED", "USER_STATUS_CHANGED",
@@ -55,7 +58,16 @@ public final class NotificationRules {
         ACTIONS.put(UserRole.DRIVER, Set.of(
                 "MANUAL_CONFIRM_REJECTED", "TRIP_STATUS_TRANSITION", "LOADING_COMPLETED", "TRIP_CANCELLED", "TRIP_UPDATED",
                 "PICKUP_APPROVED", "PICKUP_REJECTED",
+                "TRIP_STOPS_REORDERED",
                 TICKET_UPDATED));
+    }
+
+    // Kho báo thiếu lúc soạn, kiện hỏng lúc xếp, tìm thấy lại kiện, và quyết định của điều phối viên với kiện báo thiếu
+    static {
+        extend(UserRole.DISPATCHER, "STAGING_SHORTAGE_REPORTED", DAMAGE_REPORTED, "PACKAGE_FOUND");
+        extend(UserRole.MANAGER, SHORTAGE_RESOLVED, DAMAGE_REPORTED);
+        extend(UserRole.WAREHOUSE_WORKER, SHORTAGE_RESOLVED);
+        extend(UserRole.DRIVER, SHORTAGE_RESOLVED, DAMAGE_REPORTED);
     }
 
     /** Pha mà tài xế đã thấy chuyến ở "Chuyến của tôi": từ lúc kho bắt đầu xếp. */
@@ -95,8 +107,12 @@ public final class NotificationRules {
         }
         return switch (viewer.role()) {
             case DRIVER -> concernsDriver(event, viewer.id());
-            // Kho chỉ cần biết chuyến bị huỷ lúc đang xếp: dỡ phần đã xếp
-            case WAREHOUSE_WORKER -> wasLoading(event);
+            // Kho: quyết định với kiện chính mình báo thiếu; chuyến bị huỷ lúc đang xếp (dỡ phần đã xếp)
+            case WAREHOUSE_WORKER -> SHORTAGE_RESOLVED.equals(action)
+                    ? sameId(value(event.newValues(), "reportedBy"), viewer.id())
+                    : wasLoading(event);
+            // Quản lý: kiện bị bỏ khỏi chuyến (yêu cầu giao thành giao thiếu), không phải "tìm tiếp"
+            case MANAGER -> !SHORTAGE_RESOLVED.equals(action) || dropped(event);
             default -> true;
         };
     }
@@ -112,9 +128,16 @@ public final class NotificationRules {
             case "TRIP_STATUS_TRANSITION" -> TripStatus.LOADING.name().equals(text(value(event.newValues(), "status")))
                     && sameId(driverOf(event), driverId);
             case "LOADING_COMPLETED" -> sameId(driverOf(event), driverId);
-            case "TRIP_CANCELLED" -> wasLoading(event) && sameId(driverOf(event), driverId);
+            // Huỷ lúc kho đang xếp, hoặc lúc xe đang chạy (có sự cố chưa xử lý): tài xế của chuyến đã biết chuyến
+            case "TRIP_CANCELLED" -> (wasLoading(event) || cancelledInTransit(event)) && sameId(driverOf(event), driverId);
             // Quyết định về yêu cầu nhận dọc đường: tài xế của chuyến lúc quyết định
             case "PICKUP_APPROVED", "PICKUP_REJECTED" -> sameId(value(event.newValues(), "driverId"), driverId);
+            // Điều phối viên đổi thứ tự điểm khi xe đang chạy: tài xế của chuyến lúc đổi
+            case "TRIP_STOPS_REORDERED" -> sameId(value(event.newValues(), "driverId"), driverId);
+            // Chuyến tạm dừng chờ điều phối lập lại phương án: kiện hỏng có kiện tựa lên, kiện báo thiếu bị bỏ
+            case DAMAGE_REPORTED -> "REPLANNED".equals(text(value(event.newValues(), "outcome")))
+                    && sameId(driverOf(event), driverId);
+            case SHORTAGE_RESOLVED -> dropped(event) && sameId(driverOf(event), driverId);
             default -> false;
         };
     }
@@ -124,9 +147,23 @@ public final class NotificationRules {
         return status != null && DRIVER_KNOWS.contains(status);
     }
 
+    private static boolean dropped(Event event) {
+        return "DROP".equals(text(value(event.newValues(), "decision")));
+    }
+
+    private static void extend(UserRole role, String... actions) {
+        Set<String> merged = new HashSet<>(ACTIONS.getOrDefault(role, Set.of()));
+        merged.addAll(List.of(actions));
+        ACTIONS.put(role, Set.copyOf(merged));
+    }
+
     private static boolean wasLoading(Event event) {
         return !"TRIP_CANCELLED".equals(event.action())
                 || TripStatus.LOADING.name().equals(text(value(event.oldValues(), "status")));
+    }
+
+    private static boolean cancelledInTransit(Event event) {
+        return TripStatus.IN_TRANSIT.name().equals(text(value(event.oldValues(), "status")));
     }
 
     private static Object driverOf(Event event) {
