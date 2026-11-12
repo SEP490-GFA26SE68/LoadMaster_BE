@@ -83,7 +83,7 @@ public class PackageImportController {
     @GetMapping(value = "/{id}/qr", produces = MediaType.IMAGE_PNG_VALUE)
     @PreAuthorize("hasAnyRole('DISPATCHER', 'WAREHOUSE_WORKER')")
     public ResponseEntity<byte[]> getQrImage(@PathVariable Long id) {
-        CargoPackage pkg = qrCodeService.findById(id);
+        CargoPackage pkg = qrCodeService.findById(id, currentUserService.getCurrentCompanyId());
         byte[] png = qrCodeService.generateQrPng(pkg.getQrToken());
         return ResponseEntity.ok()
                 .contentType(MediaType.IMAGE_PNG)
