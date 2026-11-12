@@ -117,6 +117,7 @@ public enum ErrorCode {
     TRIP_REPORT_NOT_AVAILABLE("Chỉ xem báo cáo của chuyến đã giao hoặc bị huỷ khi đang vận chuyển", HttpStatus.CONFLICT),
     TRIP_NOT_IN_TRANSIT("Chuyến không ở trạng thái Đang vận chuyển", HttpStatus.CONFLICT),
     STOP_ORDER_INVALID("Thứ tự điểm giao không hợp lệ", HttpStatus.BAD_REQUEST),
+    MISSING_STOP_COORDINATES("Còn điểm giao chưa có toạ độ", HttpStatus.BAD_REQUEST),
     STOP_NOT_MOVABLE("Điểm đã hoàn tất hoặc xe đã tới không đổi chỗ được", HttpStatus.CONFLICT),
     PICKUP_AFTER_DELIVERY("Điểm nhận hàng phải đứng trước điểm giao của nó", HttpStatus.CONFLICT),
     STOP_ORDER_BLOCKS_CARGO("Thứ tự mới làm kiện bị che kín lối dỡ", HttpStatus.CONFLICT),
