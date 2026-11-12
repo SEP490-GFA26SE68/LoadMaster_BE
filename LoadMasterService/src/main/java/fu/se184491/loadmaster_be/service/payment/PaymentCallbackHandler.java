@@ -1,5 +1,6 @@
 package fu.se184491.loadmaster_be.service.payment;
 
+import fu.se184491.loadmaster_be.helpers.LogMasks;
 import fu.se184491.loadmaster_be.client.VnPayClient;
 import fu.se184491.loadmaster_be.constant.billing.BillingCycle;
 import fu.se184491.loadmaster_be.constant.billing.PaymentStatus;
@@ -33,20 +34,22 @@ public class PaymentCallbackHandler {
         Map<String, String> response = new HashMap<>();
 
         String txnRef = params.get("vnp_TxnRef");
-        if (txnRef != null && txnRef.startsWith("REG_")) {
-            return guestRegistrationService.handlePaymentCallback(params);
-        }
 
-        // 1. Verify Checksum. Chỉ bỏ qua khi máy chủ bật cấu hình vnpay.mock; tham số của request
+        // 1. Verify Checksum — chỗ kiểm chữ ký duy nhất của mọi callback VNPay (cả đăng ký trả phí REG_…).
+        // Chỉ bỏ qua khi máy chủ bật cấu hình vnpay.mock; tham số của request
         // (vnp_Mock, tiền tố MOCK_ của mã giao dịch) do người gọi tự đặt nên không bao giờ được tin.
         if (!vnPayClient.isMock()) {
             boolean validSignature = vnPayClient.verifyCallback(params);
             if (!validSignature) {
-                log.warn("VNPay callback signature verification failed for params: {}", params);
+                log.warn("VNPay callback signature verification failed for params: {}", LogMasks.vnpayParams(params));
                 response.put("RspCode", "97");
                 response.put("Message", "Invalid Checksum");
                 return response;
             }
+        }
+
+        if (txnRef != null && txnRef.startsWith("REG_")) {
+            return guestRegistrationService.handlePaymentCallback(params);
         }
 
         // 2. Find Payment Transaction — khoá dòng tới hết giao dịch: IPN và trang trả về có thể tới cùng lúc,

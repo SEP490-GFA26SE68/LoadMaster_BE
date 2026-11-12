@@ -15,7 +15,7 @@ import fu.se184491.loadmaster_be.entity.common.AuditLog;
 import fu.se184491.loadmaster_be.exception.AppException;
 import fu.se184491.loadmaster_be.exception.ErrorCode;
 import fu.se184491.loadmaster_be.repository.cargo.CargoPackagePackingProfileRepository;
-import fu.se184491.loadmaster_be.repository.cargo.PackageRepository;
+import fu.se184491.loadmaster_be.repository.cargo.CargoPackageRepository;
 import fu.se184491.loadmaster_be.repository.cargo.PackageTypeRepository;
 import fu.se184491.loadmaster_be.helpers.CurrentUserService;
 import fu.se184491.loadmaster_be.repository.common.AuditLogRepository;
@@ -45,7 +45,7 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class PackageServiceImpl implements PackageService {
 
-    private final PackageRepository packageRepository;
+    private final CargoPackageRepository packageRepository;
     private final PackageTypeRepository packageTypeRepository;
     private final OrderRepository orderRepository;
     private final CompanyRepository companyRepository;

@@ -1,5 +1,6 @@
 package fu.se184491.loadmaster_be.service.support.impl;
 
+import fu.se184491.loadmaster_be.helpers.LogMasks;
 import fu.se184491.loadmaster_be.client.BrevoClient;
 import fu.se184491.loadmaster_be.constant.billing.SubscriptionTier;
 import fu.se184491.loadmaster_be.constant.support.AiPrecheckStatus;
@@ -309,7 +310,7 @@ public class TrialRegistrationServiceImpl implements TrialRegistrationService {
         try {
             brevoClient.sendEmail(email, subject, content);
         } catch (Exception ex) {
-            log.error("Failed to send OTP email to {}: {}", email, ex.getMessage());
+            log.error("Failed to send OTP email to {}: {}", LogMasks.email(email), ex.getMessage());
         }
     }
 

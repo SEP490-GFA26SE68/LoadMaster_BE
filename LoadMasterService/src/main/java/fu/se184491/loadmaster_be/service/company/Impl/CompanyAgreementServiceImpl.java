@@ -115,7 +115,7 @@ public class CompanyAgreementServiceImpl implements CompanyAgreementService {
                 : agreement.getDeadlineAt();
         LocalDateTime hardDeleteLimit = expiredFrom.plusDays(TrialAgreementEnforcementJob.HARD_DELETE_AFTER_DAYS);
         if (now.isAfter(hardDeleteLimit)) {
-            log.warn("User {} attempted to sign agreement {} past 30-day limit {}", currentUser.getEmail(), agreement.getId(), hardDeleteLimit);
+            log.warn("User {} attempted to sign agreement {} past 30-day limit {}", currentUser.getId(), agreement.getId(), hardDeleteLimit);
             agreement.setStatus(AgreementStatus.EXPIRED);
             if (agreement.getExpiredAt() == null) {
                 agreement.setExpiredAt(now);
@@ -134,7 +134,7 @@ public class CompanyAgreementServiceImpl implements CompanyAgreementService {
             currentUser.setStatus(UserStatus.ACTIVE);
             currentUser.preUpdate();
             userRepository.save(currentUser);
-            log.info("User {} un-flagged to ACTIVE upon signing agreement {}", currentUser.getEmail(), agreement.getId());
+            log.info("User {} un-flagged to ACTIVE upon signing agreement {}", currentUser.getId(), agreement.getId());
         }
 
         agreement.setStatus(AgreementStatus.SIGNED);
@@ -158,7 +158,7 @@ public class CompanyAgreementServiceImpl implements CompanyAgreementService {
         agreement.setIpAddress(clientIp);
 
         CompanyAgreement saved = agreementRepository.save(agreement);
-        log.info("Agreement {} signed successfully by user {} for company {}", saved.getId(), currentUser.getEmail(), currentUser.getCompany().getId());
+        log.info("Agreement {} signed successfully by user {} for company {}", saved.getId(), currentUser.getId(), currentUser.getCompany().getId());
 
         return toResponse(saved);
     }

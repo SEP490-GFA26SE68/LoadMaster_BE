@@ -3,6 +3,9 @@ package fu.se184491.loadmaster_be.controller.payment;
 import fu.se184491.loadmaster_be.client.VnPayClient;
 import fu.se184491.loadmaster_be.config.security.WebSecurityConfig;
 import fu.se184491.loadmaster_be.helpers.CurrentUserService;
+import fu.se184491.loadmaster_be.exception.AppException;
+import fu.se184491.loadmaster_be.exception.ErrorCode;
+import fu.se184491.loadmaster_be.service.payment.MockCheckoutAccess;
 import fu.se184491.loadmaster_be.service.payment.PaymentCallbackHandler;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -18,6 +21,7 @@ import java.util.Map;
 
 import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.ArgumentMatchers.argThat;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -42,6 +46,9 @@ public class PaymentWebhookControllerTest {
 
     @MockitoBean
     private VnPayClient vnPayClient;
+
+    @MockitoBean
+    private MockCheckoutAccess mockCheckoutAccess;
 
     // FlaggedUserEnforcementFilter (WebSecurityConfig) cần bean này.
     @MockitoBean
@@ -89,6 +96,34 @@ public class PaymentWebhookControllerTest {
 
         verify(paymentCallbackHandler).handleVnPayCallback(argThat(params ->
                 "MOCK_123".equals(params.get("vnp_TxnRef")) && !params.containsKey("vnp_Mock")));
+    }
+
+    @Test
+    @DisplayName("GET /api/payment/mock-checkout - not signed in: 401, confirms nothing")
+    void testMockCheckoutRequiresLogin() throws Exception {
+        when(vnPayClient.isMock()).thenReturn(true);
+        doThrow(new AppException(ErrorCode.UNAUTHENTICATED)).when(mockCheckoutAccess).requireAllowed("MOCK_123");
+
+        mockMvc.perform(get("/api/payment/mock-checkout")
+                        .param("txnRef", "MOCK_123"))
+                .andExpect(status().isUnauthorized());
+
+        verify(paymentCallbackHandler, never()).handleVnPayCallback(anyMap());
+    }
+
+    @Test
+    @DisplayName("GET /api/payment/mock-checkout - transaction of another company: 404, confirms nothing")
+    void testMockCheckoutOfAnotherCompanyIsNotFound() throws Exception {
+        when(vnPayClient.isMock()).thenReturn(true);
+        doThrow(new AppException(ErrorCode.PAYMENT_TRANSACTION_NOT_FOUND))
+                .when(mockCheckoutAccess).requireAllowed("MOCK_OTHER");
+
+        mockMvc.perform(get("/api/payment/mock-checkout")
+                        .param("txnRef", "MOCK_OTHER"))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("PAYMENT_TRANSACTION_NOT_FOUND"));
+
+        verify(paymentCallbackHandler, never()).handleVnPayCallback(anyMap());
     }
 
     @Test

@@ -80,6 +80,15 @@ class Vehicle(Base):
     trips = relationship("Trip", back_populates="vehicle")
 
 
+class AppUser(Base):
+    """Bảng users của Spring Boot: dịch vụ chỉ đọc keycloak_id -> company_id để biết công ty của người gọi."""
+    __tablename__ = "users"
+
+    id = pk_id()
+    keycloak_id = Column(String(255), nullable=True, unique=True)
+    company_id = Column(BigInteger, nullable=True)
+
+
 class Trip(Base):
     __tablename__ = "trips"
 
@@ -100,6 +109,9 @@ class DeliveryRequirement(Base):
 
     id = pk_id()
     trip_id = fk_id("trips.id", nullable=True)
+    # Hạn giao của yêu cầu (giờ Việt Nam, không múi giờ). delivery_stops không có cột hạn:
+    # hạn của một điểm giao là hạn sớm nhất của các yêu cầu giao ở điểm đó.
+    deadline = Column(DateTime, nullable=True)
 
     # Mapping bảng trung gian DeliveryRequirement - Package
     # được thực hiện trong truy vấn SQLAlchemy.

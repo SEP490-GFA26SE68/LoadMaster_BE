@@ -1,5 +1,6 @@
 package fu.se184491.loadmaster_be.service.registration.impl;
 
+import fu.se184491.loadmaster_be.helpers.LogMasks;
 import fu.se184491.loadmaster_be.client.BrevoClient;
 import fu.se184491.loadmaster_be.client.KeycloakAdminClient;
 import fu.se184491.loadmaster_be.client.VnPayClient;
@@ -320,17 +321,7 @@ public class GuestRegistrationServiceImpl implements GuestRegistrationService {
         Map<String, String> response = new java.util.HashMap<>();
         String txnRef = params.get("vnp_TxnRef");
 
-        // 1. Verify Checksum. Chỉ bỏ qua khi máy chủ bật cấu hình vnpay.mock; tham số của request
-        // (vnp_Mock, tiền tố MOCK_ của mã giao dịch) do người gọi tự đặt nên không bao giờ được tin.
-        if (!vnPayClient.isMock()) {
-            boolean validSignature = vnPayClient.verifyCallback(params);
-            if (!validSignature) {
-                log.warn("VNPay callback signature verification failed for params: {}", params);
-                response.put("RspCode", "97");
-                response.put("Message", "Invalid Checksum");
-                return response;
-            }
-        }
+        // Chữ ký VNPay đã kiểm ở PaymentCallbackHandler, lối vào duy nhất của callback.
 
         // 2. Find Registration Session
         // Khoá phiên tới hết giao dịch để hai lượt callback không cùng tạo công ty, tài khoản.
@@ -417,7 +408,8 @@ public class GuestRegistrationServiceImpl implements GuestRegistrationService {
         } catch (AppException ex) {
             throw ex;
         } catch (Exception ex) {
-            log.error("Failed to provision Keycloak account for email: {}", session.getEmail(), ex);
+            log.error("Failed to provision Keycloak account for registration session {} ({})", session.getId(),
+                    LogMasks.email(session.getEmail()), ex);
             throw new AppException(ErrorCode.INTERNAL_SERVER_ERROR, "Không thể khởi tạo tài khoản trên hệ thống định danh: " + ex.getMessage());
         }
 

@@ -2,6 +2,7 @@ package fu.se184491.loadmaster_be.repository.cargo;
 
 import fu.se184491.loadmaster_be.entity.cargo.CargoPackage;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
@@ -10,7 +11,11 @@ import java.util.List;
 import java.util.Optional;
 
 @Repository
-public interface CargoPackageRepository extends JpaRepository<CargoPackage, Long> {
+public interface CargoPackageRepository extends JpaRepository<CargoPackage, Long>, JpaSpecificationExecutor<CargoPackage> {
+
+    List<CargoPackage> findByOrderId(Long orderId);
+
+    Optional<CargoPackage> findByIdAndCompany_Id(Long id, Long companyId);
 
     Optional<CargoPackage> findByQrToken(String qrToken);
 

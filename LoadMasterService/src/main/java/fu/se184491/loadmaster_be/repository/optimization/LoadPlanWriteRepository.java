@@ -51,6 +51,17 @@ public class LoadPlanWriteRepository {
                 """, rows);
     }
 
+    /**
+     * Job còn chờ / đang chạy thành FAILED kèm mã lý do. Chỉ đổi khi job vẫn PENDING hoặc RUNNING:
+     * trả 1 cho đúng một lượt đổi, lượt đến sau (hay job vừa xong) trả 0.
+     */
+    public int failUnfinishedJob(Long jobId, String failureCode) {
+        return jdbc.update("""
+                UPDATE optimization_jobs SET status = 'FAILED', failure_code = :code
+                WHERE id = :id AND status IN ('PENDING', 'RUNNING')
+                """, Map.of("id", jobId, "code", failureCode));
+    }
+
     /** Chép kiện không xếp được của phương án nguồn sang phương án mới. */
     public void copyUnplaced(Long sourcePlanId, Long targetPlanId) {
         jdbc.update("""

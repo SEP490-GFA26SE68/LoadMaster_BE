@@ -77,7 +77,7 @@ public class FlaggedUserEnforcementFilter extends OncePerRequestFilter {
         User currentUser = findCurrentUser(request);
         if (currentUser != null && currentUser.getStatus() == UserStatus.FLAGGED) {
             log.warn("Blocked API call {} {} for FLAGGED user {}",
-                    request.getMethod(), request.getRequestURI(), currentUser.getEmail());
+                    request.getMethod(), request.getRequestURI(), currentUser.getId());
             writeFlaggedResponse(response);
             return;
         }
@@ -126,10 +126,10 @@ public class FlaggedUserEnforcementFilter extends OncePerRequestFilter {
                 return true;
             }
         }
-        // Lối công khai chỉ đọc / gửi liên hệ, giống WebSecurityConfig (chỉ phương thức công khai, không mở lệnh ghi).
+        // Lối công khai chỉ đọc bảng giá / gửi liên hệ, giống WebSecurityConfig (chỉ phương thức công khai, không mở lệnh ghi).
         String method = request.getMethod();
         if (HttpMethod.GET.matches(method)
-                && (path.equals("/api/vehicle-types") || path.startsWith("/api/subscription/plans"))) {
+                && path.startsWith("/api/subscription/plans")) {
             return true;
         }
         return HttpMethod.POST.matches(method) && path.equals("/api/contact-guests");

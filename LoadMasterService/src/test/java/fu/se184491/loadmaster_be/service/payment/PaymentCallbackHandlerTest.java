@@ -285,6 +285,7 @@ public class PaymentCallbackHandlerTest {
     @DisplayName("Delegate to GuestRegistrationService when txnRef starts with REG_")
     void testDelegateToGuestRegistrationService() {
         Map<String, String> params = Map.of("vnp_TxnRef", "REG_ABC123");
+        when(vnPayClient.verifyCallback(params)).thenReturn(true);
         when(guestRegistrationService.handlePaymentCallback(params)).thenReturn(Map.of("RspCode", "00", "Message", "Confirm Success"));
 
         Map<String, String> result = paymentCallbackHandler.handleVnPayCallback(params);
@@ -292,6 +293,32 @@ public class PaymentCallbackHandlerTest {
         assertEquals("00", result.get("RspCode"));
         verify(guestRegistrationService).handlePaymentCallback(params);
         verifyNoInteractions(paymentTransactionRepository);
+    }
+
+    @Test
+    @DisplayName("REG_ callback with an invalid signature is rejected before reaching guest registration")
+    void testRegistrationCallbackWithInvalidSignatureIsRejected() {
+        Map<String, String> params = Map.of("vnp_TxnRef", "REG_12345", "vnp_ResponseCode", "00",
+                "vnp_Mock", "true", "vnp_SecureHash", "forged");
+        when(vnPayClient.isMock()).thenReturn(false);
+        when(vnPayClient.verifyCallback(params)).thenReturn(false);
+
+        Map<String, String> result = paymentCallbackHandler.handleVnPayCallback(params);
+
+        assertEquals("97", result.get("RspCode"));
+        assertEquals("Invalid Checksum", result.get("Message"));
+        verifyNoInteractions(guestRegistrationService);
+    }
+
+    @Test
+    @DisplayName("REG_ callback skips the signature only when the server runs vnpay.mock")
+    void testRegistrationCallbackInMockModeReachesGuestRegistration() {
+        Map<String, String> params = Map.of("vnp_TxnRef", "REG_12345", "vnp_ResponseCode", "00");
+        when(vnPayClient.isMock()).thenReturn(true);
+        when(guestRegistrationService.handlePaymentCallback(params)).thenReturn(Map.of("RspCode", "00"));
+
+        assertEquals("00", paymentCallbackHandler.handleVnPayCallback(params).get("RspCode"));
+        verify(vnPayClient, never()).verifyCallback(anyMap());
     }
 
     @Test

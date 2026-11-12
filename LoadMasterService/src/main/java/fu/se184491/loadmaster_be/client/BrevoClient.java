@@ -1,5 +1,7 @@
 package fu.se184491.loadmaster_be.client;
 
+import fu.se184491.loadmaster_be.helpers.LogMasks;
+
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
@@ -281,7 +283,7 @@ public class BrevoClient {
                     .toBodilessEntity();
         } catch (Exception e) {
             // Không làm hỏng việc gọi (máy dev thường không có khoá Brevo), nhưng không im lặng
-            log.warn("Không gửi được email tới {}: {}", recipientEmail, e.getMessage());
+            log.warn("Không gửi được email tới {}: {}", LogMasks.email(recipientEmail), e.getMessage());
         }
     }
 
@@ -329,7 +331,7 @@ public class BrevoClient {
                     .toBodilessEntity();
         } catch (Exception e) {
             // Không làm hỏng việc gọi (máy dev thường không có khoá Brevo), nhưng không im lặng
-            log.warn("Không gửi được email tới {}: {}", recipientEmail, e.getMessage());
+            log.warn("Không gửi được email tới {}: {}", LogMasks.email(recipientEmail), e.getMessage());
         }
     }
 }

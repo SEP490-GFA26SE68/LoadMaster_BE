@@ -13,6 +13,7 @@ import org.springframework.stereotype.Service;
 import javax.crypto.Cipher;
 import javax.crypto.spec.IvParameterSpec;
 import javax.crypto.spec.SecretKeySpec;
+import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -65,8 +66,9 @@ public class AesQrTokenServiceImpl implements AesQrTokenService, AttributeConver
                     }
                 }
             }
-        } catch (Exception ignored) {
-            // Ignored if .env is not readable in current working directory
+        } catch (IOException | SecurityException e) {
+            // Không đọc được .env ở thư mục chạy: coi như chưa khai, không in giá trị nào
+            log.warn("Could not read .env for QR_AES_SECRET: {}", e.getClass().getSimpleName());
         }
         return null;
     }
