@@ -1,4 +1,4 @@
-from datetime import datetime
+from app.config.clock import vietnam_now
 from sqlalchemy import Column, Integer, BigInteger, String, ForeignKey, DateTime
 from sqlalchemy.orm import relationship
 
@@ -25,6 +25,6 @@ class OptimizationJob(Base):
     company_id = Column(String(64), nullable=True)
     subscription_tier = Column(String(50), nullable=True, default="BASIC")
     algorithm_tier = Column(String(50), nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=vietnam_now)
 
     trip = relationship("Trip")

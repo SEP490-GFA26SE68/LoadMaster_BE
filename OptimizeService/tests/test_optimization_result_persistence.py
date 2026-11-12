@@ -36,7 +36,10 @@ from app.entity.optimization.optimization_job import OptimizationJob
 from app.entity.optimization.load_plan import LoadPlan
 from app.entity.optimization.package_placement import PackagePlacement
 from app.entity.optimization.unplaced_package import UnplacedPackage
-from app.entity.trip_model import Trip, Vehicle, VehicleType, DeliveryStop, TransportOrder, CargoPackage, PackageType
+from app.entity.trip_model import (
+    Trip, Vehicle, VehicleType, DeliveryStop, TransportOrder, CargoPackage, PackageType,
+    DeliveryRequirement, DeliveryRequirementPackage,
+)
 from app.service.optimize.load_plan_service import LoadPlanService
 from app.service.optimize.optimization_result_persistence_service import OptimizationResultPersistenceService
 
@@ -54,7 +57,9 @@ def db_session():
     session = TestingSession()
 
     # Tạo trip + vehicle + packages
-    vt = VehicleType(id=1, name="Van 1 Tan", inner_length=3000, inner_width=1800, inner_height=1800, max_payload_kg=1000.0)
+    vt = VehicleType(max_cog_offset_ratio=0.15, id=1, name="Van 1 Tan", inner_length=3000, inner_width=1800, inner_height=1800, door_width=1800, door_height=1800, max_payload_kg=1000.0,
+                     front_axle_x=-100, rear_axle_x=200, front_axle_limit_kg=2000, rear_axle_limit_kg=3000,
+                     empty_front_axle_load_kg=800, empty_rear_axle_load_kg=600)
     session.add(vt)
     v = Vehicle(id=1, license_plate="29A-12345", vehicle_type_id=1)
     session.add(v)
@@ -75,10 +80,14 @@ def db_session():
     trip_id = trip.id
     session.commit()
 
+    session.add(DeliveryRequirement(id=1, trip_id=trip_id))
+    session.commit()
+
     stop = DeliveryStop(
         id=1,
         trip_id=trip_id,
         stop_sequence=1,
+        delivery_requirement_id=1,
     )
 
     session.add(stop)
@@ -93,6 +102,12 @@ def db_session():
     pkg1 = CargoPackage(id=1, order_id=1, package_type_id=1, actual_weight_kg=15.0)
     pkg2 = CargoPackage(id=2, order_id=1, package_type_id=1, actual_weight_kg=20.0)
     session.add_all([pkg1, pkg2])
+    session.commit()
+
+    session.add_all([
+        DeliveryRequirementPackage(delivery_requirement_id=1, package_id=1),
+        DeliveryRequirementPackage(delivery_requirement_id=1, package_id=2),
+    ])
     session.commit()
 
     yield session

@@ -32,6 +32,8 @@ from app.dto.optimization.engine.engine_response import (
 )
 from app.entity.trip_model import (
     Base,
+    DeliveryRequirement,
+    DeliveryRequirementPackage,
     Trip,
     Vehicle,
     VehicleType,
@@ -66,7 +68,7 @@ def db_session():
     session = Session()
 
     # Tạo trip + vehicle + packages
-    vt = VehicleType(
+    vt = VehicleType(max_cog_offset_ratio=0.15, 
         id=1,
         name="Van 1 Tan",
         inner_length=3000,  # mm
@@ -81,12 +83,15 @@ def db_session():
     session.add(v)
     session.commit()
 
-    trip_id = str(uuid.uuid4())
+    trip_id = 101
     trip = Trip(id=trip_id, vehicle_id=1, status="DRAFT")
     session.add(trip)
     session.commit()
 
-    stop = DeliveryStop(id=1, trip_id=trip_id, stop_sequence=1)
+    session.add(DeliveryRequirement(id=1, trip_id=trip_id))
+    session.commit()
+
+    stop = DeliveryStop(id=1, trip_id=trip_id, stop_sequence=1, delivery_requirement_id=1)
     session.add(stop)
     session.commit()
 
@@ -100,6 +105,9 @@ def db_session():
 
     pkg = CargoPackage(id=1, order_id=1, package_type_id=1, actual_weight_kg=15.0)
     session.add(pkg)
+    session.commit()
+
+    session.add(DeliveryRequirementPackage(delivery_requirement_id=1, package_id=1))
     session.commit()
 
     yield session
@@ -268,14 +276,15 @@ class TestAsyncOptimizationRunnerUnit:
         runner = AsyncOptimizationRunner(job_service=job_service)
         problem = runner.build_problem_request(job.job_uuid, db=db_session)
 
-        assert problem.vehicle.inner_l == 3.0
-        assert problem.vehicle.inner_w == 1.8
-        assert problem.vehicle.inner_h == 1.8
+        # Runner chuyển nguyên số đo của loại xe, không quy đổi đơn vị
+        assert problem.vehicle.inner_l == 3000.0
+        assert problem.vehicle.inner_w == 1800.0
+        assert problem.vehicle.inner_h == 1800.0
         assert problem.vehicle.max_payload_kg == 1000.0
         assert len(problem.packages) == 1
-        assert problem.packages[0].l == 0.5
-        assert problem.packages[0].w == 0.4
-        assert problem.packages[0].h == 0.3
+        assert problem.packages[0].l == 500.0
+        assert problem.packages[0].w == 400.0
+        assert problem.packages[0].h == 300.0
         assert problem.packages[0].weight == 15.0
         assert problem.time_limit_sec == 45
 
@@ -284,6 +293,7 @@ class TestAsyncOptimizationRunnerUnit:
 # Integration Tests with FastAPI TestClient & BackgroundTasks
 # ---------------------------------------------------------------------------
 
+@pytest.mark.integration  # cần token RS256 do Keycloak thật ký (JWKS)
 class TestAsyncJobExecutionApi:
     def test_submit_job_returns_202_and_executes_in_background(self, db_session):
         """

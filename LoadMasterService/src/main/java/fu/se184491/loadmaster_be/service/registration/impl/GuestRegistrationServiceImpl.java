@@ -14,8 +14,11 @@ import fu.se184491.loadmaster_be.dto.response.registration.PaymentLinkResponse;
 import fu.se184491.loadmaster_be.dto.response.registration.ResendOtpResponse;
 import fu.se184491.loadmaster_be.entity.registration.GuestRegistrationSession;
 import fu.se184491.loadmaster_be.exception.AppException;
+import fu.se184491.loadmaster_be.service.registration.GuestRegistrationSessionExpiry;
 import fu.se184491.loadmaster_be.service.registration.OtpAttempts;
 import fu.se184491.loadmaster_be.exception.ErrorCode;
+import fu.se184491.loadmaster_be.helpers.AfterCommit;
+import fu.se184491.loadmaster_be.helpers.KeycloakAccounts;
 import fu.se184491.loadmaster_be.helpers.TemporaryPasswordGenerator;
 import fu.se184491.loadmaster_be.repository.account.UserRepository;
 import fu.se184491.loadmaster_be.repository.billing.CompanySubscriptionRepository;
@@ -58,6 +61,7 @@ public class GuestRegistrationServiceImpl implements GuestRegistrationService {
     private final BrevoClient brevoClient;
     private final OtpHasher otpHasher;
     private final TemporaryPasswordGenerator temporaryPasswordGenerator;
+    private final GuestRegistrationSessionExpiry sessionExpiry;
 
     @Value(FrontendUrls.URL)
     private String frontendUrl = FrontendUrls.DEFAULT;
@@ -268,8 +272,9 @@ public class GuestRegistrationServiceImpl implements GuestRegistrationService {
                 .orElseThrow(() -> new AppException(ErrorCode.REGISTRATION_SESSION_NOT_FOUND));
 
         if (session.getExpiresAt() != null && session.getExpiresAt().isBefore(LocalDateTime.now())) {
+            // Lỗi bên dưới rollback transaction này, nên ghi EXPIRED trong transaction riêng
+            sessionExpiry.markExpired(session.getId());
             session.setStatus(RegistrationStatus.EXPIRED);
-            sessionRepository.save(session);
             throw new AppException(ErrorCode.REGISTRATION_SESSION_EXPIRED);
         }
 
@@ -379,7 +384,8 @@ public class GuestRegistrationServiceImpl implements GuestRegistrationService {
                     Trân trọng,
                     Đội ngũ LoadMaster
                     """.formatted(session.getFullName(), session.getCompanyName(), txnRef);
-            brevoClient.sendEmail(session.getEmail(), subject, content);
+            String recipient = session.getEmail();
+            AfterCommit.run("email thanh toán đăng ký thất bại", () -> brevoClient.sendEmail(recipient, subject, content));
 
             response.put("RspCode", "00");
             response.put("Message", "Confirm Success");
@@ -402,16 +408,14 @@ public class GuestRegistrationServiceImpl implements GuestRegistrationService {
 
         // b) Create Keycloak Admin User & Local DB User
         String temporaryPassword = temporaryPasswordGenerator.generate();
-        String keycloakUserId = null;
+        String keycloakUserId;
         try {
-            keycloakUserId = keycloakAdminClient.findUserIdByEmail(session.getEmail());
-            if (keycloakUserId == null) {
-                keycloakUserId = keycloakAdminClient.createUser(session.getEmail(), session.getFullName());
-            } else {
-                keycloakAdminClient.updateUserProfile(keycloakUserId, session.getFullName());
-            }
-            keycloakAdminClient.setPassword(keycloakUserId, temporaryPassword, false);
-            keycloakAdminClient.assignRealmRole(keycloakUserId, fu.se184491.loadmaster_be.constant.account.UserRole.ADMIN.name());
+            // Dùng lại tài khoản Keycloak mồ côi cùng email; rollback thì người dùng Keycloak vừa tạo bị xoá lại
+            keycloakUserId = KeycloakAccounts.provision(keycloakAdminClient, userRepository, session.getEmail(),
+                    session.getFullName(), temporaryPassword, false,
+                    fu.se184491.loadmaster_be.constant.account.UserRole.ADMIN, true);
+        } catch (AppException ex) {
+            throw ex;
         } catch (Exception ex) {
             log.error("Failed to provision Keycloak account for email: {}", session.getEmail(), ex);
             throw new AppException(ErrorCode.INTERNAL_SERVER_ERROR, "Không thể khởi tạo tài khoản trên hệ thống định danh: " + ex.getMessage());
@@ -483,7 +487,10 @@ public class GuestRegistrationServiceImpl implements GuestRegistrationService {
 
         // g) Generate PDF Invoice and Send Welcome Email
         byte[] invoicePdf = generateInvoicePdf(savedCompany, savedUser, session.getPlan(), session.getBillingCycle(), session.getAmountVnd(), session.getPaymentRef());
-        sendWelcomeEmailWithInvoice(savedCompany, savedUser, session.getPlan(), session.getBillingCycle(), temporaryPassword, invoicePdf);
+        fu.se184491.loadmaster_be.entity.billing.SubscriptionPlan plan = session.getPlan();
+        fu.se184491.loadmaster_be.constant.billing.BillingCycle billingCycle = session.getBillingCycle();
+        AfterCommit.run("email chào mừng kèm hoá đơn", () -> sendWelcomeEmailWithInvoice(
+                savedCompany, savedUser, plan, billingCycle, temporaryPassword, invoicePdf));
 
         // h) Complete Session
         session.setStatus(RegistrationStatus.COMPLETED);

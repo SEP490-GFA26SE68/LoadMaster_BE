@@ -64,7 +64,8 @@ public class WebSecurityConfig {
                                 "/webhook/**",
                                 "/api/payment/**",
                                 "/api/guest-registration/**",
-                                "/api/trial-registration/**"
+                                "/api/trial-registration/**",
+                                "/actuator/health"
                         )
                         .permitAll()
 

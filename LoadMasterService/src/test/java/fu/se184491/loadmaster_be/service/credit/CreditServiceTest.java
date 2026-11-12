@@ -439,6 +439,23 @@ public class CreditServiceTest {
     }
 
     @Test
+    @DisplayName("topup - gói đã hết hạn hoặc đã huỷ trả mã SUBSCRIPTION_EXPIRED, không tạo thanh toán")
+    void topupOnExpiredOrCancelledSubscriptionIsSubscriptionExpired() {
+        when(companyRepository.findById(1L)).thenReturn(Optional.of(company));
+        when(companySubscriptionRepository.findByCompanyId(1L)).thenReturn(Optional.of(subscription));
+        CreditTopupRequest req = CreditTopupRequest.builder().credits(10).gateway(PaymentGateway.MOCK).build();
+
+        for (SubscriptionStatus status : new SubscriptionStatus[] {SubscriptionStatus.EXPIRED, SubscriptionStatus.CANCELLED}) {
+            subscription.setStatus(status);
+            fu.se184491.loadmaster_be.exception.AppException error = assertThrows(
+                    fu.se184491.loadmaster_be.exception.AppException.class,
+                    () -> creditService.topup(1L, req, "127.0.0.1"));
+            assertEquals(fu.se184491.loadmaster_be.exception.ErrorCode.SUBSCRIPTION_EXPIRED, error.getErrorCode());
+        }
+        verifyNoInteractions(paymentGatewayService);
+    }
+
+    @Test
     @DisplayName("getPricing - giá theo hạng gói đang dùng, một lần tối ưu 2 credit, chạy lại 1 credit, nạp từ 1 credit không trần")
     void pricingFollowsTheCurrentTier() {
         when(companySubscriptionRepository.findByCompanyId(1L)).thenReturn(Optional.of(subscription));

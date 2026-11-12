@@ -78,6 +78,21 @@ goong:
     base-url: https://rsapi.goong.io
     timeout-seconds: 10
 
+# Chỉ mở /actuator/health, không trả chi tiết thành phần. Redis chỉ dùng cho mã đặt lại mật khẩu
+# nên không làm health DOWN khi Redis vắng.
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+  endpoint:
+    health:
+      show-details: never
+      show-components: never
+  health:
+    redis:
+      enabled: false
+
 springdoc:
   swagger-ui:
     oauth:

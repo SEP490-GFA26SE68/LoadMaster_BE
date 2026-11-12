@@ -246,6 +246,24 @@ class TripStatusServiceIntegrationTest {
                         trip.getId(), TripStatus.DELIVERED, actor.getId()));
     }
 
+    @Test
+    void lockForTransitionReadsTheStatusAnotherCommandJustWrote() {
+        // Có tuyến (cột JSON): flush trước khi khoá sẽ ghi lại chuyến cũ đè lên trạng thái mới
+        Trip trip = persistTrip(TripStatus.LOADING, Map.of("orderedStops", java.util.List.of(1L)));
+        // Lệnh khác (huỷ) vừa ghi thẳng vào DB, chuyến trong bộ nhớ vẫn là LOADING
+        entityManager.createNativeQuery("update trips set status = 'CANCELLED' where id = :id")
+                .setParameter("id", trip.getId())
+                .executeUpdate();
+        assertEquals(TripStatus.LOADING, trip.getStatus());
+
+        Trip locked = tripStatusService.lockForTransition(trip.getId());
+
+        assertEquals(TripStatus.CANCELLED, locked.getStatus());
+        assertThrows(
+                InvalidTripStatusTransitionException.class,
+                () -> tripStatusService.transitionTo(trip.getId(), TripStatus.IN_TRANSIT, actor.getId()));
+    }
+
     private Trip persistTrip(TripStatus status, Map<String, Object> routePlan) {
         Trip trip = Trip.builder()
                 .company(company)

@@ -21,6 +21,7 @@ import fu.se184491.loadmaster_be.service.optimization.LoadPlanQueryService;
 import fu.se184491.loadmaster_be.service.optimization.manual.StopZoneResolver;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -92,6 +93,7 @@ public class LoadPlanQueryServiceImpl implements LoadPlanQueryService {
     }
 
     @Override
+    @Transactional
     public LoadPlanDetailResponse approvePlan(Long planId) {
         LoadPlanDetailResponse plan = ownedPlan(planId);
         if (Boolean.TRUE.equals(plan.getApproved())) {
@@ -101,7 +103,8 @@ public class LoadPlanQueryServiceImpl implements LoadPlanQueryService {
             throw new AppException(ErrorCode.PLAN_STALE);
         }
         // Kho và tài xế đọc phương án đã duyệt: hết pha lập kế hoạch thì không đổi được phương án nữa.
-        tripRepository.findById(plan.getTripId())
+        // Khoá chuyến tới khi duyệt xong: không chạy chồng với bắt đầu xếp hay huỷ chuyến.
+        tripRepository.findByIdForUpdate(plan.getTripId())
                 .filter(trip -> trip.getStatus() == TripStatus.PLANNED)
                 .orElseThrow(() -> new AppException(ErrorCode.PLAN_TRIP_NOT_PLANNED));
         User approver = currentUserService.getCurrentUser();

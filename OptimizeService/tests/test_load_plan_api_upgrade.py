@@ -42,33 +42,31 @@ class TestLoadPlanApiUpgrade:
         session = session_factory()
 
         # Seed data
-        vt = VehicleType(id=1, name="Truck 5T", inner_length=6000, inner_width=2400, inner_height=2400, max_payload_kg=5000)
+        vt = VehicleType(max_cog_offset_ratio=0.15, id=1, name="Truck 5T", inner_length=6000, inner_width=2400, inner_height=2400, max_payload_kg=5000)
         v = Vehicle(id=1, vehicle_type_id=1, license_plate="29C-11111")
-        trip = Trip(id="trip-cmp", vehicle_id=1)
+        trip = Trip(id=200, vehicle_id=1)
 
         now = datetime.utcnow()
         stop1 = DeliveryStop(
             id=1,
-            trip_id="trip-cmp",
+            trip_id=200,
             stop_sequence=1,
             stop_name="Kho Hà Nội",
             latitude=21.0285,
             longitude=105.8542,
             planned_arrival=now + timedelta(hours=2),
-            deadline=now + timedelta(hours=3),
         )
         stop2 = DeliveryStop(
             id=2,
-            trip_id="trip-cmp",
+            trip_id=200,
             stop_sequence=2,
             stop_name="Kho Phủ Lý",
             latitude=20.5400,
             longitude=105.9100,
             planned_arrival=now + timedelta(hours=6),
-            deadline=now + timedelta(hours=5),  # 1 hour late
         )
 
-        job = OptimizationJob(id=1, trip_id="trip-cmp", job_uuid="job-cmp-1", status="COMPLETED")
+        job = OptimizationJob(id=1, trip_id=200, job_uuid="job-cmp-1", status="COMPLETED")
 
         # Plan 1: Basic
         plan1 = LoadPlan(
@@ -119,6 +117,9 @@ class TestLoadPlanApiUpgrade:
             stop_zone_id=1,
         )
 
+        # delivery_stops không có cột hạn giao; so sánh phương án đọc thuộc tính deadline nếu có
+        stop1.deadline = now + timedelta(hours=3)
+        stop2.deadline = now + timedelta(hours=5)  # trễ 1 giờ
         session.add_all([vt, v, trip, stop1, stop2, job, plan1, plan2, placement1])
         session.commit()
 
@@ -205,6 +206,7 @@ class TestLoadPlanApiUpgrade:
         assert res.status_code == 401
         app.dependency_overrides.clear()
 
+    @pytest.mark.integration  # cần token RS256 do Keycloak thật ký (JWKS)
     def test_compare_plans_api_unauthorized_role_returns_403(self, test_db):
         app.dependency_overrides[get_db] = lambda: test_db
         client = TestClient(app)
@@ -216,6 +218,7 @@ class TestLoadPlanApiUpgrade:
         assert res.status_code == 403
         app.dependency_overrides.clear()
 
+    @pytest.mark.integration  # cần token RS256 do Keycloak thật ký (JWKS)
     def test_compare_plans_api_dispatcher_returns_200_and_comparison_data(self, test_db):
         app.dependency_overrides[get_db] = lambda: test_db
         client = TestClient(app)

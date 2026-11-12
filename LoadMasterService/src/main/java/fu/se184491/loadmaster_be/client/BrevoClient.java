@@ -1,5 +1,6 @@
 package fu.se184491.loadmaster_be.client;
 
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
@@ -8,6 +9,7 @@ import org.springframework.web.client.RestClient;
 import java.util.List;
 import java.util.Map;
 
+@Slf4j
 @Component
 public class BrevoClient {
 
@@ -278,7 +280,8 @@ public class BrevoClient {
                     .retrieve()
                     .toBodilessEntity();
         } catch (Exception e) {
-            // Log exception or handle in dev when Brevo credentials aren't configured
+            // Không làm hỏng việc gọi (máy dev thường không có khoá Brevo), nhưng không im lặng
+            log.warn("Không gửi được email tới {}: {}", recipientEmail, e.getMessage());
         }
     }
 
@@ -325,7 +328,8 @@ public class BrevoClient {
                     .retrieve()
                     .toBodilessEntity();
         } catch (Exception e) {
-            // Log exception or handle in dev when Brevo credentials aren't configured
+            // Không làm hỏng việc gọi (máy dev thường không có khoá Brevo), nhưng không im lặng
+            log.warn("Không gửi được email tới {}: {}", recipientEmail, e.getMessage());
         }
     }
 }

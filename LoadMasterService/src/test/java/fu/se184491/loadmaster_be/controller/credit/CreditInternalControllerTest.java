@@ -104,4 +104,15 @@ public class CreditInternalControllerTest {
 
         verify(creditService).refundCredit(null, "job-123");
     }
+
+    @Test
+    @DisplayName("Thân snake_case của dịch vụ tối ưu (company_id dạng chuỗi) vẫn đọc được")
+    void acceptsSnakeCaseCompanyId() throws Exception {
+        mockMvc.perform(post("/api/internal/credits/deduct")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"company_id\":\"7\",\"reference\":\"job-7\"}"))
+                .andExpect(status().isOk());
+
+        verify(creditService).deductCredit(7L, "job-7");
+    }
 }

@@ -45,6 +45,11 @@ class TestAlgorithmTierService:
         assert AlgorithmTierService.is_algorithm_allowed("ULTIMATE", "EP_DBLF_GA_AI") is True
 
 
+class _FakeTokenProvider:
+    async def get_service_token(self) -> str:
+        return "service-token"
+
+
 @pytest.mark.anyio
 class TestLoadMasterCreditClient:
     async def test_deduct_credit_success(self):
@@ -54,12 +59,12 @@ class TestLoadMasterCreditClient:
         mock_response.json.return_value = {"success": True}
         mock_http.post.return_value = mock_response
 
-        client = LoadMasterCreditClient(http_client=mock_http)
+        client = LoadMasterCreditClient(http_client=mock_http, token_provider=_FakeTokenProvider())
         result = await client.deduct_credit(company_id="comp-123", reference="job-abc")
         assert result is True
         mock_http.post.assert_called_once()
         args, kwargs = mock_http.post.call_args
-        assert "/api/credits/deduct" in args[0]
+        assert "/api/internal/credits/deduct" in args[0]
         assert kwargs["json"] == {"company_id": "comp-123", "reference": "job-abc"}
 
     async def test_deduct_credit_insufficient_raises_error(self):
@@ -69,7 +74,7 @@ class TestLoadMasterCreditClient:
         mock_response.json.return_value = {"success": False, "message": "INSUFFICIENT_CREDITS"}
         mock_http.post.return_value = mock_response
 
-        client = LoadMasterCreditClient(http_client=mock_http)
+        client = LoadMasterCreditClient(http_client=mock_http, token_provider=_FakeTokenProvider())
         with pytest.raises(AppException) as exc_info:
             await client.deduct_credit(company_id="comp-123", reference="job-abc")
         assert exc_info.value.error_code == ErrorCode.INSUFFICIENT_CREDITS
@@ -81,12 +86,12 @@ class TestLoadMasterCreditClient:
         mock_response.json.return_value = {"success": True}
         mock_http.post.return_value = mock_response
 
-        client = LoadMasterCreditClient(http_client=mock_http)
+        client = LoadMasterCreditClient(http_client=mock_http, token_provider=_FakeTokenProvider())
         result = await client.refund_credit(company_id="comp-123", reference="job-abc")
         assert result is True
         mock_http.post.assert_called_once()
         args, kwargs = mock_http.post.call_args
-        assert "/api/credits/refund" in args[0]
+        assert "/api/internal/credits/refund" in args[0]
 
 
 @pytest.mark.anyio
@@ -99,10 +104,10 @@ class TestAsyncRunnerCreditIntegration:
         session = session_factory()
 
         # Seed minimal data
-        vt = VehicleType(id=1, name="Standard Truck", inner_length=6000, inner_width=2000, inner_height=2000, max_payload_kg=5000)
+        vt = VehicleType(max_cog_offset_ratio=0.15, id=1, name="Standard Truck", inner_length=6000, inner_width=2000, inner_height=2000, max_payload_kg=5000)
         v = Vehicle(id=1, vehicle_type_id=1, license_plate="29C-12345")
-        t = Trip(id="trip-100", vehicle_id=1)
-        stop = DeliveryStop(id=1, trip_id="trip-100", stop_sequence=1)
+        t = Trip(id=100, vehicle_id=1)
+        stop = DeliveryStop(id=1, trip_id=100, stop_sequence=1)
         order = TransportOrder(id=1, delivery_stop_id=1)
         pkg = CargoPackage(id=1, order_id=1, actual_weight_kg=100.0)
 
@@ -115,11 +120,11 @@ class TestAsyncRunnerCreditIntegration:
     async def test_credit_deducted_before_solving(self, test_db):
         job_service = OptimizationJobService()
         req = OptimizationJobRequest(
-            trip_id="trip-100",
+            trip_id=100,
             company_id="comp-1",
             subscription_tier="PRO",
         )
-        job = job_service.create_job("trip-100", req, test_db)
+        job = job_service.create_job(100, req, test_db)
 
         mock_credit_client = AsyncMock()
         mock_credit_client.deduct_credit.return_value = True
@@ -151,11 +156,11 @@ class TestAsyncRunnerCreditIntegration:
     async def test_insufficient_credit_blocks_engine_and_fails_job(self, test_db):
         job_service = OptimizationJobService()
         req = OptimizationJobRequest(
-            trip_id="trip-100",
+            trip_id=100,
             company_id="comp-empty",
             subscription_tier="BASIC",
         )
-        job = job_service.create_job("trip-100", req, test_db)
+        job = job_service.create_job(100, req, test_db)
 
         mock_credit_client = AsyncMock()
         mock_credit_client.deduct_credit.side_effect = AppException(ErrorCode.INSUFFICIENT_CREDITS)
@@ -180,11 +185,11 @@ class TestAsyncRunnerCreditIntegration:
     async def test_refund_called_when_job_fails(self, test_db):
         job_service = OptimizationJobService()
         req = OptimizationJobRequest(
-            trip_id="trip-100",
+            trip_id=100,
             company_id="comp-1",
             subscription_tier="BASIC",
         )
-        job = job_service.create_job("trip-100", req, test_db)
+        job = job_service.create_job(100, req, test_db)
 
         mock_credit_client = AsyncMock()
         mock_credit_client.deduct_credit.return_value = True

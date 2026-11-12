@@ -57,4 +57,12 @@ public class OptimizationJob {
 
     @Column(name = "created_at")
     private java.time.LocalDateTime createdAt;
+
+    /** Job do Java tạo (chạy lại giữ ghim) cũng có giờ tạo, giờ Việt Nam như dịch vụ tối ưu ghi. */
+    @PrePersist
+    void fillCreatedAt() {
+        if (createdAt == null) {
+            createdAt = java.time.LocalDateTime.now(java.time.ZoneId.of("Asia/Ho_Chi_Minh"));
+        }
+    }
 }

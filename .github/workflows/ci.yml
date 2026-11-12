@@ -31,6 +31,7 @@ jobs:
           cache: maven
 
       # Test chạy trên H2 với cấu hình src/test/resources/config/application.yml: không cần .env, Supabase hay Keycloak.
+      # Test migration Flyway dựng PostgreSQL bằng Testcontainers (Docker có sẵn trên ubuntu-latest).
       - name: Test
         run: sh ./mvnw -B -ntp test
 
@@ -41,3 +42,29 @@ jobs:
           name: surefire-reports
           path: LoadMasterService/target/surefire-reports
           retention-days: 7
+
+  optimize-service:
+    name: OptimizeService (pytest)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: OptimizeService
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: OptimizeService/requirements.txt
+
+      - name: Install
+        run: pip install -r requirements.txt
+
+      # Giá trị giả chỉ để nạp cấu hình; test dùng SQLite trong bộ nhớ. Test cần Keycloak hay DB thật mang mark integration.
+      - name: Test
+        env:
+          DATABASE_URL: sqlite:///./pytest-ci.db
+          KEYCLOAK_CLIENT_SECRET: ci-dummy
+        run: python -m pytest -q -m "not integration"

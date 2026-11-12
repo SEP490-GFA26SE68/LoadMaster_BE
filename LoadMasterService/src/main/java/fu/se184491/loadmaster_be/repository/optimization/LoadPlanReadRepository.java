@@ -65,7 +65,8 @@ public class LoadPlanReadRepository {
             LEFT JOIN users u ON u.id = lp.approved_by
             """;
 
-    private static final TimeZone UTC = TimeZone.getTimeZone("UTC");
+    // Cả Java lẫn dịch vụ tối ưu ghi created_at theo giờ Việt Nam, không múi giờ.
+    private static final TimeZone VIETNAM = TimeZone.getTimeZone("Asia/Ho_Chi_Minh");
 
     private static final RowMapper<LoadPlanDetailResponse> PLAN_MAPPER = (rs, i) -> mapPlan(rs);
 
@@ -116,7 +117,7 @@ public class LoadPlanReadRepository {
                         """,
                 Map.of("id", jobId),
                 (rs, i) -> {
-                    Timestamp createdAt = rs.getTimestamp("created_at", Calendar.getInstance(UTC));
+                    Timestamp createdAt = rs.getTimestamp("created_at", Calendar.getInstance(VIETNAM));
                     return OptimizationJobStatusResponse.builder()
                             .id(rs.getLong("id"))
                             .jobId(rs.getString("job_uuid"))
@@ -126,7 +127,6 @@ public class LoadPlanReadRepository {
                             .status(rs.getString("status"))
                             .computationMs(nullableLong(rs, "computation_ms"))
                             .runAlgorithm(rs.getString("algorithm_name"))
-                            // Dịch vụ tối ưu ghi created_at theo giờ UTC (không múi giờ).
                             .createdAt(createdAt == null ? null : createdAt.toInstant())
                             .packedPlanCount(rs.getInt("packed_plans"))
                             .pinnedCount(rs.getInt("pinned_count"))

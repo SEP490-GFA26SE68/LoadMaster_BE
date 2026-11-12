@@ -186,6 +186,7 @@ class TestLoadPlanApproveApi:
         assert response.status_code == 401
         app.dependency_overrides.clear()
 
+    @pytest.mark.integration  # cần token RS256 do Keycloak thật ký (JWKS)
     def test_approve_plan_unauthorized_role_returns_403(self, db_session, plan_with_placements):
         """Role DRIVER không được phép duyệt plan -> 403 Forbidden"""
         app.dependency_overrides[get_db] = lambda: db_session
@@ -199,6 +200,7 @@ class TestLoadPlanApproveApi:
         assert response.status_code == 403
         app.dependency_overrides.clear()
 
+    @pytest.mark.integration  # cần token RS256 do Keycloak thật ký (JWKS)
     def test_approve_plan_dispatcher_role_returns_200_and_approved_plan(self, db_session, plan_with_placements):
         """Role DISPATCHER duyệt plan hợp lệ -> 200 OK + LoadPlanResponse với approved=True"""
         app.dependency_overrides[get_db] = lambda: db_session
