@@ -4,6 +4,7 @@ import fu.se184491.loadmaster_be.client.VnPayClient;
 import fu.se184491.loadmaster_be.config.FrontendUrls;
 import fu.se184491.loadmaster_be.exception.AppException;
 import fu.se184491.loadmaster_be.exception.ErrorCode;
+import fu.se184491.loadmaster_be.service.payment.MockCheckoutAccess;
 import fu.se184491.loadmaster_be.service.payment.PaymentCallbackHandler;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -23,6 +24,7 @@ public class PaymentWebhookController {
 
     private final PaymentCallbackHandler paymentCallbackHandler;
     private final VnPayClient vnPayClient;
+    private final MockCheckoutAccess mockCheckoutAccess;
 
     @Value(FrontendUrls.URL)
     private String frontendUrl = FrontendUrls.DEFAULT;
@@ -59,6 +61,8 @@ public class PaymentWebhookController {
     /**
      * Xác nhận thanh toán giả lập. Chỉ dùng được khi máy chủ bật cấu hình {@code vnpay.mock}; tắt cấu hình đó
      * (môi trường thật) thì endpoint trả "không tìm thấy giao dịch" và không đánh dấu giao dịch nào đã trả.
+     * Giao dịch của công ty đòi đăng nhập (401) và chỉ công ty sở hữu giao dịch xác nhận được (công ty khác: 404);
+     * giao dịch đăng ký trả phí {@code REG_…} của khách chưa có tài khoản thì không đòi đăng nhập.
      */
     @GetMapping("/api/payment/mock-checkout")
     public ResponseEntity<Map<String, Object>> mockCheckout(@RequestParam String txnRef) {
@@ -66,6 +70,7 @@ public class PaymentWebhookController {
             log.warn("Rejected mock checkout for txnRef {}: vnpay.mock is disabled", txnRef);
             throw new AppException(ErrorCode.PAYMENT_TRANSACTION_NOT_FOUND);
         }
+        mockCheckoutAccess.requireAllowed(txnRef);
         log.info("Executing mock checkout for txnRef: {}", txnRef);
         Map<String, String> mockParams = new HashMap<>();
         mockParams.put("vnp_TxnRef", txnRef);
