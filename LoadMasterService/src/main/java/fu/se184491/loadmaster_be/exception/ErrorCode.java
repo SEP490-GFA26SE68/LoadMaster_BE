@@ -283,6 +283,7 @@ public enum ErrorCode {
     ACTIVE_SUBSCRIPTION_ALREADY_EXISTS("Doanh nghiệp đã có gói đăng ký đang hoạt động", HttpStatus.CONFLICT),
     NO_ACTIVE_SUBSCRIPTION("Doanh nghiệp chưa có gói đăng ký nào đang hoạt động", HttpStatus.NOT_FOUND),
     SUBSCRIPTION_NOT_RENEWABLE("Gói cước chưa tới kỳ gia hạn, đang dùng thử hoặc hợp đồng đã huỷ", HttpStatus.CONFLICT),
+    SUBSCRIPTION_EXPIRED("Gói cước đã hết hạn hoặc đã huỷ. Vui lòng gia hạn gói trước khi mua thêm credit", HttpStatus.CONFLICT),
     SUBSCRIPTION_PLAN_NOT_FOUND("Không tìm thấy gói đăng ký", HttpStatus.NOT_FOUND),
     PAYMENT_TRANSACTION_NOT_FOUND("Không tìm thấy giao dịch thanh toán", HttpStatus.NOT_FOUND),
     INVALID_PAYMENT_SIGNATURE("Chữ ký thanh toán không hợp lệ", HttpStatus.BAD_REQUEST),
