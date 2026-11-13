@@ -3,6 +3,7 @@ package fu.se184491.loadmaster_be.config.security;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import fu.se184491.loadmaster_be.config.FrontendUrls;
 import fu.se184491.loadmaster_be.helpers.CurrentUserService;
+import fu.se184491.loadmaster_be.repository.billing.CompanySubscriptionRepository;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Value;
@@ -43,7 +44,8 @@ public class WebSecurityConfig {
             JwtAuthenticationConverter jwtAuthenticationConverter,
             RestAuthenticationEntryPoint authenticationEntryPoint,
             RestAccessDeniedHandler accessDeniedHandler,
-            ObjectProvider<CurrentUserService> currentUserServiceProvider
+            ObjectProvider<CurrentUserService> currentUserServiceProvider,
+            ObjectProvider<CompanySubscriptionRepository> companySubscriptionRepositoryProvider
     ) throws Exception {
 
         http
@@ -86,12 +88,13 @@ public class WebSecurityConfig {
                         )
                 );
 
-        // Bộ lọc tài khoản bị gắn cờ chỉ sống trong chuỗi bảo mật này, không phải bean: là bean thì Spring Boot đăng ký
+        // Bộ lọc tài khoản bị gắn cờ và hết hạn gói cước chỉ sống trong chuỗi bảo mật này, không phải bean: là bean thì Spring Boot đăng ký
         // nó thêm một lần làm servlet filter thường, và lát cắt @WebMvcTest kéo nó vào mà không có CurrentUserService.
         CurrentUserService currentUserService = currentUserServiceProvider.getIfAvailable();
+        CompanySubscriptionRepository companySubscriptionRepository = companySubscriptionRepositoryProvider.getIfAvailable();
         if (currentUserService != null) {
             http.addFilterAfter(
-                    new FlaggedUserEnforcementFilter(currentUserService, new ObjectMapper()),
+                    new FlaggedUserEnforcementFilter(currentUserService, new ObjectMapper(), companySubscriptionRepository),
                     BearerTokenAuthenticationFilter.class
             );
         } else {
