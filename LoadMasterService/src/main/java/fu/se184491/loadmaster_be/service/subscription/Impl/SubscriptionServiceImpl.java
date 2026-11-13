@@ -229,6 +229,8 @@ public class SubscriptionServiceImpl implements SubscriptionService {
 
         companySubscriptionRepository.save(sub);
         log.info("Activated subscription id={} for company={} plan={}", sub.getId(), companyId, plan.getName());
+        // Gói không giới hạn hay không ghi credit tháng không đi qua lượt cấp credit bên dưới: vẫn phải có tài khoản.
+        creditService.ensureAccount(companyId);
 
         // Grant monthly credits only when starting a new cycle or switching plans (not when extending active plan early)
         if (!isExtendingSameActivePlan) {
@@ -378,6 +380,7 @@ public class SubscriptionServiceImpl implements SubscriptionService {
                     sub.setExpiresAt(calculateExpiresAt(now, plan).truncatedTo(ChronoUnit.SECONDS));
                     sub.normalizeTimestamps();
                     companySubscriptionRepository.save(sub);
+                    creditService.ensureAccount(sub.getCompany().getId());
                     if (plan.getMonthlyCredits() != null && plan.getMonthlyCredits() > 0) {
                         creditService.grantMonthlyCredits(sub.getCompany().getId(), plan.getMonthlyCredits(), renewRef);
                     }
