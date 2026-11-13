@@ -1,0 +1,11 @@
+# Chỉ pom, Maven wrapper và src vào image; không bao giờ đưa file .env vào
+target/
+.env
+.env.*
+docker-compose*.yml
+keycloak-themes/
+scripts/
+.idea/
+.vscode/
+*.iml
+*.log

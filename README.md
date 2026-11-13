@@ -106,6 +106,28 @@ cd LoadMasterService
 
 ### 5. Triển khai (VPS)
 
+**Chạy bằng Docker.** `docker-compose.prod.yml` (gốc repo) dựng `LoadMasterService` (JRE 21), `OptimizeService` (Python 3.12) và một Redis cho mã OTP; cả ba chạy bằng user không phải root. DB là Supabase Postgres, Keycloak là bản dùng chung: không có container nào cho hai thứ đó. Chỉ `LoadMasterService` mở cổng (mặc định `127.0.0.1:8080` cho reverse proxy đứng trước, đổi bằng `LOADMASTER_PUBLISH`); `OptimizeService` và Redis không publish cổng, chỉ gọi được trong mạng của compose.
+```bash
+# 1. Cấu hình: chép mẫu rồi điền giá trị thật (file .env.prod đã nằm trong .gitignore)
+cp .env.prod.example .env.prod
+# 2. Kiểm cấu hình, build và chạy
+docker compose --env-file .env.prod -f docker-compose.prod.yml config --quiet
+docker compose --env-file .env.prod -f docker-compose.prod.yml up -d --build
+# 3. Theo dõi: cả ba phải "healthy" (LoadMasterService mất khoảng 30–90 giây)
+docker compose --env-file .env.prod -f docker-compose.prod.yml ps
+docker compose --env-file .env.prod -f docker-compose.prod.yml logs -f loadmaster-service
+curl -fsS http://127.0.0.1:8080/actuator/health
+# Cập nhật bản mới
+git pull && docker compose --env-file .env.prod -f docker-compose.prod.yml up -d --build
+# Dừng (giữ dữ liệu Redis)
+docker compose --env-file .env.prod -f docker-compose.prod.yml down
+```
+- Build riêng từng image: `docker build -t loadmaster-service ./LoadMasterService`, `docker build -t optimize-service ./OptimizeService`. Mô hình AI của gói ULTIMATE (torch CPU, vài GB) chỉ cài khi `OPTIMIZE_INSTALL_AI=true` trong `.env.prod` (hoặc `--build-arg INSTALL_AI=true`); thiếu nó gói ULTIMATE chạy heuristic.
+- `LoadMasterService` đọc cấu hình Keycloak lúc khởi động: `KEYCLOAK_AUTH_URL` phải tới được từ container, không thì dịch vụ dừng ngay.
+- Giá trị có ký tự `$` trong `.env.prod` thì bọc trong nháy đơn (compose nội suy `$`).
+- Không đặt `SPRING_PROFILES_ACTIVE` (profile `dev` tạo tài khoản mẫu). Schema theo `ddl-auto=update`; Flyway không tự chạy, file `db/migration/V*.sql` mới thì chạy tay trên Supabase (các file đều chạy lại an toàn).
+- CI build cả hai image ở mỗi pull request, không đẩy lên registry.
+
 **Một file cấu hình DB cho cả hai dịch vụ.** `OptimizeService` đọc đúng `DATABASE_URL` (dạng JDBC như `LoadMasterService`, giữ `?sslmode=...`), `POSTGRES_USER`, `POSTGRES_PASSWORD`; URL dạng `postgresql://user:pass@host/db` cũ vẫn chạy. `ssl=true` không kèm `sslmode` được hiểu như pgjdbc (`verify-full`). Mẫu: `LoadMasterService/.env.example`, `OptimizeService/.env.example`. Không commit file `.env`.
 
 **Keycloak cho tên miền thật.** Đặt `LOADMASTER_WEB_URL` (origin web production, `https`, không có `/` cuối) trước khi Keycloak import realm lần đầu: client `loadmaster-web` nhận chuyển hướng, CORS và đăng xuất về đó, vẫn giữ `localhost`. Realm đã có sẵn thì chạy trong container Keycloak:

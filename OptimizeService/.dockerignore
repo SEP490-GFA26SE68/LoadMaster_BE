@@ -1,0 +1,14 @@
+# Chỉ requirements và app/ vào image; không bao giờ đưa file .env vào
+.env
+.env.*
+tests/
+pytest.ini
+.pytest_cache/
+**/__pycache__/
+**/*.pyc
+*.db
+.venv/
+venv/
+.idea/
+.vscode/
+*.log

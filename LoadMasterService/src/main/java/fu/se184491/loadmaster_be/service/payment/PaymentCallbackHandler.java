@@ -6,6 +6,8 @@ import fu.se184491.loadmaster_be.constant.billing.BillingCycle;
 import fu.se184491.loadmaster_be.constant.billing.PaymentStatus;
 import fu.se184491.loadmaster_be.entity.billing.PaymentTransaction;
 import fu.se184491.loadmaster_be.repository.billing.PaymentTransactionRepository;
+import fu.se184491.loadmaster_be.service.billing.InvoiceService;
+import fu.se184491.loadmaster_be.service.billing.InvoiceService.SubscriptionPeriod;
 import fu.se184491.loadmaster_be.service.credit.CreditService;
 import fu.se184491.loadmaster_be.service.subscription.SubscriptionService;
 import lombok.RequiredArgsConstructor;
@@ -27,6 +29,7 @@ public class PaymentCallbackHandler {
     private final VnPayClient vnPayClient;
     private final SubscriptionService subscriptionService;
     private final CreditService creditService;
+    private final InvoiceService invoiceService;
     private final fu.se184491.loadmaster_be.service.registration.GuestRegistrationService guestRegistrationService;
 
     @Transactional
@@ -96,11 +99,12 @@ public class PaymentCallbackHandler {
             log.info("Payment SUCCESS for txnRef: {} (type: {}, targetId: {})",
                     txnRef, txn.getOrderType(), txn.getTargetId());
 
+            SubscriptionPeriod period = null;
             if (("SUBSCRIPTION".equalsIgnoreCase(txn.getOrderType())
                     || "SUBSCRIPTION_RENEWAL".equalsIgnoreCase(txn.getOrderType())) && txn.getTargetId() != null) {
-                subscriptionService.activateSubscription(txn.getCompany().getId(), txn.getTargetId());
+                period = subscriptionService.activateSubscription(txn.getCompany().getId(), txn.getTargetId());
             } else if ("SUBSCRIPTION_YEARLY".equalsIgnoreCase(txn.getOrderType()) && txn.getTargetId() != null) {
-                subscriptionService.activateSubscription(
+                period = subscriptionService.activateSubscription(
                         txn.getCompany().getId(),
                         txn.getTargetId(),
                         BillingCycle.YEARLY
@@ -108,6 +112,8 @@ public class PaymentCallbackHandler {
             } else if ("CREDIT_TOPUP".equalsIgnoreCase(txn.getOrderType()) && txn.getTargetId() != null) {
                 creditService.addCredits(txn.getCompany().getId(), txn.getTargetId().intValue(), txn.getGatewayTransactionId());
             }
+            // Cùng giao dịch với lần đánh dấu SUCCESS: callback gửi lại dừng ở bước 3, không có hoá đơn thứ hai
+            invoiceService.recordPaymentInvoice(txn, period);
         } else {
             txn.setStatus(PaymentStatus.FAILED);
             txn.preUpdate();

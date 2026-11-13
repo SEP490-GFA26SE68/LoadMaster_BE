@@ -28,6 +28,7 @@ import fu.se184491.loadmaster_be.repository.billing.SubscriptionPlanRepository;
 import fu.se184491.loadmaster_be.repository.company.CompanyAgreementRepository;
 import fu.se184491.loadmaster_be.repository.company.CompanyRepository;
 import fu.se184491.loadmaster_be.repository.registration.GuestRegistrationSessionRepository;
+import fu.se184491.loadmaster_be.service.billing.InvoiceService;
 import fu.se184491.loadmaster_be.service.credit.CreditService;
 import fu.se184491.loadmaster_be.service.registration.GuestRegistrationService;
 import fu.se184491.loadmaster_be.service.security.OtpHasher;
@@ -63,6 +64,7 @@ public class GuestRegistrationServiceImpl implements GuestRegistrationService {
     private final OtpHasher otpHasher;
     private final TemporaryPasswordGenerator temporaryPasswordGenerator;
     private final GuestRegistrationSessionExpiry sessionExpiry;
+    private final InvoiceService invoiceService;
 
     @Value(FrontendUrls.URL)
     private String frontendUrl = FrontendUrls.DEFAULT;
@@ -476,6 +478,9 @@ public class GuestRegistrationServiceImpl implements GuestRegistrationService {
                 .payload(params.toString())
                 .build();
         paymentTransactionRepository.save(txn);
+        // Hoá đơn trong danh sách của công ty, cùng giao dịch với phiên bị khoá: callback gửi lại dừng ở bước 3
+        invoiceService.recordPaymentInvoice(txn, new InvoiceService.SubscriptionPeriod(
+                subscription, session.getPlan(), subscription.getStartedAt(), subscription.getExpiresAt()));
 
         // g) Generate PDF Invoice and Send Welcome Email
         byte[] invoicePdf = generateInvoicePdf(savedCompany, savedUser, session.getPlan(), session.getBillingCycle(), session.getAmountVnd(), session.getPaymentRef());
