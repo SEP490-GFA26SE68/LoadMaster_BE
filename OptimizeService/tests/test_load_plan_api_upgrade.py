@@ -4,7 +4,6 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
-import jwt
 from fastapi.testclient import TestClient
 
 from app.main import app
@@ -12,20 +11,17 @@ from app.config.database import Base, get_db
 from app.entity.optimization.load_plan import LoadPlan
 from app.entity.optimization.package_placement import PackagePlacement
 from app.entity.optimization.optimization_job import OptimizationJob
-from app.entity.trip_model import Trip, Vehicle, VehicleType, DeliveryStop, DeliveryRequirement
+from app.entity.trip_model import AppUser, Trip, Vehicle, VehicleType, DeliveryStop, DeliveryRequirement
 from app.service.optimize.load_plan_service import LoadPlanService
 from app.dto.response.load_plan_response import LoadPlanResponse
 from app.dto.response.package_placement_response import PackagePlacementResponse
 from app.dto.response.load_plan_comparison_response import LoadPlanComparisonResponse
 
 
-def make_jwt_token(roles: list[str], user_id: int = 99) -> str:
-    payload = {
-        "preferred_username": "dispatcher_user",
-        "user_id": user_id,
-        "roles": roles,
-    }
-    return jwt.encode(payload, "secret-test-key-32-bytes-minimum-length!", algorithm="HS256")
+from tests.keycloak_tokens import user_headers
+
+COMPANY_ID = 5
+DISPATCHER_SUB = "kc-dispatcher-cmp"
 
 
 NOW = datetime(2026, 9, 14, 8, 0)
@@ -47,7 +43,9 @@ class TestLoadPlanApiUpgrade:
         # Seed data
         vt = VehicleType(max_cog_offset_ratio=0.15, id=1, name="Truck 5T", inner_length=6000, inner_width=2400, inner_height=2400, max_payload_kg=5000)
         v = Vehicle(id=1, vehicle_type_id=1, license_plate="29C-11111")
-        trip = Trip(id=200, vehicle_id=1)
+        trip = Trip(id=200, vehicle_id=1, company_id=COMPANY_ID)
+        # Người gọi bằng token của mình: công ty tra theo users.keycloak_id = sub
+        session.add(AppUser(id=456, keycloak_id=DISPATCHER_SUB, company_id=COMPANY_ID))
 
         now = NOW
         # Hạn của điểm giao lấy từ yêu cầu giao của điểm (delivery_stops không có cột hạn)
@@ -222,26 +220,38 @@ class TestLoadPlanApiUpgrade:
         assert res.status_code == 401
         app.dependency_overrides.clear()
 
-    @pytest.mark.integration  # cần token RS256 do Keycloak thật ký (JWKS)
+    @pytest.mark.usefixtures("keycloak_jwks")
     def test_compare_plans_api_unauthorized_role_returns_403(self, test_db):
         app.dependency_overrides[get_db] = lambda: test_db
         client = TestClient(app)
-        token = make_jwt_token(["DRIVER"])
         res = client.get(
             "/api/v1/load-plans/compare?planId1=101&planId2=102",
-            headers={"Authorization": f"Bearer {token}"},
+            headers=user_headers("DRIVER", sub=DISPATCHER_SUB),
         )
         assert res.status_code == 403
         app.dependency_overrides.clear()
 
-    @pytest.mark.integration  # cần token RS256 do Keycloak thật ký (JWKS)
+    @pytest.mark.usefixtures("keycloak_jwks")
+    def test_compare_plans_api_dispatcher_of_another_company_returns_404(self, test_db):
+        """Phương án của công ty khác đọc như không tồn tại."""
+        test_db.add(AppUser(id=457, keycloak_id="kc-other-company", company_id=COMPANY_ID + 1))
+        test_db.commit()
+        app.dependency_overrides[get_db] = lambda: test_db
+        client = TestClient(app)
+        res = client.get(
+            "/api/v1/load-plans/compare?planId1=101&planId2=102",
+            headers=user_headers("DISPATCHER", sub="kc-other-company"),
+        )
+        assert res.status_code == 404
+        app.dependency_overrides.clear()
+
+    @pytest.mark.usefixtures("keycloak_jwks")
     def test_compare_plans_api_dispatcher_returns_200_and_comparison_data(self, test_db):
         app.dependency_overrides[get_db] = lambda: test_db
         client = TestClient(app)
-        token = make_jwt_token(["DISPATCHER"])
         res = client.get(
             "/api/v1/load-plans/compare?planId1=101&planId2=102",
-            headers={"Authorization": f"Bearer {token}"},
+            headers=user_headers("DISPATCHER", sub=DISPATCHER_SUB),
         )
         assert res.status_code == 200
         body = res.json()
