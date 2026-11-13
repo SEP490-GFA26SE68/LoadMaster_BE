@@ -49,7 +49,7 @@ def db_session():
     session = Session()
 
     # Tạo trip mẫu
-    trip = Trip(id=1, status="DRAFT")
+    trip = Trip(id=101, status="DRAFT")
     session.add(trip)
     session.commit()
 

@@ -1,5 +1,6 @@
 package fu.se184491.loadmaster_be.service.payment;
 
+import fu.se184491.loadmaster_be.helpers.LogMasks;
 import fu.se184491.loadmaster_be.client.VnPayClient;
 import fu.se184491.loadmaster_be.constant.billing.BillingCycle;
 import fu.se184491.loadmaster_be.constant.billing.PaymentStatus;
@@ -33,27 +34,27 @@ public class PaymentCallbackHandler {
         Map<String, String> response = new HashMap<>();
 
         String txnRef = params.get("vnp_TxnRef");
-        if (txnRef != null && txnRef.startsWith("REG_")) {
-            return guestRegistrationService.handlePaymentCallback(params);
-        }
 
-        boolean isMock = (txnRef != null && txnRef.startsWith("MOCK_"))
-                || "true".equalsIgnoreCase(params.get("vnp_Mock"))
-                || vnPayClient.isMock();
-
-        // 1. Verify Checksum (skip for mock dev transactions)
-        if (!isMock) {
+        // 1. Verify Checksum — chỗ kiểm chữ ký duy nhất của mọi callback VNPay (cả đăng ký trả phí REG_…).
+        // Chỉ bỏ qua khi máy chủ bật cấu hình vnpay.mock; tham số của request
+        // (vnp_Mock, tiền tố MOCK_ của mã giao dịch) do người gọi tự đặt nên không bao giờ được tin.
+        if (!vnPayClient.isMock()) {
             boolean validSignature = vnPayClient.verifyCallback(params);
             if (!validSignature) {
-                log.warn("VNPay callback signature verification failed for params: {}", params);
+                log.warn("VNPay callback signature verification failed for params: {}", LogMasks.vnpayParams(params));
                 response.put("RspCode", "97");
                 response.put("Message", "Invalid Checksum");
                 return response;
             }
         }
 
-        // 2. Find Payment Transaction
-        Optional<PaymentTransaction> txnOpt = paymentTransactionRepository.findByGatewayTransactionId(txnRef);
+        if (txnRef != null && txnRef.startsWith("REG_")) {
+            return guestRegistrationService.handlePaymentCallback(params);
+        }
+
+        // 2. Find Payment Transaction — khoá dòng tới hết giao dịch: IPN và trang trả về có thể tới cùng lúc,
+        // lượt sau chờ lượt trước commit rồi thấy SUCCESS ở bước 3, không cấp credit / kích hoạt gói lần hai.
+        Optional<PaymentTransaction> txnOpt = paymentTransactionRepository.findByGatewayTransactionIdForUpdate(txnRef);
         if (txnOpt.isEmpty()) {
             log.warn("VNPay callback order not found for txnRef: {}", txnRef);
             response.put("RspCode", "01");
@@ -95,7 +96,8 @@ public class PaymentCallbackHandler {
             log.info("Payment SUCCESS for txnRef: {} (type: {}, targetId: {})",
                     txnRef, txn.getOrderType(), txn.getTargetId());
 
-            if ("SUBSCRIPTION".equalsIgnoreCase(txn.getOrderType()) && txn.getTargetId() != null) {
+            if (("SUBSCRIPTION".equalsIgnoreCase(txn.getOrderType())
+                    || "SUBSCRIPTION_RENEWAL".equalsIgnoreCase(txn.getOrderType())) && txn.getTargetId() != null) {
                 subscriptionService.activateSubscription(txn.getCompany().getId(), txn.getTargetId());
             } else if ("SUBSCRIPTION_YEARLY".equalsIgnoreCase(txn.getOrderType()) && txn.getTargetId() != null) {
                 subscriptionService.activateSubscription(

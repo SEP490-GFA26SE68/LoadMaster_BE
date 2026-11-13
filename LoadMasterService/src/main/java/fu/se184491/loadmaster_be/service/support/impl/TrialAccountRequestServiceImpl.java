@@ -2,6 +2,7 @@ package fu.se184491.loadmaster_be.service.support.impl;
 
 import fu.se184491.loadmaster_be.client.BrevoClient;
 import fu.se184491.loadmaster_be.client.KeycloakAdminClient;
+import fu.se184491.loadmaster_be.config.FrontendUrls;
 import fu.se184491.loadmaster_be.constant.account.UserRole;
 import fu.se184491.loadmaster_be.constant.account.UserStatus;
 import fu.se184491.loadmaster_be.constant.account.UserType;
@@ -25,6 +26,8 @@ import fu.se184491.loadmaster_be.entity.support.ContactOfGuest;
 import fu.se184491.loadmaster_be.entity.support.TrialAccountRequest;
 import fu.se184491.loadmaster_be.exception.AppException;
 import fu.se184491.loadmaster_be.exception.ErrorCode;
+import fu.se184491.loadmaster_be.helpers.AfterCommit;
+import fu.se184491.loadmaster_be.helpers.KeycloakAccounts;
 import fu.se184491.loadmaster_be.helpers.CompanyCodeGenerator;
 import fu.se184491.loadmaster_be.helpers.TemporaryPasswordGenerator;
 import fu.se184491.loadmaster_be.repository.account.UserRepository;
@@ -39,6 +42,7 @@ import fu.se184491.loadmaster_be.service.support.TrialAccountRequestService;
 import jakarta.persistence.criteria.Predicate;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
@@ -54,13 +58,16 @@ import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.UUID;
+import java.util.regex.Pattern;
 
 @Slf4j
 @Service
 @RequiredArgsConstructor
 @Transactional
 public class TrialAccountRequestServiceImpl implements TrialAccountRequestService {
+
+    // Cùng mẫu với TrialRegistrationServiceImpl: 10 chữ số, 10-3 hoặc 13 chữ số.
+    private static final Pattern TAX_CODE_PATTERN = Pattern.compile("^([0-9]{10}|[0-9]{10}-[0-9]{3}|[0-9]{13})$");
 
     private final TrialAccountRequestRepository trialAccountRequestRepository;
     private final ContactOfGuestRepository contactOfGuestRepository;
@@ -74,6 +81,9 @@ public class TrialAccountRequestServiceImpl implements TrialAccountRequestServic
     private final CompanyCodeGenerator companyCodeGenerator;
     private final BrevoClient brevoClient;
     private final CompanyAgreementService companyAgreementService;
+
+    @Value(FrontendUrls.URL)
+    private String frontendUrl = FrontendUrls.DEFAULT;
 
     @Override
     public TrialAccountRequestResponse createTrialRequest(CreateTrialAccountRequest request, User requestedBy) {
@@ -243,11 +253,17 @@ public class TrialAccountRequestServiceImpl implements TrialAccountRequestServic
             compCode = compCode.trim();
         }
 
+        // Mã số thuế lấy từ người duyệt, không có thì từ đơn. Không tự sinh mã giả: DB chỉ nhận 10 / 13 chữ số
+        // (chk_companies_tax_code_format), mã trùng thì báo TAX_CODE_ALREADY_EXISTS ở dưới để người duyệt nhập mã khác.
         String taxCode = (request.getTaxCode() != null && !request.getTaxCode().trim().isEmpty())
                 ? request.getTaxCode().trim()
-                : (trial.getTaxCode() != null && !trial.getTaxCode().trim().isEmpty() && !companyRepository.existsByTaxCode(trial.getTaxCode().trim())
-                        ? trial.getTaxCode().trim()
-                        : "TAX-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase());
+                : (trial.getTaxCode() != null && !trial.getTaxCode().trim().isEmpty() ? trial.getTaxCode().trim() : null);
+        if (taxCode == null) {
+            throw new AppException(ErrorCode.TAX_CODE_REQUIRED);
+        }
+        if (!TAX_CODE_PATTERN.matcher(taxCode).matches()) {
+            throw new AppException(ErrorCode.INVALID_TAX_CODE_FORMAT);
+        }
 
         if (companyRepository.existsByCompanyCode(compCode)) {
             throw new AppException(ErrorCode.COMPANY_ALREADY_EXISTS, "Mã công ty '" + compCode + "' đã tồn tại trong hệ thống.");
@@ -269,67 +285,34 @@ public class TrialAccountRequestServiceImpl implements TrialAccountRequestServic
 
         // 4. Tạo hoặc liên kết tài khoản User với vai trò ADMIN (Company Admin)
         String temporaryPassword = temporaryPasswordGenerator.generate();
-        String keycloakUserId = null;
-        boolean newlyCreatedInKeycloak = false;
-        User savedUser = null;
-
+        String keycloakUserId;
         try {
-            String existingKeycloakId = keycloakAdminClient.findUserIdByEmail(trial.getEmail());
-            if (existingKeycloakId != null) {
-                // Kiểm tra xem ID này đã gắn với DB user nào chưa
-                if (userRepository.findByKeycloakId(existingKeycloakId).isPresent()) {
-                    throw new AppException(ErrorCode.EMAIL_ALREADY_EXISTS,
-                            "Email '" + trial.getEmail() + "' đã được sử dụng cho một tài khoản khác trong hệ thống.");
-                }
-                log.info("Reusing orphaned Keycloak user {} for email {}", existingKeycloakId, trial.getEmail());
-                keycloakUserId = existingKeycloakId;
-                keycloakAdminClient.updateUserProfile(keycloakUserId, trial.getFullName());
-            } else {
-                keycloakUserId = keycloakAdminClient.createUser(trial.getEmail(), trial.getFullName());
-                newlyCreatedInKeycloak = true;
-            }
-
-            keycloakAdminClient.setPassword(keycloakUserId, temporaryPassword, false);
-            keycloakAdminClient.assignRealmRole(keycloakUserId, UserRole.ADMIN.name());
-
-            User user = User.builder()
-                    .keycloakId(keycloakUserId)
-                    .company(savedCompany)
-                    .email(trial.getEmail())
-                    .fullName(trial.getFullName())
-                    .phoneNumber(trial.getPhoneNumber())
-                    .userRoleType(UserRole.ADMIN)
-                    .userType(UserType.TRIAL)
-                    .status(UserStatus.ACTIVE)
-                    .build();
-            savedUser = userRepository.save(user);
+            // Dùng lại tài khoản Keycloak mồ côi cùng email; rollback thì người dùng Keycloak vừa tạo bị xoá lại
+            keycloakUserId = KeycloakAccounts.provision(keycloakAdminClient, userRepository, trial.getEmail(),
+                    trial.getFullName(), temporaryPassword, false, UserRole.ADMIN, true);
         } catch (AppException ex) {
-            if (newlyCreatedInKeycloak && keycloakUserId != null) {
-                try {
-                    keycloakAdminClient.deleteUser(keycloakUserId);
-                } catch (Exception ignored) {}
-            }
             throw ex;
         } catch (HttpStatusCodeException ex) {
             log.error("Keycloak HTTP error while approving trial request {}: {} - {}", id, ex.getStatusCode(), ex.getResponseBodyAsString(), ex);
-            if (newlyCreatedInKeycloak && keycloakUserId != null) {
-                try {
-                    keycloakAdminClient.deleteUser(keycloakUserId);
-                } catch (Exception ignored) {}
-            }
             if (ex.getStatusCode() == HttpStatus.CONFLICT) {
                 throw new AppException(ErrorCode.EMAIL_ALREADY_EXISTS, "Email '" + trial.getEmail() + "' đã tồn tại trên hệ thống định danh Keycloak.");
             }
             throw new AppException(ErrorCode.INTERNAL_SERVER_ERROR, "Lỗi kết nối định danh tài khoản (Keycloak): " + ex.getMessage());
         } catch (Exception ex) {
             log.error("Unexpected error creating user for trial request {}: ", id, ex);
-            if (newlyCreatedInKeycloak && keycloakUserId != null) {
-                try {
-                    keycloakAdminClient.deleteUser(keycloakUserId);
-                } catch (Exception ignored) {}
-            }
             throw new AppException(ErrorCode.INTERNAL_SERVER_ERROR, "Không thể khởi tạo tài khoản quản trị: " + ex.getMessage());
         }
+
+        User savedUser = userRepository.save(User.builder()
+                .keycloakId(keycloakUserId)
+                .company(savedCompany)
+                .email(trial.getEmail())
+                .fullName(trial.getFullName())
+                .phoneNumber(trial.getPhoneNumber())
+                .userRoleType(UserRole.ADMIN)
+                .userType(UserType.TRIAL)
+                .status(UserStatus.ACTIVE)
+                .build());
 
         // 5. Kích hoạt gói dịch vụ dùng thử (CompanySubscription)
         SubscriptionPlan plan = null;
@@ -403,7 +386,7 @@ public class TrialAccountRequestServiceImpl implements TrialAccountRequestServic
 
                 HƯỚNG DẪN BẮT ĐẦU:
                 Vui lòng truy cập hệ thống để đăng nhập và tiến hành đổi mật khẩu ở lần đầu tiên.
-                Đường dẫn truy cập: http://localhost:5173/dang-nhap
+                Đường dẫn truy cập: %s
 
                 Nếu cần hỗ trợ kỹ thuật trong quá trình trải nghiệm, vui lòng liên hệ đội ngũ hỗ trợ của chúng tôi.
 
@@ -419,10 +402,13 @@ public class TrialAccountRequestServiceImpl implements TrialAccountRequestServic
                 planName,
                 trialDays,
                 expiresAt.toLocalDate(),
-                credits
+                credits,
+                FrontendUrls.join(frontendUrl, "/dang-nhap")
         );
 
-        brevoClient.sendEmail(trial.getEmail(), "LoadMaster - Thông tin tài khoản trải nghiệm dịch vụ", emailContent);
+        String trialEmail = trial.getEmail();
+        AfterCommit.run("email tài khoản dùng thử",
+                () -> brevoClient.sendEmail(trialEmail, "LoadMaster - Thông tin tài khoản trải nghiệm dịch vụ", emailContent));
 
         // 8. Cập nhật trạng thái TrialAccountRequest & ContactOfGuest
         trial.setStatus(TrialRequestStatus.APPROVED);
@@ -482,7 +468,7 @@ public class TrialAccountRequestServiceImpl implements TrialAccountRequestServic
         trial.setHandledByName(manager != null ? manager.getFullName() : "System Manager");
 
         log.info("System Manager {} approved trial request id={} and forwarded to System Admin",
-                manager != null ? manager.getEmail() : "unknown", trial.getId());
+                manager != null ? manager.getId() : "unknown", trial.getId());
 
         TrialAccountRequest saved = trialAccountRequestRepository.save(trial);
         return mapToResponse(saved);

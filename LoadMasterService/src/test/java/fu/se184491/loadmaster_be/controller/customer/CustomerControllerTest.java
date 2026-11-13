@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import fu.se184491.loadmaster_be.config.security.WebSecurityConfig;
 import fu.se184491.loadmaster_be.dto.request.customer.CustomerRequest;
 import fu.se184491.loadmaster_be.dto.response.customer.CustomerResponse;
+import fu.se184491.loadmaster_be.helpers.CurrentUserService;
 import fu.se184491.loadmaster_be.service.customer.CustomerService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -41,6 +42,9 @@ public class CustomerControllerTest {
     private CustomerService customerService;
 
     @MockitoBean
+    private CurrentUserService currentUserService;
+
+    @MockitoBean
     private JwtAuthenticationConverter jwtAuthenticationConverter;
 
     private ObjectMapper objectMapper;
@@ -50,6 +54,7 @@ public class CustomerControllerTest {
     @BeforeEach
     void setUp() {
         objectMapper = new ObjectMapper();
+        when(currentUserService.getCurrentCompanyId()).thenReturn(1L);
 
         request = CustomerRequest.builder()
                 .name("John Doe")
@@ -76,8 +81,8 @@ public class CustomerControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.id").value(1L))
-                .andExpect(jsonPath("$.name").value("John Doe"));
+                .andExpect(jsonPath("$.data.id").value(1L))
+                .andExpect(jsonPath("$.data.name").value("John Doe"));
     }
 
     @Test
@@ -89,6 +94,6 @@ public class CustomerControllerTest {
 
         mockMvc.perform(get("/api/customers"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.content[0].id").value(1L));
+                .andExpect(jsonPath("$.data[0].id").value(1L));
     }
 }

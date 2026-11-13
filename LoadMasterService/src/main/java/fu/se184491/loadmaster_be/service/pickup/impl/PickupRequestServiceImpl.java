@@ -34,6 +34,7 @@ import fu.se184491.loadmaster_be.service.pickup.FreedSpacePacker;
 import fu.se184491.loadmaster_be.service.pickup.PickupContextBuilder;
 import fu.se184491.loadmaster_be.service.pickup.PickupRequestService;
 import fu.se184491.loadmaster_be.service.pickup.PickupRules;
+import fu.se184491.loadmaster_be.service.trip.TripStatusService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -70,6 +71,7 @@ public class PickupRequestServiceImpl implements PickupRequestService {
     private final CurrentUserService currentUserService;
     private final TripLookupHelper tripLookupHelper;
     private final PickupContextBuilder contextBuilder;
+    private final TripStatusService tripStatusService;
 
     @Override
     @Transactional(readOnly = true)
@@ -172,6 +174,8 @@ public class PickupRequestServiceImpl implements PickupRequestService {
         User user = currentUserService.getCurrentUser();
         Trip trip = companyTrip(tripIdOrCode);
         requireDispatcher();
+        // Khoá chuyến rồi mới kiểm: duyệt không chạy chồng với huỷ chuyến
+        tripStatusService.lockForTransition(trip.getId());
         requireInTransit(trip);
         PickupRequest request = requireRequest(trip, pickupId);
         if (!request.getStatus().open()) {

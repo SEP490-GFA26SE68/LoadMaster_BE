@@ -67,7 +67,8 @@ public class CurrentUserService {
         try {
             User user = getCurrentUser();
             return user.getUserRoleType() != null && Objects.equals(user.getUserRoleType().name(), role);
-        } catch (Exception ignored) {
+        } catch (IllegalStateException | AppException notSignedIn) {
+            // Không có JWT hoặc tài khoản Keycloak chưa gắn người dùng: không có vai trò nào
             return false;
         }
     }

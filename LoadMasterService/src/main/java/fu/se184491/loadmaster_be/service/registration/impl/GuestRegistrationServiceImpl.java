@@ -1,8 +1,10 @@
 package fu.se184491.loadmaster_be.service.registration.impl;
 
+import fu.se184491.loadmaster_be.helpers.LogMasks;
 import fu.se184491.loadmaster_be.client.BrevoClient;
 import fu.se184491.loadmaster_be.client.KeycloakAdminClient;
 import fu.se184491.loadmaster_be.client.VnPayClient;
+import fu.se184491.loadmaster_be.config.FrontendUrls;
 import fu.se184491.loadmaster_be.constant.registration.RegistrationStatus;
 import fu.se184491.loadmaster_be.dto.request.registration.AcceptPolicyRequest;
 import fu.se184491.loadmaster_be.dto.request.registration.GuestRegistrationInitRequest;
@@ -13,7 +15,11 @@ import fu.se184491.loadmaster_be.dto.response.registration.PaymentLinkResponse;
 import fu.se184491.loadmaster_be.dto.response.registration.ResendOtpResponse;
 import fu.se184491.loadmaster_be.entity.registration.GuestRegistrationSession;
 import fu.se184491.loadmaster_be.exception.AppException;
+import fu.se184491.loadmaster_be.service.registration.GuestRegistrationSessionExpiry;
+import fu.se184491.loadmaster_be.service.registration.OtpAttempts;
 import fu.se184491.loadmaster_be.exception.ErrorCode;
+import fu.se184491.loadmaster_be.helpers.AfterCommit;
+import fu.se184491.loadmaster_be.helpers.KeycloakAccounts;
 import fu.se184491.loadmaster_be.helpers.TemporaryPasswordGenerator;
 import fu.se184491.loadmaster_be.repository.account.UserRepository;
 import fu.se184491.loadmaster_be.repository.billing.CompanySubscriptionRepository;
@@ -27,6 +33,7 @@ import fu.se184491.loadmaster_be.service.registration.GuestRegistrationService;
 import fu.se184491.loadmaster_be.service.security.OtpHasher;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -55,6 +62,10 @@ public class GuestRegistrationServiceImpl implements GuestRegistrationService {
     private final BrevoClient brevoClient;
     private final OtpHasher otpHasher;
     private final TemporaryPasswordGenerator temporaryPasswordGenerator;
+    private final GuestRegistrationSessionExpiry sessionExpiry;
+
+    @Value(FrontendUrls.URL)
+    private String frontendUrl = FrontendUrls.DEFAULT;
 
     private static final SecureRandom RANDOM = new SecureRandom();
 
@@ -120,6 +131,7 @@ public class GuestRegistrationServiceImpl implements GuestRegistrationService {
                     .taxCode(taxCode)
                     .status(RegistrationStatus.PENDING_EMAIL_VERIFY)
                     .otpHash(hashedOtp)
+                    .otpFailedAttempts(0)
                     .otpExpiresAt(otpExpiresAt)
                     .otpResendAllowedAt(otpResendAllowedAt)
                     .createdAt(now)
@@ -132,6 +144,7 @@ public class GuestRegistrationServiceImpl implements GuestRegistrationService {
             session.setCompanyCode(companyCode);
             session.setTaxCode(taxCode);
             session.setOtpHash(hashedOtp);
+            session.setOtpFailedAttempts(0);
             session.setOtpExpiresAt(otpExpiresAt);
             session.setOtpResendAllowedAt(otpResendAllowedAt);
             session.setStatus(RegistrationStatus.PENDING_EMAIL_VERIFY);
@@ -145,6 +158,7 @@ public class GuestRegistrationServiceImpl implements GuestRegistrationService {
     }
 
     @Override
+    @Transactional(noRollbackFor = AppException.class)
     public GuestRegistrationSessionResponse verifyOtp(VerifyOtpRequest request) {
         GuestRegistrationSession session = sessionRepository.findByToken(request.getToken())
                 .orElseThrow(() -> new AppException(ErrorCode.REGISTRATION_SESSION_NOT_FOUND));
@@ -159,6 +173,10 @@ public class GuestRegistrationServiceImpl implements GuestRegistrationService {
             throw new AppException(ErrorCode.REGISTRATION_INVALID_STATUS, "Phiên đăng ký không ở trạng thái chờ xác thực OTP.");
         }
 
+        if (OtpAttempts.exhausted(session.getOtpFailedAttempts()) || session.getOtpHash() == null) {
+            throw new AppException(ErrorCode.OTP_ATTEMPTS_EXCEEDED);
+        }
+
         LocalDateTime now = LocalDateTime.now();
         if (session.getOtpExpiresAt() == null || session.getOtpExpiresAt().isBefore(now)) {
             throw new AppException(ErrorCode.OTP_EXPIRED);
@@ -166,6 +184,14 @@ public class GuestRegistrationServiceImpl implements GuestRegistrationService {
 
         String calculatedHash = otpHasher.hash(session.getEmail(), request.getOtp().trim());
         if (!calculatedHash.equals(session.getOtpHash())) {
+            int attempts = OtpAttempts.next(session.getOtpFailedAttempts());
+            session.setOtpFailedAttempts(attempts);
+            if (OtpAttempts.exhausted(attempts)) {
+                session.setOtpHash(null);
+                sessionRepository.save(session);
+                throw new AppException(ErrorCode.OTP_ATTEMPTS_EXCEEDED);
+            }
+            sessionRepository.save(session);
             throw new AppException(ErrorCode.OTP_INCORRECT);
         }
 
@@ -177,6 +203,7 @@ public class GuestRegistrationServiceImpl implements GuestRegistrationService {
     }
 
     @Override
+    @Transactional(noRollbackFor = AppException.class)
     public ResendOtpResponse resendOtp(String token) {
         GuestRegistrationSession session = sessionRepository.findByToken(token)
                 .orElseThrow(() -> new AppException(ErrorCode.REGISTRATION_SESSION_NOT_FOUND));
@@ -202,6 +229,7 @@ public class GuestRegistrationServiceImpl implements GuestRegistrationService {
         LocalDateTime otpResendAllowedAt = now.plusSeconds(60);
 
         session.setOtpHash(hashedOtp);
+        session.setOtpFailedAttempts(0);
         session.setOtpExpiresAt(otpExpiresAt);
         session.setOtpResendAllowedAt(otpResendAllowedAt);
         sessionRepository.save(session);
@@ -216,6 +244,7 @@ public class GuestRegistrationServiceImpl implements GuestRegistrationService {
     }
 
     @Override
+    @Transactional(noRollbackFor = AppException.class)
     public GuestRegistrationSessionResponse acceptPolicy(AcceptPolicyRequest request, String ipAddress) {
         GuestRegistrationSession session = sessionRepository.findByToken(request.getToken())
                 .orElseThrow(() -> new AppException(ErrorCode.REGISTRATION_SESSION_NOT_FOUND));
@@ -244,8 +273,9 @@ public class GuestRegistrationServiceImpl implements GuestRegistrationService {
                 .orElseThrow(() -> new AppException(ErrorCode.REGISTRATION_SESSION_NOT_FOUND));
 
         if (session.getExpiresAt() != null && session.getExpiresAt().isBefore(LocalDateTime.now())) {
+            // Lỗi bên dưới rollback transaction này, nên ghi EXPIRED trong transaction riêng
+            sessionExpiry.markExpired(session.getId());
             session.setStatus(RegistrationStatus.EXPIRED);
-            sessionRepository.save(session);
             throw new AppException(ErrorCode.REGISTRATION_SESSION_EXPIRED);
         }
 
@@ -291,23 +321,11 @@ public class GuestRegistrationServiceImpl implements GuestRegistrationService {
         Map<String, String> response = new java.util.HashMap<>();
         String txnRef = params.get("vnp_TxnRef");
 
-        boolean isMock = (txnRef != null && txnRef.startsWith("MOCK_"))
-                || "true".equalsIgnoreCase(params.get("vnp_Mock"))
-                || vnPayClient.isMock();
-
-        // 1. Verify Checksum
-        if (!isMock) {
-            boolean validSignature = vnPayClient.verifyCallback(params);
-            if (!validSignature) {
-                log.warn("VNPay callback signature verification failed for params: {}", params);
-                response.put("RspCode", "97");
-                response.put("Message", "Invalid Checksum");
-                return response;
-            }
-        }
+        // Chữ ký VNPay đã kiểm ở PaymentCallbackHandler, lối vào duy nhất của callback.
 
         // 2. Find Registration Session
-        GuestRegistrationSession session = sessionRepository.findByPaymentRef(txnRef)
+        // Khoá phiên tới hết giao dịch để hai lượt callback không cùng tạo công ty, tài khoản.
+        GuestRegistrationSession session = sessionRepository.findByPaymentRefForUpdate(txnRef)
                 .orElse(null);
 
         if (session == null) {
@@ -357,7 +375,8 @@ public class GuestRegistrationServiceImpl implements GuestRegistrationService {
                     Trân trọng,
                     Đội ngũ LoadMaster
                     """.formatted(session.getFullName(), session.getCompanyName(), txnRef);
-            brevoClient.sendEmail(session.getEmail(), subject, content);
+            String recipient = session.getEmail();
+            AfterCommit.run("email thanh toán đăng ký thất bại", () -> brevoClient.sendEmail(recipient, subject, content));
 
             response.put("RspCode", "00");
             response.put("Message", "Confirm Success");
@@ -380,18 +399,17 @@ public class GuestRegistrationServiceImpl implements GuestRegistrationService {
 
         // b) Create Keycloak Admin User & Local DB User
         String temporaryPassword = temporaryPasswordGenerator.generate();
-        String keycloakUserId = null;
+        String keycloakUserId;
         try {
-            keycloakUserId = keycloakAdminClient.findUserIdByEmail(session.getEmail());
-            if (keycloakUserId == null) {
-                keycloakUserId = keycloakAdminClient.createUser(session.getEmail(), session.getFullName());
-            } else {
-                keycloakAdminClient.updateUserProfile(keycloakUserId, session.getFullName());
-            }
-            keycloakAdminClient.setPassword(keycloakUserId, temporaryPassword, false);
-            keycloakAdminClient.assignRealmRole(keycloakUserId, fu.se184491.loadmaster_be.constant.account.UserRole.ADMIN.name());
+            // Dùng lại tài khoản Keycloak mồ côi cùng email; rollback thì người dùng Keycloak vừa tạo bị xoá lại
+            keycloakUserId = KeycloakAccounts.provision(keycloakAdminClient, userRepository, session.getEmail(),
+                    session.getFullName(), temporaryPassword, false,
+                    fu.se184491.loadmaster_be.constant.account.UserRole.ADMIN, true);
+        } catch (AppException ex) {
+            throw ex;
         } catch (Exception ex) {
-            log.error("Failed to provision Keycloak account for email: {}", session.getEmail(), ex);
+            log.error("Failed to provision Keycloak account for registration session {} ({})", session.getId(),
+                    LogMasks.email(session.getEmail()), ex);
             throw new AppException(ErrorCode.INTERNAL_SERVER_ERROR, "Không thể khởi tạo tài khoản trên hệ thống định danh: " + ex.getMessage());
         }
 
@@ -461,7 +479,10 @@ public class GuestRegistrationServiceImpl implements GuestRegistrationService {
 
         // g) Generate PDF Invoice and Send Welcome Email
         byte[] invoicePdf = generateInvoicePdf(savedCompany, savedUser, session.getPlan(), session.getBillingCycle(), session.getAmountVnd(), session.getPaymentRef());
-        sendWelcomeEmailWithInvoice(savedCompany, savedUser, session.getPlan(), session.getBillingCycle(), temporaryPassword, invoicePdf);
+        fu.se184491.loadmaster_be.entity.billing.SubscriptionPlan plan = session.getPlan();
+        fu.se184491.loadmaster_be.constant.billing.BillingCycle billingCycle = session.getBillingCycle();
+        AfterCommit.run("email chào mừng kèm hoá đơn", () -> sendWelcomeEmailWithInvoice(
+                savedCompany, savedUser, plan, billingCycle, temporaryPassword, invoicePdf));
 
         // h) Complete Session
         session.setStatus(RegistrationStatus.COMPLETED);
@@ -508,7 +529,7 @@ public class GuestRegistrationServiceImpl implements GuestRegistrationService {
             document.add(new com.itextpdf.text.Paragraph("Trang thai / Status: DA THANH TOAN (PAID)", boldFont));
 
             document.add(new com.itextpdf.text.Paragraph("----------------------------------------------------------------------------------------------------", normalFont));
-            com.itextpdf.text.Paragraph footer = new com.itextpdf.text.Paragraph("Cam on ban da su dung dich vu cua LoadMaster Platform!\nWebsite: http://localhost:5173", normalFont);
+            com.itextpdf.text.Paragraph footer = new com.itextpdf.text.Paragraph("Cam on ban da su dung dich vu cua LoadMaster Platform!\nWebsite: " + FrontendUrls.join(frontendUrl, ""), normalFont);
             footer.setSpacingBefore(30);
             document.add(footer);
 
@@ -550,7 +571,7 @@ public class GuestRegistrationServiceImpl implements GuestRegistrationService {
 
                 HƯỚNG DẪN ĐĂNG NHẬP:
                 Vui lòng truy cập đường dẫn bên dưới để đăng nhập và đổi mật khẩu ở lần đầu tiên:
-                http://localhost:5173/dang-nhap
+                %s
 
                 Hóa đơn thanh toán chi tiết được đính kèm cùng email này (file PDF).
 
@@ -564,7 +585,8 @@ public class GuestRegistrationServiceImpl implements GuestRegistrationService {
                 user.getEmail(),
                 temporaryPassword,
                 plan != null ? plan.getName() : "Gói dịch vụ SaaS",
-                billingCycle != null ? billingCycle.name() : "MONTHLY"
+                billingCycle != null ? billingCycle.name() : "MONTHLY",
+                FrontendUrls.join(frontendUrl, "/dang-nhap")
         );
 
         brevoClient.sendEmailWithAttachment(user.getEmail(), subject, content, "hoa-don-loadmaster.pdf", invoicePdf);

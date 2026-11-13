@@ -86,7 +86,7 @@ public class CompanyControllerTest {
 
     @Test
     @DisplayName("POST /api/companies should return 201 Created with authority SYSTEM_ADMIN")
-    @WithMockUser(authorities = "SYSTEM_ADMIN")
+    @WithMockUser(roles = "SYSTEM_ADMIN")
     void createCompany_success() throws Exception {
         when(companyService.createCompany(any(CompanyRequest.class))).thenReturn(response);
 

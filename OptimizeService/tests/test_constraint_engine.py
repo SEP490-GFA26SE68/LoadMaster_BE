@@ -17,6 +17,11 @@ class TestConstraintEngine(unittest.TestCase):
             front_axle_limit_kg=2500.0,
             rear_axle_limit_kg=3500.0,
             max_cog_offset_ratio=0.15,
+            # Trục trước ở vách trước, trục sau ở vách sau; tải rỗng 0 để phép chia tải dễ đọc
+            front_axle_x=0.0,
+            rear_axle_x=6.0,
+            empty_front_axle_load_kg=0.0,
+            empty_rear_axle_load_kg=0.0,
         )
 
     def test_fragility_constraint(self):
@@ -91,7 +96,7 @@ class TestConstraintEngine(unittest.TestCase):
         place_rotated = PlacementData(package_id="p1", x=0.0, y=0.0, z=0.0, packed_l=0.5, packed_w=1.0, packed_h=0.5, rotation_type=1)
         res_rotated = ConstraintEngine.check_rotation_allowed(pkg_no_rotate, place_rotated)
         self.assertFalse(res_rotated.passed)
-        self.assertEqual(res_rotated.violation_code, "ROTATION_NOT_ALLOWED")
+        self.assertEqual(res_rotated.violation_code, "ORIENTATION_NOT_ALLOWED")
 
         place_unrotated = PlacementData(package_id="p1", x=0.0, y=0.0, z=0.0, packed_l=1.0, packed_w=0.5, packed_h=0.5, rotation_type=0)
         res_unrotated = ConstraintEngine.check_rotation_allowed(pkg_no_rotate, place_unrotated)
@@ -117,7 +122,7 @@ class TestConstraintEngine(unittest.TestCase):
         corner_place = PlacementData(package_id="p1", x=5.0, y=1.0, z=0.0, packed_l=1.0, packed_w=1.0, packed_h=1.0)
         res_corner = ConstraintEngine.check_cog([corner_place], self.vehicle, packages_map)
         self.assertFalse(res_corner.passed)
-        self.assertEqual(res_corner.violation_code, "COG_OFFSET_EXCEEDED")
+        self.assertEqual(res_corner.violation_code, "CENTER_OF_GRAVITY_OUT_OF_RANGE")
 
     def test_axle_load_constraint(self):
         """Tải trục trước/sau không vượt giới hạn."""
@@ -147,7 +152,7 @@ class TestConstraintEngine(unittest.TestCase):
         bad_placement = PlacementData(package_id="p1", x=0.0, y=0.0, z=0.0, packed_l=1.0, packed_w=1.0, packed_h=1.0, rotation_type=1)
         violations = ConstraintEngine.check_all(bad_placement, context)
         self.assertGreater(len(violations), 0)
-        self.assertEqual(violations[0].violation_code, "ROTATION_NOT_ALLOWED")
+        self.assertIn("ORIENTATION_NOT_ALLOWED", [v.violation_code for v in violations])
 
 
 if __name__ == "__main__":

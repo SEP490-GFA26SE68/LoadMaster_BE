@@ -97,6 +97,8 @@ public class RouteOptimizationService {
                 .findByIdAndCompanyId(tripId, companyId)
                 .orElseThrow(() ->
                         new AppException(ErrorCode.TRIP_NOT_FOUND));
+        // Khoá chuyến tới khi lưu tuyến: không chạy chồng với huỷ chuyến hay bắt đầu xếp
+        tripStatusService.lockForTransition(trip.getId());
 
         if (trip.getStatus() != TripStatus.DRAFT
                 && trip.getStatus() != TripStatus.PLANNED) {

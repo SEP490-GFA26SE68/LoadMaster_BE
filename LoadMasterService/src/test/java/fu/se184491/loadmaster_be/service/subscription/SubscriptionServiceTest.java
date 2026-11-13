@@ -826,4 +826,26 @@ public class SubscriptionServiceTest {
                 () -> Class.forName("fu.se184491.loadmaster_be.entity.billing.Subscription"),
                 "Orphan entity fu.se184491.loadmaster_be.entity.billing.Subscription should be deleted");
     }
+
+    @Test
+    @DisplayName("autoRenewExpiringSubscriptions - free plan renewal grants credits with a reference tied to the ended period")
+    void autoRenewFreePlanGrantsOncePerPeriod() {
+        LocalDateTime endedAt = LocalDateTime.now().minusMinutes(5).withNano(0);
+        CompanySubscription sub = CompanySubscription.builder()
+                .id(7L).company(company).plan(freePlan).status(SubscriptionStatus.ACTIVE)
+                .startedAt(endedAt.minusMonths(1)).expiresAt(endedAt).autoRenew(true).build();
+        when(companySubscriptionRepository.findByStatusAndExpiresAtBefore(eq(SubscriptionStatus.ACTIVE), any()))
+                .thenReturn(java.util.List.of(sub));
+
+        subscriptionService.autoRenewExpiringSubscriptions();
+
+        verify(creditService).grantMonthlyCredits(1L, 50, "RENEW-7-" + endedAt);
+        assertTrue(sub.getExpiresAt().isAfter(endedAt));
+    }
+
+    @Test
+    @DisplayName("RENEWAL_WINDOW_DAYS - a plan can be renewed in its last 7 days")
+    void renewalWindowIsSevenDays() {
+        assertEquals(7, SubscriptionServiceImpl.RENEWAL_WINDOW_DAYS);
+    }
 }

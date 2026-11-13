@@ -38,7 +38,16 @@ public record TripResponse(
 
         Integer stopCount,
         Integer packageCount,
-        Boolean hasActiveRoutePlan
+        Boolean hasActiveRoutePlan,
+
+        // Lý do huỷ — chỉ khi chuyến đã huỷ (chuyến huỷ trước khi có cột này thì null)
+        String cancelReason,
+
+        // Trạng thái lúc huỷ: báo cáo chuyến chỉ có cho chuyến huỷ lúc đang vận chuyển
+        TripStatus cancelledFromStatus,
+
+        // Số kiện thành hoàn trả khi chuyến bị huỷ lúc đang vận chuyển; chuyến khác thì null
+        Integer cancelReturnedCount
 ) {
 
     // Dùng cho các API hiện tại.
@@ -97,6 +106,9 @@ public record TripResponse(
                 .stopCount(stopCount)
                 .packageCount(packageCount)
                 .hasActiveRoutePlan(hasActiveRoutePlan)
+                .cancelReason(trip.getCancelReason())
+                .cancelledFromStatus(trip.getCancelledFromStatus())
+                .cancelReturnedCount(trip.getCancelReturnedCount())
 
                 .build();
     }

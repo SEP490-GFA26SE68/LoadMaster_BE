@@ -10,6 +10,7 @@ from app.dto.response.load_plan_response import LoadPlanResponse
 from app.exception.app_exception import AppException
 from app.exception.error_code import ErrorCode
 from app.service.auth.auth_dependency import (
+    company_of_caller,
     is_backend_service,
     require_plan_approver,
     require_role,
@@ -21,6 +22,16 @@ router = APIRouter(prefix="/api/v1/load-plans", tags=["Load Plans"])
 
 def get_load_plan_service() -> LoadPlanService:
     return LoadPlanService()
+
+
+def _ensure_caller_company(caller: dict, plan_ids: list, service: LoadPlanService, db: Session) -> None:
+    """
+    Token người dùng chỉ đọc / duyệt phương án của công ty mình (tra users theo sub).
+    Service token của Spring Boot đã được Java kiểm công ty trước khi gọi sang.
+    """
+    if is_backend_service(caller):
+        return
+    service.ensure_plans_of_company(plan_ids, company_of_caller(caller, db), db)
 
 
 @router.get(
@@ -44,6 +55,7 @@ def compare_plans(
     target_p2 = planId2 if planId2 is not None else plan_id_2
     if target_p1 is None or target_p2 is None:
         raise HTTPException(status_code=400, detail="Both planId1 and planId2 are required")
+    _ensure_caller_company(current_user, [target_p1, target_p2], service, db)
     comparison = service.compare_plans(plan_id_1=target_p1, plan_id_2=target_p2, db=db)
     return ApiResponse.ok(
         data=comparison,
@@ -80,6 +92,7 @@ def approve_plan(
         if user_id is None:
             raise AppException(ErrorCode.VALIDATION_ERROR)
     else:
+        _ensure_caller_company(caller, [id], service, db)
         user_id = caller.get("user_id") or caller.get("id") or caller.get("sub")
     plan = service.approve_plan(plan_id=id, current_user_id=user_id, db=db)
     response_dto = service.to_response(plan, db)

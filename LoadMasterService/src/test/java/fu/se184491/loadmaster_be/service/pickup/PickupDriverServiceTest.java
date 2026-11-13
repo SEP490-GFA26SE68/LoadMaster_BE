@@ -1,5 +1,6 @@
 package fu.se184491.loadmaster_be.service.pickup;
 
+import fu.se184491.loadmaster_be.constant.cargo.LabelMethod;
 import fu.se184491.loadmaster_be.constant.cargo.PackageStatus;
 import fu.se184491.loadmaster_be.constant.pickup.PickupRequestStatus;
 import fu.se184491.loadmaster_be.constant.trip.DeliveryStopStatus;
@@ -104,8 +105,19 @@ class PickupDriverServiceTest {
 
         assertNotNull(line.getPickedAt());
         assertEquals(PackageStatus.LOADED, cargo.getStatus());
+        assertEquals(LabelMethod.QR, line.getPickMethod());
         AppException again = assertThrows(AppException.class, () -> service.pick(500L));
         assertEquals(ErrorCode.PICKUP_PACKAGE_ALREADY_PICKED, again.getErrorCode());
+    }
+
+    @Test
+    void pickByTypedCodeRecordsTheMethod() {
+        when(deliveryStopRepository.findFirstByTripIdAndStatusNotOrderByStopSequenceAsc(10L, DeliveryStopStatus.COMPLETED))
+                .thenReturn(Optional.of(pickupStop));
+
+        service.pick(500L, LabelMethod.CODE);
+
+        assertEquals(LabelMethod.CODE, line.getPickMethod());
     }
 
     @Test

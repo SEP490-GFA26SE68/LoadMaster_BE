@@ -73,7 +73,8 @@ public class ManualPlanApprovalServiceImpl implements ManualPlanApprovalService 
         if (Boolean.TRUE.equals(source.getStale())) {
             throw new AppException(ErrorCode.PLAN_STALE);
         }
-        Trip trip = tripRepository.findById(source.getTripId())
+        // Khoá chuyến: không duyệt chồng với bắt đầu xếp hay huỷ chuyến
+        Trip trip = tripRepository.findByIdForUpdate(source.getTripId())
                 .filter(found -> found.getStatus() == TripStatus.PLANNED)
                 .orElseThrow(() -> new AppException(ErrorCode.PLAN_TRIP_NOT_PLANNED));
         VehicleType type = trip.getVehicle() == null ? null : trip.getVehicle().getVehicleType();

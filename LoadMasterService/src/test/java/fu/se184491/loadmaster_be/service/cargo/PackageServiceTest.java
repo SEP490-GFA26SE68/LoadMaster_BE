@@ -9,7 +9,7 @@ import fu.se184491.loadmaster_be.entity.company.Company;
 import fu.se184491.loadmaster_be.entity.order.TransportOrder;
 import fu.se184491.loadmaster_be.exception.AppException;
 import fu.se184491.loadmaster_be.exception.ErrorCode;
-import fu.se184491.loadmaster_be.repository.cargo.PackageRepository;
+import fu.se184491.loadmaster_be.repository.cargo.CargoPackageRepository;
 import fu.se184491.loadmaster_be.repository.cargo.PackageTypeRepository;
 import fu.se184491.loadmaster_be.repository.company.CompanyRepository;
 import fu.se184491.loadmaster_be.repository.order.OrderRepository;
@@ -35,7 +35,7 @@ import static org.mockito.Mockito.*;
 public class PackageServiceTest {
 
     @Mock
-    private PackageRepository packageRepository;
+    private CargoPackageRepository packageRepository;
 
     @Mock
     private OrderRepository orderRepository;
@@ -221,6 +221,28 @@ public class PackageServiceTest {
         assertNull(response.getFlag());
         assertNull(cargoPackage.getFlag());
         verify(packageRepository).save(cargoPackage);
+    }
+
+    @Test
+    void reportFound_ClearsTheNotFoundFlag() {
+        cargoPackage.setFlag(PackageFlag.NOT_FOUND);
+        when(packageRepository.findByIdAndCompany_Id(100L, 1L)).thenReturn(Optional.of(cargoPackage));
+
+        PackageResponse response = packageService.reportFound(1L, 100L);
+
+        assertNull(response.getFlag());
+        assertNull(cargoPackage.getFlag());
+        verify(packageRepository).save(cargoPackage);
+    }
+
+    @Test
+    void reportFound_DamagedOrUnflaggedPackageIsRejected() {
+        cargoPackage.setFlag(PackageFlag.DAMAGED);
+        when(packageRepository.findByIdAndCompany_Id(100L, 1L)).thenReturn(Optional.of(cargoPackage));
+
+        AppException ex = assertThrows(AppException.class, () -> packageService.reportFound(1L, 100L));
+        assertEquals(ErrorCode.PACKAGE_NOT_FLAGGED, ex.getErrorCode());
+        verify(packageRepository, never()).save(any(CargoPackage.class));
     }
 
     @Test

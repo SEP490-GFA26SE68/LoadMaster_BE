@@ -44,6 +44,22 @@ public class VehicleTypeController {
                 );
     }
 
+    @PutMapping("/{id}")
+    @PreAuthorize("hasAuthority('VEHICLE_TYPES_UPDATE')")
+    public ResponseEntity<ApiResponse<VehicleTypeResponse>> updateVehicleType(
+            @PathVariable Long id,
+            @Valid @RequestBody CreateVehicleTypeRequest request
+    ) {
+        return ResponseEntity.ok(ApiResponse.success(vehicleTypeService.updateVehicleType(id, request)));
+    }
+
+    @DeleteMapping("/{id}")
+    @PreAuthorize("hasAuthority('VEHICLE_TYPES_DELETE')")
+    public ResponseEntity<ApiResponse<Void>> deleteVehicleType(@PathVariable Long id) {
+        vehicleTypeService.deleteVehicleType(id);
+        return ResponseEntity.ok(ApiResponse.success("Vehicle type deleted", null));
+    }
+
     @GetMapping
     @PreAuthorize("hasAuthority('VEHICLE_TYPES_READ')")
     public PageResponse<VehicleTypeResponse> getVehicleTypes(

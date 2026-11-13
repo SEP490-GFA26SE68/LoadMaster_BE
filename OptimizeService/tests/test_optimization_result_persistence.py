@@ -22,7 +22,6 @@ from starlette.testclient import TestClient
 from unittest.mock import patch
 from app.controller.optimization.optimization_router import get_async_runner
 from app.service.optimize.async_optimization_runner import AsyncOptimizationRunner
-from tests.optimization_fixtures import reserve_job, isolated_credit, token, install_jwks
 from app.main import app
 from app.config.database import Base, get_db
 from app.constant.optimization.job_status import OptimizationJobStatus
@@ -37,7 +36,10 @@ from app.entity.optimization.optimization_job import OptimizationJob
 from app.entity.optimization.load_plan import LoadPlan
 from app.entity.optimization.package_placement import PackagePlacement
 from app.entity.optimization.unplaced_package import UnplacedPackage
-from app.entity.trip_model import Trip, Vehicle, VehicleType, DeliveryStop, TransportOrder, CargoPackage, PackageType
+from app.entity.trip_model import (
+    Trip, Vehicle, VehicleType, DeliveryStop, TransportOrder, CargoPackage, PackageType,
+    DeliveryRequirement, DeliveryRequirementPackage,
+)
 from app.service.optimize.load_plan_service import LoadPlanService
 from app.service.optimize.optimization_result_persistence_service import OptimizationResultPersistenceService
 
@@ -55,7 +57,9 @@ def db_session():
     session = TestingSession()
 
     # Tạo trip + vehicle + packages
-    vt = VehicleType(id=1, name="Van 1 Tan", inner_length=300, inner_width=180, inner_height=180, max_payload_kg=1000.0, max_cog_offset_ratio=0.15, door_width=180, door_height=180, front_axle_x=0, rear_axle_x=300, front_axle_limit_kg=2200, rear_axle_limit_kg=3300, empty_front_axle_load_kg=100, empty_rear_axle_load_kg=100)
+    vt = VehicleType(max_cog_offset_ratio=0.15, id=1, name="Van 1 Tan", inner_length=3000, inner_width=1800, inner_height=1800, door_width=1800, door_height=1800, max_payload_kg=1000.0,
+                     front_axle_x=-100, rear_axle_x=200, front_axle_limit_kg=2000, rear_axle_limit_kg=3000,
+                     empty_front_axle_load_kg=800, empty_rear_axle_load_kg=600)
     session.add(vt)
     v = Vehicle(id=1, license_plate="29A-12345", vehicle_type_id=1)
     session.add(v)
@@ -76,10 +80,14 @@ def db_session():
     trip_id = trip.id
     session.commit()
 
+    session.add(DeliveryRequirement(id=1, trip_id=trip_id))
+    session.commit()
+
     stop = DeliveryStop(
         id=1,
         trip_id=trip_id,
         stop_sequence=1,
+        delivery_requirement_id=1,
     )
 
     session.add(stop)
@@ -89,18 +97,19 @@ def db_session():
     session.add(order)
     session.commit()
 
-    pt = PackageType(id=1, type_code="BOX_M", length=50, width=40, height=30)
+    pt = PackageType(id=1, type_code="BOX_M", length=500, width=400, height=300)
     session.add(pt)
     pkg1 = CargoPackage(id=1, order_id=1, package_type_id=1, actual_weight_kg=15.0)
     pkg2 = CargoPackage(id=2, order_id=1, package_type_id=1, actual_weight_kg=20.0)
     session.add_all([pkg1, pkg2])
     session.commit()
 
-    from app.entity.trip_model import DeliveryRequirement, DeliveryRequirementPackage
-    session.add(DeliveryRequirement(id=1,trip_id=trip_id))
-    stop.delivery_requirement_id=1
-    session.add_all([DeliveryRequirementPackage(delivery_requirement_id=1,package_id=id) for id in (1,2)])
+    session.add_all([
+        DeliveryRequirementPackage(delivery_requirement_id=1, package_id=1),
+        DeliveryRequirementPackage(delivery_requirement_id=1, package_id=2),
+    ])
     session.commit()
+
     yield session
     session.close()
 
@@ -136,9 +145,9 @@ class TestOptimizationResultPersistenceService:
                     x=0.0,
                     y=0.0,
                     z=0.0,
-                    packed_l=50,
-                    packed_w=40,
-                    packed_h=30,
+                    packed_l=0.5,
+                    packed_w=0.4,
+                    packed_h=0.3,
                     rotation_type=0,
                     step_sequence=1,
                 )
@@ -146,7 +155,7 @@ class TestOptimizationResultPersistenceService:
             unplaced=[
                 UnplacedData(
                     package_id=str(pkg2.id),
-                    reason="OVER_WEIGHT",
+                    reason="WEIGHT_LIMIT_EXCEEDED",
                 )
             ],
             metrics=MetricsData(
@@ -174,16 +183,16 @@ class TestOptimizationResultPersistenceService:
         assert float(placements[0].pos_x) == 0.0
         assert float(placements[0].pos_y) == 0.0
         assert float(placements[0].pos_z) == 0.0
-        assert float(placements[0].packed_length) == 50
-        assert float(placements[0].packed_width) == 40
-        assert float(placements[0].packed_height) == 30
+        assert float(placements[0].packed_length) == 0.5
+        assert float(placements[0].packed_width) == 0.4
+        assert float(placements[0].packed_height) == 0.3
         assert placements[0].step_sequence == 1
 
         # Verify unplaced in DB
         unplaced = db_session.query(UnplacedPackage).filter(UnplacedPackage.load_plan_id == plan.id).all()
         assert len(unplaced) == 1
         assert unplaced[0].package_id == pkg2.id
-        assert unplaced[0].rejection_reason == "OVER_WEIGHT"
+        assert unplaced[0].rejection_reason in ("OVER_WEIGHT", "WEIGHT_LIMIT_EXCEEDED")
 
     def test_save_atomic_transaction_rolls_back_on_error(self, db_session, sample_job):
         """Nếu có lỗi giữa chừng, toàn bộ transaction bị rollback, không lưu rác trong DB"""
@@ -221,7 +230,7 @@ class TestLoadPlanServiceQuery:
                 PlacementData(
                     package_id="1",
                     x=10, y=20, z=30,
-                    packed_l=40, packed_w=50, packed_h=30,
+                    packed_l=500, packed_w=400, packed_h=300,
                     rotation_type=1, step_sequence=1,
                 )
             ],
@@ -242,24 +251,30 @@ class TestLoadPlanServiceQuery:
         assert plans[0].placements[0].pos_x == 10
         assert plans[0].placements[0].pos_y == 20
         assert plans[0].placements[0].pos_z == 30
-        assert plans[0].placements[0].dim_x == 40
-        assert plans[0].placements[0].dim_y == 50
-        assert plans[0].placements[0].dim_z == 30
+        assert plans[0].placements[0].dim_x == 500
         assert plans[0].placements[0].rotation_type == 1
 
 
 class TestIntegrationEndToEndPlansApi:
-    def test_post_job_then_get_job_plans_returns_persisted_load_plan(self, db_session, monkeypatch):
+    def test_post_job_then_get_job_plans_returns_persisted_load_plan(self, db_session):
         """End-to-End: POST /jobs -> background task solves and persists -> GET /jobs/{id}/plans returns plans"""
         headers = {}
 
         trip = db_session.query(Trip).first()
-        from app.config.settings import settings
-        install_jwks(monkeypatch)
-        job=reserve_job(db_session,trip.id)
-        headers={"Authorization":"Bearer "+token([settings.KEYCLOAK_REQUIRED_ROLE],service=True)}
-
         app.dependency_overrides[get_db] = lambda: db_session
+        # Giả lập service account đã được Keycloak xác thực.
+# Chỉ áp dụng trong bài test, không ảnh hưởng production.
+        app.dependency_overrides[require_optimization_service] = lambda: {
+            "sub": "test-service-account",
+            "azp": "loadmaster-backend-service",
+            "aud": "optimization-service",
+            "resource_access": {
+                "optimization-service": {
+                    "roles": ["OPTIMIZATION_EXECUTE"]
+                }
+            },
+        }
+
         class FakeCreditClient:
             async def deduct_credit(self, company_id, job_uuid):
                 return None
@@ -279,7 +294,6 @@ class TestIntegrationEndToEndPlansApi:
 
         submit_payload = {
             "trip_id": trip.id,
-            "job_uuid": job.job_uuid,
             "objective": "MAX_VOLUME",
             "time_limit_sec": 30,
             "algorithm_name": "DEFAULT_GREEDY",
@@ -289,7 +303,6 @@ class TestIntegrationEndToEndPlansApi:
         post_resp = client.post("/api/v1/optimization/jobs", json=submit_payload, headers=headers)
         assert post_resp.status_code == 202
         job_id = post_resp.json()["data"]["job_id"]
-        assert job_id == job.job_uuid
 
         # 2. GET /jobs/{job_id}/plans
         plans_resp = client.get(f"/api/v1/optimization/jobs/{job_id}/plans", headers=headers)

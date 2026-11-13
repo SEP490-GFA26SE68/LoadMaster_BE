@@ -2,11 +2,12 @@ package fu.se184491.loadmaster_be.controller.order;
 
 import fu.se184491.loadmaster_be.dto.request.order.OrderRequest;
 import fu.se184491.loadmaster_be.dto.response.order.OrderResponse;
+import fu.se184491.loadmaster_be.exception.AppException;
+import fu.se184491.loadmaster_be.exception.ErrorCode;
 import fu.se184491.loadmaster_be.helpers.CurrentUserService;
 import fu.se184491.loadmaster_be.service.order.OrderService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
@@ -20,17 +21,15 @@ public class OrderController {
 
     private final OrderService orderService;
 
-    @Autowired(required = false)
-    private CurrentUserService currentUserService;
+    private final CurrentUserService currentUserService;
 
+    /** Công ty của người đang đăng nhập; không đăng nhập hay không thuộc công ty nào thì báo lỗi, không mượn công ty khác. */
     private Long getCurrentCompanyId() {
         try {
-            if (currentUserService != null) {
-                return currentUserService.getCurrentCompanyId();
-            }
-        } catch (Exception ignored) {
+            return currentUserService.getCurrentCompanyId();
+        } catch (IllegalStateException notAuthenticated) {
+            throw new AppException(ErrorCode.UNAUTHENTICATED);
         }
-        return 1L;
     }
 
     @PostMapping

@@ -53,7 +53,7 @@ public class SupportTicketController {
     }
 
     @PatchMapping("/{id}")
-    @PreAuthorize("hasAnyRole('SYSTEM_SUPPORTER', 'SYSTEM_MANAGER', 'SYSTEM_ADMIN') or hasAnyAuthority('SYSTEM_SUPPORTER', 'SYSTEM_MANAGER', 'SYSTEM_ADMIN') or (#request.status() == null and #request.assignedToId() == null)")
+    @PreAuthorize("hasAnyRole('SYSTEM_SUPPORTER', 'SYSTEM_MANAGER', 'SYSTEM_ADMIN') or (#request.status() == null and #request.assignedToId() == null)")
     public ApiResponse<SupportTicketResponse> updateTicket(
             @PathVariable Long id,
             @Valid @RequestBody UpdateSupportTicketRequest request
@@ -73,7 +73,7 @@ public class SupportTicketController {
      * Body: { "staffNote": "Ghi chú xử lý" }
      */
     @PostMapping("/{id}/unlock-trial")
-    @PreAuthorize("hasAnyRole('SYSTEM_SUPPORTER', 'SYSTEM_MANAGER', 'SYSTEM_ADMIN') or hasAnyAuthority('SYSTEM_SUPPORTER', 'SYSTEM_MANAGER', 'SYSTEM_ADMIN')")
+    @PreAuthorize("hasAnyRole('SYSTEM_SUPPORTER', 'SYSTEM_MANAGER', 'SYSTEM_ADMIN')")
     public ApiResponse<UnlockTrialResponse> unlockTrialAccount(
             @PathVariable Long id,
             @RequestParam(required = false) String staffNote

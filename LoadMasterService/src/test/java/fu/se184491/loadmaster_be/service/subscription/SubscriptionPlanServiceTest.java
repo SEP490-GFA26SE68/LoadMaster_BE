@@ -148,10 +148,10 @@ public class SubscriptionPlanServiceTest {
     }
 
     @Test
-    @DisplayName("Delete plan should succeed when no company is actively using it")
+    @DisplayName("Delete plan should succeed when no subscription points to it")
     void deletePlan_success() {
         when(planRepository.findById(1L)).thenReturn(Optional.of(plan));
-        when(companySubscriptionRepository.existsByPlanIdAndStatus(1L, SubscriptionStatus.ACTIVE)).thenReturn(false);
+        when(companySubscriptionRepository.existsByPlanId(1L)).thenReturn(false);
         doNothing().when(planRepository).delete(plan);
 
         assertDoesNotThrow(() -> planService.deletePlan(1L));
@@ -159,10 +159,10 @@ public class SubscriptionPlanServiceTest {
     }
 
     @Test
-    @DisplayName("Delete plan should throw PLAN_IN_USE when active subscriptions exist")
+    @DisplayName("Delete plan should throw PLAN_IN_USE when any subscription (any status) points to it")
     void deletePlan_inUse() {
         when(planRepository.findById(1L)).thenReturn(Optional.of(plan));
-        when(companySubscriptionRepository.existsByPlanIdAndStatus(1L, SubscriptionStatus.ACTIVE)).thenReturn(true);
+        when(companySubscriptionRepository.existsByPlanId(1L)).thenReturn(true);
 
         AppException ex = assertThrows(AppException.class, () -> planService.deletePlan(1L));
         assertEquals(ErrorCode.PLAN_IN_USE, ex.getErrorCode());

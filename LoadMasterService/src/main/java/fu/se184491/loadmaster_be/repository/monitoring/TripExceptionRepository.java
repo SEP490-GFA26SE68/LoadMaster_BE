@@ -6,6 +6,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
 import java.time.LocalDateTime;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
@@ -17,4 +18,6 @@ public interface TripExceptionRepository extends JpaRepository<TripException, Lo
     Optional<TripException> findByIdAndTripId(Long id, Long tripId);
 
     List<TripException> findByStatusAndReportedAtBefore(TripExceptionStatus status, LocalDateTime reportedAt);
+
+    boolean existsByTripIdAndStatusIn(Long tripId, Collection<TripExceptionStatus> statuses);
 }

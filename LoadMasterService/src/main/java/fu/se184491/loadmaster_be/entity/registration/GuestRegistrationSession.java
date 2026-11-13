@@ -76,6 +76,10 @@ public class GuestRegistrationSession {
     @Column(name = "otp_resend_allowed_at")
     private LocalDateTime otpResendAllowedAt;
 
+    /** Số lần nhập sai mã OTP hiện tại; đủ giới hạn thì mã bị huỷ. */
+    @Column(name = "otp_failed_attempts")
+    private Integer otpFailedAttempts;
+
     @Column(name = "policy_accepted_at")
     private LocalDateTime policyAcceptedAt;
 

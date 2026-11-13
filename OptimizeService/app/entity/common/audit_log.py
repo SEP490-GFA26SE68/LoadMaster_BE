@@ -1,4 +1,4 @@
-from datetime import datetime
+from app.config.clock import vietnam_now
 from sqlalchemy import Column, Integer, BigInteger, String, DateTime, JSON
 
 from app.config.database import Base
@@ -17,4 +17,4 @@ class AuditLog(Base):
     ip_address = Column(String(50), nullable=True)
     # Công ty của sự kiện (Java thêm cột này); null khi không thuộc công ty nào.
     company_id = Column(Integer().with_variant(BigInteger, "postgresql"), nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=vietnam_now)

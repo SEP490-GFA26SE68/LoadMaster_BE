@@ -5,6 +5,8 @@ import fu.se184491.loadmaster_be.entity.company.Company;
 import jakarta.persistence.*;
 import lombok.*;
 
+import java.time.LocalDateTime;
+
 @Entity
 @Table(name = "vehicles")
 @Getter
@@ -54,4 +56,8 @@ public class Vehicle {
 
     @Column(name = "maintenance_note", columnDefinition = "TEXT")
     private String maintenanceNote;
+
+    /** Lúc xe vào bảo dưỡng; xe không bảo dưỡng thì null. */
+    @Column(name = "maintenance_since")
+    private LocalDateTime maintenanceSince;
 }

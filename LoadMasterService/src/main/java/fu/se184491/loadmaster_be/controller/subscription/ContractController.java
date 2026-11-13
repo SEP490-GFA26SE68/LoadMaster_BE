@@ -17,7 +17,7 @@ import java.util.List;
 @RestController
 @RequestMapping("/api/contracts")
 @RequiredArgsConstructor
-@PreAuthorize("hasAnyRole('SYSTEM_SUPPORTER', 'SYSTEM_MANAGER', 'SYSTEM_ADMIN') or hasAnyAuthority('SYSTEM_SUPPORTER', 'SYSTEM_MANAGER', 'SYSTEM_ADMIN')")
+@PreAuthorize("hasAnyRole('SYSTEM_SUPPORTER', 'SYSTEM_MANAGER', 'SYSTEM_ADMIN')")
 public class ContractController {
 
     private final ContractService contractService;
@@ -39,7 +39,7 @@ public class ContractController {
     }
 
     @PostMapping
-    @PreAuthorize("hasAnyRole('SYSTEM_MANAGER', 'SYSTEM_ADMIN') or hasAnyAuthority('SYSTEM_MANAGER', 'SYSTEM_ADMIN')")
+    @PreAuthorize("hasAnyRole('SYSTEM_MANAGER', 'SYSTEM_ADMIN')")
     public ResponseEntity<ContractResponse> createOrActivateContract(
             @Valid @RequestBody CreateContractRequest request
     ) {
@@ -48,7 +48,7 @@ public class ContractController {
     }
 
     @PatchMapping("/{id}")
-    @PreAuthorize("hasAnyRole('SYSTEM_MANAGER', 'SYSTEM_ADMIN') or hasAnyAuthority('SYSTEM_MANAGER', 'SYSTEM_ADMIN')")
+    @PreAuthorize("hasAnyRole('SYSTEM_MANAGER', 'SYSTEM_ADMIN')")
     public ResponseEntity<ContractResponse> updateContract(
             @PathVariable Long id,
             @RequestBody UpdateContractRequest request

@@ -1,0 +1,44 @@
+# Cấu hình chỉ có trên classpath của test.
+#
+# Nằm ở classpath:/config/ nên Spring Boot nạp nó SAU src/main/resources/application.yml và chỉ ghi đè đúng các khoá
+# dưới đây; phần còn lại vẫn lấy từ cấu hình chính. Mọi giá trị là giá trị giả cho test, không phải bí mật thật.
+#
+# - Profile `test` thay `dev`: các ApplicationRunner @Profile("dev") (tạo admin trên Keycloak, dữ liệu mẫu) không chạy
+#   trong test, nên test không gọi Keycloak và không cần biến DEV_ADMIN_*.
+# - Datasource mặc định là H2 trong bộ nhớ: test không bao giờ nối tới DB thật (Supabase dùng chung) dù máy có đặt
+#   DATABASE_URL. Test nào cần DB riêng vẫn tự đặt spring.datasource.url của nó.
+spring:
+  profiles:
+    active: test
+  datasource:
+    url: jdbc:h2:mem:loadmaster-test;MODE=PostgreSQL;DB_CLOSE_DELAY=-1;DATABASE_TO_LOWER=TRUE
+    driver-class-name: org.h2.Driver
+    username: sa
+    password: ""
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+  flyway:
+    enabled: false
+  security:
+    oauth2:
+      client:
+        registration:
+          optimization-client:
+            client-secret: test-only-client-secret
+          keycloak-admin-client:
+            client-secret: test-only-client-secret
+
+vnpay:
+  tmn-code: TESTTMN1
+  hash-secret: test-only-vnpay-hash-secret
+
+app:
+  security:
+    qr-aes-secret: test-only-qr-aes-secret
+  brevo:
+    api-key: test-only-brevo-key
+    sender-email: test@example.com
+    sender-name: LoadMaster Test
+    security:
+      otp-hmac-secret: test-only-otp-hmac-secret

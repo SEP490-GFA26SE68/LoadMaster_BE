@@ -42,7 +42,7 @@ public class ContactGuestController {
     }
 
     @GetMapping
-    @PreAuthorize("hasAnyRole('SYSTEM_SUPPORTER', 'SYSTEM_MANAGER', 'SYSTEM_ADMIN') or hasAnyAuthority('SYSTEM_SUPPORTER', 'SYSTEM_MANAGER', 'SYSTEM_ADMIN')")
+    @PreAuthorize("hasAnyRole('SYSTEM_SUPPORTER', 'SYSTEM_MANAGER', 'SYSTEM_ADMIN')")
     public ResponseEntity<?> getContacts(
             @RequestParam(required = false) ContactStatus status,
             @RequestParam(required = false) ContactRequestType requestType,
@@ -61,7 +61,7 @@ public class ContactGuestController {
     }
 
     @PostMapping("/{id}/reply")
-    @PreAuthorize("hasAnyRole('SYSTEM_SUPPORTER', 'SYSTEM_MANAGER', 'SYSTEM_ADMIN') or hasAnyAuthority('SYSTEM_SUPPORTER', 'SYSTEM_MANAGER', 'SYSTEM_ADMIN')")
+    @PreAuthorize("hasAnyRole('SYSTEM_SUPPORTER', 'SYSTEM_MANAGER', 'SYSTEM_ADMIN')")
     public ResponseEntity<ContactOfGuestResponse> replyContact(
             @PathVariable Long id,
             @Valid @RequestBody ReplyContactOfGuestRequest request,
@@ -78,8 +78,15 @@ public class ContactGuestController {
         return ResponseEntity.ok(response);
     }
 
+    /** Người nhận việc chọn được ở khung xử lý: quản trị hệ thống và hỗ trợ khách hàng đang hoạt động. */
+    @GetMapping("/handlers")
+    @PreAuthorize("hasAnyRole('SYSTEM_SUPPORTER', 'SYSTEM_ADMIN')")
+    public ResponseEntity<List<fu.se184491.loadmaster_be.dto.response.support.ContactHandlerResponse>> listHandlers() {
+        return ResponseEntity.ok(contactOfGuestService.listHandlers());
+    }
+
     @GetMapping("/{id}")
-    @PreAuthorize("hasAnyRole('SYSTEM_SUPPORTER', 'SYSTEM_MANAGER', 'SYSTEM_ADMIN') or hasAnyAuthority('SYSTEM_SUPPORTER', 'SYSTEM_MANAGER', 'SYSTEM_ADMIN')")
+    @PreAuthorize("hasAnyRole('SYSTEM_SUPPORTER', 'SYSTEM_MANAGER', 'SYSTEM_ADMIN')")
     public ResponseEntity<ContactOfGuestResponse> getContactById(
             @PathVariable Long id
     ) {
@@ -88,7 +95,7 @@ public class ContactGuestController {
     }
 
     @PatchMapping("/{id}")
-    @PreAuthorize("hasAnyRole('SYSTEM_SUPPORTER', 'SYSTEM_MANAGER', 'SYSTEM_ADMIN') or hasAnyAuthority('SYSTEM_SUPPORTER', 'SYSTEM_MANAGER', 'SYSTEM_ADMIN')")
+    @PreAuthorize("hasAnyRole('SYSTEM_SUPPORTER', 'SYSTEM_MANAGER', 'SYSTEM_ADMIN')")
     public ResponseEntity<ContactOfGuestResponse> updateContact(
             @PathVariable Long id,
             @RequestBody UpdateContactOfGuestRequest request,

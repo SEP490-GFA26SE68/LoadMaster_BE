@@ -92,6 +92,7 @@ cd OptimizeService
 python -m venv .venv
 .venv\Scripts\activate       # Trên Windows (hoặc: source .venv/bin/activate trên Linux/macOS)
 pip install -r requirements.txt
+pip install -r requirements-ai.txt   # tuỳ chọn: mô hình AI của gói ULTIMATE (torch CPU, vài GB)
 uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 # Chạy bộ test suite (91 tests):
 python -m pytest tests/ -v
@@ -192,6 +193,7 @@ cd OptimizeService
 python -m venv .venv
 .venv\Scripts\activate       # Windows (or: source .venv/bin/activate on Linux/macOS)
 pip install -r requirements.txt
+pip install -r requirements-ai.txt   # optional: AI models of the ULTIMATE plan (CPU torch, several GB)
 uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 
 # Execute Test Suite (91 tests):

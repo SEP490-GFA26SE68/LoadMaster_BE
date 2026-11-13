@@ -88,6 +88,23 @@ public class AuditLogQueryService {
                 logs.map(log -> toResponse(log, companyNames::get, tripCodes.get(log))));
     }
 
+    /** Các bản ghi theo đúng thứ tự, kèm tên công ty và mã chuyến như một trang nhật ký. */
+    @Transactional(readOnly = true)
+    public List<AuditLogResponse> responsesOf(List<AuditLog> logs) {
+        if (logs.isEmpty()) {
+            return List.of();
+        }
+        Map<Long, String> companyNames = companyRepository
+                .findAllById(logs.stream()
+                        .map(AuditLogQueryService::companyOf)
+                        .filter(Objects::nonNull)
+                        .collect(Collectors.toSet()))
+                .stream()
+                .collect(Collectors.toMap(Company::getId, Company::getCompanyName, (a, b) -> a));
+        Map<AuditLog, String> tripCodes = tripCodesOf(logs);
+        return logs.stream().map(log -> toResponse(log, companyNames::get, tripCodes.get(log))).toList();
+    }
+
     /** Bản ghi đang trỏ tới đâu trên đường lần về chuyến. */
     enum RefKind { TRIP, STOP, PLAN, PLACEMENT, EXECUTION, CONFIRMATION, DEVIATION, UNLOAD }
 

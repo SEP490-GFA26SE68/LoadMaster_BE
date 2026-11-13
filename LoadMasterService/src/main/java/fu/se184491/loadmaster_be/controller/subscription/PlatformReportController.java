@@ -17,7 +17,7 @@ public class PlatformReportController {
     private final PlatformReportService platformReportService;
 
     @GetMapping("/summary")
-    @PreAuthorize("hasAnyRole('SYSTEM_MANAGER', 'SYSTEM_ADMIN') or hasAnyAuthority('SYSTEM_MANAGER', 'SYSTEM_ADMIN')")
+    @PreAuthorize("hasAnyRole('SYSTEM_MANAGER', 'SYSTEM_ADMIN')")
     public ResponseEntity<PlatformReportSummaryResponse> getSummaryReport() {
         return ResponseEntity.ok(platformReportService.getSummaryReport());
     }

@@ -65,6 +65,7 @@ class PickupRequestServiceImplTest {
     @Mock private CurrentUserService currentUserService;
     @Mock private TripLookupHelper tripLookupHelper;
     @Mock private PickupContextBuilder contextBuilder;
+    @Mock private fu.se184491.loadmaster_be.service.trip.TripStatusService tripStatusService;
 
     @InjectMocks
     private PickupRequestServiceImpl service;

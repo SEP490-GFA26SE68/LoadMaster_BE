@@ -98,7 +98,7 @@ public class SubscriptionPlanControllerTest {
 
     @Test
     @DisplayName("POST /api/subscription/plans should return 201 Created with authority SYSTEM_MANAGER")
-    @WithMockUser(authorities = "SYSTEM_MANAGER")
+    @WithMockUser(roles = "SYSTEM_MANAGER")
     void createPlan_success() throws Exception {
         when(planService.createPlan(any(SubscriptionPlanRequest.class))).thenReturn(response);
 

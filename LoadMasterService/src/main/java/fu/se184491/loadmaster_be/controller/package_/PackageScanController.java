@@ -48,6 +48,7 @@ public class PackageScanController {
                         ? new PackageDetailResponse.StopRef(deliveryStop.getStopSequence(), deliveryStop.getStopName())
                         : null)
                 .destination(pkg.getDestination())
+                .flag(pkg.getFlag())
                 .build();
 
         return ResponseEntity.ok(ApiResponse.success("Quét mã QR thành công", response));

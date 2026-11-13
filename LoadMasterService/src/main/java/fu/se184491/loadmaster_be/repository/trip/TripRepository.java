@@ -3,6 +3,7 @@ package fu.se184491.loadmaster_be.repository.trip;
 import fu.se184491.loadmaster_be.constant.trip.TripStatus;
 import fu.se184491.loadmaster_be.entity.trip.Trip;
 import jakarta.persistence.LockModeType;
+import jakarta.persistence.QueryHint;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
@@ -10,6 +11,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.jpa.repository.QueryHints;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
@@ -41,6 +43,12 @@ public interface TripRepository extends
             Collection<TripStatus> statuses
     );
 
+    boolean existsByVehicleId(Long vehicleId);
+
+    List<Trip> findByVehicleIdAndStatusIn(Long vehicleId, Collection<TripStatus> statuses);
+
+    List<Trip> findByVehicle_VehicleType_IdAndStatusIn(Long vehicleTypeId, Collection<TripStatus> statuses);
+
     Page<Trip> findByCompanyId(Long companyId, Pageable pageable);
 
     /** Chuyến của công ty có giờ xuất phát trong [start, end). */
@@ -56,6 +64,15 @@ public interface TripRepository extends
             @Param("start") java.time.LocalDateTime start,
             @Param("end") java.time.LocalDateTime end
     );
+
+    /**
+     * Khoá dòng chuyến tới hết transaction: các lệnh đổi trạng thái chuyến chạy lần lượt. Không flush trước khi khoá:
+     * chuyến đọc trước đó (cột JSON luôn bị coi là đã sửa) sẽ ghi đè trạng thái lệnh khác vừa ghi.
+     */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @QueryHints(@QueryHint(name = "org.hibernate.flushMode", value = "COMMIT"))
+    @Query("SELECT t FROM Trip t WHERE t.id = :tripId")
+    Optional<Trip> findByIdForUpdate(@Param("tripId") Long tripId);
 
     /**
      * Khóa chuyến trong transaction khi gán yêu cầu giao.

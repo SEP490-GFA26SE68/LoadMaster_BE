@@ -32,7 +32,7 @@ class GoongMapsClientTest {
         GoongMapsClient client = new GoongMapsClient(builder.build(), "test-api-key");
         server.expect(once(), requestTo(
                         "https://goong.test/distancematrix?origins=10.75,106.67%7C10.78,106.7"
-                                + "&destinations=10.8,106.72&vehicle=car"))
+                                + "&destinations=10.8,106.72&vehicle=car&api_key=test-api-key"))
                 .andExpect(method(GET))
                 .andExpect(header("Goong-Api-Key", "test-api-key"))
                 .andRespond(withSuccess("""
@@ -63,7 +63,7 @@ class GoongMapsClientTest {
         GoongMapsClient client = new GoongMapsClient(builder.build(), "test-api-key");
         server.expect(once(), requestTo(
                         "https://goong.test/direction?origin=10.75,106.67"
-                                + "&destination=10.8,106.72&vehicle=car"))
+                                + "&destination=10.8,106.72&vehicle=car&api_key=test-api-key"))
                 .andExpect(method(GET))
                 .andExpect(header("Goong-Api-Key", "test-api-key"))
                 .andRespond(withSuccess("""
@@ -101,7 +101,7 @@ class GoongMapsClientTest {
         MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
         GoongMapsClient client = new GoongMapsClient(builder.build(), "test-api-key");
         String expectedUrl = "https://goong.test/direction?origin=10.75,106.67"
-                + "&destination=10.8,106.72&vehicle=car";
+                + "&destination=10.8,106.72&vehicle=car&api_key=test-api-key";
         server.expect(times(2), requestTo(expectedUrl))
                 .andRespond(request -> {
                     throw new ResourceAccessException(
@@ -129,7 +129,7 @@ class GoongMapsClientTest {
         GoongMapsClient client = new GoongMapsClient(builder.build(), "test-api-key");
         server.expect(times(3), requestTo(
                         "https://goong.test/distancematrix?origins=10.75,106.67"
-                                + "&destinations=10.8,106.72&vehicle=car"))
+                                + "&destinations=10.8,106.72&vehicle=car&api_key=test-api-key"))
                 .andRespond(request -> {
                     throw new ResourceAccessException(
                             "Read timed out",

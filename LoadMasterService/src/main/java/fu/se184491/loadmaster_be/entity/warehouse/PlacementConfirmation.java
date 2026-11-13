@@ -3,6 +3,9 @@ package fu.se184491.loadmaster_be.entity.warehouse;
 import fu.se184491.loadmaster_be.entity.account.User;
 import fu.se184491.loadmaster_be.entity.optimization.PackagePlacement;
 import jakarta.persistence.Column;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
+import fu.se184491.loadmaster_be.constant.cargo.LabelMethod;
 import jakarta.persistence.Entity;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
@@ -42,4 +45,9 @@ public class PlacementConfirmation {
 
     @Column(name = "confirmed_at")
     private LocalDateTime confirmedAt;
+
+    /** Cách kho đối chiếu kiện lúc xếp bằng nhãn; dòng cũ, hoặc xếp bằng xác nhận tay, để trống. */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "method", length = 10)
+    private LabelMethod method;
 }

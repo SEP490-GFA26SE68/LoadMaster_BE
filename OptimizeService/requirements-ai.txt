@@ -1,0 +1,5 @@
+# Mô hình Lumo của gói ULTIMATE (EP_DBLF_GA_AI): chỉ suy luận trên CPU, không huấn luyện.
+# Cài sau requirements.txt:  pip install -r requirements.txt -r requirements-ai.txt
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch==2.11.0
+numpy==2.5.4

@@ -13,6 +13,8 @@ import fu.se184491.loadmaster_be.dto.response.route.RoutePlanDetailResponse;
 import fu.se184491.loadmaster_be.dto.response.route.RoutePlanSummaryResponse;
 import fu.se184491.loadmaster_be.dto.response.route.RouteSuggestionResponse;
 import fu.se184491.loadmaster_be.client.GoongMapsClient;
+import fu.se184491.loadmaster_be.dto.goong.PlaceAutocompleteResponse;
+import fu.se184491.loadmaster_be.dto.goong.PlaceDetailResponse;
 import fu.se184491.loadmaster_be.entity.trip.Trip;
 import fu.se184491.loadmaster_be.helpers.CurrentUserService;
 import fu.se184491.loadmaster_be.service.monitoring.TripLookupHelper;
@@ -225,5 +227,71 @@ public class RoutePlanControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.data.isAccepted").value(true));
+    }
+
+    @Test
+    @DisplayName("GET /api/places/autocomplete: tài xế tìm được địa chỉ (hộp nhận hàng dọc đường)")
+    @WithMockUser(roles = "DRIVER")
+    void autocompletePlaces_asDriver_isOk() throws Exception {
+        when(goongMapsClient.getPlaceAutocomplete("Le Loi")).thenReturn(new PlaceAutocompleteResponse());
+
+        mockMvc.perform(get("/api/places/autocomplete").param("input", "Le Loi"))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    @DisplayName("GET /api/places/autocomplete: quản trị công ty tìm được địa chỉ")
+    @WithMockUser(roles = "ADMIN")
+    void autocompletePlaces_asCompanyAdmin_isOk() throws Exception {
+        when(goongMapsClient.getPlaceAutocomplete("Le Loi")).thenReturn(new PlaceAutocompleteResponse());
+
+        mockMvc.perform(get("/api/places/autocomplete").param("input", "Le Loi"))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    @DisplayName("GET /api/places/autocomplete: quản trị hệ thống tìm được địa chỉ (kho xuất phát của công ty)")
+    @WithMockUser(roles = "SYSTEM_ADMIN")
+    void autocompletePlaces_asSystemAdmin_isOk() throws Exception {
+        when(goongMapsClient.getPlaceAutocomplete("Le Loi")).thenReturn(new PlaceAutocompleteResponse());
+
+        mockMvc.perform(get("/api/places/autocomplete").param("input", "Le Loi"))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    @DisplayName("GET /api/places/autocomplete: nhân viên kho không gọi được")
+    @WithMockUser(roles = "WAREHOUSE_WORKER")
+    void autocompletePlaces_asWarehouseWorker_isForbidden() throws Exception {
+        mockMvc.perform(get("/api/places/autocomplete").param("input", "Le Loi"))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    @DisplayName("GET /api/places/detail: quản trị công ty đọc được chi tiết địa điểm")
+    @WithMockUser(roles = "ADMIN")
+    void getPlaceDetail_asCompanyAdmin_isOk() throws Exception {
+        when(goongMapsClient.getPlaceDetail("place-1")).thenReturn(new PlaceDetailResponse());
+
+        mockMvc.perform(get("/api/places/detail").param("placeId", "place-1"))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    @DisplayName("GET /api/places/detail: tài xế đọc được chi tiết địa điểm")
+    @WithMockUser(roles = "DRIVER")
+    void getPlaceDetail_asDriver_isOk() throws Exception {
+        when(goongMapsClient.getPlaceDetail("place-1")).thenReturn(new PlaceDetailResponse());
+
+        mockMvc.perform(get("/api/places/detail").param("placeId", "place-1"))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    @DisplayName("GET /api/places/detail: hỗ trợ khách hàng không gọi được")
+    @WithMockUser(roles = "SYSTEM_SUPPORTER")
+    void getPlaceDetail_asSystemSupporter_isForbidden() throws Exception {
+        mockMvc.perform(get("/api/places/detail").param("placeId", "place-1"))
+                .andExpect(status().isForbidden());
     }
 }

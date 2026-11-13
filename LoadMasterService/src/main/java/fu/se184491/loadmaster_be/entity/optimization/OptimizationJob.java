@@ -10,7 +10,9 @@ import jakarta.persistence.*;
 import lombok.*;
 
 @Entity
-@Table(name = "optimization_jobs")
+@Table(name = "optimization_jobs", indexes = {
+        @Index(name = "idx_optimization_jobs_trip_id", columnList = "trip_id")
+})
 @Getter @Setter @NoArgsConstructor @AllArgsConstructor @Builder
 public class OptimizationJob {
     @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -40,29 +42,31 @@ public class OptimizationJob {
     @Column(name = "parent_plan_id")
     private Long parentPlanId;
 
-    // Same columns already consumed by the Python job model; tier is a server snapshot.
+    @Column(name = "seed")
+    private Integer seed;
+
+    // Dịch vụ tối ưu (Python) ghi bốn cột này khi tạo job. Java khai để ddl-auto tạo cột (cho phép null).
     @Column(name = "company_id", length = 64)
     private String companyId;
 
-    @Enumerated(EnumType.STRING)
     @Column(name = "subscription_tier", length = 50)
-    private fu.se184491.loadmaster_be.constant.billing.SubscriptionTier subscriptionTier;
+    private String subscriptionTier;
 
     @Column(name = "algorithm_tier", length = 50)
     private String algorithmTier;
 
-    // Existing PostgreSQL column is timestamp without time zone, historically written as UTC by Python.
-    @Column(name = "created_at", updatable = false)
+    @Column(name = "created_at")
     private java.time.LocalDateTime createdAt;
 
+    /** Lý do job FAILED khi Java tự kết thúc job (ví dụ JOB_INTERRUPTED: dịch vụ tối ưu dừng giữa chừng). */
+    @Column(name = "failure_code", length = 64)
+    private String failureCode;
+
+    /** Job do Java tạo (chạy lại giữ ghim) cũng có giờ tạo, giờ Việt Nam như dịch vụ tối ưu ghi. */
     @PrePersist
-    public void initializeCreatedAt() {
-        if (createdAt == null) createdAt = java.time.LocalDateTime.now(java.time.ZoneOffset.UTC);
+    void fillCreatedAt() {
+        if (createdAt == null) {
+            createdAt = java.time.LocalDateTime.now(java.time.ZoneId.of("Asia/Ho_Chi_Minh"));
+        }
     }
-
-    @Column(name = "seed")
-    private Integer seed;
-
-
-
 }

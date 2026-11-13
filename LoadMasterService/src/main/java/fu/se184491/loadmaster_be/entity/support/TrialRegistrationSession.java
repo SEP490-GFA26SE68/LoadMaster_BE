@@ -67,6 +67,10 @@ public class TrialRegistrationSession {
     @Check(name = "trial_registration_sessions_otp_resend_allowed_at_check", constraints = "otp_resend_allowed_at IS NULL OR otp_resend_allowed_at ~ '^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01]) ([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]$'")
     private LocalDateTime otpResendAllowedAt;
 
+    /** Số lần nhập sai mã OTP hiện tại; đủ giới hạn thì mã bị huỷ. */
+    @Column(name = "otp_failed_attempts")
+    private Integer otpFailedAttempts;
+
     @Column(name = "verified")
     @Builder.Default
     private Boolean verified = false;

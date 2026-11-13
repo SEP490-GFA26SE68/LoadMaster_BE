@@ -1,5 +1,6 @@
 package fu.se184491.loadmaster_be.service.pickup;
 
+import fu.se184491.loadmaster_be.constant.cargo.LabelMethod;
 import fu.se184491.loadmaster_be.constant.cargo.PackageStatus;
 import fu.se184491.loadmaster_be.constant.pickup.PickupRequestStatus;
 import fu.se184491.loadmaster_be.constant.trip.DeliveryStopStatus;
@@ -109,9 +110,15 @@ public class PickupDriverService {
         return rows;
     }
 
-    /** Tài xế đối chiếu một kiện nhận ở điểm nhận hiện tại: kiện lên xe. */
+    /** Tài xế đối chiếu một kiện nhận bằng quét QR ở điểm nhận hiện tại: kiện lên xe. */
     @Transactional
     public PickupRequestResponse pick(Long packageId) {
+        return pick(packageId, null);
+    }
+
+    /** Tài xế đối chiếu một kiện nhận ở điểm nhận hiện tại, bằng quét QR hoặc gõ mã ({@code method}, vắng là QR): kiện lên xe. */
+    @Transactional
+    public PickupRequestResponse pick(Long packageId, LabelMethod method) {
         User driver = currentUserService.getCurrentUser();
         PickupRequestPackage line = pickupRequestPackageRepository.findByCargoPackageId(packageId)
                 .orElseThrow(() -> new AppException(ErrorCode.PACKAGE_NOT_FOUND));
@@ -141,6 +148,7 @@ public class PickupDriverService {
         LocalDateTime now = MonitoringTime.now();
         line.setPickedAt(now);
         line.setPickedBy(driver);
+        line.setPickMethod(LabelMethod.orQr(method));
         pickupRequestPackageRepository.save(line);
         CargoPackage cargo = line.getCargoPackage();
         cargo.setStatus(PackageStatus.LOADED);

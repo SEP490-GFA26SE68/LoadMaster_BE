@@ -4,6 +4,9 @@ import fu.se184491.loadmaster_be.entity.account.User;
 import fu.se184491.loadmaster_be.entity.cargo.CargoPackage;
 import fu.se184491.loadmaster_be.entity.trip.DeliveryStop;
 import jakarta.persistence.Column;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
+import fu.se184491.loadmaster_be.constant.cargo.LabelMethod;
 import jakarta.persistence.Entity;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
@@ -47,4 +50,9 @@ public class UnloadConfirmation {
 
     @Column(name = "unloaded_at")
     private LocalDateTime unloadedAt;
+
+    /** Cách tài xế đối chiếu kiện lúc dỡ bằng nhãn; dòng cũ, hoặc dỡ bằng xác nhận tay, để trống. */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "method", length = 10)
+    private LabelMethod method;
 }

@@ -156,6 +156,7 @@ public class WarehouseIncidentServiceImpl implements WarehouseIncidentService {
         values.put("tripId", session.trip().getId());
         values.put("outcome", outcome.name());
         values.put("restingCount", resting);
+        values.put("driverId", session.trip().getDriver() != null ? session.trip().getDriver().getId() : null);
         lookup.audit(session.trip(), session.worker(), "LOADING_DAMAGE_REPORTED", "LoadingDamage", damage.getId(), values);
         log.info("Worker {} reported placement {} damaged: {}", session.worker().getId(), placementId, outcome);
         return DamageResponse.builder()

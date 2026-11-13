@@ -9,6 +9,7 @@ import lombok.*;
 @AllArgsConstructor
 @Builder
 public class CreditInternalRequest {
+    @JsonAlias("company_id")
     private Long companyId;
 
     @JsonAlias({"jobUuid", "job_uuid"})

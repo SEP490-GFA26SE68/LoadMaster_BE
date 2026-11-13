@@ -19,7 +19,9 @@ import java.time.LocalDateTime;
 import java.util.Map;
 
 @Entity
-@Table(name = "trips")
+@Table(name = "trips", indexes = {
+        @Index(name = "idx_trips_company_id", columnList = "company_id")
+})
 @Getter @Setter @NoArgsConstructor @AllArgsConstructor @Builder
 public class Trip {
     @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -74,6 +76,10 @@ public class Trip {
     @Column(name = "departure_time")
     private LocalDateTime departureTime;
 
+    /** Giờ tài xế bấm Xuất phát (chuyến thành IN_TRANSIT); chưa xuất phát, hoặc xuất phát trước khi có cột này, thì null. */
+    @Column(name = "departed_at")
+    private LocalDateTime departedAt;
+
     @Builder.Default
     @ColumnDefault("'DRAFT'")
     @Enumerated(EnumType.STRING) @Column(name = "status", length = 20, nullable = false)
@@ -95,4 +101,17 @@ public class Trip {
     /** Giờ tài xế hoàn tất điểm giao cuối (chuyến thành DELIVERED); chuyến chưa giao xong hoặc giao xong trước khi có cột này thì null. */
     @Column(name = "completed_at")
     private LocalDateTime completedAt;
+
+    /** Lý do điều phối viên nhập khi huỷ chuyến; chuyến chưa huỷ thì null. */
+    @Column(name = "cancel_reason", columnDefinition = "text")
+    private String cancelReason;
+
+    /** Trạng thái của chuyến ngay trước khi bị huỷ; chuyến chưa huỷ thì null. */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "cancelled_from_status", length = 20)
+    private TripStatus cancelledFromStatus;
+
+    /** Số kiện thành hoàn trả khi chuyến bị huỷ lúc đang vận chuyển; chuyến khác thì null. */
+    @Column(name = "cancel_returned_count")
+    private Integer cancelReturnedCount;
 }

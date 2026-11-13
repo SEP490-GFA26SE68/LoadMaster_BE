@@ -94,7 +94,7 @@ public class PaymentCallbackHandlerTest {
     @DisplayName("handleVnPayCallback - Order not found returns RspCode 01")
     void testOrderNotFound() {
         when(vnPayClient.verifyCallback(anyMap())).thenReturn(true);
-        when(paymentTransactionRepository.findByGatewayTransactionId("UNKNOWN")).thenReturn(Optional.empty());
+        when(paymentTransactionRepository.findByGatewayTransactionIdForUpdate("UNKNOWN")).thenReturn(Optional.empty());
 
         Map<String, String> params = new HashMap<>();
         params.put("vnp_TxnRef", "UNKNOWN");
@@ -109,7 +109,7 @@ public class PaymentCallbackHandlerTest {
     void testAlreadySuccessIsIdempotent() {
         subscriptionTxn.setStatus(PaymentStatus.SUCCESS);
         when(vnPayClient.verifyCallback(anyMap())).thenReturn(true);
-        when(paymentTransactionRepository.findByGatewayTransactionId("VNP_SUB_001"))
+        when(paymentTransactionRepository.findByGatewayTransactionIdForUpdate("VNP_SUB_001"))
                 .thenReturn(Optional.of(subscriptionTxn));
 
         Map<String, String> params = new HashMap<>();
@@ -125,7 +125,7 @@ public class PaymentCallbackHandlerTest {
     @DisplayName("handleVnPayCallback - Success response activates subscription")
     void testSuccessActivatesSubscription() {
         when(vnPayClient.verifyCallback(anyMap())).thenReturn(true);
-        when(paymentTransactionRepository.findByGatewayTransactionId("VNP_SUB_001"))
+        when(paymentTransactionRepository.findByGatewayTransactionIdForUpdate("VNP_SUB_001"))
                 .thenReturn(Optional.of(subscriptionTxn));
 
         Map<String, String> params = new HashMap<>();
@@ -145,7 +145,7 @@ public class PaymentCallbackHandlerTest {
     @DisplayName("handleVnPayCallback - Success response adds credits for CREDIT_TOPUP")
     void testSuccessAddsCredits() {
         when(vnPayClient.verifyCallback(anyMap())).thenReturn(true);
-        when(paymentTransactionRepository.findByGatewayTransactionId("VNP_CREDIT_002"))
+        when(paymentTransactionRepository.findByGatewayTransactionIdForUpdate("VNP_CREDIT_002"))
                 .thenReturn(Optional.of(creditTxn));
 
         Map<String, String> params = new HashMap<>();
@@ -162,10 +162,57 @@ public class PaymentCallbackHandlerTest {
     }
 
     @Test
-    void requestMockFlagNeverBypassesSignatureVerification() {
-        Map<String, String> params = Map.of("vnp_TxnRef", "MOCK_123", "vnp_ResponseCode", "00", "vnp_Mock", "true");
-        assertEquals("97", paymentCallbackHandler.handleVnPayCallback(params).get("RspCode"));
-        verify(vnPayClient).verifyCallback(params);
+    @DisplayName("handleVnPayCallback - vnpay.mock on: skips signature verification")
+    void testMockConfigOnSkipsSignatureVerification() {
+        when(vnPayClient.isMock()).thenReturn(true);
+        when(paymentTransactionRepository.findByGatewayTransactionIdForUpdate("VNP_SUB_001"))
+                .thenReturn(Optional.of(subscriptionTxn));
+
+        Map<String, String> params = new HashMap<>();
+        params.put("vnp_TxnRef", "VNP_SUB_001");
+        params.put("vnp_ResponseCode", "00");
+
+        Map<String, String> res = paymentCallbackHandler.handleVnPayCallback(params);
+
+        assertEquals("00", res.get("RspCode"));
+        assertEquals(PaymentStatus.SUCCESS, subscriptionTxn.getStatus());
+        verify(vnPayClient, never()).verifyCallback(anyMap());
+        verify(subscriptionService).activateSubscription(1L, 2L);
+    }
+
+    @Test
+    @DisplayName("handleVnPayCallback - vnpay.mock off: vnp_Mock=true with a bad signature is rejected")
+    void testMockParamIgnoredWhenMockConfigOff() {
+        when(vnPayClient.isMock()).thenReturn(false);
+        when(vnPayClient.verifyCallback(anyMap())).thenReturn(false);
+
+        Map<String, String> params = new HashMap<>();
+        params.put("vnp_TxnRef", "VNP_SUB_001");
+        params.put("vnp_ResponseCode", "00");
+        params.put("vnp_Amount", "100000000");
+        params.put("vnp_Mock", "true");
+        params.put("vnp_SecureHash", "forged");
+
+        Map<String, String> res = paymentCallbackHandler.handleVnPayCallback(params);
+
+        assertEquals("97", res.get("RspCode"));
+        assertEquals(PaymentStatus.PENDING, subscriptionTxn.getStatus());
+        verifyNoInteractions(paymentTransactionRepository, subscriptionService, creditService);
+    }
+
+    @Test
+    @DisplayName("handleVnPayCallback - vnpay.mock off: MOCK_ transaction prefix does not skip signature verification")
+    void testMockPrefixIgnoredWhenMockConfigOff() {
+        when(vnPayClient.isMock()).thenReturn(false);
+        when(vnPayClient.verifyCallback(anyMap())).thenReturn(false);
+
+        Map<String, String> params = new HashMap<>();
+        params.put("vnp_TxnRef", "MOCK_0123456789ABCDEF");
+        params.put("vnp_ResponseCode", "00");
+
+        Map<String, String> res = paymentCallbackHandler.handleVnPayCallback(params);
+
+        assertEquals("97", res.get("RspCode"));
         verifyNoInteractions(paymentTransactionRepository, subscriptionService, creditService);
     }
 
@@ -218,7 +265,7 @@ public class PaymentCallbackHandlerTest {
         subscriptionTxn.setOrderType("SUBSCRIPTION_YEARLY");
         subscriptionTxn.setAmountVnd(new BigDecimal("12000000"));
         when(vnPayClient.verifyCallback(anyMap())).thenReturn(true);
-        when(paymentTransactionRepository.findByGatewayTransactionId("VNP_SUB_001"))
+        when(paymentTransactionRepository.findByGatewayTransactionIdForUpdate("VNP_SUB_001"))
                 .thenReturn(Optional.of(subscriptionTxn));
 
         Map<String, String> params = new HashMap<>();
@@ -238,6 +285,7 @@ public class PaymentCallbackHandlerTest {
     @DisplayName("Delegate to GuestRegistrationService when txnRef starts with REG_")
     void testDelegateToGuestRegistrationService() {
         Map<String, String> params = Map.of("vnp_TxnRef", "REG_ABC123");
+        when(vnPayClient.verifyCallback(params)).thenReturn(true);
         when(guestRegistrationService.handlePaymentCallback(params)).thenReturn(Map.of("RspCode", "00", "Message", "Confirm Success"));
 
         Map<String, String> result = paymentCallbackHandler.handleVnPayCallback(params);
@@ -245,5 +293,68 @@ public class PaymentCallbackHandlerTest {
         assertEquals("00", result.get("RspCode"));
         verify(guestRegistrationService).handlePaymentCallback(params);
         verifyNoInteractions(paymentTransactionRepository);
+    }
+
+    @Test
+    @DisplayName("REG_ callback with an invalid signature is rejected before reaching guest registration")
+    void testRegistrationCallbackWithInvalidSignatureIsRejected() {
+        Map<String, String> params = Map.of("vnp_TxnRef", "REG_12345", "vnp_ResponseCode", "00",
+                "vnp_Mock", "true", "vnp_SecureHash", "forged");
+        when(vnPayClient.isMock()).thenReturn(false);
+        when(vnPayClient.verifyCallback(params)).thenReturn(false);
+
+        Map<String, String> result = paymentCallbackHandler.handleVnPayCallback(params);
+
+        assertEquals("97", result.get("RspCode"));
+        assertEquals("Invalid Checksum", result.get("Message"));
+        verifyNoInteractions(guestRegistrationService);
+    }
+
+    @Test
+    @DisplayName("REG_ callback skips the signature only when the server runs vnpay.mock")
+    void testRegistrationCallbackInMockModeReachesGuestRegistration() {
+        Map<String, String> params = Map.of("vnp_TxnRef", "REG_12345", "vnp_ResponseCode", "00");
+        when(vnPayClient.isMock()).thenReturn(true);
+        when(guestRegistrationService.handlePaymentCallback(params)).thenReturn(Map.of("RspCode", "00"));
+
+        assertEquals("00", paymentCallbackHandler.handleVnPayCallback(params).get("RspCode"));
+        verify(vnPayClient, never()).verifyCallback(anyMap());
+    }
+
+    @Test
+    @DisplayName("handleVnPayCallback - Paid renewal extends the same plan")
+    void testSuccessfulRenewalActivatesTheSamePlan() {
+        subscriptionTxn.setOrderType("SUBSCRIPTION_RENEWAL");
+        when(vnPayClient.verifyCallback(anyMap())).thenReturn(true);
+        when(paymentTransactionRepository.findByGatewayTransactionIdForUpdate("VNP_SUB_001"))
+                .thenReturn(Optional.of(subscriptionTxn));
+
+        Map<String, String> params = new HashMap<>();
+        params.put("vnp_TxnRef", "VNP_SUB_001");
+        params.put("vnp_ResponseCode", "00");
+        params.put("vnp_Amount", "100000000");
+
+        assertEquals("00", paymentCallbackHandler.handleVnPayCallback(params).get("RspCode"));
+        verify(subscriptionService).activateSubscription(1L, 2L);
+    }
+
+    @Test
+    @DisplayName("handleVnPayCallback - IPN rồi trang trả về cùng giao dịch: chỉ cộng credit một lần, đọc dòng có khoá")
+    void testReturnAfterIpnGrantsOnce() {
+        when(vnPayClient.verifyCallback(anyMap())).thenReturn(true);
+        when(paymentTransactionRepository.findByGatewayTransactionIdForUpdate("VNP_CREDIT_002"))
+                .thenReturn(Optional.of(creditTxn));
+
+        Map<String, String> params = new HashMap<>();
+        params.put("vnp_TxnRef", "VNP_CREDIT_002");
+        params.put("vnp_ResponseCode", "00");
+        params.put("vnp_Amount", "10000000");
+
+        assertEquals("00", paymentCallbackHandler.handleVnPayCallback(params).get("RspCode"));
+        assertEquals("00", paymentCallbackHandler.handleVnPayCallback(params).get("RspCode"));
+
+        verify(creditService, times(1)).addCredits(1L, 50, "VNP_CREDIT_002");
+        verify(paymentTransactionRepository, times(1)).save(creditTxn);
+        verify(paymentTransactionRepository, never()).findByGatewayTransactionId(any());
     }
 }

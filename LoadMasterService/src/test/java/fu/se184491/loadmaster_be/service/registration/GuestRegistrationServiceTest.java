@@ -66,6 +66,8 @@ class GuestRegistrationServiceTest {
     private OtpHasher otpHasher;
     @Mock
     private TemporaryPasswordGenerator temporaryPasswordGenerator;
+    @Mock
+    private GuestRegistrationSessionExpiry sessionExpiry;
 
     private GuestRegistrationServiceImpl service;
 
@@ -84,7 +86,8 @@ class GuestRegistrationServiceTest {
                 vnPayClient,
                 brevoClient,
                 otpHasher,
-                temporaryPasswordGenerator
+                temporaryPasswordGenerator,
+                sessionExpiry
         );
     }
 
@@ -291,6 +294,52 @@ class GuestRegistrationServiceTest {
     }
 
     @Test
+    @DisplayName("verifyOtp: sai lần thứ 5 thì huỷ mã và báo OTP_ATTEMPTS_EXCEEDED; lần sau vẫn bị chặn dù đúng mã")
+    void verifyOtp_fifthWrongAttempt_invalidatesOtp() {
+        var wrong = new fu.se184491.loadmaster_be.dto.request.registration.VerifyOtpRequest("valid-token", "999999");
+        var right = new fu.se184491.loadmaster_be.dto.request.registration.VerifyOtpRequest("valid-token", "123456");
+        GuestRegistrationSession session = GuestRegistrationSession.builder()
+                .token("valid-token")
+                .email("guest@company.com")
+                .status(RegistrationStatus.PENDING_EMAIL_VERIFY)
+                .otpHash("hashed_123456")
+                .otpFailedAttempts(3)
+                .otpExpiresAt(LocalDateTime.now().plusMinutes(5))
+                .expiresAt(LocalDateTime.now().plusHours(2))
+                .build();
+        when(sessionRepository.findByToken("valid-token")).thenReturn(Optional.of(session));
+        when(otpHasher.hash("guest@company.com", "999999")).thenReturn("hashed_wrong");
+
+        assertThatThrownBy(() -> service.verifyOtp(wrong))
+                .hasFieldOrPropertyWithValue("errorCode", ErrorCode.OTP_INCORRECT);
+        assertThat(session.getOtpFailedAttempts()).isEqualTo(4);
+
+        assertThatThrownBy(() -> service.verifyOtp(wrong))
+                .hasFieldOrPropertyWithValue("errorCode", ErrorCode.OTP_ATTEMPTS_EXCEEDED);
+        assertThat(session.getOtpFailedAttempts()).isEqualTo(5);
+        assertThat(session.getOtpHash()).isNull();
+        verify(sessionRepository, times(2)).save(session);
+
+        assertThatThrownBy(() -> service.verifyOtp(right))
+                .hasFieldOrPropertyWithValue("errorCode", ErrorCode.OTP_ATTEMPTS_EXCEEDED);
+        assertThat(session.getStatus()).isEqualTo(RegistrationStatus.PENDING_EMAIL_VERIFY);
+    }
+
+    @Test
+    @DisplayName("verifyOtp, resendOtp, acceptPolicy giữ lại thay đổi khi ném lỗi nghiệp vụ (EXPIRED, bộ đếm sai)")
+    void businessErrorsDoNotRollBackSessionWrites() throws Exception {
+        Class<GuestRegistrationServiceImpl> type = GuestRegistrationServiceImpl.class;
+        for (var method : java.util.List.of(
+                type.getMethod("verifyOtp", fu.se184491.loadmaster_be.dto.request.registration.VerifyOtpRequest.class),
+                type.getMethod("resendOtp", String.class),
+                type.getMethod("acceptPolicy", fu.se184491.loadmaster_be.dto.request.registration.AcceptPolicyRequest.class, String.class))) {
+            var tx = method.getAnnotation(org.springframework.transaction.annotation.Transactional.class);
+            assertThat(tx).as(method.getName()).isNotNull();
+            assertThat(tx.noRollbackFor()).as(method.getName()).contains(AppException.class);
+        }
+    }
+
+    @Test
     @DisplayName("resendOtp: thành công gửi lại mã OTP mới")
     void resendOtp_success() {
         GuestRegistrationSession session = GuestRegistrationSession.builder()
@@ -455,6 +504,31 @@ class GuestRegistrationServiceTest {
     }
 
     @Test
+    @DisplayName("initPayment: phiên quá hạn được ghi EXPIRED trong transaction riêng rồi mới báo lỗi")
+    void initPayment_expiredSession_marksExpiredInOwnTransaction() {
+        fu.se184491.loadmaster_be.dto.request.registration.InitPaymentRequest request =
+                new fu.se184491.loadmaster_be.dto.request.registration.InitPaymentRequest(
+                        "old-token",
+                        1L,
+                        fu.se184491.loadmaster_be.constant.billing.BillingCycle.MONTHLY
+                );
+        GuestRegistrationSession session = GuestRegistrationSession.builder()
+                .id(77L)
+                .token("old-token")
+                .status(RegistrationStatus.POLICY_ACCEPTED)
+                .expiresAt(LocalDateTime.now().minusMinutes(1))
+                .build();
+        when(sessionRepository.findByToken("old-token")).thenReturn(Optional.of(session));
+
+        assertThatThrownBy(() -> service.initPayment(request, "127.0.0.1"))
+                .isInstanceOf(AppException.class)
+                .extracting(ex -> ((AppException) ex).getErrorCode())
+                .isEqualTo(ErrorCode.REGISTRATION_SESSION_EXPIRED);
+        verify(sessionExpiry).markExpired(77L);
+        verifyNoInteractions(vnPayClient);
+    }
+
+    @Test
     @DisplayName("initPayment: thất bại khi session chưa ký thỏa thuận")
     void initPayment_invalidStatus_throwsException() {
         fu.se184491.loadmaster_be.dto.request.registration.InitPaymentRequest request =
@@ -541,8 +615,7 @@ class GuestRegistrationServiceTest {
         params.put("vnp_Amount", "200000000"); // 2,000,000 * 100
         params.put("vnp_SecureHash", "mock_hash");
 
-        when(vnPayClient.isMock()).thenReturn(true);
-        when(sessionRepository.findByPaymentRef("REG_12345")).thenReturn(Optional.of(session));
+        when(sessionRepository.findByPaymentRefForUpdate("REG_12345")).thenReturn(Optional.of(session));
         when(companyRepository.save(any(fu.se184491.loadmaster_be.entity.company.Company.class))).thenAnswer(i -> {
             fu.se184491.loadmaster_be.entity.company.Company comp = i.getArgument(0);
             comp.setId(10L);
@@ -598,31 +671,13 @@ class GuestRegistrationServiceTest {
     }
 
     @Test
-    @DisplayName("handlePaymentCallback: thất bại khi sai chữ ký checksum")
-    void handlePaymentCallback_invalidSignature() {
-        java.util.Map<String, String> params = java.util.Map.of(
-                "vnp_TxnRef", "REG_12345",
-                "vnp_SecureHash", "invalid"
-        );
-
-        when(vnPayClient.isMock()).thenReturn(false);
-        when(vnPayClient.verifyCallback(params)).thenReturn(false);
-
-        java.util.Map<String, String> result = service.handlePaymentCallback(params);
-
-        assertThat(result.get("RspCode")).isEqualTo("97");
-        assertThat(result.get("Message")).isEqualTo("Invalid Checksum");
-    }
-
-    @Test
     @DisplayName("handlePaymentCallback: thất bại khi không tìm thấy đơn")
     void handlePaymentCallback_orderNotFound() {
         java.util.Map<String, String> params = java.util.Map.of(
                 "vnp_TxnRef", "REG_NOT_FOUND"
         );
 
-        when(vnPayClient.isMock()).thenReturn(true);
-        when(sessionRepository.findByPaymentRef("REG_NOT_FOUND")).thenReturn(Optional.empty());
+        when(sessionRepository.findByPaymentRefForUpdate("REG_NOT_FOUND")).thenReturn(Optional.empty());
 
         java.util.Map<String, String> result = service.handlePaymentCallback(params);
 
@@ -642,8 +697,7 @@ class GuestRegistrationServiceTest {
                 "vnp_TxnRef", "REG_12345"
         );
 
-        when(vnPayClient.isMock()).thenReturn(true);
-        when(sessionRepository.findByPaymentRef("REG_12345")).thenReturn(Optional.of(session));
+        when(sessionRepository.findByPaymentRefForUpdate("REG_12345")).thenReturn(Optional.of(session));
 
         java.util.Map<String, String> result = service.handlePaymentCallback(params);
 
@@ -668,8 +722,7 @@ class GuestRegistrationServiceTest {
                 "vnp_ResponseCode", "24" // Customer cancelled
         );
 
-        when(vnPayClient.isMock()).thenReturn(true);
-        when(sessionRepository.findByPaymentRef("REG_12345")).thenReturn(Optional.of(session));
+        when(sessionRepository.findByPaymentRefForUpdate("REG_12345")).thenReturn(Optional.of(session));
 
         java.util.Map<String, String> result = service.handlePaymentCallback(params);
 

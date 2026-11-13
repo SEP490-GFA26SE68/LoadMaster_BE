@@ -1,5 +1,6 @@
 package fu.se184491.loadmaster_be.service.driver;
 
+import fu.se184491.loadmaster_be.constant.cargo.LabelMethod;
 import fu.se184491.loadmaster_be.dto.response.driver.ArriveStopResponse;
 import fu.se184491.loadmaster_be.dto.response.driver.CompleteStopResponse;
 import fu.se184491.loadmaster_be.dto.response.driver.ConfirmUnloadResponse;
@@ -16,7 +17,12 @@ public interface DriverService {
 
     CurrentStopResponse getCurrentStop(Long tripId);
 
-    ConfirmUnloadResponse confirmUnload(Long packageId, Long driverId);
+    /** Dỡ một kiện, đối chiếu bằng nhãn theo {@code method} (vắng là QR). */
+    ConfirmUnloadResponse confirmUnload(Long packageId, Long driverId, LabelMethod method);
+
+    default ConfirmUnloadResponse confirmUnload(Long packageId, Long driverId) {
+        return confirmUnload(packageId, driverId, null);
+    }
 
     CompleteStopResponse completeStop(Long stopId, Long driverId);
 

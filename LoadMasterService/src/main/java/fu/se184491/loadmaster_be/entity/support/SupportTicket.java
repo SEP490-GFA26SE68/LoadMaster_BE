@@ -61,6 +61,11 @@ public class SupportTicket {
     @Check(name = "support_tickets_resolved_at_check", constraints = "resolved_at IS NULL OR resolved_at ~ '^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01]) ([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]$'")
     private LocalDateTime resolvedAt;
 
+    /** Lần đổi gần nhất (trả lời, đổi trạng thái); phiếu cũ để trống thì tính từ tạo, giải quyết và trao đổi cũ. */
+    @Convert(converter = LocalDateTimeSecondsConverter.class)
+    @Column(name = "updated_at", length = 19, columnDefinition = "varchar(19)")
+    private LocalDateTime updatedAt;
+
     @Converter
     public static class LocalDateTimeSecondsConverter implements AttributeConverter<LocalDateTime, String> {
         private static final DateTimeFormatter FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");

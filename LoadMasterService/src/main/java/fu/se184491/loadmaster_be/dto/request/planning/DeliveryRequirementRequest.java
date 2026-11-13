@@ -48,8 +48,8 @@ public class DeliveryRequirementRequest {
     private String note;
 
     /**
-     * Tạo yêu cầu không cần có kiện.
-     * Warehouse sẽ bổ sung kiện sau khi tiếp nhận hàng.
+     * Kiện chọn sẵn từ kho kiện (chờ xử lý, không cờ, chưa thuộc yêu cầu khác); có thể để trống:
+     * kho bổ sung kiện sau khi tiếp nhận hàng.
      */
     @Builder.Default
     private List<@NotNull @Positive Long> packageIds = new ArrayList<>();

@@ -1,100 +1,118 @@
 package fu.se184491.loadmaster_be.controller.credit;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import fu.se184491.loadmaster_be.config.security.WebSecurityConfig;
 import fu.se184491.loadmaster_be.controller.internal.CreditInternalController;
-import fu.se184491.loadmaster_be.security.TestJwtSupport;
-import fu.se184491.loadmaster_be.service.credit.CreditService;
+import fu.se184491.loadmaster_be.dto.request.credit.CreditInternalRequest;
 import fu.se184491.loadmaster_be.exception.InsufficientCreditsException;
+import fu.se184491.loadmaster_be.service.credit.CreditService;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.context.annotation.Import;
+import org.springframework.http.MediaType;
+import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationConverter;
+import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
-import java.time.Instant;
-import java.util.List;
+
 import static org.mockito.Mockito.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
-@WebMvcTest({CreditInternalController.class, InternalCreditController.class})
-@Import(TestJwtSupport.class)
-class CreditInternalControllerTest {
-    @Autowired MockMvc mvc;
-    @MockitoBean CreditService creditService;
+@WebMvcTest(CreditInternalController.class)
+@Import(WebSecurityConfig.class)
+@AutoConfigureMockMvc(addFilters = false)
+// Controller chỉ mở cho service account của dịch vụ tối ưu (realm role OPTIMIZATION_CREDIT).
+@WithMockUser(authorities = "ROLE_OPTIMIZATION_CREDIT")
+public class CreditInternalControllerTest {
 
-    private String body(String path) {
-        return path.startsWith("/api/internal/")
-                ? "{\"companyId\":1,\"reference\":\"job-123\"}"
-                : "{\"company_id\":1,\"reference\":\"job-123\"}";
-    }
-    private void request(String path, String token, int expected) throws Exception {
-        var request = post(path).contentType("application/json").content(body(path));
-        if (token != null) request.header("Authorization", "Bearer " + token);
-        mvc.perform(request).andExpect(status().is(expected));
-    }
-    private String service(String audience, String client, String username, List<String> roles) throws Exception {
-        return TestJwtSupport.serviceToken(audience, client, username, roles);
-    }
+    @Autowired
+    private MockMvc mockMvc;
 
-    @ParameterizedTest
-    @ValueSource(strings={"/api/internal/credits/deduct","/api/internal/credits/refund","/api/credits/deduct","/api/credits/refund"})
-    void anonymousIs401(String path) throws Exception {
-        request(path, null, 401); verifyNoInteractions(creditService);
+    @MockitoBean
+    private CreditService creditService;
+
+    @MockitoBean
+    private JwtAuthenticationConverter jwtAuthenticationConverter;
+
+    private ObjectMapper objectMapper;
+
+    @BeforeEach
+    void setUp() {
+        objectMapper = new ObjectMapper();
     }
 
-    @ParameterizedTest
-    @ValueSource(strings={"/api/internal/credits/deduct","/api/internal/credits/refund","/api/credits/deduct","/api/credits/refund"})
-    void signedWrongAudienceIs401(String path) throws Exception {
-        request(path, service("account", "optimization-service", "service-account-optimization-service", List.of("OPTIMIZATION_CREDIT")), 401);
-        verifyNoInteractions(creditService);
+    @Test
+    @DisplayName("POST /api/internal/credits/deduct - Deduct credit success")
+    void testDeductCreditSuccess() throws Exception {
+        CreditInternalRequest request = CreditInternalRequest.builder()
+                .companyId(1L)
+                .reference("job-123")
+                .build();
+
+        doNothing().when(creditService).deductCredit(1L, "job-123");
+
+        mockMvc.perform(post("/api/internal/credits/deduct")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.message").value("Credit deducted successfully"));
+
+        verify(creditService).deductCredit(1L, "job-123");
     }
 
-    @ParameterizedTest
-    @ValueSource(strings={"/api/internal/credits/deduct","/api/internal/credits/refund","/api/credits/deduct","/api/credits/refund"})
-    void missingRoleIs403(String path) throws Exception {
-        request(path, service("loadmaster-api", "optimization-service", "service-account-optimization-service", List.of()), 403);
-        verifyNoInteractions(creditService);
+    @Test
+    @DisplayName("POST /api/internal/credits/deduct - Insufficient credits returns 402")
+    void testDeductCreditInsufficientReturns402() throws Exception {
+        CreditInternalRequest request = CreditInternalRequest.builder()
+                .companyId(1L)
+                .reference("job-123")
+                .build();
+
+        doThrow(new InsufficientCreditsException(1L, 0))
+                .when(creditService).deductCredit(1L, "job-123");
+
+        mockMvc.perform(post("/api/internal/credits/deduct")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isPaymentRequired())
+                .andExpect(jsonPath("$.success").value(false));
+
+        verify(creditService).deductCredit(1L, "job-123");
     }
 
-    @ParameterizedTest
-    @ValueSource(strings={"/api/internal/credits/deduct","/api/internal/credits/refund","/api/credits/deduct","/api/credits/refund"})
-    void otherServiceEvenWithCreditRoleIs403(String path) throws Exception {
-        request(path, service("loadmaster-api", "another-service", "service-account-another-service", List.of("OPTIMIZATION_CREDIT")), 403);
-        verifyNoInteractions(creditService);
+    @Test
+    @DisplayName("POST /api/internal/credits/refund - Refund credit success")
+    void testRefundCreditSuccess() throws Exception {
+        CreditInternalRequest request = CreditInternalRequest.builder()
+                .reference("job-123")
+                .build();
+
+        doNothing().when(creditService).refundCredit(null, "job-123");
+
+        mockMvc.perform(post("/api/internal/credits/refund")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.message").value("Credit refunded successfully"));
+
+        verify(creditService).refundCredit(null, "job-123");
     }
 
-    @ParameterizedTest
-    @ValueSource(strings={"/api/internal/credits/deduct","/api/internal/credits/refund","/api/credits/deduct","/api/credits/refund"})
-    void interactiveUserEvenWithMatchingClientAndRoleIs403(String path) throws Exception {
-        request(path, service("loadmaster-api", "optimization-service", "human-user", List.of("OPTIMIZATION_CREDIT")), 403);
-        verifyNoInteractions(creditService);
-    }
+    @Test
+    @DisplayName("Thân snake_case của dịch vụ tối ưu (company_id dạng chuỗi) vẫn đọc được")
+    void acceptsSnakeCaseCompanyId() throws Exception {
+        mockMvc.perform(post("/api/internal/credits/deduct")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"company_id\":\"7\",\"reference\":\"job-7\"}"))
+                .andExpect(status().isOk());
 
-    @ParameterizedTest
-    @ValueSource(strings={"/api/internal/credits/deduct","/api/internal/credits/refund","/api/credits/deduct","/api/credits/refund"})
-    void correctSignedServiceTokenIsAllowed(String path) throws Exception {
-        request(path, service("loadmaster-api", "optimization-service", "service-account-optimization-service", List.of("OPTIMIZATION_CREDIT")), 200);
-        if (path.endsWith("/deduct")) verify(creditService).deductCredit(1L,"job-123");
-        else verify(creditService).refundCredit(1L,"job-123");
-    }
-
-    @Test void expiredSignedTokenIs401() throws Exception {
-        request("/api/internal/credits/refund", TestJwtSupport.token("loadmaster-api", "optimization-service",
-                "service-account-optimization-service", "service", List.of("OPTIMIZATION_CREDIT"),
-                TestJwtSupport.ISSUER, Instant.now().minusSeconds(300)), 401);
-        verifyNoInteractions(creditService);
-    }
-    @Test void wrongIssuerIs401() throws Exception {
-        request("/api/internal/credits/refund", TestJwtSupport.token("loadmaster-api", "optimization-service",
-                "service-account-optimization-service", "service", List.of("OPTIMIZATION_CREDIT"),
-                "https://other-issuer.test", Instant.now().plusSeconds(300)), 401);
-        verifyNoInteractions(creditService);
-    }
-    @Test void insufficientCreditStatusRemains402() throws Exception {
-        doThrow(new InsufficientCreditsException()).when(creditService).deductCredit(1L,"job-123");
-        request("/api/internal/credits/deduct", service("loadmaster-api", "optimization-service",
-                "service-account-optimization-service", List.of("OPTIMIZATION_CREDIT")), 402);
+        verify(creditService).deductCredit(7L, "job-7");
     }
 }

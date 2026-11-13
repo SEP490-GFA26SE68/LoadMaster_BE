@@ -65,7 +65,8 @@ public class LoadPlanReadRepository {
             LEFT JOIN users u ON u.id = lp.approved_by
             """;
 
-    private static final TimeZone UTC = TimeZone.getTimeZone("UTC");
+    // Cả Java lẫn dịch vụ tối ưu ghi created_at theo giờ Việt Nam, không múi giờ.
+    private static final TimeZone VIETNAM = TimeZone.getTimeZone("Asia/Ho_Chi_Minh");
 
     private static final RowMapper<LoadPlanDetailResponse> PLAN_MAPPER = (rs, i) -> mapPlan(rs);
 
@@ -103,7 +104,7 @@ public class LoadPlanReadRepository {
     public Optional<OptimizationJobStatusResponse> findJobStatus(Long jobId) {
         List<OptimizationJobStatusResponse> rows = jdbc.query("""
                         SELECT j.id, j.job_uuid, j.trip_id, j.objective, j.time_limit_sec, j.status,
-                               j.computation_ms, j.created_at, j.algorithm_name,
+                               j.computation_ms, j.created_at, j.algorithm_name, j.failure_code,
                                (SELECT COUNT(*) FROM load_plans lp
                                 WHERE lp.job_id = j.id AND COALESCE(lp.packed_items_count, 0) > 0) AS packed_plans,
                                (SELECT COALESCE(MAX(per_plan.pins), 0) FROM (
@@ -116,7 +117,7 @@ public class LoadPlanReadRepository {
                         """,
                 Map.of("id", jobId),
                 (rs, i) -> {
-                    Timestamp createdAt = rs.getTimestamp("created_at", Calendar.getInstance(UTC));
+                    Timestamp createdAt = rs.getTimestamp("created_at", Calendar.getInstance(VIETNAM));
                     return OptimizationJobStatusResponse.builder()
                             .id(rs.getLong("id"))
                             .jobId(rs.getString("job_uuid"))
@@ -126,10 +127,10 @@ public class LoadPlanReadRepository {
                             .status(rs.getString("status"))
                             .computationMs(nullableLong(rs, "computation_ms"))
                             .runAlgorithm(rs.getString("algorithm_name"))
-                            // Dịch vụ tối ưu ghi created_at theo giờ UTC (không múi giờ).
                             .createdAt(createdAt == null ? null : createdAt.toInstant())
                             .packedPlanCount(rs.getInt("packed_plans"))
                             .pinnedCount(rs.getInt("pinned_count"))
+                            .failureCode(rs.getString("failure_code"))
                             .build();
                 });
         return rows.stream().findFirst();

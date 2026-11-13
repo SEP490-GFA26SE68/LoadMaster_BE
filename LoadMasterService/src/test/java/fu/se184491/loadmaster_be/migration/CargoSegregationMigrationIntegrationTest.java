@@ -33,6 +33,7 @@ class CargoSegregationMigrationIntegrationTest {
                     .dataSource(postgres.getJdbcUrl(), postgres.getUsername(), postgres.getPassword())
                     .baselineOnMigrate(true)
                     .baselineVersion(MigrationVersion.fromVersion("0"))
+                    .target(MigrationVersion.fromVersion("3"))
                     .load()
                     .migrate();
 

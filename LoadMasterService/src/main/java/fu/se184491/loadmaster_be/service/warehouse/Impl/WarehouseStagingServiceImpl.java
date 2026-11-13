@@ -178,6 +178,8 @@ public class WarehouseStagingServiceImpl implements WarehouseStagingService {
         StagingShortage shortage = stagingShortageRepository.findById(shortageId)
                 .filter(found -> found.getTrip() != null && trip.getId().equals(found.getTrip().getId()))
                 .orElseThrow(() -> new AppException(ErrorCode.STAGING_SHORTAGE_NOT_FOUND));
+        // Khoá chuyến rồi đọc lại: hai lần quyết cùng báo thiếu, hay quyết chồng lệnh huỷ, chạy lần lượt
+        lookup.lock(trip, shortage);
         if (shortage.getStatus() != ShortageStatus.OPEN || trip.getStatus() != TripStatus.LOADING) {
             throw new AppException(ErrorCode.STAGING_SHORTAGE_NOT_OPEN);
         }
@@ -198,6 +200,9 @@ public class WarehouseStagingServiceImpl implements WarehouseStagingService {
         values.put("packageId", shortage.getCargoPackage() != null ? shortage.getCargoPackage().getId() : null);
         values.put("tripId", trip.getId());
         values.put("decision", request.getDecision().name());
+        // Người báo thiếu và tài xế lúc quyết định: chuông của họ đọc hai mã này
+        values.put("reportedBy", shortage.getReportedBy() != null ? shortage.getReportedBy().getId() : null);
+        values.put("driverId", trip.getDriver() != null ? trip.getDriver().getId() : null);
         lookup.audit(trip, dispatcher, "STAGING_SHORTAGE_RESOLVED", "StagingShortage", shortage.getId(), values);
         return toResponse(shortage, stop);
     }

@@ -263,7 +263,8 @@ public class TripController {
     }
 
     /**
-     * Huỷ chuyến Nháp / Đã lập kế hoạch / Đang xếp hàng kèm lý do.
+     * Huỷ chuyến Nháp / Đã lập kế hoạch / Đang xếp hàng kèm lý do; chuyến Đang vận chuyển chỉ khi còn sự cố chưa xử lý
+     * (không có: 409 TRIP_CANCEL_NEEDS_OPEN_EXCEPTION), kiện chưa giao thành hoàn trả.
      * Yêu cầu giao và kiện của chuyến về Chờ xử lý.
      */
     @PostMapping("/{id}/cancel")

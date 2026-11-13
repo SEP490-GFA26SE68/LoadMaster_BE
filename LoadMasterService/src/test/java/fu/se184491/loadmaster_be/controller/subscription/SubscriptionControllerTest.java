@@ -38,7 +38,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @WebMvcTest(SubscriptionController.class)
 @Import(WebSecurityConfig.class)
 @AutoConfigureMockMvc(addFilters = false)
-@WithMockUser(authorities = "COMPANY_ADMIN")
+@WithMockUser(roles = "ADMIN")
 public class SubscriptionControllerTest {
 
     @Autowired

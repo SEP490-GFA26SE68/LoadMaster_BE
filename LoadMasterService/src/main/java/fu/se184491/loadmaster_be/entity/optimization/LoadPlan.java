@@ -10,7 +10,9 @@ import lombok.*;
 import java.math.BigDecimal;
 
 @Entity
-@Table(name = "load_plans")
+@Table(name = "load_plans", indexes = {
+        @Index(name = "idx_load_plans_job_id", columnList = "job_id")
+})
 @Getter @Setter @NoArgsConstructor @AllArgsConstructor @Builder
 public class LoadPlan {
     @Id @GeneratedValue(strategy = GenerationType.IDENTITY)

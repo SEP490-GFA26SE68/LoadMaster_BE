@@ -13,14 +13,17 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
+import org.springframework.transaction.PlatformTransactionManager;
 
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -32,6 +35,7 @@ class DevAdminInitializerTest {
 
     @Mock private UserRepository userRepository;
     @Mock private KeycloakAdminClient keycloakAdminClient;
+    @Mock private PlatformTransactionManager transactionManager;
 
     @InjectMocks private DevAdminInitializer initializer;
 
@@ -126,5 +130,21 @@ class DevAdminInitializerTest {
         assertEquals(UserRole.SYSTEM_ADMIN, saved.getValue().getUserRoleType());
         // Mật khẩu của DEV_ADMIN_PASSWORD không phải mật khẩu tạm: đăng nhập bằng form của app được ngay
         verify(keycloakAdminClient).setPassword(eq("kc-moi"), anyString(), eq(false));
+    }
+
+    @Test
+    @DisplayName("Gán vai trò lỗi: tài khoản Keycloak vừa tạo bị xoá lại, không lưu DB")
+    void failedRoleAssignmentDeletesTheNewKeycloakUser() {
+        relink(false);
+        when(userRepository.findByEmail(EMAIL)).thenReturn(Optional.empty());
+        when(keycloakAdminClient.findUserIdByEmail(EMAIL)).thenReturn(null);
+        when(keycloakAdminClient.createUser(EMAIL, "LoadMaster Admin")).thenReturn("kc-moi");
+        doThrow(new IllegalStateException("keycloak")).when(keycloakAdminClient)
+                .assignRealmRole("kc-moi", UserRole.SYSTEM_ADMIN.name());
+
+        assertThrows(IllegalStateException.class, () -> initializer.run(null));
+
+        verify(keycloakAdminClient).deleteUser("kc-moi");
+        verify(userRepository, never()).save(any(User.class));
     }
 }

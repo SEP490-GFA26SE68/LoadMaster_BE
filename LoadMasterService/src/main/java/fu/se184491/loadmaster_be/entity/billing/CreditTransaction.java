@@ -13,6 +13,9 @@ import java.time.temporal.ChronoUnit;
 @Table(name = "credit_transactions", indexes = {
         @Index(name = "idx_credit_account_id", columnList = "credit_account_id"),
         @Index(name = "idx_credit_reference", columnList = "reference")
+}, uniqueConstraints = {
+        // Một tham chiếu chỉ ghi một lần cho mỗi loại giao dịch (trừ, hoàn, nạp, cấp theo kỳ); null không bị ràng buộc.
+        @UniqueConstraint(name = "uk_credit_tx_reference_type", columnNames = {"reference", "type"})
 })
 @Getter
 @Setter

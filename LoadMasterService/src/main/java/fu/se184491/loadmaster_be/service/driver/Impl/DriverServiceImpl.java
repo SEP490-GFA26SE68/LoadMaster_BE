@@ -1,6 +1,7 @@
 package fu.se184491.loadmaster_be.service.driver.Impl;
 
 import fu.se184491.loadmaster_be.service.audit.AuditCompany;
+import fu.se184491.loadmaster_be.constant.cargo.LabelMethod;
 import fu.se184491.loadmaster_be.constant.cargo.PackageStatus;
 import fu.se184491.loadmaster_be.constant.optimization.LoadingExecutionStatus;
 import fu.se184491.loadmaster_be.constant.planning.DeliveryRequirementStatus;
@@ -46,7 +47,6 @@ import fu.se184491.loadmaster_be.service.monitoring.TripLookupHelper;
 import fu.se184491.loadmaster_be.service.pickup.PickupDriverService;
 import fu.se184491.loadmaster_be.service.trip.TripPackageResolver;
 import fu.se184491.loadmaster_be.service.trip.TripStatusService;
-import fu.se184491.loadmaster_be.service.trip.TripDepartureReadiness;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -74,7 +74,6 @@ import java.util.stream.Collectors;
 @Slf4j
 public class DriverServiceImpl implements DriverService {
 
-    private final TripDepartureReadiness departureReadiness;
     private final TripRepository tripRepository;
     private final DeliveryStopRepository deliveryStopRepository;
     private final LoadPlanRepository loadPlanRepository;
@@ -96,11 +95,8 @@ public class DriverServiceImpl implements DriverService {
     @Transactional(readOnly = true)
     public List<DriverTripResponse> listTrips(Long driverId) {
         User driver = currentDriver(driverId);
-        if (driver.getCompany() == null || driver.getCompany().getId() == null) {
-            throw new AppException(ErrorCode.USER_COMPANY_NOT_FOUND);
-        }
         List<DriverTripResponse> trips = new ArrayList<>();
-        for (Trip trip : tripRepository.findByDriver_IdAndCompany_IdOrderByDepartureTimeDesc(driver.getId(), driver.getCompany().getId())) {
+        for (Trip trip : tripRepository.findByDriver_IdOrderByDepartureTimeDesc(driver.getId())) {
             trips.add(toTripResponse(trip));
         }
         return trips;
@@ -110,12 +106,14 @@ public class DriverServiceImpl implements DriverService {
     @Transactional
     public DriverTripResponse startTrip(Long tripId) {
         User driver = currentDriver(null);
-        Trip trip = departureReadiness.lockAssignedTrip(tripId, driver);
-        requireDriverOf(trip, driver);
+        Trip trip = requireOwnTrip(String.valueOf(tripId));
+        // Khoá chuyến rồi kiểm trạng thái: không xuất phát chồng với lệnh huỷ
+        tripStatusService.lockForTransition(trip.getId());
         if (trip.getStatus() != TripStatus.LOADING) {
             throw new AppException(ErrorCode.LOADING_NOT_COMPLETED);
         }
-        boolean loaded = departureReadiness.canStartLocked(trip, driver);
+        boolean loaded = loadingExecutionRepository
+                .existsByLoadPlanJobTripIdAndStatus(trip.getId(), LoadingExecutionStatus.COMPLETED);
         if (!loaded) {
             throw new AppException(ErrorCode.LOADING_NOT_COMPLETED);
         }
@@ -125,6 +123,7 @@ public class DriverServiceImpl implements DriverService {
                 requirement.setStatus(DeliveryRequirementStatus.IN_TRIP);
             }
         }
+        trip.setDepartedAt(LocalDateTime.now());
         Trip started = tripStatusService.transitionTo(trip.getId(), TripStatus.IN_TRANSIT, driver.getId());
         log.info("Driver {} started trip {}", driver.getId(), started.getTripCode());
         return toTripResponse(started);
@@ -258,7 +257,7 @@ public class DriverServiceImpl implements DriverService {
 
     @Override
     @Transactional
-    public ConfirmUnloadResponse confirmUnload(Long packageId, Long driverId) {
+    public ConfirmUnloadResponse confirmUnload(Long packageId, Long driverId, LabelMethod method) {
         User driver = currentDriver(driverId);
         CargoPackage pkg = cargoPackageRepository.findById(packageId)
                 .orElseThrow(() -> new AppException(ErrorCode.PACKAGE_NOT_FOUND));
@@ -290,12 +289,17 @@ public class DriverServiceImpl implements DriverService {
                 throw new WrongStopException("Kiện hàng không thuộc điểm dừng hiện tại");
             }
         }
+        // Dỡ chỉ sau khi tài xế báo đã đến điểm (như dỡ qua hộp đối chiếu và xác nhận tay)
+        if (currentStop.getActualArrival() == null) {
+            throw new AppException(ErrorCode.DELIVERY_STOP_NOT_ARRIVED);
+        }
 
         UnloadConfirmation confirmation = UnloadConfirmation.builder()
                 .cargoPackage(pkg)
                 .deliveryStop(packageStop)
                 .driver(driver)
                 .unloadedAt(LocalDateTime.now())
+                .method(LabelMethod.orQr(method))
                 .build();
         UnloadConfirmation savedConfirmation = unloadConfirmationRepository.save(confirmation);
 
@@ -345,6 +349,8 @@ public class DriverServiceImpl implements DriverService {
             throw new AppException(ErrorCode.TRIP_NOT_FOUND);
         }
         requireDriverOf(trip, driver);
+        // Khoá chuyến rồi đọc lại chuyến và điểm: hai lần hoàn tất cùng điểm, hay hoàn tất chồng lệnh huỷ, chạy lần lượt
+        tripStatusService.lockForTransition(trip.getId(), stop);
         if (trip.getStatus() != TripStatus.IN_TRANSIT) {
             throw new AppException(ErrorCode.GPS_TRIP_NOT_IN_TRANSIT);
         }
@@ -394,6 +400,7 @@ public class DriverServiceImpl implements DriverService {
             stop.setActualArrival(LocalDateTime.now());
         }
         stop.setStatus(DeliveryStopStatus.COMPLETED);
+        stop.setCompletedAt(LocalDateTime.now());
         deliveryStopRepository.save(stop);
         pickupDriverService.onStopCompleted(stop, driver);
 
@@ -556,7 +563,8 @@ public class DriverServiceImpl implements DriverService {
                 .stopCount((int) deliveryStopRepository.countByTripId(trip.getId()))
                 .departureTime(trip.getDepartureTime())
                 .status(trip.getStatus() != null ? trip.getStatus().name() : null)
-                .loadingCompleted(departureReadiness.canStart(trip, currentUserService.getCurrentUser()))
+                .loadingCompleted(loadingExecutionRepository
+                        .existsByLoadPlanJobTripIdAndStatus(trip.getId(), LoadingExecutionStatus.COMPLETED))
                 .completedAt(completedAtOf(trip))
                 .build();
     }

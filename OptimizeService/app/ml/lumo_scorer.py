@@ -102,7 +102,10 @@ def get_lumo_scorer() -> Optional[LumoScorer]:
     if _scorer is not None:
         return _scorer
     if not pct_policy_available():
-        logger.info("Lumo skipped: PyTorch is not installed")
+        logger.warning(
+            "Lumo-R1.1 không chấm chỗ đặt: chưa cài PyTorch, gói ULTIMATE dùng heuristic. "
+            "Cài bằng: pip install -r requirements-ai.txt"
+        )
         return None
     try:
         _scorer = LumoScorer(settings.LUMO_MODEL_PATH)

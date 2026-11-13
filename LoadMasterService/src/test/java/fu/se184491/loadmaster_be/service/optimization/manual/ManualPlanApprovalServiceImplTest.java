@@ -89,7 +89,7 @@ class ManualPlanApprovalServiceImplTest {
                 .build();
         when(loadPlanQueryService.getPlan(5L)).thenReturn(source);
         when(loadPlanQueryService.getPlan(6L)).thenReturn(saved);
-        when(tripRepository.findById(10L)).thenReturn(Optional.of(trip));
+        when(tripRepository.findByIdForUpdate(10L)).thenReturn(Optional.of(trip));
         when(currentUserService.getCurrentUser()).thenReturn(User.builder().id(42L).build());
         when(loadPlanRepository.findById(5L)).thenReturn(Optional.of(LoadPlan.builder().id(5L).version(1)
                 .job(OptimizationJob.builder().id(9L).trip(trip).build()).objective("MAX_VOLUME").algorithmName("GA").build()));

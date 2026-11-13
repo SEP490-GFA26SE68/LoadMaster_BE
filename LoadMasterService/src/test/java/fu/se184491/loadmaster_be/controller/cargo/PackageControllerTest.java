@@ -189,4 +189,22 @@ public class PackageControllerTest {
                 .andExpect(status().isOk());
     }
 
+
+    @Test
+    @WithMockUser(roles = "WAREHOUSE_WORKER")
+    void reportFound_WarehouseWorker_Success() throws Exception {
+        when(packageService.reportFound(1L, 100L)).thenReturn(response);
+
+        mockMvc.perform(post("/api/packages/100/found"))
+                .andExpect(status().isOk());
+        org.mockito.Mockito.verify(packageService).reportFound(1L, 100L);
+    }
+
+    @Test
+    @WithMockUser(roles = "DISPATCHER")
+    void reportFound_OtherRoles_Forbidden() throws Exception {
+        mockMvc.perform(post("/api/packages/100/found"))
+                .andExpect(status().isForbidden());
+        org.mockito.Mockito.verify(packageService, org.mockito.Mockito.never()).reportFound(any(), any());
+    }
 }

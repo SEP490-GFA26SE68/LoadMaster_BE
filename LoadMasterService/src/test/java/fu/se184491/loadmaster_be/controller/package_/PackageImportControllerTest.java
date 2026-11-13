@@ -63,7 +63,8 @@ class PackageImportControllerTest {
     private RestAccessDeniedHandler accessDeniedHandler;
 
     @Test
-    @org.springframework.security.test.context.support.WithMockUser(roles = "WAREHOUSE_WORKER")
+    // Token của nhân viên kho mang PACKAGE_MANAGE (RolePermissionMapping).
+    @org.springframework.security.test.context.support.WithMockUser(authorities = {"ROLE_WAREHOUSE_WORKER", "PACKAGE_MANAGE"})
     @DisplayName("POST /api/packages/import/confirm with errors returns 422 with error details in data and errors fields")
     void confirm_whenValidationFails_returns422WithDetailedErrors() throws Exception {
         // Given
@@ -98,5 +99,28 @@ class PackageImportControllerTest {
                 .andExpect(jsonPath("$.data.errors[0].field").value("handlingClass"))
                 .andExpect(jsonPath("$.data.errors[0].errorCode").value("IMPORT_INVALID_HANDLING_CLASS"))
                 .andExpect(jsonPath("$.errors[0].field").value("handlingClass"));
+    }
+
+    @Test
+    @org.springframework.security.test.context.support.WithMockUser(roles = "DISPATCHER")
+    @DisplayName("Điều phối viên được xem trước file nhập kiện, như được ghi kiện")
+    void preview_asDispatcher_isAllowed() throws Exception {
+        MockMultipartFile file = new MockMultipartFile("file", "kien.csv", "text/csv", "pkg".getBytes());
+        when(currentUserService.getCurrentCompanyId()).thenReturn(1L);
+        when(packageImportService.preview(any(), any()))
+                .thenReturn(new ImportPreviewResult(0, 0, Collections.emptyList(), Collections.emptyList()));
+
+        mockMvc.perform(multipart("/api/packages/import/preview").file(file))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    @org.springframework.security.test.context.support.WithMockUser(roles = "MANAGER")
+    @DisplayName("Quản lý công ty chỉ đọc kho kiện, không nhập file")
+    void preview_asManager_isForbidden() throws Exception {
+        MockMultipartFile file = new MockMultipartFile("file", "kien.csv", "text/csv", "pkg".getBytes());
+
+        mockMvc.perform(multipart("/api/packages/import/preview").file(file))
+                .andExpect(status().isForbidden());
     }
 }
