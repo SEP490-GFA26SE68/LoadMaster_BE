@@ -19,4 +19,5 @@ prd.md
 
 .env
 .env.*
+!.env.example
 issues/

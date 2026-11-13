@@ -18,7 +18,7 @@ from app.exception.app_exception import AppException
 from app.exception.error_code import ErrorCode
 from app.service.optimize.engine_exception_handler import EngineExceptionHandler
 from app.service.optimize.optimization_client import OptimizationClient
-from app.service.optimize.optimization_job_service import OptimizationJobService
+from app.service.optimize.optimization_job_service import JobAlreadyFinishedError, OptimizationJobService
 
 logger = logging.getLogger(__name__)
 
@@ -472,6 +472,20 @@ class AsyncOptimizationRunner:
                 await self._refund(job.company_id, job_uuid_str)
                 is_credit_deducted = False
             logger.info(f"Finished async optimization job: {job_uuid_str}")
+
+        except JobAlreadyFinishedError as finished:
+            # Job đã kết thúc ở nơi khác trong lúc chạy — LoadMasterService đánh dấu FAILED JOB_INTERRUPTED khi job
+            # quá hạn. update_status đã rollback nên phương án của kết quả đến muộn không được lưu. Lượt trừ credit
+            # của lần chạy này được hoàn qua lối hoàn theo mã job: Java hoàn mỗi mã job đúng một lần, nên nếu Java
+            # đã hoàn lúc đánh dấu job thì lượt này không đổi số dư.
+            logger.warning(
+                "Discarding late optimization result for job %s: job already %s",
+                job_uuid_str,
+                finished.current_status,
+            )
+            if is_credit_deducted and job and job.company_id:
+                await self._refund(job.company_id, job_uuid_str)
+                is_credit_deducted = False
 
         except Exception as exc:
             logger.error(f"Error executing async optimization job {job_uuid_str}: {exc}")

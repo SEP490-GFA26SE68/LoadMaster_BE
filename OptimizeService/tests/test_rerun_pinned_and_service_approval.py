@@ -72,9 +72,10 @@ SERVICE_CLAIMS = {
     },
 }
 
+# Token Keycloak của người dùng không có users.id: chỉ có sub, dịch vụ tra users.keycloak_id
 USER_CLAIMS = {
     "azp": "loadmaster-web",
-    "user_id": 456,
+    "sub": "kc-user-456",
     "resource_access": {settings.KEYCLOAK_AUDIENCE: {"roles": ["DISPATCHER"]}},
 }
 
@@ -230,8 +231,12 @@ class TestServiceApproval:
         assert response.status_code == 400
         assert service.approved == []
 
-    def test_user_token_approves_as_token_user(self):
+    def test_user_token_approves_as_token_user(self, monkeypatch):
         service = FakePlanService()
+        monkeypatch.setattr(
+            load_plan_router, "user_id_of_caller",
+            lambda claims, db: 456 if claims.get("sub") == "kc-user-456" else None,
+        )
         response = self._client(USER_CLAIMS, service).post(
             "/api/v1/load-plans/12/approve", json={"approved_by_user_id": 1})
 

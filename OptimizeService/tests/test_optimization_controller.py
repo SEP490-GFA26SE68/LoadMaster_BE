@@ -5,17 +5,16 @@ Seams under test:
   - POST /api/v1/optimization/jobs -> 202 Accepted + {"job_id": ...}
   - GET  /api/v1/optimization/jobs/{id} -> 200 + status & metadata
   - GET  /api/v1/optimization/jobs/{id}/plans -> 200 + list of LoadPlans
-  - Auth verification: require_role("DISPATCHER", "ADMIN")
+  - Auth verification: require_optimization_service (service token của LoadMasterService)
 
 Acceptance Criteria:
   1. POST /api/v1/optimization/jobs — body { trip_id, objective, time_limit_sec, seed } -> 202 + { job_id }
   2. GET /api/v1/optimization/jobs/{id} -> status, metadata
   3. GET /api/v1/optimization/jobs/{id}/plans -> LoadPlan + placements
-  4. Chỉ DISPATCHER / ADMIN mới được gọi (FastAPI verify JWT role)
+  4. Chỉ service token của LoadMasterService gọi được (role OPTIMIZATION_EXECUTE, azp của backend)
 """
 import uuid
 import pytest
-import jwt
 from starlette.testclient import TestClient
 
 from app.main import app
@@ -24,17 +23,12 @@ from app.constant.optimization.job_status import OptimizationJobStatus
 from app.constant.optimization.objective import OptimizationObjective
 from app.entity.optimization.optimization_job import OptimizationJob
 from app.entity.trip_model import Trip
-from app.service.auth.auth_dependency import require_role
+from tests.keycloak_tokens import keycloak_token, service_headers, user_headers
 
 
-def make_jwt_token(roles: list[str]) -> str:
-    """Tạo JWT token giả lập từ Keycloak chứa roles."""
-    payload = {
-        "iss": "http://localhost:8080/realms/loadmaster",
-        "sub": "user-123",
-        "realm_access": {"roles": roles},
-    }
-    return jwt.encode(payload, "secret-test-key", algorithm="HS256")
+# Ba endpoint job chỉ nhận service token của LoadMasterService (require_optimization_service): token ký RS256 như
+# Keycloak, chỉ JWKS được thay bằng khoá của test (fixture keycloak_jwks).
+pytestmark = pytest.mark.usefixtures("keycloak_jwks")
 
 
 @pytest.fixture
@@ -44,20 +38,17 @@ def client():
 
 @pytest.fixture
 def dispatcher_headers():
-    token = make_jwt_token(["DISPATCHER"])
-    return {"Authorization": f"Bearer {token}"}
+    return service_headers()
 
 
 @pytest.fixture
 def admin_headers():
-    token = make_jwt_token(["ADMIN"])
-    return {"Authorization": f"Bearer {token}"}
+    return service_headers()
 
 
 @pytest.fixture
 def driver_headers():
-    token = make_jwt_token(["DRIVER"])
-    return {"Authorization": f"Bearer {token}"}
+    return user_headers("DRIVER")
 
 
 class TestOptimizationAuth:
@@ -65,26 +56,46 @@ class TestOptimizationAuth:
         """Không có token -> 401 Unauthorized"""
         response = client.post(
             "/api/v1/optimization/jobs",
-            json={"trip_id": str(uuid.uuid4()), "objective": "MAX_VOLUME"},
+            json={"trip_id": 404, "objective": "MAX_VOLUME"},
         )
         assert response.status_code == 401
 
-    @pytest.mark.integration  # cần token RS256 do Keycloak thật ký (JWKS)
     def test_submit_job_with_unauthorized_role_returns_403(self, client, driver_headers):
         """User có role DRIVER (không phải DISPATCHER/ADMIN) -> 403 Forbidden"""
         response = client.post(
             "/api/v1/optimization/jobs",
-            json={"trip_id": str(uuid.uuid4()), "objective": "MAX_VOLUME"},
+            json={"trip_id": 404, "objective": "MAX_VOLUME"},
             headers=driver_headers,
         )
         assert response.status_code == 403
 
 
-@pytest.mark.integration  # cần token RS256 do Keycloak thật ký (JWKS)
+    def test_user_token_with_dispatcher_role_returns_403(self, client):
+        """Token người dùng (azp loadmaster-web) dù có role đúng cũng không gọi được: chỉ service token của backend."""
+        token = keycloak_token(["OPTIMIZATION_EXECUTE", "DISPATCHER"])
+        response = client.post(
+            "/api/v1/optimization/jobs",
+            json={"trip_id": 404, "objective": "MAX_VOLUME"},
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert response.status_code == 403
+
+    def test_token_signed_by_another_key_returns_401(self, client):
+        """Chữ ký không khớp khoá của Keycloak -> 401."""
+        import jwt as pyjwt
+        forged = pyjwt.encode({"sub": "x"}, "not-the-keycloak-key-32-bytes-long!!", algorithm="HS256")
+        response = client.post(
+            "/api/v1/optimization/jobs",
+            json={"trip_id": 404, "objective": "MAX_VOLUME"},
+            headers={"Authorization": f"Bearer {forged}"},
+        )
+        assert response.status_code == 401
+
+
 class TestSubmitJob:
     def test_submit_job_success_returns_202_and_job_id(self, client, dispatcher_headers):
         """DISPATCHER gửi job hợp lệ -> 202 Accepted + { job_id }"""
-        trip_id = str(uuid.uuid4())
+        trip_id = 123
         mock_job_uuid = str(uuid.uuid4())
 
         from app.service.optimize.optimization_job_service import OptimizationJobService
@@ -93,7 +104,7 @@ class TestSubmitJob:
             def create_job(self, trip_id, config, db):
                 return OptimizationJob(
                     id=1,
-                    trip_id=str(trip_id),
+                    trip_id=trip_id,
                     job_uuid=mock_job_uuid,
                     status=OptimizationJobStatus.PENDING.value,
                     objective=config.objective.value if hasattr(config.objective, "value") else str(config.objective),
@@ -139,7 +150,7 @@ class TestSubmitJob:
         app.dependency_overrides[get_db] = lambda: None
 
         try:
-            payload = {"trip_id": str(uuid.uuid4()), "objective": "MAX_VOLUME"}
+            payload = {"trip_id": 404, "objective": "MAX_VOLUME"}
             response = client.post(
                 "/api/v1/optimization/jobs",
                 json=payload,
@@ -151,7 +162,6 @@ class TestSubmitJob:
             app.dependency_overrides.clear()
 
 
-@pytest.mark.integration  # cần token RS256 do Keycloak thật ký (JWKS)
 class TestGetJobStatus:
     def test_get_job_success_returns_200_and_status(self, client, dispatcher_headers):
         """Lấy thông tin job -> 200 + status, metadata"""
@@ -163,7 +173,7 @@ class TestGetJobStatus:
                 return OptimizationJob(
                     id=10,
                     job_uuid=job_uuid,
-                    trip_id="trip-123",
+                    trip_id=123,
                     status=OptimizationJobStatus.RUNNING.value,
                     objective="MAX_VOLUME",
                     time_limit_sec=60,
@@ -184,7 +194,7 @@ class TestGetJobStatus:
             data = body["data"]
             assert data["job_uuid"] == job_uuid
             assert data["status"] == "RUNNING"
-            assert data["trip_id"] == "trip-123"
+            assert data["trip_id"] == 123
         finally:
             app.dependency_overrides.clear()
 
@@ -213,7 +223,6 @@ class TestGetJobStatus:
             app.dependency_overrides.clear()
 
 
-@pytest.mark.integration  # cần token RS256 do Keycloak thật ký (JWKS)
 class TestGetJobPlans:
     def test_get_job_plans_success_returns_200_and_plans(self, client, dispatcher_headers):
         """Lấy danh sách plans của job -> 200 + danh sách LoadPlan"""

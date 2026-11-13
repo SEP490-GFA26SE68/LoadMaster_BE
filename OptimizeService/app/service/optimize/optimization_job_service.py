@@ -98,12 +98,32 @@ class OptimizationJobService:
         db: Session = None,
     ) -> OptimizationJob:
         """
-        Cập nhật trạng thái và thời gian tính toán của job.
+        Cập nhật trạng thái và thời gian tính toán của job, rồi commit cùng mọi thứ đã ghi trong giao dịch.
         Status flow: PENDING -> RUNNING -> COMPLETED / FAILED / TIMEOUT / NO_SOLUTION / PARTIAL
+
+        Trạng thái cuối là cuối: chỉ đổi khi job còn PENDING / RUNNING (UPDATE có điều kiện). Job đã kết thúc —
+        thường là LoadMasterService đã đánh dấu FAILED JOB_INTERRUPTED và hoàn credit vì job quá hạn — thì
+        rollback cả giao dịch (bỏ phương án vừa ghi của kết quả đến muộn) và ném JobAlreadyFinishedError.
         """
-        job = self.get_job(job_uuid, db)
         status_val = status.value if hasattr(status, "value") else str(status)
-        job.status = status_val
-        if computation_ms is not None:
-            job.computation_ms = computation_ms
-        return self.repository.update(job, db)
+        job = self.get_job(job_uuid, db)
+        # Quyết định nằm ở câu UPDATE có điều kiện, không ở lần đọc trên: lượt ghi cùng lúc của Java không lọt qua.
+        if not self.repository.transition_unfinished(str(job_uuid), status_val, computation_ms, db):
+            db.rollback()
+            raise JobAlreadyFinishedError(str(job_uuid), job.status, status_val)
+        db.commit()
+        # Sau commit job đã hết hạn trong phiên: đọc thuộc tính là đọc lại từ DB. Không đọc ngay ở đây để không mở
+        # giao dịch mới giữ kết nối suốt lúc bộ giải chạy.
+        return job
+
+
+class JobAlreadyFinishedError(Exception):
+    """Job đã ở trạng thái cuối khi một kết quả / trạng thái mới đến: phần đến muộn bị bỏ, không ghi gì."""
+
+    def __init__(self, job_uuid: str, current_status: Optional[str], attempted_status: str):
+        self.job_uuid = job_uuid
+        self.current_status = current_status
+        self.attempted_status = attempted_status
+        super().__init__(
+            f"Optimization job {job_uuid} already {current_status}; ignored transition to {attempted_status}"
+        )
