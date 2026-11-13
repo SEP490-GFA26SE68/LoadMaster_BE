@@ -84,6 +84,46 @@ class ManualFixScriptsIntegrationTest {
         }
     }
 
+    /** Như DB dùng chung: audit_logs.created_at là timestamptz (thời điểm đã đúng), optimization_jobs thì không. */
+    @Test
+    void utcFixSkipsTimestamptzAuditLogsAndShiftsOnlyNaiveJobs() throws Exception {
+        assumeTrue(DockerClientFactory.instance().isDockerAvailable(), "Docker is required");
+
+        try (PostgreSQLContainer postgres = new PostgreSQLContainer("postgres:17-alpine")) {
+            postgres.start();
+            try (Connection connection = connection(postgres)) {
+                execute(connection, """
+                        SET TIME ZONE 'UTC';
+                        CREATE TABLE optimization_jobs (id BIGINT PRIMARY KEY, job_uuid VARCHAR(64),
+                            parent_plan_id BIGINT, created_at TIMESTAMP);
+                        CREATE TABLE audit_logs (id BIGINT PRIMARY KEY, action_type VARCHAR(50), entity_id VARCHAR(64),
+                            old_values TEXT, new_values TEXT, created_at TIMESTAMPTZ);
+                        INSERT INTO optimization_jobs VALUES
+                            (1, 'py-old', NULL, '2026-11-05 14:58:00'),
+                            (2, 'java-rerun', 5, '2026-11-05 22:00:00');
+                        INSERT INTO audit_logs VALUES
+                            (8, 'PLAN_APPROVED', '7', NULL, '{"approved": true, "approved_by": 4}', '2026-11-05 15:05:48+00'),
+                            (9, 'TRIP_STATUS_TRANSITION', '7', '{}', '{}', '2026-11-05 15:05:51+00');
+                        """);
+
+                execute(connection, script(UTC_PREVIEW));
+
+                String filled = script(UTC_FIX).replace("deployed_vn TIMESTAMP := NULL;",
+                        "deployed_vn TIMESTAMP := TIMESTAMP '2026-11-12 23:59:59';");
+                execute(connection, filled);
+                execute(connection, filled);
+
+                assertEquals("2026-11-05 21:58:00,2026-11-05 22:00:00", scalar(connection,
+                        "SELECT string_agg(created_at::text, ',' ORDER BY id) FROM optimization_jobs"));
+                assertEquals("2026-11-05 15:05:48+00,2026-11-05 15:05:51+00", scalar(connection,
+                        "SELECT string_agg(created_at::text, ',' ORDER BY id) FROM audit_logs"));
+                assertEquals("optimization_jobs:1", scalar(connection,
+                        "SELECT string_agg(table_name || ':' || row_id, ',') FROM manual_fix_utc_rows"));
+                assertEquals("1", scalar(connection, "SELECT count(*)::text FROM manual_fix_runs"));
+            }
+        }
+    }
+
     @Test
     void creditFixCreatesMissingAccountsOnceAndRepositoryInsertIsIdempotent() throws Exception {
         assumeTrue(DockerClientFactory.instance().isDockerAvailable(), "Docker is required");
