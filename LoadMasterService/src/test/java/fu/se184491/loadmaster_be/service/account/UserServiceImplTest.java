@@ -358,6 +358,12 @@ class UserServiceImplTest {
         assertNotNull(response);
         assertEquals(UserRole.DISPATCHER, response.user().userRoleType());
         assertEquals(10L, response.user().companyId());
+
+        verify(brevoClient).sendEmail(
+                eq("dispatcher@acme.vn"),
+                contains("Acme Logistics"),
+                contains("Tmp#654321")
+        );
     }
 
     @Test
@@ -631,6 +637,12 @@ class UserServiceImplTest {
         assertEquals(100L, response.userId());
         assertEquals("NewTmp#999", response.temporaryPassword());
         verify(keycloakAdminClient).setPassword("kc-100", "NewTmp#999", true);
+
+        verify(brevoClient).sendEmail(
+                eq(targetEmployeeInCompany10.getEmail()),
+                contains("LoadMaster"),
+                contains("NewTmp#999")
+        );
     }
 
     private AuditLog savedAuditLog() {
