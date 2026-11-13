@@ -60,6 +60,7 @@ class LoadPlanServiceImplTest {
     @Mock private CurrentUserService currentUserService;
     @Mock private fu.se184491.loadmaster_be.repository.billing.CompanySubscriptionRepository companySubscriptionRepository;
     @Mock private org.springframework.transaction.PlatformTransactionManager transactionManager;
+    @Mock private fu.se184491.loadmaster_be.repository.optimization.LoadPlanWriteRepository loadPlanWriteRepository;
 
     @InjectMocks
     private LoadPlanServiceImpl service;
@@ -75,6 +76,9 @@ class LoadPlanServiceImplTest {
         plan = LoadPlan.builder().id(50L).job(job).version(1).build();
         when(loadPlanRepository.findById(50L)).thenReturn(Optional.of(plan));
         when(currentUserService.getCurrentCompanyId()).thenReturn(1L);
+        // Job của lần chạy lại còn RUNNING: UPDATE có điều kiện đổi được đúng một dòng
+        org.mockito.Mockito.lenient().when(loadPlanWriteRepository.finishUnfinishedJob(any(), any(), any()))
+                .thenReturn(1);
     }
 
     @Test
@@ -201,9 +205,9 @@ class LoadPlanServiceImplTest {
                 () -> service.rerunOptimization(50L, new RerunOptimizationRequest()));
 
         ArgumentCaptor<OptimizationJob> jobs = ArgumentCaptor.forClass(OptimizationJob.class);
-        verify(optimizationJobRepository, org.mockito.Mockito.atLeast(2)).save(jobs.capture());
-        OptimizationJob job = jobs.getAllValues().get(jobs.getAllValues().size() - 1);
-        assertEquals(fu.se184491.loadmaster_be.constant.optimization.OptimizationJobStatus.FAILED, job.getStatus());
+        verify(optimizationJobRepository).save(jobs.capture());
+        OptimizationJob job = jobs.getValue();
+        verify(loadPlanWriteRepository).finishUnfinishedJob(job.getJobUuid(), "FAILED", null);
         verify(creditService).deductCredit(1L, job.getJobUuid(), 1);
         verify(creditService).refundCredit(1L, job.getJobUuid());
         // Giữ credit và lưu trạng thái lỗi là hai giao dịch đã commit, không cuộn lại cùng lỗi
@@ -232,5 +236,34 @@ class LoadPlanServiceImplTest {
 
         assertEquals("EP_DBLF_GA", response.getAlgorithmName());
         assertEquals("EP_DBLF_GA", response.getRunAlgorithm());
+    }
+
+    @Test
+    void lateRerunResultAfterTheJobWasInterruptedIsDiscarded() {
+        // Trong lúc chờ dịch vụ tối ưu, lượt đọc trạng thái đã đánh dấu job FAILED JOB_INTERRUPTED và hoàn credit
+        when(companySubscriptionRepository.findByCompanyId(1L)).thenReturn(Optional.empty());
+        when(optimizationJobRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+        when(optimizationEngineClient.rerunOptimization(any())).thenReturn(OptimizationResultDto.builder()
+                .packedItemsCount(1).volumeUtilization(BigDecimal.ONE).weightUtilization(BigDecimal.ONE)
+                .computationMs(900L).build());
+        when(loadPlanWriteRepository.finishUnfinishedJob(any(), any(), any())).thenReturn(0);
+
+        fu.se184491.loadmaster_be.exception.AppException error = assertThrows(
+                fu.se184491.loadmaster_be.exception.AppException.class,
+                () -> service.rerunOptimization(50L, new RerunOptimizationRequest()));
+
+        assertEquals(fu.se184491.loadmaster_be.exception.ErrorCode.OPTIMIZATION_JOB_ALREADY_FINISHED,
+                error.getErrorCode());
+        ArgumentCaptor<OptimizationJob> jobs = ArgumentCaptor.forClass(OptimizationJob.class);
+        verify(optimizationJobRepository).save(jobs.capture());
+        String jobUuid = jobs.getValue().getJobUuid();
+        verify(loadPlanWriteRepository).finishUnfinishedJob(jobUuid, "COMPLETED", 900L);
+        // Không phương án nào được lưu, trạng thái cuối không bị ghi lại bằng entity
+        verify(loadPlanRepository, never()).save(any());
+        verify(packagePlacementRepository, never()).save(any());
+        verify(optimizationJobRepository, org.mockito.Mockito.times(1)).save(any());
+        // Lối hoàn theo mã job: CreditService hoàn mỗi mã job đúng một lần nên lượt này không đổi số dư lần nữa
+        verify(creditService).refundCredit(1L, jobUuid);
+        verify(transactionManager).rollback(any());
     }
 }

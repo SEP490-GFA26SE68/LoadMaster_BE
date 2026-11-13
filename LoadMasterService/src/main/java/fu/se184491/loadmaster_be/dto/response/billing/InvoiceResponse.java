@@ -24,4 +24,10 @@ public class InvoiceResponse {
     private String billingPeriod;
     private Instant createdAt;
     private LocalDateTime paidAt;
+    /** order_type của thanh toán tạo ra hoá đơn; null với hoá đơn hợp đồng. */
+    private String itemType;
+    /** Số credit đã mua (hoá đơn nạp credit). */
+    private Integer creditQuantity;
+    /** Mã giao dịch của cổng thanh toán (txnRef). */
+    private String paymentReference;
 }

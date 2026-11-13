@@ -5,7 +5,7 @@ import fu.se184491.loadmaster_be.entity.cargo.CargoPackage;
 import fu.se184491.loadmaster_be.entity.trip.Trip;
 import fu.se184491.loadmaster_be.exception.AppException;
 import fu.se184491.loadmaster_be.exception.ErrorCode;
-import fu.se184491.loadmaster_be.repository.cargo.PackageRepository;
+import fu.se184491.loadmaster_be.repository.cargo.CargoPackageRepository;
 import fu.se184491.loadmaster_be.repository.common.AuditLogRepository;
 import fu.se184491.loadmaster_be.service.audit.AuditLogQueryService;
 import fu.se184491.loadmaster_be.service.export.PdfLabelExportService;
@@ -29,7 +29,7 @@ public class PackageTraceService {
     /** Số mốc lịch sử nhiều nhất một lần đọc. */
     public static final int HISTORY_LIMIT = 100;
 
-    private final PackageRepository packageRepository;
+    private final CargoPackageRepository packageRepository;
     private final AuditLogRepository auditLogRepository;
     private final AuditLogQueryService auditLogQueryService;
     private final TripLookupHelper tripLookupHelper;

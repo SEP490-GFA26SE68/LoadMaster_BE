@@ -1,7 +1,8 @@
 from typing import Optional, Union
+from sqlalchemy import update
 from sqlalchemy.orm import Session
 
-from app.constant.optimization.job_status import OptimizationJobStatus
+from app.constant.optimization.job_status import OptimizationJobStatus, UNFINISHED_JOB_STATUSES
 from app.entity.optimization.optimization_job import OptimizationJob
 
 
@@ -39,3 +40,29 @@ class OptimizationJobRepository:
         db.commit()
         db.refresh(job)
         return job
+
+    def transition_unfinished(
+        self,
+        job_uuid: str,
+        status: str,
+        computation_ms: Optional[int],
+        db: Session,
+    ) -> bool:
+        """
+        Đổi trạng thái job chỉ khi job còn PENDING / RUNNING, bằng một câu UPDATE có điều kiện (không đọc rồi ghi).
+        Không commit: nơi gọi commit cùng phần đã ghi trong giao dịch (phương án của kết quả) hoặc rollback cả hai.
+        Trả True khi đổi được đúng một dòng; False khi job đã ở trạng thái cuối (hoặc không có job).
+        """
+        values = {"status": status}
+        if computation_ms is not None:
+            values["computation_ms"] = computation_ms
+        result = db.execute(
+            update(OptimizationJob)
+            .where(
+                OptimizationJob.job_uuid == str(job_uuid),
+                OptimizationJob.status.in_(UNFINISHED_JOB_STATUSES),
+            )
+            .values(**values)
+            .execution_options(synchronize_session=False)
+        )
+        return result.rowcount == 1

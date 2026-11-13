@@ -18,6 +18,7 @@ import fu.se184491.loadmaster_be.repository.optimization.LoadPlanReadRepository.
 import fu.se184491.loadmaster_be.repository.optimization.LoadPlanReadRepository.PlanWithCompany;
 import fu.se184491.loadmaster_be.repository.optimization.LoadPlanReadRepository.UnplacedRow;
 import fu.se184491.loadmaster_be.repository.trip.TripRepository;
+import fu.se184491.loadmaster_be.service.optimization.Impl.InterruptedOptimizationJobService;
 import fu.se184491.loadmaster_be.service.optimization.Impl.LoadPlanQueryServiceImpl;
 import fu.se184491.loadmaster_be.service.optimization.manual.StopZoneResolver;
 import fu.se184491.loadmaster_be.entity.vehicle.Vehicle;
@@ -56,6 +57,7 @@ class LoadPlanQueryServiceImplTest {
     @Mock CurrentUserService currentUserService;
     @Mock OptimizationClient optimizationClient;
     @Mock StopZoneResolver stopZoneResolver;
+    @Mock InterruptedOptimizationJobService interruptedJobs;
 
     @InjectMocks LoadPlanQueryServiceImpl service;
 
@@ -158,7 +160,7 @@ class LoadPlanQueryServiceImplTest {
         User dispatcher = new User();
         dispatcher.setId(42L);
         when(currentUserService.getCurrentUser()).thenReturn(dispatcher);
-        when(tripRepository.findById(10L)).thenReturn(Optional.of(tripIn(TripStatus.PLANNED)));
+        when(tripRepository.findByIdForUpdate(10L)).thenReturn(Optional.of(tripIn(TripStatus.PLANNED)));
 
         LoadPlanDetailResponse result = service.approvePlan(5L);
 
@@ -182,7 +184,7 @@ class LoadPlanQueryServiceImplTest {
     void planOfATripPastPlanningCannotBeApproved() {
         when(readRepository.findPlan(5L))
                 .thenReturn(Optional.of(new PlanWithCompany(plan(5L, false), COMPANY)));
-        when(tripRepository.findById(10L)).thenReturn(Optional.of(tripIn(TripStatus.LOADING)));
+        when(tripRepository.findByIdForUpdate(10L)).thenReturn(Optional.of(tripIn(TripStatus.LOADING)));
 
         assertThatThrownBy(() -> service.approvePlan(5L))
                 .isInstanceOf(AppException.class)
@@ -205,6 +207,31 @@ class LoadPlanQueryServiceImplTest {
         when(readRepository.findJobStatus(7L)).thenReturn(Optional.of(row));
 
         assertThat(service.getJobStatus("job-1")).isSameAs(row);
+    }
+
+    @Test
+    void interruptedJobIsReadAgainAfterBeingClosed() {
+        JobOwner owner = new JobOwner(7L, "job-1", 10L, COMPANY);
+        when(readRepository.findJobOwner("job-1")).thenReturn(Optional.of(owner));
+        OptimizationJobStatusResponse running = OptimizationJobStatusResponse.builder()
+                .id(7L).jobId("job-1").status("RUNNING").build();
+        OptimizationJobStatusResponse failed = OptimizationJobStatusResponse.builder()
+                .id(7L).jobId("job-1").status("FAILED").failureCode("JOB_INTERRUPTED").build();
+        when(readRepository.findJobStatus(7L)).thenReturn(Optional.of(running), Optional.of(failed));
+        when(interruptedJobs.failIfInterrupted(any(), any(), any())).thenReturn(true);
+
+        assertThat(service.getJobStatus("job-1")).isSameAs(failed);
+    }
+
+    @Test
+    void failureWhileClosingInterruptedJobStillReturnsTheStatus() {
+        when(readRepository.findJobOwner("job-1")).thenReturn(Optional.of(new JobOwner(7L, "job-1", 10L, COMPANY)));
+        OptimizationJobStatusResponse running = OptimizationJobStatusResponse.builder()
+                .id(7L).jobId("job-1").status("RUNNING").build();
+        when(readRepository.findJobStatus(7L)).thenReturn(Optional.of(running));
+        when(interruptedJobs.failIfInterrupted(any(), any(), any())).thenThrow(new IllegalStateException("refund"));
+
+        assertThat(service.getJobStatus("job-1")).isSameAs(running);
     }
 
     @Test

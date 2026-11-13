@@ -57,7 +57,7 @@ def service():
 
 @pytest.fixture
 def existing_trip(db_session):
-    trip_id = str(uuid.uuid4())
+    trip_id = 101
     trip = Trip(id=trip_id, trip_code="TRIP-TEST", status="PLANNED")
     db_session.add(trip)
     db_session.commit()
@@ -86,7 +86,7 @@ class TestCreateJob:
 
     def test_create_job_with_non_existent_trip_raises_error(self, service, db_session):
         """Tạo job với trip không tồn tại -> raise AppException(TRIP_NOT_FOUND)"""
-        non_existent_trip_id = str(uuid.uuid4())
+        non_existent_trip_id = 999_999
         req = OptimizationJobRequest(
             trip_id=non_existent_trip_id,
             objective=OptimizationObjective.MAX_VOLUME,

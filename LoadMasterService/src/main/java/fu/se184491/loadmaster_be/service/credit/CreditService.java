@@ -25,6 +25,11 @@ public interface CreditService {
         grantMonthlyCredits(companyId, amount);
     }
     void addCredits(Long companyId, int amount, String reference);
+    /**
+     * Công ty có gói thì phải có tài khoản credit (kể cả gói không giới hạn hay không ghi credit tháng): tạo số dư 0
+     * nếu chưa có, đã có thì không đổi gì. Chạy lại hay chạy song song đều an toàn.
+     */
+    void ensureAccount(Long companyId);
     default void resetBalance(Long companyId) {
     }
 }

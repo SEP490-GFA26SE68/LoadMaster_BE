@@ -32,6 +32,8 @@ from app.dto.optimization.engine.engine_response import (
 )
 from app.entity.trip_model import (
     Base,
+    DeliveryRequirement,
+    DeliveryRequirementPackage,
     Trip,
     Vehicle,
     VehicleType,
@@ -66,13 +68,19 @@ def db_session():
     session = Session()
 
     # Tạo trip + vehicle + packages
-    vt = VehicleType(
+    vt = VehicleType(max_cog_offset_ratio=0.15, 
         id=1,
         name="Van 1 Tan",
         inner_length=3000,  # mm
         inner_width=1800,   # mm
         inner_height=1800,  # mm
+        door_width=1800,    # mm — cửa sau mở hết lòng thùng
+        door_height=1800,   # mm
         max_payload_kg=1000.0,
+        # Cấu hình hai trục (HC-12): thiếu thì bộ giải không xếp kiện nào
+        front_axle_x=-100, rear_axle_x=2000,
+        front_axle_limit_kg=3000, rear_axle_limit_kg=5000,
+        empty_front_axle_load_kg=1500, empty_rear_axle_load_kg=1500,
     )
     session.add(vt)
     session.commit()
@@ -81,12 +89,15 @@ def db_session():
     session.add(v)
     session.commit()
 
-    trip_id = str(uuid.uuid4())
+    trip_id = 101
     trip = Trip(id=trip_id, vehicle_id=1, status="DRAFT")
     session.add(trip)
     session.commit()
 
-    stop = DeliveryStop(id=1, trip_id=trip_id, stop_sequence=1)
+    session.add(DeliveryRequirement(id=1, trip_id=trip_id))
+    session.commit()
+
+    stop = DeliveryStop(id=1, trip_id=trip_id, stop_sequence=1, delivery_requirement_id=1)
     session.add(stop)
     session.commit()
 
@@ -100,6 +111,9 @@ def db_session():
 
     pkg = CargoPackage(id=1, order_id=1, package_type_id=1, actual_weight_kg=15.0)
     session.add(pkg)
+    session.commit()
+
+    session.add(DeliveryRequirementPackage(delivery_requirement_id=1, package_id=1))
     session.commit()
 
     yield session
@@ -268,14 +282,15 @@ class TestAsyncOptimizationRunnerUnit:
         runner = AsyncOptimizationRunner(job_service=job_service)
         problem = runner.build_problem_request(job.job_uuid, db=db_session)
 
-        assert problem.vehicle.inner_l == 3.0
-        assert problem.vehicle.inner_w == 1.8
-        assert problem.vehicle.inner_h == 1.8
+        # Runner chuyển nguyên số đo của loại xe, không quy đổi đơn vị
+        assert problem.vehicle.inner_l == 3000.0
+        assert problem.vehicle.inner_w == 1800.0
+        assert problem.vehicle.inner_h == 1800.0
         assert problem.vehicle.max_payload_kg == 1000.0
         assert len(problem.packages) == 1
-        assert problem.packages[0].l == 0.5
-        assert problem.packages[0].w == 0.4
-        assert problem.packages[0].h == 0.3
+        assert problem.packages[0].l == 500.0
+        assert problem.packages[0].w == 400.0
+        assert problem.packages[0].h == 300.0
         assert problem.packages[0].weight == 15.0
         assert problem.time_limit_sec == 45
 
@@ -284,6 +299,7 @@ class TestAsyncOptimizationRunnerUnit:
 # Integration Tests with FastAPI TestClient & BackgroundTasks
 # ---------------------------------------------------------------------------
 
+@pytest.mark.usefixtures("keycloak_jwks")
 class TestAsyncJobExecutionApi:
     def test_submit_job_returns_202_and_executes_in_background(self, db_session):
         """
@@ -292,17 +308,25 @@ class TestAsyncJobExecutionApi:
           2. Background task chạy và cập nhật status sang COMPLETED
           3. GET /api/v1/optimization/jobs/{job_id} trả về status COMPLETED
         """
-        import jwt
-        token = jwt.encode(
-            {"preferred_username": "dispatcher_user", "roles": ["DISPATCHER"]},
-            "a_very_secret_key_for_testing_1234567890",
-            algorithm="HS256",
-        )
-        headers = {"Authorization": f"Bearer {token}"}
+        from tests.keycloak_tokens import service_headers
+
+        # LoadMasterService gọi bằng service token (client credentials) như khi chạy thật
+        headers = service_headers()
 
         trip = db_session.query(Trip).first()
 
         app.dependency_overrides[get_db] = lambda: db_session
+        # Lượt chạy nền mở phiên riêng: cùng DB của test; credit của LoadMasterService thay bằng bản giả
+        from sqlalchemy.orm import sessionmaker as _sessionmaker
+        from app.controller.optimization.optimization_router import get_async_runner
+
+        credit = MagicMock()
+        credit.deduct_credit = AsyncMock(return_value=True)
+        credit.refund_credit = AsyncMock(return_value=True)
+        app.dependency_overrides[get_async_runner] = lambda: AsyncOptimizationRunner(
+            session_factory=_sessionmaker(bind=db_session.get_bind()),
+            credit_client=credit,
+        )
 
         client = TestClient(app)
 

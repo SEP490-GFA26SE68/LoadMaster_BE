@@ -26,6 +26,8 @@ import fu.se184491.loadmaster_be.entity.support.ContactOfGuest;
 import fu.se184491.loadmaster_be.entity.support.TrialAccountRequest;
 import fu.se184491.loadmaster_be.exception.AppException;
 import fu.se184491.loadmaster_be.exception.ErrorCode;
+import fu.se184491.loadmaster_be.helpers.AfterCommit;
+import fu.se184491.loadmaster_be.helpers.KeycloakAccounts;
 import fu.se184491.loadmaster_be.helpers.CompanyCodeGenerator;
 import fu.se184491.loadmaster_be.helpers.TemporaryPasswordGenerator;
 import fu.se184491.loadmaster_be.repository.account.UserRepository;
@@ -283,67 +285,34 @@ public class TrialAccountRequestServiceImpl implements TrialAccountRequestServic
 
         // 4. Tạo hoặc liên kết tài khoản User với vai trò ADMIN (Company Admin)
         String temporaryPassword = temporaryPasswordGenerator.generate();
-        String keycloakUserId = null;
-        boolean newlyCreatedInKeycloak = false;
-        User savedUser = null;
-
+        String keycloakUserId;
         try {
-            String existingKeycloakId = keycloakAdminClient.findUserIdByEmail(trial.getEmail());
-            if (existingKeycloakId != null) {
-                // Kiểm tra xem ID này đã gắn với DB user nào chưa
-                if (userRepository.findByKeycloakId(existingKeycloakId).isPresent()) {
-                    throw new AppException(ErrorCode.EMAIL_ALREADY_EXISTS,
-                            "Email '" + trial.getEmail() + "' đã được sử dụng cho một tài khoản khác trong hệ thống.");
-                }
-                log.info("Reusing orphaned Keycloak user {} for email {}", existingKeycloakId, trial.getEmail());
-                keycloakUserId = existingKeycloakId;
-                keycloakAdminClient.updateUserProfile(keycloakUserId, trial.getFullName());
-            } else {
-                keycloakUserId = keycloakAdminClient.createUser(trial.getEmail(), trial.getFullName());
-                newlyCreatedInKeycloak = true;
-            }
-
-            keycloakAdminClient.setPassword(keycloakUserId, temporaryPassword, false);
-            keycloakAdminClient.assignRealmRole(keycloakUserId, UserRole.ADMIN.name());
-
-            User user = User.builder()
-                    .keycloakId(keycloakUserId)
-                    .company(savedCompany)
-                    .email(trial.getEmail())
-                    .fullName(trial.getFullName())
-                    .phoneNumber(trial.getPhoneNumber())
-                    .userRoleType(UserRole.ADMIN)
-                    .userType(UserType.TRIAL)
-                    .status(UserStatus.ACTIVE)
-                    .build();
-            savedUser = userRepository.save(user);
+            // Dùng lại tài khoản Keycloak mồ côi cùng email; rollback thì người dùng Keycloak vừa tạo bị xoá lại
+            keycloakUserId = KeycloakAccounts.provision(keycloakAdminClient, userRepository, trial.getEmail(),
+                    trial.getFullName(), temporaryPassword, false, UserRole.ADMIN, true);
         } catch (AppException ex) {
-            if (newlyCreatedInKeycloak && keycloakUserId != null) {
-                try {
-                    keycloakAdminClient.deleteUser(keycloakUserId);
-                } catch (Exception ignored) {}
-            }
             throw ex;
         } catch (HttpStatusCodeException ex) {
             log.error("Keycloak HTTP error while approving trial request {}: {} - {}", id, ex.getStatusCode(), ex.getResponseBodyAsString(), ex);
-            if (newlyCreatedInKeycloak && keycloakUserId != null) {
-                try {
-                    keycloakAdminClient.deleteUser(keycloakUserId);
-                } catch (Exception ignored) {}
-            }
             if (ex.getStatusCode() == HttpStatus.CONFLICT) {
                 throw new AppException(ErrorCode.EMAIL_ALREADY_EXISTS, "Email '" + trial.getEmail() + "' đã tồn tại trên hệ thống định danh Keycloak.");
             }
             throw new AppException(ErrorCode.INTERNAL_SERVER_ERROR, "Lỗi kết nối định danh tài khoản (Keycloak): " + ex.getMessage());
         } catch (Exception ex) {
             log.error("Unexpected error creating user for trial request {}: ", id, ex);
-            if (newlyCreatedInKeycloak && keycloakUserId != null) {
-                try {
-                    keycloakAdminClient.deleteUser(keycloakUserId);
-                } catch (Exception ignored) {}
-            }
             throw new AppException(ErrorCode.INTERNAL_SERVER_ERROR, "Không thể khởi tạo tài khoản quản trị: " + ex.getMessage());
         }
+
+        User savedUser = userRepository.save(User.builder()
+                .keycloakId(keycloakUserId)
+                .company(savedCompany)
+                .email(trial.getEmail())
+                .fullName(trial.getFullName())
+                .phoneNumber(trial.getPhoneNumber())
+                .userRoleType(UserRole.ADMIN)
+                .userType(UserType.TRIAL)
+                .status(UserStatus.ACTIVE)
+                .build());
 
         // 5. Kích hoạt gói dịch vụ dùng thử (CompanySubscription)
         SubscriptionPlan plan = null;
@@ -437,7 +406,9 @@ public class TrialAccountRequestServiceImpl implements TrialAccountRequestServic
                 FrontendUrls.join(frontendUrl, "/dang-nhap")
         );
 
-        brevoClient.sendEmail(trial.getEmail(), "LoadMaster - Thông tin tài khoản trải nghiệm dịch vụ", emailContent);
+        String trialEmail = trial.getEmail();
+        AfterCommit.run("email tài khoản dùng thử",
+                () -> brevoClient.sendEmail(trialEmail, "LoadMaster - Thông tin tài khoản trải nghiệm dịch vụ", emailContent));
 
         // 8. Cập nhật trạng thái TrialAccountRequest & ContactOfGuest
         trial.setStatus(TrialRequestStatus.APPROVED);
@@ -497,7 +468,7 @@ public class TrialAccountRequestServiceImpl implements TrialAccountRequestServic
         trial.setHandledByName(manager != null ? manager.getFullName() : "System Manager");
 
         log.info("System Manager {} approved trial request id={} and forwarded to System Admin",
-                manager != null ? manager.getEmail() : "unknown", trial.getId());
+                manager != null ? manager.getId() : "unknown", trial.getId());
 
         TrialAccountRequest saved = trialAccountRequestRepository.save(trial);
         return mapToResponse(saved);

@@ -119,9 +119,37 @@ class TripStatusServiceTest {
                 () -> service.transitionTo(10L, TripStatus.PLANNED, null));
     }
 
+    @Test
+    void transitionReadsTheTripThroughTheRowLock() {
+        stubTrip(TripStatus.LOADING);
+        when(tripRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+
+        service.transitionTo(10L, TripStatus.CANCELLED, null);
+
+        // Đọc chuyến bằng SELECT … FOR UPDATE: hai lệnh đổi trạng thái cùng chuyến không chạy chồng lên nhau
+        verify(tripRepository).findByIdForUpdate(10L);
+        verify(tripRepository, org.mockito.Mockito.never()).findById(any());
+    }
+
+    @Test
+    void lockForTransitionLocksTheRow() {
+        Trip trip = stubTrip(TripStatus.PLANNED);
+
+        assertEquals(trip, service.lockForTransition(10L));
+        verify(tripRepository).findByIdForUpdate(10L);
+    }
+
+    @Test
+    void missingTripIsNotFoundWhenLocking() {
+        when(tripRepository.findByIdForUpdate(99L)).thenReturn(Optional.empty());
+
+        AppException error = assertThrows(AppException.class, () -> service.lockForTransition(99L));
+        assertEquals(ErrorCode.TRIP_NOT_FOUND, error.getErrorCode());
+    }
+
     private Trip stubTrip(TripStatus status) {
         Trip trip = Trip.builder().id(10L).status(status).build();
-        when(tripRepository.findById(10L)).thenReturn(Optional.of(trip));
+        when(tripRepository.findByIdForUpdate(10L)).thenReturn(Optional.of(trip));
         return trip;
     }
 }

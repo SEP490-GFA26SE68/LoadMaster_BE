@@ -43,6 +43,9 @@ public class PaymentCallbackHandlerTest {
     @Mock
     private fu.se184491.loadmaster_be.service.registration.GuestRegistrationService guestRegistrationService;
 
+    @Mock
+    private fu.se184491.loadmaster_be.service.billing.InvoiceService invoiceService;
+
     @InjectMocks
     private PaymentCallbackHandler paymentCallbackHandler;
 
@@ -119,6 +122,7 @@ public class PaymentCallbackHandlerTest {
 
         assertEquals("00", res.get("RspCode"));
         verify(subscriptionService, never()).activateSubscription(any(), any());
+        verifyNoInteractions(invoiceService);
     }
 
     @Test
@@ -139,6 +143,7 @@ public class PaymentCallbackHandlerTest {
         assertEquals(PaymentStatus.SUCCESS, subscriptionTxn.getStatus());
         verify(subscriptionService).activateSubscription(1L, 2L);
         verify(paymentTransactionRepository).save(subscriptionTxn);
+        verify(invoiceService).recordPaymentInvoice(subscriptionTxn, null);
     }
 
     @Test
@@ -159,6 +164,7 @@ public class PaymentCallbackHandlerTest {
         assertEquals(PaymentStatus.SUCCESS, creditTxn.getStatus());
         verify(creditService).addCredits(1L, 50, "VNP_CREDIT_002");
         verify(paymentTransactionRepository).save(creditTxn);
+        verify(invoiceService).recordPaymentInvoice(creditTxn, null);
     }
 
     @Test
@@ -197,7 +203,7 @@ public class PaymentCallbackHandlerTest {
 
         assertEquals("97", res.get("RspCode"));
         assertEquals(PaymentStatus.PENDING, subscriptionTxn.getStatus());
-        verifyNoInteractions(paymentTransactionRepository, subscriptionService, creditService);
+        verifyNoInteractions(paymentTransactionRepository, subscriptionService, creditService, invoiceService);
     }
 
     @Test
@@ -213,7 +219,7 @@ public class PaymentCallbackHandlerTest {
         Map<String, String> res = paymentCallbackHandler.handleVnPayCallback(params);
 
         assertEquals("97", res.get("RspCode"));
-        verifyNoInteractions(paymentTransactionRepository, subscriptionService, creditService);
+        verifyNoInteractions(paymentTransactionRepository, subscriptionService, creditService, invoiceService);
     }
 
     @Test
@@ -285,6 +291,7 @@ public class PaymentCallbackHandlerTest {
     @DisplayName("Delegate to GuestRegistrationService when txnRef starts with REG_")
     void testDelegateToGuestRegistrationService() {
         Map<String, String> params = Map.of("vnp_TxnRef", "REG_ABC123");
+        when(vnPayClient.verifyCallback(params)).thenReturn(true);
         when(guestRegistrationService.handlePaymentCallback(params)).thenReturn(Map.of("RspCode", "00", "Message", "Confirm Success"));
 
         Map<String, String> result = paymentCallbackHandler.handleVnPayCallback(params);
@@ -292,6 +299,32 @@ public class PaymentCallbackHandlerTest {
         assertEquals("00", result.get("RspCode"));
         verify(guestRegistrationService).handlePaymentCallback(params);
         verifyNoInteractions(paymentTransactionRepository);
+    }
+
+    @Test
+    @DisplayName("REG_ callback with an invalid signature is rejected before reaching guest registration")
+    void testRegistrationCallbackWithInvalidSignatureIsRejected() {
+        Map<String, String> params = Map.of("vnp_TxnRef", "REG_12345", "vnp_ResponseCode", "00",
+                "vnp_Mock", "true", "vnp_SecureHash", "forged");
+        when(vnPayClient.isMock()).thenReturn(false);
+        when(vnPayClient.verifyCallback(params)).thenReturn(false);
+
+        Map<String, String> result = paymentCallbackHandler.handleVnPayCallback(params);
+
+        assertEquals("97", result.get("RspCode"));
+        assertEquals("Invalid Checksum", result.get("Message"));
+        verifyNoInteractions(guestRegistrationService);
+    }
+
+    @Test
+    @DisplayName("REG_ callback skips the signature only when the server runs vnpay.mock")
+    void testRegistrationCallbackInMockModeReachesGuestRegistration() {
+        Map<String, String> params = Map.of("vnp_TxnRef", "REG_12345", "vnp_ResponseCode", "00");
+        when(vnPayClient.isMock()).thenReturn(true);
+        when(guestRegistrationService.handlePaymentCallback(params)).thenReturn(Map.of("RspCode", "00"));
+
+        assertEquals("00", paymentCallbackHandler.handleVnPayCallback(params).get("RspCode"));
+        verify(vnPayClient, never()).verifyCallback(anyMap());
     }
 
     @Test
@@ -327,7 +360,41 @@ public class PaymentCallbackHandlerTest {
         assertEquals("00", paymentCallbackHandler.handleVnPayCallback(params).get("RspCode"));
 
         verify(creditService, times(1)).addCredits(1L, 50, "VNP_CREDIT_002");
+        verify(invoiceService, times(1)).recordPaymentInvoice(creditTxn, null);
         verify(paymentTransactionRepository, times(1)).save(creditTxn);
         verify(paymentTransactionRepository, never()).findByGatewayTransactionId(any());
+    }
+
+    @Test
+    @DisplayName("handleVnPayCallback - Hoá đơn của thanh toán gói mang đúng kỳ vừa kích hoạt")
+    void testSubscriptionInvoiceUsesTheActivatedPeriod() {
+        subscriptionTxn.setOrderType("SUBSCRIPTION_YEARLY");
+        var period = new fu.se184491.loadmaster_be.service.billing.InvoiceService.SubscriptionPeriod(
+                null, null, java.time.LocalDateTime.of(2026, 11, 13, 9, 0), java.time.LocalDateTime.of(2027, 11, 13, 9, 0));
+        when(vnPayClient.isMock()).thenReturn(true);
+        when(paymentTransactionRepository.findByGatewayTransactionIdForUpdate("VNP_SUB_001"))
+                .thenReturn(Optional.of(subscriptionTxn));
+        when(subscriptionService.activateSubscription(1L, 2L, fu.se184491.loadmaster_be.constant.billing.BillingCycle.YEARLY))
+                .thenReturn(period);
+
+        Map<String, String> params = Map.of("vnp_TxnRef", "VNP_SUB_001", "vnp_ResponseCode", "00");
+        assertEquals("00", paymentCallbackHandler.handleVnPayCallback(params).get("RspCode"));
+
+        verify(invoiceService).recordPaymentInvoice(subscriptionTxn, period);
+    }
+
+    @Test
+    @DisplayName("handleVnPayCallback - Thanh toán thất bại hay bị huỷ: không có hoá đơn")
+    void testFailedPaymentCreatesNoInvoice() {
+        when(vnPayClient.isMock()).thenReturn(true);
+        when(paymentTransactionRepository.findByGatewayTransactionIdForUpdate("VNP_CREDIT_002"))
+                .thenReturn(Optional.of(creditTxn));
+
+        // 24: khách huỷ giao dịch ở cổng thanh toán
+        Map<String, String> params = Map.of("vnp_TxnRef", "VNP_CREDIT_002", "vnp_ResponseCode", "24");
+        assertEquals("00", paymentCallbackHandler.handleVnPayCallback(params).get("RspCode"));
+
+        assertEquals(PaymentStatus.FAILED, creditTxn.getStatus());
+        verifyNoInteractions(invoiceService, creditService, subscriptionService);
     }
 }

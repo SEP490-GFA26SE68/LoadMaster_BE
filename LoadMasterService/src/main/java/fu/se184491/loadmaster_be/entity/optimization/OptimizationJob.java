@@ -57,4 +57,16 @@ public class OptimizationJob {
 
     @Column(name = "created_at")
     private java.time.LocalDateTime createdAt;
+
+    /** Lý do job FAILED khi Java tự kết thúc job (ví dụ JOB_INTERRUPTED: dịch vụ tối ưu dừng giữa chừng). */
+    @Column(name = "failure_code", length = 64)
+    private String failureCode;
+
+    /** Job do Java tạo (chạy lại giữ ghim) cũng có giờ tạo, giờ Việt Nam như dịch vụ tối ưu ghi. */
+    @PrePersist
+    void fillCreatedAt() {
+        if (createdAt == null) {
+            createdAt = java.time.LocalDateTime.now(java.time.ZoneId.of("Asia/Ho_Chi_Minh"));
+        }
+    }
 }

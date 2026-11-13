@@ -176,6 +176,8 @@ public class WarehouseStagingServiceImpl implements WarehouseStagingService {
         StagingShortage shortage = stagingShortageRepository.findById(shortageId)
                 .filter(found -> found.getTrip() != null && trip.getId().equals(found.getTrip().getId()))
                 .orElseThrow(() -> new AppException(ErrorCode.STAGING_SHORTAGE_NOT_FOUND));
+        // Khoá chuyến rồi đọc lại: hai lần quyết cùng báo thiếu, hay quyết chồng lệnh huỷ, chạy lần lượt
+        lookup.lock(trip, shortage);
         if (shortage.getStatus() != ShortageStatus.OPEN || trip.getStatus() != TripStatus.LOADING) {
             throw new AppException(ErrorCode.STAGING_SHORTAGE_NOT_OPEN);
         }

@@ -141,7 +141,11 @@ def run_lumo_models(
         out.skipped = {c: "PINNED" for c in codes}
         return out
     if not torch_available():
-        logger.info("Lumo models skipped: chưa cài torch / numpy")
+        logger.warning(
+            "Gói ULTIMATE chạy KHÔNG có mô hình AI (%s): chưa cài torch / numpy, phương án chỉ từ heuristic. "
+            "Cài bằng: pip install -r requirements-ai.txt",
+            ", ".join(codes),
+        )
         out.skipped = {c: "TORCH_MISSING" for c in codes}
         return out
 

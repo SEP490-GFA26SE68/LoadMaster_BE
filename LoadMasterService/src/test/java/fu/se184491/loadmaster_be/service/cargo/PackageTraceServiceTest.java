@@ -6,7 +6,7 @@ import fu.se184491.loadmaster_be.entity.common.AuditLog;
 import fu.se184491.loadmaster_be.entity.trip.Trip;
 import fu.se184491.loadmaster_be.exception.AppException;
 import fu.se184491.loadmaster_be.exception.ErrorCode;
-import fu.se184491.loadmaster_be.repository.cargo.PackageRepository;
+import fu.se184491.loadmaster_be.repository.cargo.CargoPackageRepository;
 import fu.se184491.loadmaster_be.repository.common.AuditLogRepository;
 import fu.se184491.loadmaster_be.service.audit.AuditLogQueryService;
 import fu.se184491.loadmaster_be.service.export.PdfLabelExportService;
@@ -34,7 +34,7 @@ import static org.mockito.Mockito.when;
 @ExtendWith(MockitoExtension.class)
 class PackageTraceServiceTest {
 
-    @Mock PackageRepository packageRepository;
+    @Mock CargoPackageRepository packageRepository;
     @Mock AuditLogRepository auditLogRepository;
     @Mock AuditLogQueryService auditLogQueryService;
     @Mock TripLookupHelper tripLookupHelper;

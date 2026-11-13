@@ -142,7 +142,12 @@ public class CreditServiceImpl implements CreditService {
                 .orElseThrow(() -> new AppException(ErrorCode.COMPANY_NOT_FOUND));
 
         Optional<CompanySubscription> subOpt = companySubscriptionRepository.findByCompanyId(companyId);
-        if (subOpt.isPresent() && subOpt.get().getStatus() != SubscriptionStatus.ACTIVE) {
+        SubscriptionStatus status = subOpt.map(CompanySubscription::getStatus).orElse(null);
+        // Mã riêng để web nói đúng lý do và mở lối gia hạn
+        if (status == SubscriptionStatus.EXPIRED || status == SubscriptionStatus.CANCELLED) {
+            throw new AppException(ErrorCode.SUBSCRIPTION_EXPIRED);
+        }
+        if (subOpt.isPresent() && status != SubscriptionStatus.ACTIVE) {
             throw new AppException(
                     ErrorCode.INVALID_INPUT,
                     "Gói cước của công ty không ở trạng thái hoạt động. Vui lòng gia hạn gói trước khi mua thêm credit."
@@ -432,22 +437,35 @@ public class CreditServiceImpl implements CreditService {
         }
     }
 
-    private CreditAccount getOrCreateAccount(Long companyId) {
-        return creditAccountRepository.findByCompanyId(companyId)
-                .orElseGet(() -> {
-                    Company company = companyRepository.findById(companyId)
-                            .orElseThrow(() -> new AppException(ErrorCode.COMPANY_NOT_FOUND));
-                    CreditAccount newAccount = CreditAccount.builder()
-                            .company(company)
-                            .balance(0)
-                            .build();
-                    return creditAccountRepository.save(newAccount);
-                });
+    @Override
+    @Transactional
+    public void ensureAccount(Long companyId) {
+        createAccountIfMissing(companyId);
+    }
+
+    /**
+     * INSERT ... ON CONFLICT DO NOTHING thay cho đọc-rồi-lưu: hai lượt cùng tạo tài khoản cho một công ty không còn
+     * đụng khoá duy nhất company_id (lượt thua trước đây ném lỗi và làm hỏng cả giao dịch kích hoạt gói).
+     */
+    private void createAccountIfMissing(Long companyId) {
+        if (creditAccountRepository.existsByCompanyId(companyId)) {
+            return;
+        }
+        if (!companyRepository.existsById(companyId)) {
+            throw new AppException(ErrorCode.COMPANY_NOT_FOUND);
+        }
+        if (creditAccountRepository.insertIfMissing(companyId) == 1) {
+            log.info("Created credit account for company {}", companyId);
+        }
     }
 
     private CreditAccount lockAccount(Long companyId) {
         return creditAccountRepository.findByCompanyIdForUpdate(companyId)
-                .orElseGet(() -> getOrCreateAccount(companyId));
+                .orElseGet(() -> {
+                    createAccountIfMissing(companyId);
+                    return creditAccountRepository.findByCompanyIdForUpdate(companyId)
+                            .orElseThrow(() -> new AppException(ErrorCode.COMPANY_NOT_FOUND));
+                });
     }
 
     /**

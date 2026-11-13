@@ -67,7 +67,7 @@ vnpay:
   hash-secret: ${VNPAY_HASH_SECRET}
   vnp-url: ${VNPAY_URL:https://sandbox.vnpayment.vn/paymentv2/vpcpay.html}
   return-url: ${VNPAY_RETURN_URL:http://localhost:8080/webhook/vnpay-return}
-  # true: bỏ kiểm chữ ký VNPay và mở /api/payment/mock-checkout (ai cũng đánh dấu được giao dịch đã trả).
+  # true: bỏ kiểm chữ ký VNPay và mở /api/payment/mock-checkout (công ty đăng nhập tự đánh dấu giao dịch của mình đã trả).
   # Mặc định tắt; chỉ profile dev bật sẵn (application-dev.yml).
   mock: ${VNPAY_MOCK:false}
 
@@ -78,8 +78,27 @@ goong:
     base-url: https://rsapi.goong.io
     timeout-seconds: 10
 
+# Chỉ mở /actuator/health, không trả chi tiết thành phần. Redis chỉ dùng cho mã đặt lại mật khẩu
+# nên không làm health DOWN khi Redis vắng.
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+  endpoint:
+    health:
+      show-details: never
+      show-components: never
+  health:
+    redis:
+      enabled: false
+
+# Swagger UI và /v3/api-docs tắt mặc định: chỉ bật khi đặt API_DOCS_ENABLED=true (profile dev bật sẵn).
 springdoc:
+  api-docs:
+    enabled: ${API_DOCS_ENABLED:false}
   swagger-ui:
+    enabled: ${API_DOCS_ENABLED:false}
     oauth:
       client-id: loadmaster-web, loadmaster-mobile
 

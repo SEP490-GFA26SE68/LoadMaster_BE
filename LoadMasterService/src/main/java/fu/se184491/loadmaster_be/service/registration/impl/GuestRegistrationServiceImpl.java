@@ -1,5 +1,6 @@
 package fu.se184491.loadmaster_be.service.registration.impl;
 
+import fu.se184491.loadmaster_be.helpers.LogMasks;
 import fu.se184491.loadmaster_be.client.BrevoClient;
 import fu.se184491.loadmaster_be.client.KeycloakAdminClient;
 import fu.se184491.loadmaster_be.client.VnPayClient;
@@ -14,8 +15,11 @@ import fu.se184491.loadmaster_be.dto.response.registration.PaymentLinkResponse;
 import fu.se184491.loadmaster_be.dto.response.registration.ResendOtpResponse;
 import fu.se184491.loadmaster_be.entity.registration.GuestRegistrationSession;
 import fu.se184491.loadmaster_be.exception.AppException;
+import fu.se184491.loadmaster_be.service.registration.GuestRegistrationSessionExpiry;
 import fu.se184491.loadmaster_be.service.registration.OtpAttempts;
 import fu.se184491.loadmaster_be.exception.ErrorCode;
+import fu.se184491.loadmaster_be.helpers.AfterCommit;
+import fu.se184491.loadmaster_be.helpers.KeycloakAccounts;
 import fu.se184491.loadmaster_be.helpers.TemporaryPasswordGenerator;
 import fu.se184491.loadmaster_be.repository.account.UserRepository;
 import fu.se184491.loadmaster_be.repository.billing.CompanySubscriptionRepository;
@@ -24,6 +28,7 @@ import fu.se184491.loadmaster_be.repository.billing.SubscriptionPlanRepository;
 import fu.se184491.loadmaster_be.repository.company.CompanyAgreementRepository;
 import fu.se184491.loadmaster_be.repository.company.CompanyRepository;
 import fu.se184491.loadmaster_be.repository.registration.GuestRegistrationSessionRepository;
+import fu.se184491.loadmaster_be.service.billing.InvoiceService;
 import fu.se184491.loadmaster_be.service.credit.CreditService;
 import fu.se184491.loadmaster_be.service.registration.GuestRegistrationService;
 import fu.se184491.loadmaster_be.service.security.OtpHasher;
@@ -58,6 +63,8 @@ public class GuestRegistrationServiceImpl implements GuestRegistrationService {
     private final BrevoClient brevoClient;
     private final OtpHasher otpHasher;
     private final TemporaryPasswordGenerator temporaryPasswordGenerator;
+    private final GuestRegistrationSessionExpiry sessionExpiry;
+    private final InvoiceService invoiceService;
 
     @Value(FrontendUrls.URL)
     private String frontendUrl = FrontendUrls.DEFAULT;
@@ -268,8 +275,9 @@ public class GuestRegistrationServiceImpl implements GuestRegistrationService {
                 .orElseThrow(() -> new AppException(ErrorCode.REGISTRATION_SESSION_NOT_FOUND));
 
         if (session.getExpiresAt() != null && session.getExpiresAt().isBefore(LocalDateTime.now())) {
+            // Lỗi bên dưới rollback transaction này, nên ghi EXPIRED trong transaction riêng
+            sessionExpiry.markExpired(session.getId());
             session.setStatus(RegistrationStatus.EXPIRED);
-            sessionRepository.save(session);
             throw new AppException(ErrorCode.REGISTRATION_SESSION_EXPIRED);
         }
 
@@ -315,17 +323,7 @@ public class GuestRegistrationServiceImpl implements GuestRegistrationService {
         Map<String, String> response = new java.util.HashMap<>();
         String txnRef = params.get("vnp_TxnRef");
 
-        // 1. Verify Checksum. Chỉ bỏ qua khi máy chủ bật cấu hình vnpay.mock; tham số của request
-        // (vnp_Mock, tiền tố MOCK_ của mã giao dịch) do người gọi tự đặt nên không bao giờ được tin.
-        if (!vnPayClient.isMock()) {
-            boolean validSignature = vnPayClient.verifyCallback(params);
-            if (!validSignature) {
-                log.warn("VNPay callback signature verification failed for params: {}", params);
-                response.put("RspCode", "97");
-                response.put("Message", "Invalid Checksum");
-                return response;
-            }
-        }
+        // Chữ ký VNPay đã kiểm ở PaymentCallbackHandler, lối vào duy nhất của callback.
 
         // 2. Find Registration Session
         // Khoá phiên tới hết giao dịch để hai lượt callback không cùng tạo công ty, tài khoản.
@@ -379,7 +377,8 @@ public class GuestRegistrationServiceImpl implements GuestRegistrationService {
                     Trân trọng,
                     Đội ngũ LoadMaster
                     """.formatted(session.getFullName(), session.getCompanyName(), txnRef);
-            brevoClient.sendEmail(session.getEmail(), subject, content);
+            String recipient = session.getEmail();
+            AfterCommit.run("email thanh toán đăng ký thất bại", () -> brevoClient.sendEmail(recipient, subject, content));
 
             response.put("RspCode", "00");
             response.put("Message", "Confirm Success");
@@ -402,18 +401,17 @@ public class GuestRegistrationServiceImpl implements GuestRegistrationService {
 
         // b) Create Keycloak Admin User & Local DB User
         String temporaryPassword = temporaryPasswordGenerator.generate();
-        String keycloakUserId = null;
+        String keycloakUserId;
         try {
-            keycloakUserId = keycloakAdminClient.findUserIdByEmail(session.getEmail());
-            if (keycloakUserId == null) {
-                keycloakUserId = keycloakAdminClient.createUser(session.getEmail(), session.getFullName());
-            } else {
-                keycloakAdminClient.updateUserProfile(keycloakUserId, session.getFullName());
-            }
-            keycloakAdminClient.setPassword(keycloakUserId, temporaryPassword, false);
-            keycloakAdminClient.assignRealmRole(keycloakUserId, fu.se184491.loadmaster_be.constant.account.UserRole.ADMIN.name());
+            // Dùng lại tài khoản Keycloak mồ côi cùng email; rollback thì người dùng Keycloak vừa tạo bị xoá lại
+            keycloakUserId = KeycloakAccounts.provision(keycloakAdminClient, userRepository, session.getEmail(),
+                    session.getFullName(), temporaryPassword, false,
+                    fu.se184491.loadmaster_be.constant.account.UserRole.ADMIN, true);
+        } catch (AppException ex) {
+            throw ex;
         } catch (Exception ex) {
-            log.error("Failed to provision Keycloak account for email: {}", session.getEmail(), ex);
+            log.error("Failed to provision Keycloak account for registration session {} ({})", session.getId(),
+                    LogMasks.email(session.getEmail()), ex);
             throw new AppException(ErrorCode.INTERNAL_SERVER_ERROR, "Không thể khởi tạo tài khoản trên hệ thống định danh: " + ex.getMessage());
         }
 
@@ -480,10 +478,16 @@ public class GuestRegistrationServiceImpl implements GuestRegistrationService {
                 .payload(params.toString())
                 .build();
         paymentTransactionRepository.save(txn);
+        // Hoá đơn trong danh sách của công ty, cùng giao dịch với phiên bị khoá: callback gửi lại dừng ở bước 3
+        invoiceService.recordPaymentInvoice(txn, new InvoiceService.SubscriptionPeriod(
+                subscription, session.getPlan(), subscription.getStartedAt(), subscription.getExpiresAt()));
 
         // g) Generate PDF Invoice and Send Welcome Email
         byte[] invoicePdf = generateInvoicePdf(savedCompany, savedUser, session.getPlan(), session.getBillingCycle(), session.getAmountVnd(), session.getPaymentRef());
-        sendWelcomeEmailWithInvoice(savedCompany, savedUser, session.getPlan(), session.getBillingCycle(), temporaryPassword, invoicePdf);
+        fu.se184491.loadmaster_be.entity.billing.SubscriptionPlan plan = session.getPlan();
+        fu.se184491.loadmaster_be.constant.billing.BillingCycle billingCycle = session.getBillingCycle();
+        AfterCommit.run("email chào mừng kèm hoá đơn", () -> sendWelcomeEmailWithInvoice(
+                savedCompany, savedUser, plan, billingCycle, temporaryPassword, invoicePdf));
 
         // h) Complete Session
         session.setStatus(RegistrationStatus.COMPLETED);

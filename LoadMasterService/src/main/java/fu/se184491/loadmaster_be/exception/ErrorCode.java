@@ -128,7 +128,6 @@ public enum ErrorCode {
     SUBSCRIPTION_NOT_FOUND("Không tìm thấy thông tin gói dịch vụ", HttpStatus.NOT_FOUND),
     SUBSCRIPTION_PLAN_ALREADY_EXISTS("Mã gói dịch vụ đã tồn tại", HttpStatus.CONFLICT),
     SUBSCRIPTION_TIER_ALREADY_EXISTS("Đã có một gói dịch vụ khác đang kích hoạt cho Tier này", HttpStatus.CONFLICT),
-    SUBSCRIPTION_EXPIRED("Gói cước dịch vụ của doanh nghiệp đã hết hạn. Vui lòng nâng cấp hoặc gia hạn gói cước để tiếp tục sử dụng", HttpStatus.FORBIDDEN),
     PLAN_IN_USE("Không thể xóa gói dịch vụ đang có doanh nghiệp sử dụng", HttpStatus.CONFLICT),
     PAYMENT_FAILED("Giao dịch thanh toán thất bại", HttpStatus.PAYMENT_REQUIRED),
 
@@ -231,6 +230,7 @@ public enum ErrorCode {
     PLAN_HAS_NO_PLACEMENTS("Kế hoạch xếp hàng không có kiện hàng nào", HttpStatus.BAD_REQUEST),
     PLAN_LIFO_INVALID("Thứ tự dỡ hàng LIFO không hợp lệ", HttpStatus.BAD_REQUEST),
     OPTIMIZATION_JOB_NOT_FOUND("Không tìm thấy yêu cầu tối ưu", HttpStatus.NOT_FOUND),
+    OPTIMIZATION_JOB_ALREADY_FINISHED("Lần tối ưu đã kết thúc (quá thời gian cho phép) trước khi có kết quả; kết quả bị bỏ và credit đã hoàn", HttpStatus.CONFLICT),
     OPTIMIZATION_SERVICE_UNAVAILABLE("Dịch vụ tối ưu xếp hàng không khả dụng", HttpStatus.SERVICE_UNAVAILABLE),
     INSUFFICIENT_CREDITS("Công ty không đủ credit để chạy tối ưu xếp hàng", HttpStatus.PAYMENT_REQUIRED),
     PINNED_SET_INVALID("Bộ kiện đã ghim không đứng vững; chưa chạy tối ưu và không trừ credit", HttpStatus.BAD_REQUEST),
@@ -284,6 +284,7 @@ public enum ErrorCode {
     ACTIVE_SUBSCRIPTION_ALREADY_EXISTS("Doanh nghiệp đã có gói đăng ký đang hoạt động", HttpStatus.CONFLICT),
     NO_ACTIVE_SUBSCRIPTION("Doanh nghiệp chưa có gói đăng ký nào đang hoạt động", HttpStatus.NOT_FOUND),
     SUBSCRIPTION_NOT_RENEWABLE("Gói cước chưa tới kỳ gia hạn, đang dùng thử hoặc hợp đồng đã huỷ", HttpStatus.CONFLICT),
+    SUBSCRIPTION_EXPIRED("Gói cước đã hết hạn hoặc đã huỷ. Vui lòng gia hạn gói trước khi mua thêm credit", HttpStatus.CONFLICT),
     SUBSCRIPTION_PLAN_NOT_FOUND("Không tìm thấy gói đăng ký", HttpStatus.NOT_FOUND),
     PAYMENT_TRANSACTION_NOT_FOUND("Không tìm thấy giao dịch thanh toán", HttpStatus.NOT_FOUND),
     INVALID_PAYMENT_SIGNATURE("Chữ ký thanh toán không hợp lệ", HttpStatus.BAD_REQUEST),

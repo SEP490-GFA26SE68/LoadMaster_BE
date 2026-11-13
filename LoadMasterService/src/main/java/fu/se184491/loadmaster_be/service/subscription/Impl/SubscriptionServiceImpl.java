@@ -20,6 +20,7 @@ import fu.se184491.loadmaster_be.exception.ErrorCode;
 import fu.se184491.loadmaster_be.repository.billing.CompanySubscriptionRepository;
 import fu.se184491.loadmaster_be.repository.billing.SubscriptionPlanRepository;
 import fu.se184491.loadmaster_be.repository.company.CompanyRepository;
+import fu.se184491.loadmaster_be.service.billing.InvoiceService.SubscriptionPeriod;
 import fu.se184491.loadmaster_be.service.credit.CreditService;
 import fu.se184491.loadmaster_be.service.payment.PaymentGatewayService;
 import fu.se184491.loadmaster_be.service.subscription.SubscriptionService;
@@ -182,13 +183,13 @@ public class SubscriptionServiceImpl implements SubscriptionService {
 
     @Override
     @Transactional
-    public void activateSubscription(Long companyId, Long planId) {
-        activateSubscription(companyId, planId, null);
+    public SubscriptionPeriod activateSubscription(Long companyId, Long planId) {
+        return activateSubscription(companyId, planId, null);
     }
 
     @Override
     @Transactional
-    public void activateSubscription(Long companyId, Long planId, BillingCycle requestedCycle) {
+    public SubscriptionPeriod activateSubscription(Long companyId, Long planId, BillingCycle requestedCycle) {
         Company company = companyRepository.findById(companyId)
                 .orElseThrow(() -> new AppException(ErrorCode.COMPANY_NOT_FOUND));
         SubscriptionPlan plan = subscriptionPlanRepository.findById(planId)
@@ -210,6 +211,7 @@ public class SubscriptionServiceImpl implements SubscriptionService {
         if (!isExtendingSameActivePlan && sub.getId() != null) {
             creditService.resetBalance(companyId);
         }
+        LocalDateTime previousExpiry = isExtendingSameActivePlan ? sub.getExpiresAt().truncatedTo(ChronoUnit.SECONDS) : null;
 
         sub.setPlan(plan);
         sub.setStatus(SubscriptionStatus.ACTIVE);
@@ -229,6 +231,8 @@ public class SubscriptionServiceImpl implements SubscriptionService {
 
         companySubscriptionRepository.save(sub);
         log.info("Activated subscription id={} for company={} plan={}", sub.getId(), companyId, plan.getName());
+        // Gói không giới hạn hay không ghi credit tháng không đi qua lượt cấp credit bên dưới: vẫn phải có tài khoản.
+        creditService.ensureAccount(companyId);
 
         // Grant monthly credits only when starting a new cycle or switching plans (not when extending active plan early)
         if (!isExtendingSameActivePlan) {
@@ -237,6 +241,12 @@ public class SubscriptionServiceImpl implements SubscriptionService {
                 creditService.grantMonthlyCredits(companyId, monthlyCredits);
             }
         }
+
+        // Kéo dài gói đang chạy thì kỳ mới nối tiếp hạn cũ; đổi gói hay bắt đầu lại thì tính từ bây giờ
+        LocalDateTime periodStart = previousExpiry != null && sub.getExpiresAt().isAfter(previousExpiry)
+                ? previousExpiry
+                : now;
+        return new SubscriptionPeriod(sub, plan, periodStart, sub.getExpiresAt());
     }
 
     private int calculatePurchasedMonths(CompanySubscription sub) {
@@ -378,6 +388,7 @@ public class SubscriptionServiceImpl implements SubscriptionService {
                     sub.setExpiresAt(calculateExpiresAt(now, plan).truncatedTo(ChronoUnit.SECONDS));
                     sub.normalizeTimestamps();
                     companySubscriptionRepository.save(sub);
+                    creditService.ensureAccount(sub.getCompany().getId());
                     if (plan.getMonthlyCredits() != null && plan.getMonthlyCredits() > 0) {
                         creditService.grantMonthlyCredits(sub.getCompany().getId(), plan.getMonthlyCredits(), renewRef);
                     }

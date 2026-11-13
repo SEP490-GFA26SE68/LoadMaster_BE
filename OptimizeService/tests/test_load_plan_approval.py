@@ -13,7 +13,6 @@ Seams under test:
 """
 import uuid
 import pytest
-import jwt
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
@@ -26,19 +25,22 @@ from app.entity.common.audit_log import AuditLog
 from app.entity.optimization.optimization_job import OptimizationJob
 from app.entity.optimization.load_plan import LoadPlan
 from app.entity.optimization.package_placement import PackagePlacement
-from app.entity.trip_model import Trip
+from app.entity.trip_model import AppUser, Trip
 from app.exception.app_exception import AppException
 from app.exception.error_code import ErrorCode
 from app.service.optimize.load_plan_service import LoadPlanService
 
 
-def make_jwt_token(roles: list[str], user_id: int = 99) -> str:
-    payload = {
-        "preferred_username": "dispatcher_user",
-        "user_id": user_id,
-        "roles": roles,
-    }
-    return jwt.encode(payload, "secret-test-key-32-bytes-minimum-length!", algorithm="HS256")
+from tests.keycloak_tokens import service_headers, user_headers
+
+DISPATCHER_SUB = "kc-dispatcher-approve"
+
+
+def _dispatcher_of_the_trip(db_session, user_id=456, company_id=3):
+    """Điều phối viên có tài khoản (users.keycloak_id = sub) thuộc công ty của chuyến."""
+    db_session.query(Trip).first().company_id = company_id
+    db_session.add(AppUser(id=user_id, keycloak_id=DISPATCHER_SUB, company_id=company_id))
+    db_session.commit()
 
 
 @pytest.fixture
@@ -186,28 +188,29 @@ class TestLoadPlanApproveApi:
         assert response.status_code == 401
         app.dependency_overrides.clear()
 
+    @pytest.mark.usefixtures("keycloak_jwks")
     def test_approve_plan_unauthorized_role_returns_403(self, db_session, plan_with_placements):
         """Role DRIVER không được phép duyệt plan -> 403 Forbidden"""
         app.dependency_overrides[get_db] = lambda: db_session
         client = TestClient(app)
-        driver_token = make_jwt_token(["DRIVER"])
 
         response = client.post(
             f"/api/v1/load-plans/{plan_with_placements.id}/approve",
-            headers={"Authorization": f"Bearer {driver_token}"},
+            headers=user_headers("DRIVER"),
         )
         assert response.status_code == 403
         app.dependency_overrides.clear()
 
+    @pytest.mark.usefixtures("keycloak_jwks")
     def test_approve_plan_dispatcher_role_returns_200_and_approved_plan(self, db_session, plan_with_placements):
         """Role DISPATCHER duyệt plan hợp lệ -> 200 OK + LoadPlanResponse với approved=True"""
+        _dispatcher_of_the_trip(db_session, user_id=456)
         app.dependency_overrides[get_db] = lambda: db_session
         client = TestClient(app)
-        dispatcher_token = make_jwt_token(["DISPATCHER"], user_id=456)
 
         response = client.post(
             f"/api/v1/load-plans/{plan_with_placements.id}/approve",
-            headers={"Authorization": f"Bearer {dispatcher_token}"},
+            headers=user_headers("DISPATCHER", sub=DISPATCHER_SUB),
         )
         assert response.status_code == 200
         data = response.json()
@@ -218,6 +221,40 @@ class TestLoadPlanApproveApi:
         assert plan_data["approved_by_id"] == 456
         assert len(plan_data["placements"]) == 2
 
+        app.dependency_overrides.clear()
+
+
+    @pytest.mark.usefixtures("keycloak_jwks")
+    def test_approve_plan_of_another_company_returns_404(self, db_session, plan_with_placements):
+        """Điều phối viên công ty khác không thấy phương án -> 404, phương án vẫn chưa duyệt."""
+        _dispatcher_of_the_trip(db_session, company_id=3)
+        db_session.query(Trip).first().company_id = 4
+        db_session.commit()
+        app.dependency_overrides[get_db] = lambda: db_session
+        client = TestClient(app)
+
+        response = client.post(
+            f"/api/v1/load-plans/{plan_with_placements.id}/approve",
+            headers=user_headers("DISPATCHER", sub=DISPATCHER_SUB),
+        )
+        assert response.status_code == 404
+        db_session.refresh(plan_with_placements)
+        assert plan_with_placements.approved is False
+        app.dependency_overrides.clear()
+
+    @pytest.mark.usefixtures("keycloak_jwks")
+    def test_approve_plan_with_service_token_uses_the_approver_in_the_body(self, db_session, plan_with_placements):
+        """Service token của LoadMasterService: người duyệt lấy từ thân (Java đã kiểm vai trò và công ty)."""
+        app.dependency_overrides[get_db] = lambda: db_session
+        client = TestClient(app)
+
+        response = client.post(
+            f"/api/v1/load-plans/{plan_with_placements.id}/approve",
+            json={"approved_by_user_id": 789},
+            headers=service_headers(),
+        )
+        assert response.status_code == 200
+        assert response.json()["data"]["approved_by_id"] == 789
         app.dependency_overrides.clear()
 
 

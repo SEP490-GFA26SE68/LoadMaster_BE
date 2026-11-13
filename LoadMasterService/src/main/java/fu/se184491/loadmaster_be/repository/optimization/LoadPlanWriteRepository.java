@@ -6,6 +6,7 @@ import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.stereotype.Repository;
 
 import java.math.BigDecimal;
+import java.sql.Types;
 import java.util.List;
 import java.util.Map;
 
@@ -49,6 +50,32 @@ public class LoadPlanWriteRepository {
                     packed_length, packed_width, packed_height, rotation_type, step_sequence, pinned, stop_zone_id)
                 VALUES (:planId, :packageId, :x, :y, :z, :l, :w, :h, :rotation, :step, :pinned, :stopId)
                 """, rows);
+    }
+
+    /**
+     * Job còn chờ / đang chạy thành FAILED kèm mã lý do. Chỉ đổi khi job vẫn PENDING hoặc RUNNING:
+     * trả 1 cho đúng một lượt đổi, lượt đến sau (hay job vừa xong) trả 0.
+     */
+    public int failUnfinishedJob(Long jobId, String failureCode) {
+        return jdbc.update("""
+                UPDATE optimization_jobs SET status = 'FAILED', failure_code = :code
+                WHERE id = :id AND status IN ('PENDING', 'RUNNING')
+                """, Map.of("id", jobId, "code", failureCode));
+    }
+
+    /**
+     * Kết thúc job còn chờ / đang chạy với trạng thái cuối {@code status} (COMPLETED, FAILED…). Chỉ đổi khi job vẫn
+     * PENDING hoặc RUNNING, bằng một câu UPDATE có điều kiện: trạng thái cuối — kể cả FAILED JOB_INTERRUPTED — không
+     * bị ghi đè. Trả 1 khi đổi được, 0 khi job đã kết thúc trước đó (hay không có job).
+     */
+    public int finishUnfinishedJob(String jobUuid, String status, Long computationMs) {
+        return jdbc.update("""
+                UPDATE optimization_jobs SET status = :status, computation_ms = COALESCE(:ms, computation_ms)
+                WHERE job_uuid = :uuid AND status IN ('PENDING', 'RUNNING')
+                """, new MapSqlParameterSource()
+                .addValue("uuid", jobUuid)
+                .addValue("status", status)
+                .addValue("ms", computationMs, Types.BIGINT));
     }
 
     /** Chép kiện không xếp được của phương án nguồn sang phương án mới. */

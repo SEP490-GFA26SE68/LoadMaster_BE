@@ -61,12 +61,12 @@ public class WebSecurityConfig {
                                 "/v3/api-docs/**",
                                 "/swagger-ui/**",
                                 "/swagger-ui.html",
-                                "/api/vehicle-types",
                                 "/api/auth/password-reset/**",
                                 "/webhook/**",
                                 "/api/payment/**",
                                 "/api/guest-registration/**",
-                                "/api/trial-registration/**"
+                                "/api/trial-registration/**",
+                                "/actuator/health"
                         )
                         .permitAll()
 

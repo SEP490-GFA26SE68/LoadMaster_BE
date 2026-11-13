@@ -34,6 +34,10 @@ from app.service.optimize.unload_feasibility_validator import (
 logger = logging.getLogger(__name__)
 
 
+def _debug_log(*parts) -> None:
+    logger.debug(" ".join(str(part) for part in parts).strip())
+
+
 class OptimizationClient:
     """
     Client tương tác với Optimization Engine.
@@ -234,10 +238,15 @@ class OptimizationClient:
                             có chỗ đặt hợp lệ với hướng đó thì chọn trong số đó, không thì như thường.
                             Vắng hoặc âm: không ưu tiên.
         use_lumo_scorer: True thì Lumo-R1.1 chọn trong các chỗ đặt hợp lệ (nếu nạp được trọng số);
-        None giữ cách cũ (theo algorithm_name của job). quiet: tắt bản in gỡ lỗi trước HC-11 / HC-12.
+        None giữ cách cũ (theo algorithm_name của job). quiet: tắt bản ghi gỡ lỗi trước HC-11 / HC-12.
         """
         start_time = time.time()
-        _debug_print = (lambda *args, **kwargs: None) if quiet else print
+        # Bản ghi gỡ lỗi trước HC-11 / HC-12 đi qua logger ở mức DEBUG, không in ra console.
+        _debug_print = (
+            (lambda *args, **kwargs: None)
+            if quiet or not logger.isEnabledFor(logging.DEBUG)
+            else _debug_log
+        )
         lumo = None
         if use_lumo_scorer is None:
             use_lumo_scorer = uses_lumo(problem.algorithm_name)

@@ -439,6 +439,23 @@ public class CreditServiceTest {
     }
 
     @Test
+    @DisplayName("topup - gói đã hết hạn hoặc đã huỷ trả mã SUBSCRIPTION_EXPIRED, không tạo thanh toán")
+    void topupOnExpiredOrCancelledSubscriptionIsSubscriptionExpired() {
+        when(companyRepository.findById(1L)).thenReturn(Optional.of(company));
+        when(companySubscriptionRepository.findByCompanyId(1L)).thenReturn(Optional.of(subscription));
+        CreditTopupRequest req = CreditTopupRequest.builder().credits(10).gateway(PaymentGateway.MOCK).build();
+
+        for (SubscriptionStatus status : new SubscriptionStatus[] {SubscriptionStatus.EXPIRED, SubscriptionStatus.CANCELLED}) {
+            subscription.setStatus(status);
+            fu.se184491.loadmaster_be.exception.AppException error = assertThrows(
+                    fu.se184491.loadmaster_be.exception.AppException.class,
+                    () -> creditService.topup(1L, req, "127.0.0.1"));
+            assertEquals(fu.se184491.loadmaster_be.exception.ErrorCode.SUBSCRIPTION_EXPIRED, error.getErrorCode());
+        }
+        verifyNoInteractions(paymentGatewayService);
+    }
+
+    @Test
     @DisplayName("getPricing - giá theo hạng gói đang dùng, một lần tối ưu 2 credit, chạy lại 1 credit, nạp từ 1 credit không trần")
     void pricingFollowsTheCurrentTier() {
         when(companySubscriptionRepository.findByCompanyId(1L)).thenReturn(Optional.of(subscription));
@@ -483,5 +500,55 @@ public class CreditServiceTest {
         assertNull(ultimate.getLowBalanceThreshold());
         assertNull(none.getLowBalanceThreshold());
         assertEquals(new BigDecimal("263"), ultimate.getPricePerCreditVnd());
+    }
+
+    @Test
+    @DisplayName("ensureAccount tạo tài khoản số dư 0 khi công ty chưa có")
+    void ensureAccount_createsMissingAccount() {
+        when(creditAccountRepository.existsByCompanyId(1L)).thenReturn(false);
+        when(companyRepository.existsById(1L)).thenReturn(true);
+        when(creditAccountRepository.insertIfMissing(1L)).thenReturn(1);
+
+        creditService.ensureAccount(1L);
+
+        verify(creditAccountRepository).insertIfMissing(1L);
+        verify(creditAccountRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("ensureAccount không đổi gì khi tài khoản đã có")
+    void ensureAccount_existingAccountIsLeftAlone() {
+        when(creditAccountRepository.existsByCompanyId(1L)).thenReturn(true);
+
+        creditService.ensureAccount(1L);
+
+        verify(creditAccountRepository, never()).insertIfMissing(anyLong());
+        verify(creditAccountRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("ensureAccount với công ty không tồn tại là COMPANY_NOT_FOUND, không chèn gì")
+    void ensureAccount_unknownCompany() {
+        when(creditAccountRepository.existsByCompanyId(99L)).thenReturn(false);
+        when(companyRepository.existsById(99L)).thenReturn(false);
+
+        assertThrows(fu.se184491.loadmaster_be.exception.AppException.class, () -> creditService.ensureAccount(99L));
+        verify(creditAccountRepository, never()).insertIfMissing(anyLong());
+    }
+
+    @Test
+    @DisplayName("Cấp credit cho công ty chưa có tài khoản: chèn bằng insertIfMissing rồi khoá lại dòng vừa tạo")
+    void grantMonthlyCredits_createsAccountWithoutSaveRace() {
+        when(creditAccountRepository.findByCompanyIdForUpdate(1L))
+                .thenReturn(Optional.empty())
+                .thenReturn(Optional.of(CreditAccount.builder().id(11L).company(company).balance(0).build()));
+        when(creditAccountRepository.existsByCompanyId(1L)).thenReturn(false);
+        when(companyRepository.existsById(1L)).thenReturn(true);
+        when(creditAccountRepository.insertIfMissing(1L)).thenReturn(1);
+
+        creditService.grantMonthlyCredits(1L, 3000);
+
+        verify(creditAccountRepository).insertIfMissing(1L);
+        verify(creditAccountRepository).save(argThat(acc -> acc.getBalance() == 3000));
     }
 }

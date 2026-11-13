@@ -72,9 +72,10 @@ SERVICE_CLAIMS = {
     },
 }
 
+# Token Keycloak của người dùng không có users.id: chỉ có sub, dịch vụ tra users.keycloak_id
 USER_CLAIMS = {
     "azp": "loadmaster-web",
-    "user_id": 456,
+    "sub": "kc-user-456",
     "resource_access": {settings.KEYCLOAK_AUDIENCE: {"roles": ["DISPATCHER"]}},
 }
 
@@ -94,6 +95,14 @@ class TestPinnedSolver:
         for key in ("1", "3", "4"):
             assert by_id[key].pinned is False
             assert not overlaps(by_id[key], pinned)
+
+    def test_solver_logs_debug_instead_of_printing(self, capsys, caplog):
+        with caplog.at_level("DEBUG", logger="app.service.optimize.optimization_client"):
+            OptimizationClient().solve_in_process(problem())
+
+        assert capsys.readouterr().out == ""
+        assert any("BEFORE HC-11 / HC-12" in r.getMessage() and r.levelname == "DEBUG"
+                   for r in caplog.records)
 
     def test_pinned_package_outside_trip_is_ignored(self):
         pin = PinnedData(package_id="999", pos_x=0, pos_y=0, pos_z=0)
@@ -175,6 +184,10 @@ class TestRerunApi:
 class FakePlanService:
     def __init__(self):
         self.approved = []
+        self.company_checks = []
+
+    def ensure_plans_of_company(self, plan_ids, company_id, db):
+        self.company_checks.append(list(plan_ids))
 
     def approve_plan(self, plan_id, current_user_id, db):
         self.approved.append((plan_id, current_user_id))
@@ -207,6 +220,8 @@ class TestServiceApproval:
 
         assert response.status_code == 200
         assert service.approved == [(12, 77)]
+        # Service token: Java đã kiểm công ty
+        assert service.company_checks == []
         assert response.json()["data"]["approved_by_id"] == 77
 
     def test_service_token_without_approver_is_rejected(self):
@@ -216,13 +231,19 @@ class TestServiceApproval:
         assert response.status_code == 400
         assert service.approved == []
 
-    def test_user_token_approves_as_token_user(self):
+    def test_user_token_approves_as_token_user(self, monkeypatch):
         service = FakePlanService()
+        monkeypatch.setattr(
+            load_plan_router, "user_id_of_caller",
+            lambda claims, db: 456 if claims.get("sub") == "kc-user-456" else None,
+        )
         response = self._client(USER_CLAIMS, service).post(
             "/api/v1/load-plans/12/approve", json={"approved_by_user_id": 1})
 
         assert response.status_code == 200
         assert service.approved == [(12, 456)]
+        # Token người dùng: kiểm công ty của phương án trước khi duyệt
+        assert service.company_checks == [[12]]
 
     def test_approve_without_token_returns_401(self):
         app.dependency_overrides[get_db] = lambda: None

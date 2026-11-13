@@ -107,6 +107,8 @@ public class DriverServiceImpl implements DriverService {
     public DriverTripResponse startTrip(Long tripId) {
         User driver = currentDriver(null);
         Trip trip = requireOwnTrip(String.valueOf(tripId));
+        // Khoá chuyến rồi kiểm trạng thái: không xuất phát chồng với lệnh huỷ
+        tripStatusService.lockForTransition(trip.getId());
         if (trip.getStatus() != TripStatus.LOADING) {
             throw new AppException(ErrorCode.LOADING_NOT_COMPLETED);
         }
@@ -347,6 +349,8 @@ public class DriverServiceImpl implements DriverService {
             throw new AppException(ErrorCode.TRIP_NOT_FOUND);
         }
         requireDriverOf(trip, driver);
+        // Khoá chuyến rồi đọc lại chuyến và điểm: hai lần hoàn tất cùng điểm, hay hoàn tất chồng lệnh huỷ, chạy lần lượt
+        tripStatusService.lockForTransition(trip.getId(), stop);
         if (trip.getStatus() != TripStatus.IN_TRANSIT) {
             throw new AppException(ErrorCode.GPS_TRIP_NOT_IN_TRANSIT);
         }

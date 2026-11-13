@@ -1,5 +1,12 @@
-from fastapi import FastAPI
+import logging
+
+from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from sqlalchemy import text
+from sqlalchemy.orm import Session
+
+from app.config.database import get_db
 
 from app.config.settings import settings
 from app.controller.optimization.optimization_router import router as optimization_router
@@ -7,21 +14,36 @@ from app.controller.optimization.load_plan_router import router as load_plan_rou
 from app.controller.optimization.rerun_router import router as rerun_router
 from app.exception.global_exception_handler import register_exception_handlers
 
+logger = logging.getLogger(__name__)
+
+# Tài liệu API chỉ mở ở máy dev hoặc khi API_DOCS_ENABLED=true.
+_docs_enabled = settings.api_docs_enabled()
+
 app = FastAPI(
     title=settings.APP_NAME,
     version="1.0.0",
-    docs_url="/docs",
-    redoc_url="/redoc",
+    docs_url="/docs" if _docs_enabled else None,
+    redoc_url="/redoc" if _docs_enabled else None,
+    openapi_url="/openapi.json" if _docs_enabled else None,
 )
 
-# CORS
+# CORS: chỉ origin đã khai; xác thực bằng Bearer token nên không cần gửi cookie.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=settings.cors_origins(),
+    allow_credentials=False,
+    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type"],
 )
+
+# Gói ULTIMATE cần torch (requirements-ai.txt): báo ngay lúc khởi động, không để job âm thầm chạy heuristic.
+from app.ml.lumo_models import torch_available
+
+if not torch_available():
+    logger.warning(
+        "Chưa cài torch / numpy: gói ULTIMATE (EP_DBLF_GA_AI) sẽ chạy heuristic, không có mô hình Lumo. "
+        "Cài bằng: pip install -r requirements-ai.txt"
+    )
 
 # Exception handlers
 register_exception_handlers(app)
@@ -33,7 +55,16 @@ app.include_router(rerun_router)
 
 
 @app.get("/health")
-def health_check():
+def health_check(db: Session = Depends(get_db)):
+    # Kiểm DB thật: DB không trả lời thì 503 để nơi theo dõi biết dịch vụ chưa dùng được.
+    try:
+        db.execute(text("SELECT 1"))
+    except Exception:
+        logger.exception("Health check: không truy vấn được DB")
+        return JSONResponse(
+            status_code=503,
+            content={"status": "DOWN", "service": settings.APP_NAME},
+        )
     return {"status": "UP", "service": settings.APP_NAME}
 
 

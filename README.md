@@ -92,9 +92,10 @@ cd OptimizeService
 python -m venv .venv
 .venv\Scripts\activate       # Trên Windows (hoặc: source .venv/bin/activate trên Linux/macOS)
 pip install -r requirements.txt
+pip install -r requirements-ai.txt   # tuỳ chọn: mô hình AI của gói ULTIMATE (torch CPU, vài GB)
 uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
-# Chạy bộ test suite (91 tests):
-python -m pytest tests/ -v
+# Chạy bộ test (xem mục 5):
+python -m pytest tests/ -m "not integration"
 ```
 
 #### Khởi động `LoadMasterService` (Spring Boot 3):
@@ -102,6 +103,52 @@ python -m pytest tests/ -v
 cd LoadMasterService
 ./mvnw clean spring-boot:run
 ```
+
+### 5. Triển khai (VPS)
+
+**Chạy bằng Docker.** `docker-compose.prod.yml` (gốc repo) dựng `LoadMasterService` (JRE 21), `OptimizeService` (Python 3.12) và một Redis cho mã OTP; cả ba chạy bằng user không phải root. DB là Supabase Postgres, Keycloak là bản dùng chung: không có container nào cho hai thứ đó. Chỉ `LoadMasterService` mở cổng (mặc định `127.0.0.1:8080` cho reverse proxy đứng trước, đổi bằng `LOADMASTER_PUBLISH`); `OptimizeService` và Redis không publish cổng, chỉ gọi được trong mạng của compose.
+```bash
+# 1. Cấu hình: chép mẫu rồi điền giá trị thật (file .env.prod đã nằm trong .gitignore)
+cp .env.prod.example .env.prod
+# 2. Kiểm cấu hình, build và chạy
+docker compose --env-file .env.prod -f docker-compose.prod.yml config --quiet
+docker compose --env-file .env.prod -f docker-compose.prod.yml up -d --build
+# 3. Theo dõi: cả ba phải "healthy" (LoadMasterService mất khoảng 30–90 giây)
+docker compose --env-file .env.prod -f docker-compose.prod.yml ps
+docker compose --env-file .env.prod -f docker-compose.prod.yml logs -f loadmaster-service
+curl -fsS http://127.0.0.1:8080/actuator/health
+# Cập nhật bản mới
+git pull && docker compose --env-file .env.prod -f docker-compose.prod.yml up -d --build
+# Dừng (giữ dữ liệu Redis)
+docker compose --env-file .env.prod -f docker-compose.prod.yml down
+```
+- Build riêng từng image: `docker build -t loadmaster-service ./LoadMasterService`, `docker build -t optimize-service ./OptimizeService`. Mô hình AI của gói ULTIMATE (torch CPU, vài GB) chỉ cài khi `OPTIMIZE_INSTALL_AI=true` trong `.env.prod` (hoặc `--build-arg INSTALL_AI=true`); thiếu nó gói ULTIMATE chạy heuristic.
+- `LoadMasterService` đọc cấu hình Keycloak lúc khởi động: `KEYCLOAK_AUTH_URL` phải tới được từ container, không thì dịch vụ dừng ngay.
+- Giá trị có ký tự `$` trong `.env.prod` thì bọc trong nháy đơn (compose nội suy `$`).
+- Không đặt `SPRING_PROFILES_ACTIVE` (profile `dev` tạo tài khoản mẫu). Schema theo `ddl-auto=update`; Flyway không tự chạy, file `db/migration/V*.sql` mới thì chạy tay trên Supabase (các file đều chạy lại an toàn).
+- CI build cả hai image ở mỗi pull request, không đẩy lên registry.
+
+**Một file cấu hình DB cho cả hai dịch vụ.** `OptimizeService` đọc đúng `DATABASE_URL` (dạng JDBC như `LoadMasterService`, giữ `?sslmode=...`), `POSTGRES_USER`, `POSTGRES_PASSWORD`; URL dạng `postgresql://user:pass@host/db` cũ vẫn chạy. `ssl=true` không kèm `sslmode` được hiểu như pgjdbc (`verify-full`). Mẫu: `LoadMasterService/.env.example`, `OptimizeService/.env.example`. Không commit file `.env`.
+
+**Keycloak cho tên miền thật.** Đặt `LOADMASTER_WEB_URL` (origin web production, `https`, không có `/` cuối) trước khi Keycloak import realm lần đầu: client `loadmaster-web` nhận chuyển hướng, CORS và đăng xuất về đó, vẫn giữ `localhost`. Realm đã có sẵn thì chạy trong container Keycloak:
+```bash
+docker exec -e KEYCLOAK_ADMIN_PASSWORD -e LOADMASTER_WEB_URL=https://app.example.vn \
+  loadmaster-keycloak sh /opt/keycloak/scripts/set-web-url.sh
+```
+`FRONTEND_URL` / `CORS_ALLOWED_ORIGINS` của `LoadMasterService` phải trùng origin đó.
+
+**Test.** Test API của `OptimizeService` ký token RS256 như Keycloak cấp, chạy trong CI, không cần Keycloak thật:
+```bash
+cd OptimizeService
+DATABASE_URL=sqlite:///./pytest-ci.db KEYCLOAK_CLIENT_SECRET=ci-dummy python -m pytest tests/ -m "not integration"
+```
+Chạy từ thư mục `OptimizeService` (test mô hình đọc file theo đường dẫn tương đối). `LoadMasterService`: `./mvnw test` (test PostgreSQL dùng Testcontainers, tự bỏ qua khi không có Docker).
+
+**Sửa dữ liệu bằng tay** (`LoadMasterService/src/main/resources/db/manual/`, Flyway không chạy thư mục này). Mỗi việc một cặp file: chạy file `-preview.sql` (chỉ đọc), đọc kết quả, sao lưu DB, rồi mới chạy file sửa. Không chạy file sửa khi chưa xem trước.
+- `2026-11-utc-to-vietnam-time.sql`: đưa `created_at` giờ UTC cũ của `OptimizeService` (trước bản sửa giờ) về giờ Việt Nam. Phải điền `deployed_vn` (cùng giá trị ở preview), không điền thì dừng.
+- `2026-11-create-missing-credit-accounts.sql`: tạo tài khoản credit số dư 0 cho công ty có gói `ACTIVE` mà chưa có.
+
+Cả hai chạy lại an toàn (lần sau không đổi gì).
 
 ---
 ---
@@ -192,6 +239,7 @@ cd OptimizeService
 python -m venv .venv
 .venv\Scripts\activate       # Windows (or: source .venv/bin/activate on Linux/macOS)
 pip install -r requirements.txt
+pip install -r requirements-ai.txt   # optional: AI models of the ULTIMATE plan (CPU torch, several GB)
 uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 
 # Execute Test Suite (91 tests):

@@ -120,6 +120,7 @@ class LoadPlanReadRepositoryTest {
                 .thenReturn(Timestamp.from(Instant.parse("2026-11-05T03:15:00Z")));
         when(rs.getInt("packed_plans")).thenReturn(0);
         when(rs.getString("algorithm_name")).thenReturn("EP_DBLF_GA_AI");
+        when(rs.getString("failure_code")).thenReturn("JOB_INTERRUPTED");
         rows(rs);
 
         Optional<OptimizationJobStatusResponse> status = repository.findJobStatus(42L);
@@ -133,10 +134,15 @@ class LoadPlanReadRepositoryTest {
             assertThat(job.getCreatedAt()).isEqualTo(Instant.parse("2026-11-05T03:15:00Z"));
             assertThat(job.getPackedPlanCount()).isZero();
             assertThat(job.getRunAlgorithm()).isEqualTo("EP_DBLF_GA_AI");
+            assertThat(job.getFailureCode()).isEqualTo("JOB_INTERRUPTED");
         });
         ArgumentCaptor<String> sql = ArgumentCaptor.forClass(String.class);
         verify(jdbc).query(sql.capture(), eq(Map.of("id", 42L)), any(RowMapper.class));
         assertThat(sql.getValue()).contains("COALESCE(lp.packed_items_count, 0) > 0");
+        // created_at không múi giờ là giờ Việt Nam (hai dịch vụ ghi cùng cách)
+        ArgumentCaptor<Calendar> calendar = ArgumentCaptor.forClass(Calendar.class);
+        verify(rs).getTimestamp(eq("created_at"), calendar.capture());
+        assertThat(calendar.getValue().getTimeZone().getID()).isEqualTo("Asia/Ho_Chi_Minh");
     }
 
     /** Dòng kiện đã xếp giả: số đọc theo tên cột; loại kiện vắng thì cột package_type_id là NULL. */

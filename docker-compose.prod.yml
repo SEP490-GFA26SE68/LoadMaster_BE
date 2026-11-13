@@ -1,0 +1,74 @@
+# Chạy LoadMasterService + OptimizeService trên VPS.
+#   cp .env.prod.example .env.prod   # điền giá trị thật, không commit
+#   docker compose --env-file .env.prod -f docker-compose.prod.yml up -d --build
+# DB là Supabase Postgres và Keycloak là bản dùng chung bên ngoài: không có container nào cho hai thứ đó.
+# Mọi cấu hình đọc từ .env.prod; khối environment dưới đây chỉ đặt địa chỉ nội bộ giữa các container.
+name: loadmaster
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+services:
+  loadmaster-service:
+    build: ./LoadMasterService
+    image: loadmaster-service:${IMAGE_TAG:-latest}
+    env_file: .env.prod
+    environment:
+      OPTIMIZATION_SERVICE_BASE_URL: http://optimize-service:8000
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+    # Mặc định chỉ mở ở 127.0.0.1 cho reverse proxy (TLS) đứng trước; không có proxy thì đặt
+    # LOADMASTER_PUBLISH=0.0.0.0:8080 trong .env.prod
+    ports:
+      - "${LOADMASTER_PUBLISH:-127.0.0.1:8080}:8080"
+    depends_on:
+      redis:
+        condition: service_healthy
+      optimize-service:
+        condition: service_started
+    networks: [backend]
+    restart: unless-stopped
+    logging: *logging
+
+  # Không publish cổng nào: chỉ LoadMasterService gọi được qua mạng backend.
+  optimize-service:
+    build:
+      context: ./OptimizeService
+      args:
+        INSTALL_AI: ${OPTIMIZE_INSTALL_AI:-false}
+    image: optimize-service:${IMAGE_TAG:-latest}
+    env_file: .env.prod
+    environment:
+      LOADMASTER_SERVICE_URL: http://loadmaster-service:8080
+    expose:
+      - "8000"
+    networks: [backend]
+    restart: unless-stopped
+    logging: *logging
+
+  # Mã OTP / đặt lại mật khẩu của LoadMasterService. Không publish cổng; mật khẩu là REDIS_PASSWORD của .env.prod.
+  redis:
+    image: redis:7.4-alpine
+    env_file: .env.prod
+    command: ["sh", "-c", "exec redis-server --requirepass \"$$REDIS_PASSWORD\" --appendonly yes"]
+    healthcheck:
+      test: ["CMD-SHELL", "REDISCLI_AUTH=\"$$REDIS_PASSWORD\" redis-cli ping | grep -q PONG"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    volumes:
+      - redis-data:/data
+    networks: [backend]
+    restart: unless-stopped
+    logging: *logging
+
+# Mạng bridge thường (không internal: true) vì OptimizeService còn phải ra ngoài tới Supabase và Keycloak;
+# "nội bộ" nghĩa là không cổng nào của optimize-service, redis được publish ra máy chủ.
+networks:
+  backend:
+
+volumes:
+  redis-data:

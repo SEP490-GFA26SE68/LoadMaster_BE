@@ -20,8 +20,11 @@ import fu.se184491.loadmaster_be.repository.trip.TripRepository;
 import fu.se184491.loadmaster_be.service.optimization.LoadPlanQueryService;
 import fu.se184491.loadmaster_be.service.optimization.manual.StopZoneResolver;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
@@ -32,6 +35,7 @@ import java.util.Objects;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class LoadPlanQueryServiceImpl implements LoadPlanQueryService {
 
     private final LoadPlanReadRepository readRepository;
@@ -39,6 +43,7 @@ public class LoadPlanQueryServiceImpl implements LoadPlanQueryService {
     private final CurrentUserService currentUserService;
     private final OptimizationClient optimizationClient;
     private final StopZoneResolver stopZoneResolver;
+    private final InterruptedOptimizationJobService interruptedJobs;
 
     @Override
     public TripLoadPlansResponse getTripLoadPlans(Long tripId) {
@@ -74,8 +79,20 @@ public class LoadPlanQueryServiceImpl implements LoadPlanQueryService {
     @Override
     public OptimizationJobStatusResponse getJobStatus(String jobUuid) {
         JobOwner owner = requireOwnedJob(jobUuid);
-        return readRepository.findJobStatus(owner.jobId())
+        OptimizationJobStatusResponse status = readRepository.findJobStatus(owner.jobId())
                 .orElseThrow(() -> new AppException(ErrorCode.OPTIMIZATION_JOB_NOT_FOUND));
+        boolean interrupted;
+        try {
+            interrupted = interruptedJobs.failIfInterrupted(owner, status, Instant.now());
+        } catch (RuntimeException e) {
+            // Hoàn credit lỗi: giao dịch đã rollback, job giữ trạng thái cũ và lượt đọc sau thử lại.
+            log.warn("Could not close interrupted optimization job {}: {}", jobUuid, e.getMessage());
+            return status;
+        }
+        if (!interrupted) {
+            return status;
+        }
+        return readRepository.findJobStatus(owner.jobId()).orElse(status);
     }
 
     @Override
@@ -92,6 +109,7 @@ public class LoadPlanQueryServiceImpl implements LoadPlanQueryService {
     }
 
     @Override
+    @Transactional
     public LoadPlanDetailResponse approvePlan(Long planId) {
         LoadPlanDetailResponse plan = ownedPlan(planId);
         if (Boolean.TRUE.equals(plan.getApproved())) {
@@ -101,7 +119,8 @@ public class LoadPlanQueryServiceImpl implements LoadPlanQueryService {
             throw new AppException(ErrorCode.PLAN_STALE);
         }
         // Kho và tài xế đọc phương án đã duyệt: hết pha lập kế hoạch thì không đổi được phương án nữa.
-        tripRepository.findById(plan.getTripId())
+        // Khoá chuyến tới khi duyệt xong: không chạy chồng với bắt đầu xếp hay huỷ chuyến.
+        tripRepository.findByIdForUpdate(plan.getTripId())
                 .filter(trip -> trip.getStatus() == TripStatus.PLANNED)
                 .orElseThrow(() -> new AppException(ErrorCode.PLAN_TRIP_NOT_PLANNED));
         User approver = currentUserService.getCurrentUser();

@@ -189,6 +189,8 @@ public class WarehouseServiceImpl implements WarehouseService {
             throw new AppException(ErrorCode.UNAUTHORIZED);
         }
         Trip trip = requireCompanyTrip(tripId, worker);
+        // Khoá chuyến rồi kiểm trạng thái: hai máy cùng bấm bắt đầu, hay bắt đầu chồng lệnh huỷ / duyệt, chạy lần lượt
+        tripStatusService.lockForTransition(trip.getId());
         if (trip.getStatus() == TripStatus.LOADING) {
             throw new AppException(ErrorCode.TRIP_ALREADY_LOADING);
         }
@@ -513,6 +515,8 @@ public class WarehouseServiceImpl implements WarehouseService {
     public CompleteLoadingResponse completeLoading(Long tripId) {
         User worker = currentUserService.getCurrentUser();
         Trip trip = requireCompanyTrip(tripId, worker);
+        // Khoá chuyến: xếp xong không chạy chồng với lệnh huỷ
+        tripStatusService.lockForTransition(trip.getId());
         if (trip.getStatus() != TripStatus.LOADING) {
             throw new AppException(ErrorCode.LOADING_EXECUTION_NOT_FOUND);
         }

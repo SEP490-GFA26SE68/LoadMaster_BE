@@ -5,11 +5,22 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    DATABASE_URL: str
+    # Cùng biến và cùng mặc định với LoadMasterService: DATABASE_URL dạng JDBC (jdbc:postgresql://...) hoặc
+    # SQLAlchemy (postgresql://user:pass@...); tài khoản không ghi trong URL thì lấy POSTGRES_USER / POSTGRES_PASSWORD.
+    DATABASE_URL: str = "jdbc:postgresql://localhost:5432/loadmaster"
+    POSTGRES_USER: Optional[str] = None
+    POSTGRES_PASSWORD: Optional[str] = None
 
     APP_NAME: str = "OptimizeService"
     APP_ENV: str = "development"
     APP_PORT: int = 8000
+
+    # Origin được gọi API (CORS), ngăn bằng dấu phẩy. Cùng tên biến với Spring Boot; vắng thì FRONTEND_URL,
+    # vắng nốt thì web chạy ở máy dev.
+    CORS_ALLOWED_ORIGINS: Optional[str] = None
+    FRONTEND_URL: str = "http://localhost:5173"
+    # /docs, /redoc, /openapi.json: vắng thì chỉ bật khi APP_ENV là môi trường dev.
+    API_DOCS_ENABLED: Optional[bool] = None
 
     # Keycloak JWT Resource Server
     KEYCLOAK_ISSUER: str = "http://localhost:8180/realms/loadmaster"
@@ -53,5 +64,16 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
+    def cors_origins(self) -> list[str]:
+        raw = self.CORS_ALLOWED_ORIGINS or self.FRONTEND_URL
+        return [origin.strip() for origin in raw.split(",") if origin.strip() and origin.strip() != "*"]
+
+    def api_docs_enabled(self) -> bool:
+        if self.API_DOCS_ENABLED is not None:
+            return self.API_DOCS_ENABLED
+        return self.APP_ENV.strip().lower() in DEV_ENVIRONMENTS
+
+
+DEV_ENVIRONMENTS = {"development", "dev", "local"}
 
 settings = Settings()

@@ -66,6 +66,7 @@ public class LoadPlanServiceImpl implements LoadPlanService {
     private final CurrentUserService currentUserService;
     private final CompanySubscriptionRepository companySubscriptionRepository;
     private final PlatformTransactionManager transactionManager;
+    private final fu.se184491.loadmaster_be.repository.optimization.LoadPlanWriteRepository loadPlanWriteRepository;
 
     /** Hạng của gói đang hoạt động (ACTIVE) của công ty sở hữu chuyến; gói hết hạn, đã huỷ hay chưa có gói thì BASIC. */
     private SubscriptionTier currentTier(Trip trip) {
@@ -184,10 +185,9 @@ public class LoadPlanServiceImpl implements LoadPlanService {
 
     private void failRerun(TransactionTemplate tx, RerunStart start) {
         try {
-            tx.executeWithoutResult(status -> {
-                start.job().setStatus(OptimizationJobStatus.FAILED);
-                optimizationJobRepository.save(start.job());
-            });
+            // UPDATE có điều kiện: job đã kết thúc (JOB_INTERRUPTED) giữ nguyên trạng thái và mã lý do.
+            tx.executeWithoutResult(status -> loadPlanWriteRepository.finishUnfinishedJob(
+                    start.job().getJobUuid(), OptimizationJobStatus.FAILED.name(), null));
         } catch (RuntimeException ex) {
             log.error("Failed to mark rerun job {} as FAILED: {}", start.job().getJobUuid(), ex.getMessage());
         }
@@ -274,12 +274,18 @@ public class LoadPlanServiceImpl implements LoadPlanService {
         OptimizationJob newJob = start.job();
         int nextVersion = start.nextVersion();
 
-        // Update Job status
-        newJob.setStatus(OptimizationJobStatus.COMPLETED);
-        if (engineResult != null && engineResult.getComputationMs() != null) {
-            newJob.setComputationMs(engineResult.getComputationMs());
+        // Job chỉ thành COMPLETED khi vẫn đang chạy (UPDATE có điều kiện, khoá dòng tới hết giao dịch). Job đã bị đánh
+        // dấu FAILED JOB_INTERRUPTED vì quá hạn (credit đã hoàn) thì kết quả đến muộn bị bỏ: không lưu phương án.
+        Long computationMs = engineResult != null ? engineResult.getComputationMs() : null;
+        if (loadPlanWriteRepository.finishUnfinishedJob(
+                newJob.getJobUuid(), OptimizationJobStatus.COMPLETED.name(), computationMs) != 1) {
+            log.warn("Discarding late rerun result for job {}: job already finished", newJob.getJobUuid());
+            throw new AppException(ErrorCode.OPTIMIZATION_JOB_ALREADY_FINISHED);
         }
-        optimizationJobRepository.save(newJob);
+        newJob.setStatus(OptimizationJobStatus.COMPLETED);
+        if (computationMs != null) {
+            newJob.setComputationMs(computationMs);
+        }
 
         // 5. Save new plan with version = old.version + 1 and parentPlanId
         String baseName = currentPlan.getPlanName() != null
