@@ -46,13 +46,34 @@ def test_credentials_in_jdbc_query_are_moved_into_the_url():
 def test_jdbc_only_parameters_are_translated_or_dropped(caplog):
     with caplog.at_level(logging.WARNING):
         url = sqlalchemy_database_url(
-            "jdbc:postgresql://localhost:5432/loadmaster?ssl=true&currentSchema=app&prepareThreshold=0",
+            "jdbc:postgresql://localhost:5432/loadmaster?currentSchema=app&prepareThreshold=0",
             "u", "secret-pw")
 
-    assert dict(url.query) == {"sslmode": "require", "options": "-c search_path=app"}
+    assert dict(url.query) == {"options": "-c search_path=app"}
     assert "prepareThreshold" in caplog.text
     # Không lộ mật khẩu trong log
     assert "secret-pw" not in caplog.text
+
+
+def test_ssl_true_without_sslmode_verifies_like_pgjdbc():
+    url = sqlalchemy_database_url(
+        "jdbc:postgresql://db.example.vn:5432/loadmaster?ssl=true&sslrootcert=/etc/ssl/root.crt", "u", "p")
+
+    # pgjdbc: ssl=true một mình là verify-full; chứng chỉ gốc đi cùng
+    assert dict(url.query) == {"sslmode": "verify-full", "sslrootcert": "/etc/ssl/root.crt"}
+
+
+def test_explicit_sslmode_is_kept_even_with_ssl_true():
+    url = sqlalchemy_database_url(
+        "jdbc:postgresql://pooler.example.com:6543/postgres?ssl=true&sslmode=require", "u", "p")
+
+    assert dict(url.query) == {"sslmode": "require"}
+
+
+def test_ssl_false_adds_no_sslmode():
+    url = sqlalchemy_database_url("jdbc:postgresql://localhost:5432/loadmaster?ssl=false", "u", "p")
+
+    assert dict(url.query) == {}
 
 
 def test_old_sqlalchemy_style_url_still_works_and_wins_over_env_credentials():

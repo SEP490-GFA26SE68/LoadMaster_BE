@@ -5,8 +5,9 @@ Một cấu hình DB cho cả hai dịch vụ: OptimizeService đọc được �
   (postgresql://user:pass@host/db, postgres://..., postgresql+psycopg2://...) đều được.
 - Tài khoản: ghi trong URL (user:pass@ hoặc ?user=&password= kiểu JDBC) thì dùng URL; không có thì lấy
   POSTGRES_USER / POSTGRES_PASSWORD như Spring Boot (spring.datasource.username / password).
-- Tham số của URL: giữ tham số libpq (sslmode, sslrootcert, connect_timeout...); ssl=true của JDBC thành
-  sslmode=require; currentSchema thành search_path; tham số chỉ JDBC hiểu (prepareThreshold...) bị bỏ — psycopg2
+- Tham số của URL: giữ tham số libpq (sslmode, sslrootcert, connect_timeout...); sslmode ghi rõ thì giữ nguyên;
+  ssl=true không kèm sslmode thành sslmode=verify-full như pgjdbc (kiểm chứng chỉ và tên máy, sslrootcert nếu có
+  đi cùng), ssl=false không thêm gì; currentSchema thành search_path; tham số chỉ JDBC hiểu (prepareThreshold...) bị bỏ — psycopg2
   từ chối tham số lạ.
 
 Không ghi URL hay mật khẩu vào log: chỉ tên tham số bị bỏ.
@@ -58,7 +59,8 @@ def sqlalchemy_database_url(
 
     ssl = query.pop("ssl", None)
     if ssl is not None and ssl.strip().lower() in _TRUE and "sslmode" not in query:
-        query["sslmode"] = "require"
+        # pgjdbc: ssl=true không kèm sslmode là verify-full — không hạ xuống require
+        query["sslmode"] = "verify-full"
     schema = query.pop("currentSchema", None)
     if schema and "options" not in query:
         query["options"] = f"-c search_path={schema}"
