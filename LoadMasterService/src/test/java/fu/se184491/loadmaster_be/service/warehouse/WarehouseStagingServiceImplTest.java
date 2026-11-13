@@ -112,6 +112,8 @@ class WarehouseStagingServiceImplTest {
         when(stagingConfirmationRepository.findByTripIdAndCargoPackageId(10L, 1L)).thenReturn(Optional.empty());
         StagePackageRequest request = new StagePackageRequest();
         request.setMethod(StagingMethod.CODE);
+        request.setCode("PK-1");
+        pkg.setPackageCode("PK-1");
 
         StagingResponse response = service.stage(10L, 1L, request);
 
@@ -129,7 +131,8 @@ class WarehouseStagingServiceImplTest {
         when(warehouseProgress.of(10L, 50L)).thenReturn(new WarehouseProgress.State(
                 Map.of(1L, earlier), Map.of(), Set.of(), Map.of()));
 
-        StagingResponse response = service.stage(10L, 1L, null);
+        pkg.setQrToken("qr-1");
+        StagingResponse response = service.stage(10L, 1L, StagePackageRequest.builder().method(StagingMethod.QR).code("qr-1").build());
 
         assertTrue(response.isAlreadyStaged());
         assertEquals("QR", response.getMethod());

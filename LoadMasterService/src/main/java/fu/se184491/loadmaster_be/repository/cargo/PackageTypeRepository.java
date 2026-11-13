@@ -10,7 +10,7 @@ import java.util.List;
 import java.util.Optional;
 
 @Repository
-public interface PackageTypeRepository extends JpaRepository<PackageType, Long> {
+public interface PackageTypeRepository extends JpaRepository<PackageType, Long>, org.springframework.data.jpa.repository.JpaSpecificationExecutor<PackageType> {
     List<PackageType> findByCompanyId(Long companyId);
     Page<PackageType> findByCompanyId(Long companyId, Pageable pageable);
     Optional<PackageType> findByIdAndCompanyId(Long id, Long companyId);

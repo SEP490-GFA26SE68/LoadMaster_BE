@@ -1,7 +1,6 @@
 package fu.se184491.loadmaster_be.service.vehicle.Impl;
 
 
-import fu.se184491.loadmaster_be.constant.trip.TripStatus;
 import fu.se184491.loadmaster_be.constant.vehicle.VehicleStatus;
 import fu.se184491.loadmaster_be.dto.PageResponse;
 import fu.se184491.loadmaster_be.dto.request.vehicle.CreateVehicleRequest;
@@ -18,11 +17,6 @@ import fu.se184491.loadmaster_be.repository.vehicle.VehicleRepository;
 import fu.se184491.loadmaster_be.repository.vehicle.VehicleTypeRepository;
 import fu.se184491.loadmaster_be.service.vehicle.VehicleService;
 import lombok.RequiredArgsConstructor;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageRequest;
-import org.springframework.data.domain.Pageable;
-import org.springframework.data.domain.Sort;
-import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -33,6 +27,7 @@ import java.util.List;
 public class VehicleServiceImpl implements VehicleService {
 
     private final VehicleRepository vehicleRepository;
+    private final fu.se184491.loadmaster_be.repository.vehicle.VehicleListRepository vehicleListRepository;
     private final VehicleTypeRepository vehicleTypeRepository;
     private final TripRepository tripRepository;
     private final CurrentUserService currentUserService;
@@ -112,77 +107,19 @@ public class VehicleServiceImpl implements VehicleService {
             String search,
             Long vehicleTypeId
     ) {
-        User currentUser =
-                currentUserService.getCurrentUser();
+        return searchVehicles(page,size,search,vehicleTypeId,null,null,null);
+    }
 
-        if (currentUser.getCompany() == null) {
-            throw new AppException(
-                    ErrorCode.COMPANY_REQUIRED
-            );
-        }
-
-        Long companyId =
-                currentUser.getCompany().getId();
-
-        Pageable pageable =
-                PageRequest.of(
-                        page,
-                        size,
-                        Sort.by(
-                                Sort.Direction.ASC,
-                                "name"
-                        )
-                );
-
-        Specification<Vehicle> spec =
-                Specification.unrestricted();
-
-        spec = spec.and(
-                (root, query, cb) ->
-                        cb.equal(
-                                root.get("company").get("id"),
-                                companyId
-                        )
-        );
-
-        if (search != null && !search.isBlank()) {
-            String keyword =
-                    "%" + search.trim().toLowerCase() + "%";
-
-            spec = spec.and(
-                    (root, query, cb) ->
-                            cb.or(
-                                    cb.like(
-                                            cb.lower(root.get("name")),
-                                            keyword
-                                    ),
-                                    cb.like(
-                                            cb.lower(root.get("licensePlate")),
-                                            keyword
-                                    )
-                            )
-            );
-        }
-
-        if (vehicleTypeId != null) {
-            spec = spec.and(
-                    (root, query, cb) ->
-                            cb.equal(
-                                    root.get("vehicleType").get("id"),
-                                    vehicleTypeId
-                            )
-            );
-        }
-
-        Page<VehicleResponse> result =
-                vehicleRepository
-                        .findAll(spec, pageable)
-                        .map(this::toVehicleResponse);
-
-        return PageResponse.of(
-                "Vehicles retrieved successfully",
-                result
-        );
+    @Override
+    @Transactional(readOnly = true)
+    public PageResponse<VehicleResponse> searchVehicles(int page, int size, String search, Long vehicleTypeId,
+            VehicleStatus status, String sortBy, String sortDir) {
+        User currentUser = currentUserService.getCurrentUser();
+        if (currentUser.getCompany() == null) throw new AppException(ErrorCode.COMPANY_REQUIRED);
+        Long companyId = currentUser.getCompany().getId();
+        fu.se184491.loadmaster_be.repository.vehicle.VehicleListRepository.validateRequest(page,size,sortBy,sortDir);
+        return PageResponse.of("Vehicles retrieved successfully",
+            vehicleListRepository.search(companyId,page,size,search,vehicleTypeId,status,sortBy,sortDir));
     }
 
     @Override
@@ -284,10 +221,7 @@ public class VehicleServiceImpl implements VehicleService {
 
         boolean inTrip = tripRepository.existsByVehicleIdAndStatusIn(
                 vehicle.getId(),
-                List.of(
-                        TripStatus.LOADING,
-                        TripStatus.IN_TRANSIT
-                )
+                fu.se184491.loadmaster_be.repository.vehicle.VehicleListRepository.OCCUPYING_STATUSES
         );
 
         return inTrip

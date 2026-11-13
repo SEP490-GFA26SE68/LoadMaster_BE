@@ -49,6 +49,7 @@ import java.util.*;
 @RequiredArgsConstructor
 public class TripServiceImpl implements TripService {
 
+    private final fu.se184491.loadmaster_be.repository.cargo.CargoPackageRepository cargoPackageRepository;
     private final CompanyWarehouseRepository companyWarehouseRepository;
     private final TripRepository tripRepository;
     private final VehicleRepository vehicleRepository;
@@ -380,7 +381,7 @@ public class TripServiceImpl implements TripService {
 
         // 1. Kiểm tra Trip thuộc công ty đang đăng nhập.
         Trip trip = tripRepository
-                .findByIdAndCompanyId(tripId, companyId)
+                .findByIdAndCompanyIdForUpdate(tripId, companyId)
                 .orElseThrow(() ->
                         new AppException(ErrorCode.TRIP_NOT_FOUND)
                 );
@@ -414,12 +415,35 @@ public class TripServiceImpl implements TripService {
         }
 
         // 5. Kiểm tra yêu cầu đã tiếp nhận đủ kiện.
-        int received = requirement.getPackages().size();
         Integer expected = requirement.getExpectedPackageCount();
-
-        if (received == 0 ||
-                (expected != null && received < expected)) {
-            throw new AppException(ErrorCode.INVALID_INPUT);
+        if (expected == null || expected < 1) {
+            throw new AppException(ErrorCode.REQUIREMENT_PACKAGE_COUNT_INVALID);
+        }
+        List<Long> packageIds = cargoPackageRepository.findIdsByRequirementId(requirementId);
+        List<CargoPackage> packages = packageIds.isEmpty() ? List.of()
+                : cargoPackageRepository.findAllByIdForUpdate(packageIds);
+        for (CargoPackage cargo : packages) {
+            if (cargo.getCompany() == null || !companyId.equals(cargo.getCompany().getId())) {
+                throw new AppException(ErrorCode.REQUIREMENT_PACKAGE_COMPANY_MISMATCH);
+            }
+            if (cargo.getFlag() != null) throw new AppException(ErrorCode.PACKAGE_FLAGGED);
+            if (cargo.getOrder() != null && cargo.getOrder().getDeliveryStop() != null
+                    && cargo.getOrder().getDeliveryStop().getTrip() != null
+                    && cargo.getOrder().getDeliveryStop().getTrip().getStatus() != TripStatus.CANCELLED) {
+                throw new AppException(ErrorCode.REQUIREMENT_PACKAGE_ALREADY_ASSIGNED);
+            }
+        }
+        if (!packageIds.isEmpty() && deliveryRequirementRepository.countOtherAssignedPackageLinks(packageIds, requirementId) > 0) {
+            throw new AppException(ErrorCode.REQUIREMENT_PACKAGE_ALREADY_ASSIGNED);
+        }
+        // PENDING is the persisted initial state used by import/manual intake; there is no RECEIVED enum.
+        long received = packages.stream().filter(p -> p.getStatus() == PackageStatus.PENDING).count();
+        // Invalid linked state is a different failure from genuinely missing received packages.
+        if (packages.size() != packageIds.size() || received != packages.size()) {
+            throw new AppException(ErrorCode.REQUIREMENT_PACKAGES_INELIGIBLE);
+        }
+        if (received < expected) {
+            throw new fu.se184491.loadmaster_be.exception.RequirementPackagesIncompleteException(expected, (int) received);
         }
 
         // 6. Đề phòng yêu cầu đã có điểm giao (bỏ qua điểm của chuyến đã huỷ).
@@ -428,7 +452,7 @@ public class TripServiceImpl implements TripService {
                         requirementId,
                         TripStatus.CANCELLED
                 )) {
-            throw new AppException(ErrorCode.INVALID_INPUT);
+            throw new AppException(ErrorCode.INVALID_DELIVERY_REQUIREMENT_TRANSITION);
         }
 
         // 7. Tạo điểm giao tiếp theo.

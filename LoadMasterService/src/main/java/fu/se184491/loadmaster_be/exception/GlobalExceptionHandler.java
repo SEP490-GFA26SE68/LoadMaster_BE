@@ -65,6 +65,7 @@ public class GlobalExceptionHandler {
                         .success(false)
                         .code(errorCode.name())
                         .message(ex.getMessage())
+                        .errors(ex instanceof RequirementPackagesIncompleteException incomplete ? incomplete.getCounts() : null)
                         .data(null)
                         .build());
     }

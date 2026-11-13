@@ -59,19 +59,26 @@ public class DeliveryRequirementController {
     @GetMapping
     @PreAuthorize("hasAuthority('DELIVERY_READ')")
     public PageResponse<DeliveryRequirementResponse> list(
-            @RequestParam(required = false) DeliveryRequirementStatus status,
+            @RequestParam(required = false) String status,
+            @RequestParam(required = false) String search,
+            @RequestParam(required = false) String priority,
+            @RequestParam(required = false) String sortBy,
+            @RequestParam(required = false) String sortDir,
+            @RequestParam(defaultValue = "false") boolean deadlineToExclusive,
             @RequestParam(required = false)
             @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime deadlineFrom,
             @RequestParam(required = false)
             @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime deadlineTo,
             @PageableDefault(sort = "deadline") Pageable pageable
     ) {
-        return PageResponse.of(deliveryRequirementService.list(
+        var sorted = fu.se184491.loadmaster_be.service.cargo.WarehouseListQuery.pageable(pageable, sortBy, sortDir,
+                java.util.Map.of("id","id","destination","destination","deadline","deadline","priority","priority",
+                        "packages","packages","status","status","trip","trip","createdAt","createdAt"));
+        return PageResponse.of(deliveryRequirementService.search(
                 currentUserService.getCurrentCompanyId(),
-                status,
-                deadlineFrom,
-                deadlineTo,
-                pageable));
+                search, status, priority,
+                deadlineFrom, deadlineTo, deadlineToExclusive,
+                sorted));
     }
 
     @PatchMapping("/{id}")

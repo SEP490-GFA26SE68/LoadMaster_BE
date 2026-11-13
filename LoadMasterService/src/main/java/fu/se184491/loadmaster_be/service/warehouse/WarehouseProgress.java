@@ -121,6 +121,12 @@ public class WarehouseProgress {
         return loadPlanId.equals(entry.getPlacement().getLoadPlan().getId());
     }
 
+    /** Any unresolved request blocks completion, even when a newer request for the same package was decided. */
+    public boolean hasPendingManual(Long tripId, Long loadPlanId) {
+        return manualConfirmationRepository.findByTripIdAndStatusOrderByRequestedAtAsc(tripId, ManualConfirmStatus.PENDING)
+                .stream().anyMatch(entry -> !entry.isUnloadingStep() && ofPlan(entry, loadPlanId));
+    }
+
     /** Vị trí của kiện hỏng đã bị bỏ lại kho: tính là đã xử lý, kiện không lên xe. */
     public boolean isLeftOut(Long placementId) {
         return loadingDamageRepository.existsByPlacementId(placementId);

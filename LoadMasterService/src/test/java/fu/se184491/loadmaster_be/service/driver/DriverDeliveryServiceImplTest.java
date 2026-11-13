@@ -82,6 +82,8 @@ import static org.mockito.Mockito.when;
 @ExtendWith(MockitoExtension.class)
 class DriverDeliveryServiceImplTest {
 
+    @Mock private jakarta.persistence.EntityManager entityManager;
+    @Mock private fu.se184491.loadmaster_be.service.warehouse.WarehouseSessionLookup warehouseLookup;
     @Mock private DriverService driverService;
     @Mock private CurrentUserService currentUserService;
     @Mock private TripLookupHelper tripLookupHelper;
@@ -352,6 +354,9 @@ class DriverDeliveryServiceImplTest {
     }
 
     private ManualUnloadConfirmation pendingConfirmation(CargoPackage pkg) {
+        lenient().when(warehouseLookup.activeSession(10L)).thenReturn(new fu.se184491.loadmaster_be.service.warehouse.WarehouseSessionLookup.Session(
+                driver, trip, LoadPlan.builder().id(50L).build(), LoadingExecution.builder().id(60L).build(), List.of()));
+        org.springframework.test.util.ReflectionTestUtils.setField(service, "entityManager", entityManager);
         ManualUnloadConfirmation confirmation = ManualUnloadConfirmation.builder().id(60L).trip(trip).deliveryStop(stop1)
                 .cargoPackage(pkg).reason(ManualConfirmReason.LABEL_DAMAGED).status(ManualConfirmStatus.PENDING)
                 .requestedBy(driver).build();

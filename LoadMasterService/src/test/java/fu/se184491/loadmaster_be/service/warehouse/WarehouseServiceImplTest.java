@@ -88,6 +88,7 @@ class WarehouseServiceImplTest {
     @Mock private WarehouseProgress warehouseProgress;
     @Mock private LoadingDamageRepository loadingDamageRepository;
 
+    @Mock private jakarta.persistence.EntityManager entityManager;
     @InjectMocks
     private WarehouseServiceImpl service;
 
@@ -99,10 +100,74 @@ class WarehouseServiceImplTest {
         Company company = Company.builder().id(1L).build();
         User worker = User.builder().id(9L).company(company).build();
         trip = Trip.builder().id(10L).company(company).tripCode("TRIP-10").status(TripStatus.PLANNED).build();
-        plan = LoadPlan.builder().id(50L).approved(true).build();
+        plan = LoadPlan.builder().id(50L).approved(true).job(OptimizationJob.builder().trip(trip).build()).build();
+        var lookup = new WarehouseSessionLookup(currentUserService, tripRepository, loadPlanRepository,
+                loadingExecutionRepository, packagePlacementRepository, placementConfirmationRepository,
+                deviationRepository, tripPackageResolver, warehouseProgress, auditLogRepository);
+        org.springframework.test.util.ReflectionTestUtils.setField(lookup, "entityManager", entityManager);
+        org.springframework.test.util.ReflectionTestUtils.setField(service, "lookup", lookup);
+        lenient().when(tripRepository.findByIdAndCompanyIdForUpdate(10L, 1L)).thenReturn(Optional.of(trip));
         when(currentUserService.getCurrentUser()).thenReturn(worker);
         lenient().when(tripRepository.findByIdAndCompanyId(10L, 1L)).thenReturn(Optional.of(trip));
         lenient().when(warehouseProgress.of(any(), any())).thenReturn(WarehouseProgress.State.empty());
+    }
+
+    @Test
+    void staleApprovedPreviewIsRejectedWithoutStartingOrChangingExecution() {
+        plan.setStale(true);
+        when(loadPlanRepository.findFirstByJobTripIdAndApprovedTrueOrderByIdDesc(10L)).thenReturn(Optional.of(plan));
+        assertEquals(ErrorCode.PLAN_STALE, assertThrows(AppException.class, () -> service.getApprovedPlan(10L)).getErrorCode());
+        verify(loadingExecutionRepository, never()).save(any());
+        verify(tripStatusService, never()).transitionTo(any(), any(), any());
+    }
+
+    @Test
+    void approvedPlanPreviewBeforeLoadingDoesNotStartOrPersistExecution() {
+        when(loadPlanRepository.findFirstByJobTripIdAndApprovedTrueOrderByIdDesc(10L)).thenReturn(Optional.of(plan));
+        StartLoadingResponse preview = service.getApprovedPlan(10L);
+        assertEquals(50L, preview.getLoadPlanId());
+        assertEquals(Boolean.TRUE, preview.getApproved());
+        assertEquals(plan.getStale(), preview.getStale());
+        assertEquals("NOT_STARTED", preview.getStatus());
+        assertNull(preview.getExecutionId());
+        assertFalse(preview.getStagingComplete());
+        assertEquals(TripStatus.PLANNED, trip.getStatus());
+        verify(loadingExecutionRepository, never()).save(any());
+        verify(tripStatusService, never()).transitionTo(any(), any(), any());
+    }
+
+    @Test
+    void approvedPlanPreviewRejectsAnotherCompanyBeforeReadingGeometry() {
+        when(tripRepository.findByIdAndCompanyId(10L, 1L)).thenReturn(Optional.empty());
+        assertThrows(AppException.class, () -> service.getApprovedPlan(10L));
+        verify(loadPlanRepository, never()).findFirstByJobTripIdAndApprovedTrueOrderByIdDesc(any());
+    }
+
+    @Test
+    void approvedPlanPreviewRejectsMissingApproval() {
+        assertThrows(AppException.class, () -> service.getApprovedPlan(10L));
+        verify(packagePlacementRepository, never()).findByLoadPlanIdOrderByStepSequenceAsc(any());
+    }
+
+    @Test
+    void approvedPlanPreviewKeepsCompletedExecutionReadOnly() {
+        trip.setStatus(TripStatus.LOADING);
+        when(loadPlanRepository.findFirstByJobTripIdAndApprovedTrueOrderByIdDesc(10L)).thenReturn(Optional.of(plan));
+        when(loadingExecutionRepository.findByLoadPlanId(50L)).thenReturn(Optional.of(
+                LoadingExecution.builder().id(60L).status(LoadingExecutionStatus.COMPLETED).build()));
+        StartLoadingResponse preview = service.getApprovedPlan(10L);
+        assertEquals("COMPLETED", preview.getStatus());
+        assertEquals(60L, preview.getExecutionId());
+        verify(loadingExecutionRepository, never()).save(any());
+    }
+
+    @Test
+    void approvedPlanPreviewRejectsAnAbortedExecution() {
+        when(loadPlanRepository.findFirstByJobTripIdAndApprovedTrueOrderByIdDesc(10L)).thenReturn(Optional.of(plan));
+        when(loadingExecutionRepository.findByLoadPlanId(50L)).thenReturn(Optional.of(
+                LoadingExecution.builder().id(60L).status(LoadingExecutionStatus.ABORTED).build()));
+        assertThrows(AppException.class, () -> service.getApprovedPlan(10L));
+        verify(packagePlacementRepository, never()).findByLoadPlanIdOrderByStepSequenceAsc(any());
     }
 
     @Test
@@ -196,8 +261,8 @@ class WarehouseServiceImplTest {
     @Test
     void sessionReportsStagingDamageAndManualState() {
         trip.setStatus(TripStatus.LOADING);
-        CargoPackage first = CargoPackage.builder().id(1L).build();
-        CargoPackage second = CargoPackage.builder().id(2L).build();
+        CargoPackage first = CargoPackage.builder().company(trip.getCompany()).id(1L).build();
+        CargoPackage second = CargoPackage.builder().company(trip.getCompany()).id(2L).build();
         PackagePlacement p1 = PackagePlacement.builder().id(71L).loadPlan(plan).cargoPackage(first).stepSequence(1).build();
         PackagePlacement p2 = PackagePlacement.builder().id(72L).loadPlan(plan).cargoPackage(second).stepSequence(2).build();
         LoadingExecution execution = LoadingExecution.builder().id(60L).loadPlan(plan)
@@ -240,7 +305,7 @@ class WarehouseServiceImplTest {
         doThrow(new AppException(ErrorCode.STAGING_INCOMPLETE))
                 .when(warehouseProgress).requireStagingComplete(any(), any(), any());
 
-        AppException error = assertThrows(AppException.class, () -> service.confirmPlacement(placement.getId(), null));
+        AppException error = assertThrows(AppException.class, () -> service.confirmPlacement(placement.getId(), null, label(placement.getId())));
 
         assertEquals(ErrorCode.STAGING_INCOMPLETE, error.getErrorCode());
         verify(placementConfirmationRepository, never()).save(any());
@@ -258,19 +323,19 @@ class WarehouseServiceImplTest {
             return saved;
         });
 
-        assertEquals("CONFIRMED", service.confirmPlacement(72L, null).getStatus());
+        assertEquals("CONFIRMED", service.confirmPlacement(72L, null, label(72L)).getStatus());
     }
 
     @Test
     void completingWaitsForWarehouseManualConfirmations() {
         trip.setStatus(TripStatus.LOADING);
-        CargoPackage pkg = CargoPackage.builder().id(1L).status(PackageStatus.LOADED).build();
+        CargoPackage pkg = CargoPackage.builder().company(trip.getCompany()).id(1L).status(PackageStatus.LOADED).build();
         PackagePlacement placement = PackagePlacement.builder().id(70L).loadPlan(plan).cargoPackage(pkg).build();
         LoadingExecution execution = LoadingExecution.builder()
                 .id(60L).loadPlan(plan).status(LoadingExecutionStatus.IN_PROGRESS).build();
         when(loadPlanRepository.findFirstByJobTripIdAndApprovedTrueOrderByIdDesc(10L)).thenReturn(Optional.of(plan));
         when(loadingExecutionRepository.findByLoadPlanId(50L)).thenReturn(Optional.of(execution));
-        when(packagePlacementRepository.findByLoadPlanId(50L)).thenReturn(List.of(placement));
+        when(packagePlacementRepository.findByLoadPlanIdOrderByStepSequenceAsc(50L)).thenReturn(List.of(placement));
         when(placementConfirmationRepository.existsByPlacementId(70L)).thenReturn(true);
         when(warehouseProgress.of(10L, 50L)).thenReturn(new WarehouseProgress.State(Map.of(), Map.of(), Set.of(),
                 Map.of(1L, ManualUnloadConfirmation.builder().cargoPackage(pkg).status(ManualConfirmStatus.PENDING)
@@ -285,15 +350,15 @@ class WarehouseServiceImplTest {
     @Test
     void completingSkipsThePackageLeftAtTheWarehouse() {
         trip.setStatus(TripStatus.LOADING);
-        CargoPackage loaded = CargoPackage.builder().id(1L).status(PackageStatus.PLANNED).build();
-        CargoPackage leftOut = CargoPackage.builder().id(2L).status(PackageStatus.PENDING).build();
+        CargoPackage loaded = CargoPackage.builder().company(trip.getCompany()).id(1L).status(PackageStatus.PLANNED).build();
+        CargoPackage leftOut = CargoPackage.builder().company(trip.getCompany()).id(2L).status(PackageStatus.PENDING).build();
         PackagePlacement p1 = PackagePlacement.builder().id(70L).loadPlan(plan).cargoPackage(loaded).build();
         PackagePlacement p2 = PackagePlacement.builder().id(71L).loadPlan(plan).cargoPackage(leftOut).build();
         LoadingExecution execution = LoadingExecution.builder()
                 .id(60L).loadPlan(plan).status(LoadingExecutionStatus.IN_PROGRESS).build();
         when(loadPlanRepository.findFirstByJobTripIdAndApprovedTrueOrderByIdDesc(10L)).thenReturn(Optional.of(plan));
         when(loadingExecutionRepository.findByLoadPlanId(50L)).thenReturn(Optional.of(execution));
-        when(packagePlacementRepository.findByLoadPlanId(50L)).thenReturn(List.of(p1, p2));
+        when(packagePlacementRepository.findByLoadPlanIdOrderByStepSequenceAsc(50L)).thenReturn(List.of(p1, p2));
         when(placementConfirmationRepository.existsByPlacementId(70L)).thenReturn(true);
         lenient().when(warehouseProgress.isLeftOut(71L)).thenReturn(true);
 
@@ -304,13 +369,18 @@ class WarehouseServiceImplTest {
         assertEquals(PackageStatus.PENDING, leftOut.getStatus());
     }
 
+    private fu.se184491.loadmaster_be.dto.request.warehouse.ConfirmPlacementRequest label(Long id) {
+        return new fu.se184491.loadmaster_be.dto.request.warehouse.ConfirmPlacementRequest(10L, StagingMethod.CODE, "PK-" + id);
+    }
+
     /** Vị trí của chuyến đang xếp, phiên đang mở. */
     private PackagePlacement loadingPlacement(Long id, int sequence) {
         trip.setStatus(TripStatus.LOADING);
         plan.setJob(OptimizationJob.builder().trip(trip).build());
         PackagePlacement placement = PackagePlacement.builder().id(id).loadPlan(plan)
-                .cargoPackage(CargoPackage.builder().id(id).status(PackageStatus.PLANNED).build())
+                .cargoPackage(CargoPackage.builder().company(trip.getCompany()).id(id).status(PackageStatus.PLANNED).packageCode("PK-" + id).build())
                 .stepSequence(sequence).build();
+        lenient().when(loadPlanRepository.findFirstByJobTripIdAndApprovedTrueOrderByIdDesc(10L)).thenReturn(Optional.of(plan));
         lenient().when(packagePlacementRepository.findById(id)).thenReturn(Optional.of(placement));
         lenient().when(loadingExecutionRepository.existsByLoadPlanIdAndStatus(50L, LoadingExecutionStatus.IN_PROGRESS))
                 .thenReturn(true);
@@ -349,13 +419,13 @@ class WarehouseServiceImplTest {
     @Test
     void completingLoadingMarksPackagesLoadedAndWaitsForDriver() {
         trip.setStatus(TripStatus.LOADING);
-        CargoPackage pkg = CargoPackage.builder().id(1L).status(PackageStatus.PLANNED).build();
+        CargoPackage pkg = CargoPackage.builder().company(trip.getCompany()).id(1L).status(PackageStatus.PLANNED).build();
         PackagePlacement placement = PackagePlacement.builder().id(70L).loadPlan(plan).cargoPackage(pkg).build();
         LoadingExecution execution = LoadingExecution.builder()
                 .id(60L).loadPlan(plan).status(LoadingExecutionStatus.IN_PROGRESS).build();
         when(loadPlanRepository.findFirstByJobTripIdAndApprovedTrueOrderByIdDesc(10L)).thenReturn(Optional.of(plan));
         when(loadingExecutionRepository.findByLoadPlanId(50L)).thenReturn(Optional.of(execution));
-        when(packagePlacementRepository.findByLoadPlanId(50L)).thenReturn(List.of(placement));
+        when(packagePlacementRepository.findByLoadPlanIdOrderByStepSequenceAsc(50L)).thenReturn(List.of(placement));
         when(placementConfirmationRepository.existsByPlacementId(70L)).thenReturn(true);
 
         CompleteLoadingResponse response = service.completeLoading(10L);
@@ -374,13 +444,19 @@ class WarehouseServiceImplTest {
                         .innerLength(720).innerWidth(235).innerHeight(240)
                         .doorWidth(230).doorHeight(230).maxPayloadKg(new BigDecimal("8000")).build())
                 .build());
-        CargoPackage first = CargoPackage.builder().id(1L).packageCode("DH-001-001")
+        trip.getVehicle().getVehicleType().setObstacles(List.of(
+                fu.se184491.loadmaster_be.entity.vehicle.VehicleTypeObstacle.builder()
+                        .id(81L).name("Wheel well")
+                        .type(fu.se184491.loadmaster_be.constant.vehicle.ObstacleType.WHEEL_ARCH)
+                        .x(new BigDecimal("360")).y(BigDecimal.ZERO).z(BigDecimal.ZERO)
+                        .length(100).width(35).height(45).loadBearing(false).build()));
+        CargoPackage first = CargoPackage.builder().company(trip.getCompany()).id(1L).packageCode("DH-001-001")
                 .trackingBarcode("DH-001-001").qrToken("token-1").actualWeightKg(new BigDecimal("12.5")).build();
-        CargoPackage second = CargoPackage.builder().id(2L).packageCode("DH-001-002").qrToken("token-2")
+        CargoPackage second = CargoPackage.builder().company(trip.getCompany()).id(2L).packageCode("DH-001-002").qrToken("token-2")
                 .packageType(fu.se184491.loadmaster_be.entity.cargo.PackageType.builder()
                         .name("Thùng carton").weightKg(new BigDecimal("7")).build())
                 .build();
-        CargoPackage third = CargoPackage.builder().id(3L).packageCode("DH-001-003").qrToken("token-3").build();
+        CargoPackage third = CargoPackage.builder().company(trip.getCompany()).id(3L).packageCode("DH-001-003").qrToken("token-3").build();
         PackagePlacement p1 = PackagePlacement.builder().id(71L).loadPlan(plan).cargoPackage(first).stepSequence(1).build();
         PackagePlacement p2 = PackagePlacement.builder().id(72L).loadPlan(plan).cargoPackage(second).stepSequence(2).build();
         PackagePlacement p3 = PackagePlacement.builder().id(73L).loadPlan(plan).cargoPackage(third).stepSequence(3).build();
@@ -425,6 +501,14 @@ class WarehouseServiceImplTest {
         assertEquals(2, steps.get(2).getStopSequence());
         assertEquals("Thủ Đức", steps.get(2).getStopName());
         assertEquals(new BigDecimal("8000"), session.getMaxPayloadKg());
+        assertEquals(1, session.getObstacles().size());
+        var obstacle = session.getObstacles().get(0);
+        assertEquals(81L, obstacle.id());
+        assertEquals(new BigDecimal("360"), obstacle.x());
+        assertEquals(100, obstacle.length());
+        assertEquals(35, obstacle.width());
+        assertEquals(45, obstacle.height());
+        assertEquals(false, obstacle.loadBearing());
         assertEquals(new BigDecimal("12.5"), steps.get(0).getWeightKg());
         assertEquals(new BigDecimal("7"), steps.get(1).getWeightKg());
         assertEquals(null, steps.get(2).getWeightKg());
@@ -451,12 +535,13 @@ class WarehouseServiceImplTest {
     @Test
     void completingWithUnhandledPlacementThrowsIncompleteLoading() {
         trip.setStatus(TripStatus.LOADING);
-        PackagePlacement placement = PackagePlacement.builder().id(70L).loadPlan(plan).build();
+        PackagePlacement placement = PackagePlacement.builder().id(70L).loadPlan(plan)
+                .cargoPackage(CargoPackage.builder().id(1L).company(trip.getCompany()).build()).build();
         LoadingExecution execution = LoadingExecution.builder()
                 .id(60L).loadPlan(plan).status(LoadingExecutionStatus.IN_PROGRESS).build();
         when(loadPlanRepository.findFirstByJobTripIdAndApprovedTrueOrderByIdDesc(10L)).thenReturn(Optional.of(plan));
         when(loadingExecutionRepository.findByLoadPlanId(50L)).thenReturn(Optional.of(execution));
-        when(packagePlacementRepository.findByLoadPlanId(50L)).thenReturn(List.of(placement));
+        when(packagePlacementRepository.findByLoadPlanIdOrderByStepSequenceAsc(50L)).thenReturn(List.of(placement));
 
         assertThrows(fu.se184491.loadmaster_be.exception.IncompleteLoadingException.class,
                 () -> service.completeLoading(10L));

@@ -1,6 +1,7 @@
 package fu.se184491.loadmaster_be.service.trip;
 
 import fu.se184491.loadmaster_be.service.audit.AuditCompany;
+import fu.se184491.loadmaster_be.helpers.CurrentUserService;
 import fu.se184491.loadmaster_be.constant.optimization.LoadingExecutionStatus;
 import fu.se184491.loadmaster_be.constant.trip.DeliveryStopStatus;
 import fu.se184491.loadmaster_be.constant.trip.TripStatus;
@@ -42,6 +43,8 @@ import java.util.Map;
 @RequiredArgsConstructor
 public class TripStatusService {
 
+    private final TripDepartureReadiness departureReadiness;
+    private final CurrentUserService currentUserService;
     private final TripRepository tripRepository;
     private final UserRepository userRepository;
     private final AuditLogRepository auditLogRepository;
@@ -54,10 +57,19 @@ public class TripStatusService {
      */
     @Transactional
     public Trip transitionTo(Long tripId, TripStatus newStatus, Long userId) {
-        Trip trip = tripRepository.findById(tripId)
-                .orElseThrow(() -> new AppException(ErrorCode.TRIP_NOT_FOUND));
+        User departingDriver = null;
+        if (newStatus == TripStatus.IN_TRANSIT) {
+            departingDriver = currentUserService.getCurrentUser();
+            if (userId == null || !userId.equals(departingDriver.getId())) {
+                throw new AppException(ErrorCode.UNAUTHORIZED);
+            }
+        }
+        Trip trip = newStatus == TripStatus.IN_TRANSIT
+                ? departureReadiness.lockAssignedTrip(tripId, departingDriver)
+                : tripRepository.findById(tripId)
+                    .orElseThrow(() -> new AppException(ErrorCode.TRIP_NOT_FOUND));
         TripStatus currentStatus = trip.getStatus();
-        if (!isValidTransition(trip, currentStatus, newStatus)) {
+        if (!isValidTransition(trip, currentStatus, newStatus, departingDriver)) {
             throw new InvalidTripStatusTransitionException(currentStatus, newStatus);
         }
         User actor = userId == null
@@ -105,7 +117,7 @@ public class TripStatusService {
         }
     }
 
-    private boolean isValidTransition(Trip trip, TripStatus currentStatus, TripStatus newStatus) {
+    private boolean isValidTransition(Trip trip, TripStatus currentStatus, TripStatus newStatus, User departingDriver) {
         Long tripId = trip.getId();
         if (currentStatus == TripStatus.DRAFT && newStatus == TripStatus.PLANNED) {
             return trip.getRoutePlan() != null && !trip.getRoutePlan().isEmpty();
@@ -118,8 +130,7 @@ public class TripStatusService {
                     tripId, LoadingExecutionStatus.IN_PROGRESS);
         }
         if (currentStatus == TripStatus.LOADING && newStatus == TripStatus.IN_TRANSIT) {
-            return loadingExecutionRepository.existsByLoadPlanJobTripIdAndStatus(
-                    tripId, LoadingExecutionStatus.COMPLETED);
+            return departureReadiness.canStartLocked(trip, departingDriver);
         }
         if (currentStatus == TripStatus.LOADING && newStatus == TripStatus.PLANNED) {
             return !loadingExecutionRepository.existsByLoadPlanJobTripIdAndStatus(tripId, LoadingExecutionStatus.IN_PROGRESS)

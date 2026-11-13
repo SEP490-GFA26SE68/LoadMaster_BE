@@ -94,7 +94,7 @@ class WarehouseIncidentServiceImplTest {
 
     private Session session(PackagePlacement... placements) {
         Session session = new Session(worker, trip, plan, execution, List.of(placements));
-        lenient().when(lookup.activeSessionOfPlacement(any())).thenReturn(session);
+        lenient().when(lookup.activeSessionOfPlacement(any(), any())).thenReturn(session);
         for (PackagePlacement placement : placements) {
             lenient().when(lookup.placement(session, placement.getId())).thenReturn(placement);
         }
@@ -106,7 +106,7 @@ class WarehouseIncidentServiceImplTest {
         session(bottom, aside);
         when(loadingDamageRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
 
-        DamageResponse response = service.reportDamaged(71L, new ReportDamageRequest("Móp góc"));
+        DamageResponse response = service.reportDamaged(10L, 71L, new ReportDamageRequest("Móp góc"));
 
         assertEquals("LEFT_OUT", response.getOutcome());
         assertEquals(0, response.getRestingCount());
@@ -121,7 +121,7 @@ class WarehouseIncidentServiceImplTest {
         session(bottom, top);
         when(loadingDamageRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
 
-        DamageResponse response = service.reportDamaged(71L, null);
+        DamageResponse response = service.reportDamaged(10L, 71L, null);
 
         assertEquals("REPLANNED", response.getOutcome());
         assertEquals(1, response.getRestingCount());
@@ -136,7 +136,7 @@ class WarehouseIncidentServiceImplTest {
         Session session = session(bottom, top);
         doThrow(new AppException(ErrorCode.INVALID_SEQUENCE_ORDER)).when(lookup).requireInSequence(session, top);
 
-        AppException error = assertThrows(AppException.class, () -> service.reportDamaged(72L, null));
+        AppException error = assertThrows(AppException.class, () -> service.reportDamaged(10L, 72L, null));
 
         assertEquals(ErrorCode.INVALID_SEQUENCE_ORDER, error.getErrorCode());
         verify(loadingDamageRepository, never()).save(any());
@@ -148,7 +148,7 @@ class WarehouseIncidentServiceImplTest {
         when(lookup.stopOf(bottom)).thenReturn(DeliveryStop.builder().id(30L).build());
         when(manualConfirmationRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
 
-        ManualConfirmationResponse response = service.confirmPlacementManually(71L,
+        ManualConfirmationResponse response = service.confirmPlacementManually(10L, 71L,
                 new ManualUnloadRequest(ManualConfirmReason.QR_UNREADABLE, null));
 
         assertEquals("LOADING", response.getStep());
@@ -163,7 +163,7 @@ class WarehouseIncidentServiceImplTest {
 
     @Test
     void manualLoadingWithOtherReasonNeedsANote() {
-        AppException error = assertThrows(AppException.class, () -> service.confirmPlacementManually(71L,
+        AppException error = assertThrows(AppException.class, () -> service.confirmPlacementManually(10L, 71L,
                 new ManualUnloadRequest(ManualConfirmReason.OTHER, "  ")));
 
         assertEquals(ErrorCode.MANUAL_CONFIRM_NOTE_REQUIRED, error.getErrorCode());
@@ -172,7 +172,7 @@ class WarehouseIncidentServiceImplTest {
     @Test
     void sealIsRecordedAfterLoadingIsCompleted() {
         execution.setStatus(LoadingExecutionStatus.COMPLETED);
-        when(lookup.session(10L)).thenReturn(new Session(worker, trip, plan, execution, List.of(bottom)));
+        when(lookup.lockedSession(10L)).thenReturn(new Session(worker, trip, plan, execution, List.of(bottom)));
 
         SealResponse response = service.recordSeal(10L, new RecordSealRequest("  SEAL-0042 "));
 
@@ -184,7 +184,7 @@ class WarehouseIncidentServiceImplTest {
 
     @Test
     void sealBeforeLoadingIsCompletedIsRejected() {
-        when(lookup.session(10L)).thenReturn(new Session(worker, trip, plan, execution, List.of(bottom)));
+        when(lookup.lockedSession(10L)).thenReturn(new Session(worker, trip, plan, execution, List.of(bottom)));
 
         AppException error = assertThrows(AppException.class, () -> service.recordSeal(10L, new RecordSealRequest("S-1")));
 
@@ -193,7 +193,7 @@ class WarehouseIncidentServiceImplTest {
 
     @Test
     void sealAfterDepartureIsRejected() {
-        when(lookup.session(10L)).thenThrow(new AppException(ErrorCode.TRIP_NOT_LOADING));
+        when(lookup.lockedSession(10L)).thenThrow(new AppException(ErrorCode.TRIP_NOT_LOADING));
 
         AppException error = assertThrows(AppException.class, () -> service.recordSeal(10L, new RecordSealRequest("S-1")));
 

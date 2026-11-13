@@ -45,15 +45,8 @@ public class DevAdminInitializer implements ApplicationRunner {
     @Value("${app.bootstrap.admin.relink:false}")
     private boolean relink;
 
-
-
     @Override
     public void run(ApplicationArguments args) {
-
-        String role = UserRole.SYSTEM_ADMIN.name();
-
-        // Đảm bảo realm role SYSTEM_ADMIN tồn tại
-        keycloakAdminClient.ensureRealmRoleExists(role);
 
         User dbUser = userRepository
                 .findByEmail(adminEmail)
@@ -62,71 +55,37 @@ public class DevAdminInitializer implements ApplicationRunner {
         String keycloakUserId =
                 keycloakAdminClient.findUserIdByEmail(adminEmail);
 
-        // CASE 1: CẢ HAI ĐỀU CHƯA CÓ
-        if (dbUser == null && keycloakUserId == null) {
-
-            log.info("Admin chưa tồn tại ở cả DB và Keycloak");
-
-            createInKeycloak(createdId ->
-                    userRepository.save(newAdmin(createdId))
-            );
-
-            log.info("Đã seed admin vào cả PostgreSQL và Keycloak");
+        // 1. Cả hai đều có
+        if (dbUser != null && keycloakUserId != null) {
+            if (!keycloakUserId.equals(dbUser.getKeycloakId())) {
+                relinkOrWarn(dbUser, keycloakUserId);
+            }
             return;
         }
 
-        // CASE 2: KEYCLOAK CÓ, DATABASE CHƯA CÓ
-        if (dbUser == null) {
-
-            log.info("Admin đã có trên Keycloak, đang tạo trong DB");
-
-            // Đảm bảo Keycloak user có role
-            keycloakAdminClient.assignRealmRole(
-                    keycloakUserId, role
-            );
-
+        // 2. Keycloak có, DB chưa có
+        if (dbUser == null && keycloakUserId != null) {
             userRepository.save(newAdmin(keycloakUserId));
-
-            log.info("Đã đồng bộ admin từ Keycloak sang DB");
             return;
         }
 
-        // CASE 3: DATABASE CÓ, KEYCLOAK CHƯA CÓ
-        if (keycloakUserId == null) {
-
+        // 3. DB có, Keycloak không có (Keycloak server mới, hoặc DB dùng chung với Keycloak khác)
+        if (dbUser != null) {
             if (!relink) {
                 warnForeignKeycloak();
                 return;
             }
-
-            log.info("Admin đã có trong DB, đang tạo trên Keycloak");
-
+            User existing = dbUser;
             createInKeycloak(createdId -> {
-                dbUser.setKeycloakId(createdId);
-                userRepository.save(dbUser);
+                existing.setKeycloakId(createdId);
+                userRepository.save(existing);
             });
-
-            log.info("Đã đồng bộ admin từ DB sang Keycloak");
+            log.info("Đã tạo admin {} trên Keycloak đang nối và gắn lại vào hàng users có sẵn", adminEmail);
             return;
         }
 
-        // CASE 4: CẢ HAI ĐỀU CÓ
-        if (!keycloakUserId.equals(dbUser.getKeycloakId())) {
-
-            if (!relink) {
-                warnForeignKeycloak();
-                return;
-            }
-
-            relinkOrWarn(dbUser, keycloakUserId);
-        }
-
-        // Đảm bảo admin hiện có được gán realm role
-        keycloakAdminClient.assignRealmRole(
-                keycloakUserId, role
-        );
-
-        log.info("Admin đã đồng bộ thành công: {}", adminEmail);
+        // 4. Cả hai chưa có -> tạo mới
+        createInKeycloak(createdId -> userRepository.save(newAdmin(createdId)));
     }
 
     private void relinkOrWarn(User dbUser, String keycloakUserId) {

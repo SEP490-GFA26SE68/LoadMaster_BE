@@ -24,6 +24,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.RequestParam;
 
 /**
  * Việc của kho trong phiên xếp ngoài xác nhận vị trí: soạn hàng (đối chiếu, xác nhận tay, báo thiếu), xác nhận tay và kiện hỏng lúc xếp,
@@ -72,8 +73,9 @@ public class WarehouseStagingController {
     @Operation(summary = "Confirm a placement manually", description = "The package counts as loaded; a dispatcher approves or rejects it")
     public ResponseEntity<ApiResponse<ManualConfirmationResponse>> confirmManually(
             @PathVariable("id") Long id,
+            @RequestParam("tripId") Long tripId,
             @RequestBody @Valid ManualUnloadRequest request) {
-        return ResponseEntity.ok(ApiResponse.success("Đã gửi xác nhận tay", incidentService.confirmPlacementManually(id, request)));
+        return ResponseEntity.ok(ApiResponse.success("Đã gửi xác nhận tay", incidentService.confirmPlacementManually(tripId, id, request)));
     }
 
     @PostMapping("/placements/{id}/damaged")
@@ -81,8 +83,9 @@ public class WarehouseStagingController {
             description = "Left at the warehouse when nothing rests on it in the plan; otherwise the trip returns to PLANNED")
     public ResponseEntity<ApiResponse<DamageResponse>> reportDamaged(
             @PathVariable("id") Long id,
+            @RequestParam("tripId") Long tripId,
             @RequestBody(required = false) ReportDamageRequest request) {
-        return ResponseEntity.ok(ApiResponse.success("Đã ghi kiện hỏng", incidentService.reportDamaged(id, request)));
+        return ResponseEntity.ok(ApiResponse.success("Đã ghi kiện hỏng", incidentService.reportDamaged(tripId, id, request)));
     }
 
     @PostMapping("/tasks/{tripId}/seal")

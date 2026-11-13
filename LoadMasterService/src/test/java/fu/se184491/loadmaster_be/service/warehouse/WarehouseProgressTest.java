@@ -55,6 +55,18 @@ class WarehouseProgressTest {
             PackagePlacement.builder().id(71L).cargoPackage(first).build(),
             PackagePlacement.builder().id(72L).cargoPackage(second).build());
 
+
+    @Test
+    void anOlderPendingRequestCannotBeHiddenByANewerDecision() {
+        ManualUnloadConfirmation pending = ManualUnloadConfirmation.builder()
+                .cargoPackage(first).step(ManualConfirmStep.LOADING).status(ManualConfirmStatus.PENDING)
+                .placement(PackagePlacement.builder().loadPlan(LoadPlan.builder().id(50L).build()).build()).build();
+        when(manualConfirmationRepository.findByTripIdAndStatusOrderByRequestedAtAsc(10L, ManualConfirmStatus.PENDING))
+                .thenReturn(List.of(pending));
+        assertTrue(progress.hasPendingManual(10L, 50L));
+        assertFalse(progress.hasPendingManual(10L, 51L));
+    }
+
     private void staged(CargoPackage... packages) {
         when(stagingConfirmationRepository.findByTripId(10L)).thenReturn(java.util.Arrays.stream(packages)
                 .map(pkg -> StagingConfirmation.builder().cargoPackage(pkg).method(StagingMethod.QR).build()).toList());

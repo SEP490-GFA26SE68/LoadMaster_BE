@@ -8,7 +8,8 @@ import fu.se184491.loadmaster_be.exception.AppException;
 import fu.se184491.loadmaster_be.exception.ErrorCode;
 import fu.se184491.loadmaster_be.repository.cargo.PackageTypeRepository;
 import fu.se184491.loadmaster_be.service.cargo.Impl.PackageTypeServiceImpl;
-import jakarta.persistence.EntityManager;
+import fu.se184491.loadmaster_be.helpers.CurrentUserService;
+import fu.se184491.loadmaster_be.entity.account.User;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -36,7 +37,7 @@ public class PackageTypeServiceTest {
     private PackageTypeRepository packageTypeRepository;
 
     @Mock
-    private EntityManager entityManager;
+    private CurrentUserService currentUserService;
 
     @InjectMocks
     private PackageTypeServiceImpl packageTypeService;
@@ -48,6 +49,7 @@ public class PackageTypeServiceTest {
     @BeforeEach
     void setUp() {
         company = Company.builder().id(1L).build();
+        when(currentUserService.getCurrentUser()).thenReturn(User.builder().company(company).build());
 
         request = PackageTypeRequest.builder()
                 .name("Thùng nhỏ")
@@ -75,7 +77,6 @@ public class PackageTypeServiceTest {
     @Test
     @DisplayName("Create PackageType should succeed with valid data")
     void createPackageType_success() {
-        when(entityManager.getReference(Company.class, 1L)).thenReturn(company);
         when(packageTypeRepository.save(any(PackageType.class))).thenReturn(packageType);
 
         PackageTypeResponse response = packageTypeService.createPackageType(1L, request);
@@ -208,6 +209,6 @@ public class PackageTypeServiceTest {
         );
 
         assertEquals(ErrorCode.PACKAGE_TYPE_NOT_FOUND, ex.getErrorCode());
-        verify(packageTypeRepository, never()).delete(any());
+        verify(packageTypeRepository, never()).delete(any(PackageType.class));
     }
 }

@@ -25,6 +25,10 @@ import fu.se184491.loadmaster_be.service.trip.TripPackageResolver;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.PersistenceContext;
+import jakarta.persistence.LockModeType;
+import java.util.Objects;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
@@ -37,6 +41,7 @@ import java.util.Map;
 @RequiredArgsConstructor
 public class WarehouseSessionLookup {
 
+    @PersistenceContext private EntityManager entityManager;
     private final CurrentUserService currentUserService;
     private final TripRepository tripRepository;
     private final LoadPlanRepository loadPlanRepository;
@@ -54,26 +59,42 @@ public class WarehouseSessionLookup {
 
     /** Phiên của chuyến (Đang xếp hàng) thuộc công ty người đăng nhập, mọi trạng thái phiên. */
     public Session session(Long tripId) {
+        return session(tripId, false);
+    }
+
+    public Session lockedSession(Long tripId) { return session(tripId, true); }
+
+    private Session session(Long tripId, boolean lock) {
         User worker = currentUserService.getCurrentUser();
         if (worker.getCompany() == null) {
             throw new AppException(ErrorCode.USER_COMPANY_NOT_FOUND);
         }
-        Trip trip = tripRepository.findByIdAndCompanyId(tripId, worker.getCompany().getId())
+        Trip trip = (lock ? tripRepository.findByIdAndCompanyIdForUpdate(tripId, worker.getCompany().getId())
+                : tripRepository.findByIdAndCompanyId(tripId, worker.getCompany().getId()))
                 .orElseThrow(() -> new AppException(ErrorCode.TRIP_NOT_FOUND));
+        if (lock) entityManager.refresh(trip);
         if (trip.getStatus() != TripStatus.LOADING) {
             throw new AppException(ErrorCode.TRIP_NOT_LOADING);
         }
         LoadPlan plan = loadPlanRepository.findFirstByJobTripIdAndApprovedTrueOrderByIdDesc(tripId)
                 .orElseThrow(() -> new AppException(ErrorCode.LOADING_EXECUTION_NOT_FOUND));
+        if (lock) entityManager.refresh(plan, LockModeType.PESSIMISTIC_READ);
+        if (!Boolean.TRUE.equals(plan.getApproved()) || Boolean.TRUE.equals(plan.getStale())
+                || plan.getJob() == null || plan.getJob().getTrip() == null
+                || !Objects.equals(tripId, plan.getJob().getTrip().getId()))
+            throw new AppException(ErrorCode.PLAN_STALE);
         LoadingExecution execution = loadingExecutionRepository.findByLoadPlanId(plan.getId())
                 .orElseThrow(() -> new AppException(ErrorCode.LOADING_EXECUTION_NOT_FOUND));
+        if (lock) entityManager.refresh(execution, LockModeType.PESSIMISTIC_WRITE);
+        if (execution.getLoadPlan() == null || !Objects.equals(plan.getId(), execution.getLoadPlan().getId()))
+            throw new AppException(ErrorCode.LOADING_EXECUTION_NOT_FOUND);
         return new Session(worker, trip, plan, execution,
                 packagePlacementRepository.findByLoadPlanIdOrderByStepSequenceAsc(plan.getId()));
     }
 
     /** Phiên đang xếp ({@code IN_PROGRESS}) của chuyến. */
     public Session activeSession(Long tripId) {
-        Session session = session(tripId);
+        Session session = lockedSession(tripId);
         if (session.execution().getStatus() != LoadingExecutionStatus.IN_PROGRESS) {
             throw new AppException(ErrorCode.LOADING_EXECUTION_NOT_FOUND);
         }
@@ -81,13 +102,13 @@ public class WarehouseSessionLookup {
     }
 
     /** Phiên đang xếp chứa vị trí này. */
-    public Session activeSessionOfPlacement(Long placementId) {
+    public Session activeSessionOfPlacement(Long placementId, Long expectedTripId) {
         PackagePlacement placement = packagePlacementRepository.findById(placementId)
                 .orElseThrow(() -> new AppException(ErrorCode.PLACEMENT_NOT_FOUND));
         Trip trip = placement.getLoadPlan() != null && placement.getLoadPlan().getJob() != null
                 ? placement.getLoadPlan().getJob().getTrip()
                 : null;
-        if (trip == null) {
+        if (trip == null || expectedTripId == null || !expectedTripId.equals(trip.getId())) {
             throw new AppException(ErrorCode.PLACEMENT_NOT_FOUND);
         }
         Session session;
@@ -106,18 +127,29 @@ public class WarehouseSessionLookup {
     }
 
     public PackagePlacement placement(Session session, Long placementId) {
-        return session.placements().stream()
+        PackagePlacement placement = session.placements().stream()
                 .filter(entry -> placementId.equals(entry.getId()))
                 .findFirst()
                 .orElseThrow(() -> new AppException(ErrorCode.PLACEMENT_NOT_FOUND));
+        requirePackageCompany(session, placement);
+        return placement;
+    }
+
+    private void requirePackageCompany(Session session, PackagePlacement placement) {
+        CargoPackage pkg = placement.getCargoPackage();
+        if (pkg == null || pkg.getCompany() == null
+                || !Objects.equals(session.trip().getCompany().getId(), pkg.getCompany().getId()))
+            throw new AppException(ErrorCode.PACKAGE_NOT_IN_LOADING_PLAN);
     }
 
     /** Vị trí của kiện trong phương án đang xếp. */
     public PackagePlacement placementOfPackage(Session session, Long packageId) {
-        return session.placements().stream()
+        PackagePlacement placement = session.placements().stream()
                 .filter(entry -> entry.getCargoPackage() != null && packageId.equals(entry.getCargoPackage().getId()))
                 .findFirst()
                 .orElseThrow(() -> new AppException(ErrorCode.PACKAGE_NOT_IN_LOADING_PLAN));
+        requirePackageCompany(session, placement);
+        return placement;
     }
 
     /** Vị trí đã xử lý: đã xác nhận, đã ghi sai lệch, hoặc là kiện hỏng bị bỏ lại kho. */

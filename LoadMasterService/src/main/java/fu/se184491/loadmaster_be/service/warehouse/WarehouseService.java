@@ -1,6 +1,7 @@
 package fu.se184491.loadmaster_be.service.warehouse;
 
 import fu.se184491.loadmaster_be.dto.request.warehouse.RecordDeviationRequest;
+import fu.se184491.loadmaster_be.dto.request.warehouse.ConfirmPlacementRequest;
 import fu.se184491.loadmaster_be.dto.request.warehouse.StartLoadingRequest;
 import fu.se184491.loadmaster_be.dto.response.warehouse.CompleteLoadingResponse;
 import fu.se184491.loadmaster_be.dto.response.warehouse.ConfirmPlacementResponse;
@@ -24,7 +25,9 @@ public interface WarehouseService {
     /** Phiên xếp của chuyến Đang xếp hàng, cùng dạng với lúc bắt đầu xếp, kèm trạng thái từng kiện. */
     StartLoadingResponse getSession(Long tripId);
 
-    ConfirmPlacementResponse confirmPlacement(Long placementId, Long workerId);
+    StartLoadingResponse getApprovedPlan(Long tripId);
+
+    ConfirmPlacementResponse confirmPlacement(Long placementId, Long workerId, ConfirmPlacementRequest request);
 
     DeviationResponse recordDeviation(Long placementId, RecordDeviationRequest request);
 

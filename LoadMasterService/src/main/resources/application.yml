@@ -9,7 +9,7 @@ spring:
     oauth2:
       resourceserver:
         jwt:
-          issuer-uri: ${KEYCLOAK_AUTH_URL:http://localhost:8180}/realms/loadmaster
+          issuer-uri: ${KEYCLOAK_AUTH_URL}/realms/loadmaster
       client:
         registration:
           optimization-client:
@@ -26,9 +26,9 @@ spring:
             authorization-grant-type: client_credentials
         provider:
           keycloak:
-            token-uri: ${KEYCLOAK_AUTH_URL:http://localhost:8180}/realms/loadmaster/protocol/openid-connect/token
+            token-uri: ${KEYCLOAK_AUTH_URL}/realms/loadmaster/protocol/openid-connect/token
   datasource:
-    url: ${DATABASE_URL:jdbc:postgresql://localhost:5432/loadmaster}
+    url: ${DATABASE_URL}
     username: ${POSTGRES_USER}
     password: ${POSTGRES_PASSWORD}
     hikari:
@@ -43,6 +43,7 @@ spring:
       host: ${REDIS_HOST:localhost}
       port: ${REDIS_PORT:6379}
       password: ${REDIS_PASSWORD:}
+      url: ${REDIS_URL}
 
   flyway:
     enabled: false

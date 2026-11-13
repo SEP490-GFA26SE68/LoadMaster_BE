@@ -67,6 +67,7 @@ import static org.mockito.Mockito.when;
 @ExtendWith(MockitoExtension.class)
 class DriverServiceImplTest {
 
+    @Mock private fu.se184491.loadmaster_be.service.trip.TripDepartureReadiness departureReadiness;
     @Mock private TripRepository tripRepository;
     @Mock private DeliveryStopRepository deliveryStopRepository;
     @Mock private LoadPlanRepository loadPlanRepository;
@@ -96,12 +97,49 @@ class DriverServiceImplTest {
         driver = User.builder().id(8L).company(company).build();
         trip = Trip.builder().id(10L).company(company).driver(driver).status(TripStatus.LOADING).build();
         when(currentUserService.getCurrentUser()).thenReturn(driver);
+        lenient().when(departureReadiness.lockAssignedTrip(10L, driver)).thenReturn(trip);
         lenient().when(tripLookupHelper.requireTrip("10", 1L)).thenReturn(trip);
+    }
+
+
+    @Test
+    void startTwiceDoesNotTransitionTwice() {
+        when(departureReadiness.canStartLocked(trip, driver)).thenReturn(true);
+        when(tripStatusService.transitionTo(10L, TripStatus.IN_TRANSIT, 8L)).thenAnswer(invocation -> {
+            trip.setStatus(TripStatus.IN_TRANSIT);
+            return trip;
+        });
+        service.startTrip(10L);
+        assertThrows(AppException.class, () -> service.startTrip(10L));
+        verify(tripStatusService, org.mockito.Mockito.times(1)).transitionTo(10L, TripStatus.IN_TRANSIT, 8L);
+        org.mockito.InOrder order = org.mockito.Mockito.inOrder(departureReadiness, tripStatusService);
+        order.verify(departureReadiness).lockAssignedTrip(10L, driver);
+        order.verify(departureReadiness).canStartLocked(trip, driver);
+        order.verify(tripStatusService).transitionTo(10L, TripStatus.IN_TRANSIT, 8L);
+    }
+
+    @Test
+    void listIsScopedByBothPrincipalDriverAndCompanyWithoutDroppingTransitOrHistory() {
+        Trip transit = Trip.builder().id(11L).status(TripStatus.IN_TRANSIT).build();
+        Trip delivered = Trip.builder().id(12L).status(TripStatus.DELIVERED).build();
+        when(tripRepository.findByDriver_IdAndCompany_IdOrderByDepartureTimeDesc(8L, 1L))
+                .thenReturn(List.of(trip, transit, delivered));
+        assertEquals(List.of("LOADING", "IN_TRANSIT", "DELIVERED"),
+                service.listTrips(null).stream().map(DriverTripResponse::getStatus).toList());
+        verify(tripRepository).findByDriver_IdAndCompany_IdOrderByDepartureTimeDesc(8L, 1L);
+        verify(tripRepository, never()).findByDriver_IdOrderByDepartureTimeDesc(any());
+    }
+
+    @Test
+    void noCompanyCannotListTrips() {
+        driver.setCompany(null);
+        assertEquals(ErrorCode.USER_COMPANY_NOT_FOUND,
+                assertThrows(AppException.class, () -> service.listTrips(null)).getErrorCode());
     }
 
     @Test
     void startRequiresCompletedLoading() {
-        when(loadingExecutionRepository.existsByLoadPlanJobTripIdAndStatus(10L, LoadingExecutionStatus.COMPLETED))
+        when(departureReadiness.canStartLocked(trip, driver))
                 .thenReturn(false);
 
         AppException error = assertThrows(AppException.class, () -> service.startTrip(10L));
@@ -114,7 +152,7 @@ class DriverServiceImplTest {
     void startMovesRequirementsIntoTripAndTripInTransit() {
         DeliveryRequirement requirement = DeliveryRequirement.builder()
                 .id(20L).status(DeliveryRequirementStatus.ASSIGNED).build();
-        when(loadingExecutionRepository.existsByLoadPlanJobTripIdAndStatus(10L, LoadingExecutionStatus.COMPLETED))
+        when(departureReadiness.canStartLocked(trip, driver))
                 .thenReturn(true);
         when(deliveryRequirementRepository.findByTripId(10L)).thenReturn(List.of(requirement));
         when(tripStatusService.transitionTo(10L, TripStatus.IN_TRANSIT, 8L)).thenAnswer(invocation -> {
@@ -198,7 +236,7 @@ class DriverServiceImplTest {
         LocalDateTime lastArrival = LocalDateTime.of(2026, 11, 5, 16, 10);
         Trip done = Trip.builder().id(12L).company(trip.getCompany()).driver(driver).status(TripStatus.DELIVERED).completedAt(recorded).build();
         Trip older = Trip.builder().id(13L).company(trip.getCompany()).driver(driver).status(TripStatus.DELIVERED).build();
-        when(tripRepository.findByDriver_IdOrderByDepartureTimeDesc(8L)).thenReturn(List.of(trip, done, older));
+        when(tripRepository.findByDriver_IdAndCompany_IdOrderByDepartureTimeDesc(8L, 1L)).thenReturn(List.of(trip, done, older));
         when(deliveryStopRepository.findByTripIdOrderByStopSequenceAsc(13L)).thenReturn(List.of(
                 DeliveryStop.builder().id(40L).trip(older).stopSequence(1).actualArrival(lastArrival.minusHours(2)).build(),
                 DeliveryStop.builder().id(41L).trip(older).stopSequence(2).actualArrival(lastArrival).build()));
@@ -234,11 +272,9 @@ class DriverServiceImplTest {
     @Test
     void listTripsFlagsLoadingCompletedTrips() {
         Trip waiting = Trip.builder().id(11L).company(trip.getCompany()).driver(driver).status(TripStatus.LOADING).build();
-        when(tripRepository.findByDriver_IdOrderByDepartureTimeDesc(8L)).thenReturn(List.of(trip, waiting));
-        when(loadingExecutionRepository.existsByLoadPlanJobTripIdAndStatus(10L, LoadingExecutionStatus.COMPLETED))
-                .thenReturn(true);
-        when(loadingExecutionRepository.existsByLoadPlanJobTripIdAndStatus(11L, LoadingExecutionStatus.COMPLETED))
-                .thenReturn(false);
+        when(tripRepository.findByDriver_IdAndCompany_IdOrderByDepartureTimeDesc(8L, 1L)).thenReturn(List.of(trip, waiting));
+        when(departureReadiness.canStart(trip, driver)).thenReturn(true);
+        when(departureReadiness.canStart(waiting, driver)).thenReturn(false);
 
         List<DriverTripResponse> trips = service.listTrips(null);
 

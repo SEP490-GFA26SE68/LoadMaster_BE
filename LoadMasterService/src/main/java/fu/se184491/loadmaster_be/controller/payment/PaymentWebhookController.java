@@ -50,17 +50,17 @@ public class PaymentWebhookController {
                 .build();
     }
 
-    @PreAuthorize("hasAnyRole('ADMIN', 'COMPANY_ADMIN')")
-    @GetMapping("/api/payment/mock-checkout")
-    public ResponseEntity<Map<String, Object>> mockCheckout(@RequestParam String txnRef) {
-        mockPaymentPolicy.requireEnabled();
-        Map<String, String> callbackResult = paymentCallbackHandler.handleMockCheckout(txnRef);
-
-        Map<String, Object> result = new HashMap<>();
-        result.put("success", true);
-        result.put("message", "Mock payment executed successfully");
-        result.put("txnRef", txnRef);
-        result.put("callbackResult", callbackResult);
-        return ResponseEntity.ok(result);
-    }
+//    @PreAuthorize("hasAnyRole('ADMIN', 'COMPANY_ADMIN')")
+//    @GetMapping("/api/payment/mock-checkout")
+//    public ResponseEntity<Map<String, Object>> mockCheckout(@RequestParam String txnRef) {
+//        mockPaymentPolicy.requireEnabled();
+//        Map<String, String> callbackResult = paymentCallbackHandler.handleMockCheckout(txnRef);
+//
+//        Map<String, Object> result = new HashMap<>();
+//        result.put("success", true);
+//        result.put("message", "Mock payment executed successfully");
+//        result.put("txnRef", txnRef);
+//        result.put("callbackResult", callbackResult);
+//        return ResponseEntity.ok(result);
+//    }
 }

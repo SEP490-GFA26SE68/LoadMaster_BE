@@ -20,3 +20,13 @@ prd.md
 .env
 .env.*
 issues/
+
+# JVM crash logs
+hs_err_pid*.log
+replay_pid*.log
+*.hprof
+
+# Local Codex reports and test evidence
+LoadMasterService/docs/reports/
+LoadMasterService/docs/audits/
+LoadMasterService/docs/screenshots/

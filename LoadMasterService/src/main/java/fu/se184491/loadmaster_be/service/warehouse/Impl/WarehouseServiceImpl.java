@@ -42,6 +42,9 @@ import fu.se184491.loadmaster_be.service.trip.TripPackageResolver;
 import fu.se184491.loadmaster_be.service.trip.TripStatusService;
 import fu.se184491.loadmaster_be.service.warehouse.WarehouseProgress;
 import fu.se184491.loadmaster_be.service.warehouse.WarehouseService;
+import fu.se184491.loadmaster_be.service.warehouse.WarehouseSessionLookup;
+import fu.se184491.loadmaster_be.service.warehouse.WarehouseLabelVerifier;
+import fu.se184491.loadmaster_be.dto.request.warehouse.ConfirmPlacementRequest;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -64,6 +67,7 @@ import java.util.stream.Collectors;
 @Slf4j
 public class WarehouseServiceImpl implements WarehouseService {
 
+    private final WarehouseSessionLookup lookup;
     private final TripRepository tripRepository;
     private final LoadPlanRepository loadPlanRepository;
     private final LoadingExecutionRepository loadingExecutionRepository;
@@ -199,6 +203,10 @@ public class WarehouseServiceImpl implements WarehouseService {
                 .findFirstByJobTripIdAndApprovedTrueOrderByIdDesc(tripId)
                 .orElseThrow(() -> new AppException(ErrorCode.NO_APPROVED_LOAD_PLAN));
 
+        if (Boolean.TRUE.equals(approvedPlan.getStale())) {
+            throw new AppException(ErrorCode.PLAN_STALE);
+        }
+
         // Mỗi phương án chỉ có một phiên xếp (load_plan_id là duy nhất). Phiên đã dừng của chính phương án này được mở lại từ đầu.
         Optional<LoadingExecution> existing = loadingExecutionRepository.findByLoadPlanId(approvedPlan.getId());
         if (existing.isPresent() && existing.get().getStatus() != LoadingExecutionStatus.ABORTED) {
@@ -264,6 +272,26 @@ public class WarehouseServiceImpl implements WarehouseService {
         return toSession(trip, approvedPlan, execution);
     }
 
+    /** Read-only approved geometry; viewing never creates or reopens a loading execution. */
+    @Override
+    @Transactional(readOnly = true)
+    public StartLoadingResponse getApprovedPlan(Long tripId) {
+        Trip trip = requireCompanyTrip(tripId, currentUserService.getCurrentUser());
+        if (trip.getStatus() != TripStatus.PLANNED && trip.getStatus() != TripStatus.LOADING) {
+            throw new AppException(ErrorCode.TRIP_NOT_LOADING);
+        }
+        LoadPlan plan = loadPlanRepository.findFirstByJobTripIdAndApprovedTrueOrderByIdDesc(tripId)
+                .orElseThrow(() -> new AppException(ErrorCode.LOADING_EXECUTION_NOT_FOUND));
+        if (Boolean.TRUE.equals(plan.getStale())) throw new AppException(ErrorCode.PLAN_STALE);
+        LoadingExecution execution = loadingExecutionRepository.findByLoadPlanId(plan.getId()).orElse(null);
+        if ((trip.getStatus() == TripStatus.LOADING && execution == null)
+                || (execution != null && execution.getStatus() != LoadingExecutionStatus.IN_PROGRESS
+                    && execution.getStatus() != LoadingExecutionStatus.COMPLETED)) {
+            throw new AppException(ErrorCode.LOADING_EXECUTION_NOT_FOUND);
+        }
+        return toSession(trip, plan, execution);
+    }
+
     private StartLoadingResponse toSession(Trip trip, LoadPlan plan, LoadingExecution execution) {
         List<PackagePlacement> placements = packagePlacementRepository
                 .findByLoadPlanIdOrderByStepSequenceAsc(plan.getId());
@@ -303,13 +331,15 @@ public class WarehouseServiceImpl implements WarehouseService {
             withProgress(step, placement, state);
             steps.add(step);
         }
-        boolean stagingRequired = Boolean.TRUE.equals(execution.getStagingRequired());
+        boolean stagingRequired = execution != null && Boolean.TRUE.equals(execution.getStagingRequired());
 
         Vehicle vehicle = trip.getVehicle();
         VehicleType type = vehicle != null ? vehicle.getVehicleType() : null;
         return StartLoadingResponse.builder()
-                .executionId(execution.getId())
+                .executionId(execution != null ? execution.getId() : null)
                 .loadPlanId(plan.getId())
+                .approved(plan.getApproved())
+                .stale(plan.getStale())
                 .tripId(trip.getId())
                 .tripCode(trip.getTripCode())
                 .vehicleInfo(formatVehicleInfo(vehicle))
@@ -321,23 +351,25 @@ public class WarehouseServiceImpl implements WarehouseService {
                 .doorWidth(type != null ? type.getDoorWidth() : null)
                 .doorHeight(type != null ? type.getDoorHeight() : null)
                 .maxPayloadKg(type != null ? type.getMaxPayloadKg() : null)
+                .obstacles(type == null ? List.of()
+                        : fu.se184491.loadmaster_be.dto.response.trip.TripVehicleConfigResponse.of(vehicle).obstacles())
                 .totalPackages(steps.size())
                 .confirmedCount(confirmedCount)
                 .deviationCount(deviationCount)
                 .pendingCount(steps.size() - confirmedCount - deviationCount - damagedCount)
-                .status(execution.getStatus() != null ? execution.getStatus().name() : null)
-                .startedAt(execution.getStartedAt())
-                .completedAt(execution.getCompletedAt())
+                .status(execution == null ? "NOT_STARTED" : execution.getStatus() != null ? execution.getStatus().name() : null)
+                .startedAt(execution != null ? execution.getStartedAt() : null)
+                .completedAt(execution != null ? execution.getCompletedAt() : null)
                 .placements(steps)
                 .stagingRequired(stagingRequired)
-                .stagingComplete(!stagingRequired || state.stagingComplete(placements))
+                .stagingComplete(execution != null && (!stagingRequired || state.stagingComplete(placements)))
                 .stagedCount(state.stagedCount(placements))
                 .openShortageCount(state.openShortages())
                 .damagedCount(damagedCount)
                 .pendingManualCount(state.pendingManual())
-                .sealNumber(execution.getSealNumber())
-                .sealedAt(execution.getSealedAt())
-                .sealedByName(execution.getSealedBy() != null ? execution.getSealedBy().getFullName() : null)
+                .sealNumber(execution != null ? execution.getSealNumber() : null)
+                .sealedAt(execution != null ? execution.getSealedAt() : null)
+                .sealedByName(execution != null && execution.getSealedBy() != null ? execution.getSealedBy().getFullName() : null)
                 .build();
     }
 
@@ -373,12 +405,17 @@ public class WarehouseServiceImpl implements WarehouseService {
 
     @Override
     @Transactional
-    public ConfirmPlacementResponse confirmPlacement(Long placementId, Long workerId) {
+    public ConfirmPlacementResponse confirmPlacement(Long placementId, Long workerId, ConfirmPlacementRequest request) {
         User worker = currentUserService.getCurrentUser();
         if (workerId != null && !workerId.equals(worker.getId())) {
             throw new AppException(ErrorCode.UNAUTHORIZED);
         }
-        PackagePlacement placement = requireLoadingPlacement(placementId, worker);
+        if (request == null || request.getTripId() == null) throw new AppException(ErrorCode.VALIDATION_ERROR);
+        var session = lookup.activeSessionOfPlacement(placementId, request.getTripId());
+        PackagePlacement placement = lookup.placement(session, placementId);
+        WarehouseLabelVerifier.requireMatch(placement.getCargoPackage(), request.getMethod(), request.getCode());
+        if (deviationRepository.existsByPlacementId(placementId) || warehouseProgress.isLeftOut(placementId))
+            throw new AppException(ErrorCode.PLACEMENT_ALREADY_CONFIRMED);
 
         if (placementConfirmationRepository.existsByPlacementId(placementId)) {
             throw new AppException(ErrorCode.PLACEMENT_ALREADY_CONFIRMED);
@@ -435,7 +472,11 @@ public class WarehouseServiceImpl implements WarehouseService {
         if (request.getReportedBy() != null && !request.getReportedBy().equals(reporter.getId())) {
             throw new AppException(ErrorCode.UNAUTHORIZED);
         }
-        PackagePlacement placement = requireLoadingPlacement(placementId, reporter);
+        var session = lookup.activeSessionOfPlacement(placementId, request.getTripId());
+        PackagePlacement placement = lookup.placement(session, placementId);
+        if (placementConfirmationRepository.existsByPlacementId(placementId) || warehouseProgress.isLeftOut(placementId))
+            throw new AppException(ErrorCode.PLACEMENT_ALREADY_CONFIRMED);
+        requireInSequence(placement, session.placements());
 
         if (deviationRepository.existsByPlacementId(placementId)) {
             throw new AppException(ErrorCode.DEVIATION_ALREADY_RECORDED);
@@ -509,21 +550,15 @@ public class WarehouseServiceImpl implements WarehouseService {
     @Override
     @Transactional
     public CompleteLoadingResponse completeLoading(Long tripId) {
-        User worker = currentUserService.getCurrentUser();
-        Trip trip = requireCompanyTrip(tripId, worker);
-        if (trip.getStatus() != TripStatus.LOADING) {
-            throw new AppException(ErrorCode.LOADING_EXECUTION_NOT_FOUND);
-        }
-
-        LoadPlan approvedPlan = loadPlanRepository
-                .findFirstByJobTripIdAndApprovedTrueOrderByIdDesc(tripId)
-                .orElseThrow(() -> new AppException(ErrorCode.NO_APPROVED_LOAD_PLAN));
-
-        LoadingExecution execution = loadingExecutionRepository.findByLoadPlanId(approvedPlan.getId())
-                .filter(found -> found.getStatus() == LoadingExecutionStatus.IN_PROGRESS)
-                .orElseThrow(() -> new AppException(ErrorCode.LOADING_EXECUTION_NOT_FOUND));
-
-        List<PackagePlacement> placements = packagePlacementRepository.findByLoadPlanId(approvedPlan.getId());
+        var session = lookup.activeSession(tripId);
+        User worker = session.worker();
+        Trip trip = session.trip();
+        LoadPlan approvedPlan = session.plan();
+        LoadingExecution execution = session.execution();
+        List<PackagePlacement> placements = session.placements();
+        if (placements.isEmpty()) throw new AppException(ErrorCode.INCOMPLETE_LOADING);
+        for (PackagePlacement placement : placements) lookup.placement(session, placement.getId());
+        lookup.requireStagingComplete(session);
 
         List<Long> unhandledPlacementIds = new ArrayList<>();
         List<PackagePlacement> loaded = new ArrayList<>();
@@ -539,12 +574,13 @@ public class WarehouseServiceImpl implements WarehouseService {
             }
         }
 
+        if (loaded.isEmpty()) throw new AppException(ErrorCode.INCOMPLETE_LOADING);
         if (!unhandledPlacementIds.isEmpty()) {
             throw new IncompleteLoadingException("Quá trình bốc xếp chưa hoàn tất, còn "
                     + unhandledPlacementIds.size() + " kiện hàng chưa được xác nhận hoặc ghi nhận sai lệch");
         }
         WarehouseProgress.State state = warehouseProgress.of(tripId, approvedPlan.getId());
-        if (state != null && state.pendingManual() > 0) {
+        if ((state != null && state.pendingManual() > 0) || warehouseProgress.hasPendingManual(tripId, approvedPlan.getId())) {
             throw new AppException(ErrorCode.LOADING_MANUAL_CONFIRM_PENDING);
         }
 
@@ -691,26 +727,6 @@ public class WarehouseServiceImpl implements WarehouseService {
     private Trip requireCompanyTrip(Long tripId, User user) {
         return tripRepository.findByIdAndCompanyId(tripId, companyOf(user))
                 .orElseThrow(() -> new AppException(ErrorCode.TRIP_NOT_FOUND));
-    }
-
-    /** Vị trí kiện thuộc chuyến của công ty, chuyến đang xếp và phiên xếp đang mở. */
-    private PackagePlacement requireLoadingPlacement(Long placementId, User user) {
-        PackagePlacement placement = packagePlacementRepository.findById(placementId)
-                .orElseThrow(() -> new AppException(ErrorCode.PLACEMENT_NOT_FOUND));
-        Trip trip = placement.getLoadPlan() != null && placement.getLoadPlan().getJob() != null
-                ? placement.getLoadPlan().getJob().getTrip()
-                : null;
-        if (trip == null || trip.getCompany() == null
-                || !trip.getCompany().getId().equals(companyOf(user))) {
-            throw new AppException(ErrorCode.PLACEMENT_NOT_FOUND);
-        }
-        boolean loading = trip.getStatus() == TripStatus.LOADING
-                && loadingExecutionRepository.existsByLoadPlanIdAndStatus(
-                        placement.getLoadPlan().getId(), LoadingExecutionStatus.IN_PROGRESS);
-        if (!loading) {
-            throw new AppException(ErrorCode.LOADING_EXECUTION_NOT_FOUND);
-        }
-        return placement;
     }
 
     private void markLoaded(PackagePlacement placement) {

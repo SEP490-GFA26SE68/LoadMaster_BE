@@ -44,6 +44,14 @@ public interface PackageService {
             Long id
     );
 
+    Page<PackageResponse> searchPackages(Long companyId, Long orderId, Long packageTypeId, String packageCode,
+        String search, fu.se184491.loadmaster_be.constant.cargo.PackageStatus status,
+        fu.se184491.loadmaster_be.constant.cargo.HandlingClass handlingClass, Pageable pageable);
+
+    /** Exact business code after trim/case normalization, always scoped by company. */
+    Page<PackageResponse> getAllPackages(Long companyId, Long orderId, Long packageTypeId,
+                                         String packageCode, Pageable pageable);
+
     Page<PackageResponse> getAllPackages(
             Long companyId,
             Long orderId,

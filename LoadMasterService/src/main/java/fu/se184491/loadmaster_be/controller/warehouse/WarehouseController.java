@@ -1,6 +1,7 @@
 package fu.se184491.loadmaster_be.controller.warehouse;
 
 import fu.se184491.loadmaster_be.dto.ApiResponse;
+import fu.se184491.loadmaster_be.dto.request.warehouse.ConfirmPlacementRequest;
 import fu.se184491.loadmaster_be.dto.request.warehouse.RecordDeviationRequest;
 import fu.se184491.loadmaster_be.dto.request.warehouse.StartLoadingRequest;
 import fu.se184491.loadmaster_be.dto.response.warehouse.CompleteLoadingResponse;
@@ -43,6 +44,12 @@ public class WarehouseController {
         return ResponseEntity.ok(ApiResponse.success("Lấy danh sách nhiệm vụ bốc xếp thành công", tasks));
     }
 
+    @GetMapping("/tasks/{tripId}/plan")
+    @Operation(summary = "View the approved loading plan without starting loading")
+    public ResponseEntity<ApiResponse<StartLoadingResponse>> getApprovedPlan(@PathVariable("tripId") Long tripId) {
+        return ResponseEntity.ok(ApiResponse.success("Approved loading plan", warehouseService.getApprovedPlan(tripId)));
+    }
+
     @GetMapping("/tasks/{tripId}")
     @Operation(summary = "Get loading session", description = "Reopen the loading session of a LOADING trip: placements in step order with CONFIRMED / DEVIATION / PENDING status")
     public ResponseEntity<ApiResponse<StartLoadingResponse>> getSession(
@@ -64,8 +71,9 @@ public class WarehouseController {
     @Operation(summary = "Confirm placement", description = "Confirm that a package placement has been loaded correctly according to sequence")
     public ResponseEntity<ApiResponse<ConfirmPlacementResponse>> confirmPlacement(
             @PathVariable("id") Long id,
-            @RequestParam(value = "workerId", required = false) Long workerId) {
-        ConfirmPlacementResponse response = warehouseService.confirmPlacement(id, workerId);
+            @RequestParam(value = "workerId", required = false) Long workerId,
+            @RequestBody @Valid ConfirmPlacementRequest request) {
+        ConfirmPlacementResponse response = warehouseService.confirmPlacement(id, workerId, request);
         return ResponseEntity.ok(ApiResponse.success("Xác nhận vị trí kiện hàng thành công", response));
     }
 

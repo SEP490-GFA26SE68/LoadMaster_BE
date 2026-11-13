@@ -19,6 +19,9 @@ public interface VehicleService {
             Long vehicleTypeId
     );
 
+    PageResponse<VehicleResponse> searchVehicles(int page, int size, String search, Long vehicleTypeId,
+            fu.se184491.loadmaster_be.constant.vehicle.VehicleStatus status, String sortBy, String sortDir);
+
     VehicleResponse getVehicleById(Long vehicleId);
 
     TripVehicleConfigResponse getVehicleConfig(Long vehicleId);
