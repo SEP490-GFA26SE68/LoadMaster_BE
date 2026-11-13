@@ -20,6 +20,7 @@ import fu.se184491.loadmaster_be.exception.ErrorCode;
 import fu.se184491.loadmaster_be.repository.billing.CompanySubscriptionRepository;
 import fu.se184491.loadmaster_be.repository.billing.SubscriptionPlanRepository;
 import fu.se184491.loadmaster_be.repository.company.CompanyRepository;
+import fu.se184491.loadmaster_be.service.billing.InvoiceService.SubscriptionPeriod;
 import fu.se184491.loadmaster_be.service.credit.CreditService;
 import fu.se184491.loadmaster_be.service.payment.PaymentGatewayService;
 import fu.se184491.loadmaster_be.service.subscription.SubscriptionService;
@@ -182,13 +183,13 @@ public class SubscriptionServiceImpl implements SubscriptionService {
 
     @Override
     @Transactional
-    public void activateSubscription(Long companyId, Long planId) {
-        activateSubscription(companyId, planId, null);
+    public SubscriptionPeriod activateSubscription(Long companyId, Long planId) {
+        return activateSubscription(companyId, planId, null);
     }
 
     @Override
     @Transactional
-    public void activateSubscription(Long companyId, Long planId, BillingCycle requestedCycle) {
+    public SubscriptionPeriod activateSubscription(Long companyId, Long planId, BillingCycle requestedCycle) {
         Company company = companyRepository.findById(companyId)
                 .orElseThrow(() -> new AppException(ErrorCode.COMPANY_NOT_FOUND));
         SubscriptionPlan plan = subscriptionPlanRepository.findById(planId)
@@ -210,6 +211,7 @@ public class SubscriptionServiceImpl implements SubscriptionService {
         if (!isExtendingSameActivePlan && sub.getId() != null) {
             creditService.resetBalance(companyId);
         }
+        LocalDateTime previousExpiry = isExtendingSameActivePlan ? sub.getExpiresAt().truncatedTo(ChronoUnit.SECONDS) : null;
 
         sub.setPlan(plan);
         sub.setStatus(SubscriptionStatus.ACTIVE);
@@ -239,6 +241,12 @@ public class SubscriptionServiceImpl implements SubscriptionService {
                 creditService.grantMonthlyCredits(companyId, monthlyCredits);
             }
         }
+
+        // Kéo dài gói đang chạy thì kỳ mới nối tiếp hạn cũ; đổi gói hay bắt đầu lại thì tính từ bây giờ
+        LocalDateTime periodStart = previousExpiry != null && sub.getExpiresAt().isAfter(previousExpiry)
+                ? previousExpiry
+                : now;
+        return new SubscriptionPeriod(sub, plan, periodStart, sub.getExpiresAt());
     }
 
     private int calculatePurchasedMonths(CompanySubscription sub) {
