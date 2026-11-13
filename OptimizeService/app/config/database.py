@@ -2,15 +2,11 @@ from typing import Generator
 from sqlalchemy import create_engine
 from sqlalchemy.orm import declarative_base, sessionmaker, Session
 
+from app.config.database_url import sqlalchemy_database_url
 from app.config.settings import settings
 
-connect_args = {"check_same_thread": False} if settings.DATABASE_URL.startswith("sqlite") else {}
-
-db_url = settings.DATABASE_URL
-if db_url.startswith("jdbc:"):
-    db_url = db_url[5:]
-if db_url.startswith("postgresql://"):
-    db_url = db_url.replace("postgresql://", "postgresql+psycopg2://", 1)
+db_url = sqlalchemy_database_url(settings.DATABASE_URL, settings.POSTGRES_USER, settings.POSTGRES_PASSWORD)
+connect_args = {"check_same_thread": False} if db_url.get_backend_name() == "sqlite" else {}
 
 engine = create_engine(
     db_url,
