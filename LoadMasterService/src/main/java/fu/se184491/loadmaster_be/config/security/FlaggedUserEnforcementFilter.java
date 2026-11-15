@@ -58,7 +58,7 @@ public class FlaggedUserEnforcementFilter extends OncePerRequestFilter {
             "Gói cước dịch vụ của doanh nghiệp đã hết hạn. Vui lòng nâng cấp hoặc gia hạn gói cước tại mục Gói và Credit để tiếp tục sử dụng.";
 
     private static final String SUBSCRIPTION_EXPIRED_EMPLOYEE_MESSAGE =
-            "Gói cước dùng thử của doanh nghiệp đã hết hạn. Vui lòng liên hệ Quản trị viên công ty (Company Admin) để nâng cấp hoặc gia hạn gói cước.";
+            "Doanh nghiệp chưa có gói cước đang hiệu lực. Vui lòng liên hệ Quản trị công ty để gia hạn hoặc đăng ký gói cước.";
 
     /** Tiền tố đường dẫn luôn đi qua, kể cả khi tài khoản bị gắn cờ (public endpoint hoặc lối để ký / xin mở khóa). */
     private static final List<String> ALLOWED_PREFIXES = List.of(

@@ -13,6 +13,7 @@ import fu.se184491.loadmaster_be.constant.trip.TripStatus;
 import fu.se184491.loadmaster_be.entity.account.User;
 import fu.se184491.loadmaster_be.entity.cargo.CargoPackage;
 import fu.se184491.loadmaster_be.entity.company.Company;
+import fu.se184491.loadmaster_be.helpers.TestSubscriptions;
 import fu.se184491.loadmaster_be.entity.company.CompanyWarehouse;
 import fu.se184491.loadmaster_be.entity.order.TransportOrder;
 import fu.se184491.loadmaster_be.entity.planning.DeliveryRequirement;
@@ -100,6 +101,7 @@ class TripPlanningControllerIntegrationTest {
                 .createdAt(Instant.now())
                 .build();
         entityManager.persist(company);
+        TestSubscriptions.activate(entityManager, company);
         dispatcher = persistUser("trip-planning-dispatcher", "dispatcher@trip-planning.test", UserRole.DISPATCHER);
         driver = persistUser("trip-planning-driver", "driver@trip-planning.test", UserRole.DRIVER);
         warehouse = CompanyWarehouse.builder()
