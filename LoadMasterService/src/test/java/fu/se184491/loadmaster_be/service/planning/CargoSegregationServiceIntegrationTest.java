@@ -12,6 +12,7 @@ import fu.se184491.loadmaster_be.entity.cargo.CargoPackage;
 import fu.se184491.loadmaster_be.entity.account.User;
 import fu.se184491.loadmaster_be.entity.cargo.PackageType;
 import fu.se184491.loadmaster_be.entity.company.Company;
+import fu.se184491.loadmaster_be.helpers.TestSubscriptions;
 import fu.se184491.loadmaster_be.entity.order.TransportOrder;
 import fu.se184491.loadmaster_be.entity.trip.DeliveryStop;
 import fu.se184491.loadmaster_be.entity.trip.Trip;
@@ -88,6 +89,7 @@ class CargoSegregationServiceIntegrationTest {
                 .createdAt(Instant.now())
                 .build();
         entityManager.persist(company);
+        TestSubscriptions.activate(entityManager, company);
 
         User dispatcher = User.builder()
                 .keycloakId("segregation-dispatcher")
@@ -352,6 +354,7 @@ class CargoSegregationServiceIntegrationTest {
                 .createdAt(Instant.now())
                 .build();
         entityManager.persist(otherCompany);
+        TestSubscriptions.activate(entityManager, otherCompany);
         User otherDispatcher = User.builder()
                 .keycloakId("other-segregation-dispatcher")
                 .company(otherCompany)
