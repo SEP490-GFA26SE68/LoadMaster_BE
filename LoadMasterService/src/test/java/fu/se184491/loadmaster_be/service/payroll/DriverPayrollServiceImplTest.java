@@ -2,7 +2,11 @@ package fu.se184491.loadmaster_be.service.payroll;
 
 import fu.se184491.loadmaster_be.constant.account.UserRole;
 import fu.se184491.loadmaster_be.constant.account.UserStatus;
+import fu.se184491.loadmaster_be.constant.payroll.PayrollPeriodStatus;
 import fu.se184491.loadmaster_be.constant.trip.TripStatus;
+import fu.se184491.loadmaster_be.dto.request.payroll.CompanyPayrollRateRequest;
+import fu.se184491.loadmaster_be.dto.request.payroll.DriverBaseSalaryRequest;
+import fu.se184491.loadmaster_be.dto.request.payroll.SetTripPayrollDriversRequest;
 import fu.se184491.loadmaster_be.dto.response.payroll.PayrollPeriodResponse;
 import fu.se184491.loadmaster_be.entity.account.User;
 import fu.se184491.loadmaster_be.entity.cargo.CargoPackage;
@@ -10,13 +14,18 @@ import fu.se184491.loadmaster_be.entity.company.Company;
 import fu.se184491.loadmaster_be.entity.optimization.LoadPlan;
 import fu.se184491.loadmaster_be.entity.optimization.PackagePlacement;
 import fu.se184491.loadmaster_be.entity.payroll.CompanyPayrollRate;
+import fu.se184491.loadmaster_be.entity.payroll.DriverBaseSalaryOverride;
+import fu.se184491.loadmaster_be.entity.payroll.DriverPayroll;
+import fu.se184491.loadmaster_be.entity.payroll.PayrollPeriod;
 import fu.se184491.loadmaster_be.entity.payroll.TripPayrollDriverShare;
 import fu.se184491.loadmaster_be.entity.route.RoutePlan;
 import fu.se184491.loadmaster_be.entity.trip.Trip;
+import fu.se184491.loadmaster_be.exception.AppException;
 import fu.se184491.loadmaster_be.repository.account.UserRepository;
 import fu.se184491.loadmaster_be.repository.optimization.LoadPlanRepository;
 import fu.se184491.loadmaster_be.repository.optimization.PackagePlacementRepository;
 import fu.se184491.loadmaster_be.repository.payroll.CompanyPayrollRateRepository;
+import fu.se184491.loadmaster_be.repository.payroll.DriverBaseSalaryOverrideRepository;
 import fu.se184491.loadmaster_be.repository.payroll.DriverPayrollRepository;
 import fu.se184491.loadmaster_be.repository.payroll.PayrollPeriodRepository;
 import fu.se184491.loadmaster_be.repository.payroll.TripPayrollDriverShareRepository;
@@ -33,16 +42,25 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.YearMonth;
+import java.time.ZoneId;
 import java.util.List;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
 class DriverPayrollServiceImplTest {
 
     @Mock private CompanyPayrollRateRepository rateRepository;
+    @Mock private DriverBaseSalaryOverrideRepository baseSalaryOverrideRepository;
     @Mock private PayrollPeriodRepository periodRepository;
     @Mock private DriverPayrollRepository driverPayrollRepository;
     @Mock private TripPayrollDriverShareRepository shareRepository;
@@ -72,6 +90,125 @@ class DriverPayrollServiceImplTest {
                 .status(TripStatus.DELIVERED)
                 .completedAt(LocalDateTime.of(2026, 11, 12, 12, 0))
                 .build();
+    }
+
+    @Test
+    void allowsCurrentMonthRateForNewCompanyWithoutPriorRates() {
+        LocalDate currentMonth = YearMonth.now(ZoneId.of("Asia/Ho_Chi_Minh")).atDay(1);
+        CompanyPayrollRateRequest request = new CompanyPayrollRateRequest(
+                currentMonth, new BigDecimal("8000000"), new BigDecimal("100"), new BigDecimal("2000"));
+        when(rateRepository.existsByCompanyId(10L)).thenReturn(false);
+        when(periodRepository.findByCompanyIdAndPeriodStart(10L, currentMonth)).thenReturn(Optional.empty());
+        when(rateRepository.findByCompanyIdAndEffectiveFrom(10L, currentMonth)).thenReturn(Optional.empty());
+        when(rateRepository.save(any(CompanyPayrollRate.class)))
+                .thenAnswer(invocation -> {
+                    CompanyPayrollRate rate = invocation.getArgument(0);
+                    rate.setId(1L);
+                    return rate;
+                });
+
+        var response = service.createRate(10L, request);
+
+        assertNotNull(response);
+        assertEquals(currentMonth, response.effectiveFrom());
+        assertEquals(new BigDecimal("8000000"), response.baseSalaryVnd());
+    }
+
+    @Test
+    void rejectsPastMonthRateForNewCompanyWithoutPriorRates() {
+        LocalDate pastMonth = YearMonth.now(ZoneId.of("Asia/Ho_Chi_Minh")).minusMonths(1).atDay(1);
+        CompanyPayrollRateRequest request = new CompanyPayrollRateRequest(
+                pastMonth, new BigDecimal("8000000"), new BigDecimal("100"), new BigDecimal("2000"));
+        when(rateRepository.existsByCompanyId(10L)).thenReturn(false);
+
+        AppException error = assertThrows(AppException.class, () -> service.createRate(10L, request));
+
+        assertEquals("PAYROLL_RATE_EFFECTIVE_DATE_TOO_EARLY", error.getErrorCode().name());
+    }
+
+    @Test
+    void rejectsCompanyRateEffectiveInCurrentMonthWhenRatesAlreadyExist() {
+        LocalDate currentMonth = YearMonth.now(ZoneId.of("Asia/Ho_Chi_Minh")).atDay(1);
+        CompanyPayrollRateRequest request = new CompanyPayrollRateRequest(
+                currentMonth, new BigDecimal("1000000"), new BigDecimal("1000"), new BigDecimal("1000"));
+        when(rateRepository.existsByCompanyId(10L)).thenReturn(true);
+
+        AppException error = assertThrows(AppException.class, () -> service.createRate(10L, request));
+
+        assertEquals("PAYROLL_RATE_EFFECTIVE_DATE_TOO_EARLY", error.getErrorCode().name());
+    }
+
+    @Test
+    void updatesExistingRateWhenPeriodIsNotLocked() {
+        LocalDate nextMonth = YearMonth.now(ZoneId.of("Asia/Ho_Chi_Minh")).plusMonths(1).atDay(1);
+        CompanyPayrollRate existing = CompanyPayrollRate.builder()
+                .id(5L)
+                .company(company)
+                .effectiveFrom(nextMonth)
+                .baseSalaryVnd(new BigDecimal("8000000"))
+                .rateVndPerKg(new BigDecimal("100"))
+                .rateVndPerKm(new BigDecimal("2000"))
+                .build();
+        when(rateRepository.existsByCompanyId(10L)).thenReturn(true);
+        when(periodRepository.findByCompanyIdAndPeriodStart(10L, nextMonth)).thenReturn(Optional.empty());
+        when(rateRepository.findByCompanyIdAndEffectiveFrom(10L, nextMonth)).thenReturn(Optional.of(existing));
+        when(rateRepository.save(any(CompanyPayrollRate.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        CompanyPayrollRateRequest updateRequest = new CompanyPayrollRateRequest(
+                nextMonth, new BigDecimal("9000000"), new BigDecimal("150"), new BigDecimal("2500"));
+
+        var response = service.createRate(10L, updateRequest);
+
+        assertNotNull(response);
+        assertEquals(5L, response.id());
+        assertEquals(new BigDecimal("9000000"), response.baseSalaryVnd());
+        assertEquals(new BigDecimal("150"), response.rateVndPerKg());
+        assertEquals(new BigDecimal("2500"), response.rateVndPerKm());
+    }
+
+    @Test
+    void rejectsRateUpdateWhenPeriodIsLocked() {
+        LocalDate nextMonth = YearMonth.now(ZoneId.of("Asia/Ho_Chi_Minh")).plusMonths(1).atDay(1);
+        PayrollPeriod lockedPeriod = PayrollPeriod.builder()
+                .status(PayrollPeriodStatus.LOCKED)
+                .build();
+        when(rateRepository.existsByCompanyId(10L)).thenReturn(true);
+        when(periodRepository.findByCompanyIdAndPeriodStart(10L, nextMonth)).thenReturn(Optional.of(lockedPeriod));
+
+        CompanyPayrollRateRequest updateRequest = new CompanyPayrollRateRequest(
+                nextMonth, new BigDecimal("9000000"), new BigDecimal("150"), new BigDecimal("2500"));
+
+        AppException error = assertThrows(AppException.class, () -> service.createRate(10L, updateRequest));
+
+        assertEquals("PAYROLL_PERIOD_LOCKED", error.getErrorCode().name());
+    }
+
+    @Test
+    void rejectsDriverBaseSalaryEffectiveInCurrentMonth() {
+        LocalDate currentMonth = YearMonth.now(ZoneId.of("Asia/Ho_Chi_Minh")).atDay(1);
+        DriverBaseSalaryRequest request = new DriverBaseSalaryRequest(currentMonth, new BigDecimal("9000000"));
+
+        AppException error = assertThrows(AppException.class,
+                () -> service.setDriverBaseSalary(10L, 21L, request));
+
+        assertEquals("PAYROLL_RATE_EFFECTIVE_DATE_TOO_EARLY", error.getErrorCode().name());
+    }
+
+    @Test
+    void savesNextMonthBaseSalaryForCompanyDriver() {
+        LocalDate nextMonth = YearMonth.now(ZoneId.of("Asia/Ho_Chi_Minh")).plusMonths(1).atDay(1);
+        DriverBaseSalaryRequest request = new DriverBaseSalaryRequest(nextMonth, new BigDecimal("9000000"));
+        when(userRepository.findById(21L)).thenReturn(Optional.of(driverOne));
+        when(baseSalaryOverrideRepository
+                .findFirstByDriverIdAndEffectiveFromLessThanEqualOrderByEffectiveFromDesc(21L, nextMonth))
+                .thenReturn(Optional.empty());
+        when(baseSalaryOverrideRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        var response = service.setDriverBaseSalary(10L, 21L, request);
+
+        assertNotNull(response);
+        assertEquals(21L, response.driverId());
+        assertEquals(new BigDecimal("9000000"), response.baseSalaryVnd());
     }
 
     @Test
@@ -157,6 +294,144 @@ class DriverPayrollServiceImplTest {
         assertEquals(BigDecimal.ZERO, response.drivers().get(1).baseSalaryVnd());
         assertEquals(new BigDecimal("170000"), response.drivers().get(1).totalSalaryVnd());
         assertEquals(new BigDecimal("500.000"), response.drivers().get(1).totalKg());
+    }
+
+    @Test
+    void calculatePeriodUsesDriverBaseSalaryOverrideInsteadOfCompanyRate() {
+        LocalDate periodStart = LocalDate.of(2026, 11, 1);
+        CompanyPayrollRate rate = CompanyPayrollRate.builder()
+                .company(company)
+                .effectiveFrom(periodStart)
+                .baseSalaryVnd(new BigDecimal("8000000"))
+                .rateVndPerKg(new BigDecimal("100"))
+                .rateVndPerKm(new BigDecimal("2000"))
+                .build();
+        DriverBaseSalaryOverride override = DriverBaseSalaryOverride.builder()
+                .driver(driverOne)
+                .effectiveFrom(periodStart)
+                .baseSalaryVnd(new BigDecimal("12000000"))
+                .build();
+
+        when(rateRepository.findFirstByCompanyIdAndEffectiveFromLessThanEqualOrderByEffectiveFromDesc(10L, periodStart))
+                .thenReturn(Optional.of(rate));
+        when(periodRepository.findByCompanyIdAndPeriodStartForUpdate(10L, periodStart)).thenReturn(Optional.empty());
+        when(userRepository.findByCompanyIdAndUserRoleTypeAndStatus(10L, UserRole.DRIVER, UserStatus.ACTIVE))
+                .thenReturn(List.of(driverOne));
+        when(tripRepository.findByCompanyIdAndStatusAndCompletedAtGreaterThanEqualAndCompletedAtLessThan(
+                10L, TripStatus.DELIVERED, periodStart.atStartOfDay(), periodStart.plusMonths(1).atStartOfDay()))
+                .thenReturn(List.of());
+        when(baseSalaryOverrideRepository
+                .findFirstByDriverIdAndEffectiveFromLessThanEqualOrderByEffectiveFromDesc(21L, periodStart))
+                .thenReturn(Optional.of(override));
+
+        PayrollPeriodResponse response = service.calculatePeriod(10L, "2026-11");
+
+        assertEquals(1, response.drivers().size());
+        assertEquals(new BigDecimal("12000000"), response.drivers().get(0).baseSalaryVnd());
+        assertEquals(new BigDecimal("12000000"), response.drivers().get(0).totalSalaryVnd());
+    }
+
+    @Test
+    void getPeriodUsesNonLockingFindPeriod() {
+        LocalDate periodStart = LocalDate.of(2026, 11, 1);
+        PayrollPeriod period = PayrollPeriod.builder()
+                .id(1L)
+                .periodStart(periodStart)
+                .status(PayrollPeriodStatus.DRAFT)
+                .driverPayrolls(List.of())
+                .build();
+        when(periodRepository.findByCompanyIdAndPeriodStart(10L, periodStart))
+                .thenReturn(Optional.of(period));
+
+        var response = service.getPeriod(10L, "2026-11");
+
+        assertNotNull(response);
+        assertEquals("2026-11", response.period());
+        verify(periodRepository).findByCompanyIdAndPeriodStart(10L, periodStart);
+        verify(periodRepository, never()).findByCompanyIdAndPeriodStartForUpdate(any(), any());
+    }
+
+    @Test
+    void recalculatePeriodFlushesOrphanedDriverPayrollsBeforeReinserting() {
+        LocalDate periodStart = LocalDate.of(2026, 11, 1);
+        CompanyPayrollRate rate = CompanyPayrollRate.builder()
+                .id(5L)
+                .company(company)
+                .effectiveFrom(periodStart)
+                .baseSalaryVnd(new BigDecimal("8000000"))
+                .rateVndPerKg(new BigDecimal("100"))
+                .rateVndPerKm(new BigDecimal("2000"))
+                .build();
+        DriverPayroll existingDriverPayroll = DriverPayroll.builder()
+                .id(101L)
+                .driver(driverOne)
+                .baseSalaryVnd(new BigDecimal("8000000"))
+                .totalKg(BigDecimal.ZERO)
+                .kgAmountVnd(BigDecimal.ZERO)
+                .totalKm(BigDecimal.ZERO)
+                .kmAmountVnd(BigDecimal.ZERO)
+                .totalSalaryVnd(new BigDecimal("8000000"))
+                .build();
+        PayrollPeriod existingPeriod = PayrollPeriod.builder()
+                .id(99L)
+                .company(company)
+                .payrollRate(rate)
+                .periodStart(periodStart)
+                .status(PayrollPeriodStatus.DRAFT)
+                .driverPayrolls(new java.util.ArrayList<>(List.of(existingDriverPayroll)))
+                .build();
+
+        when(rateRepository.findFirstByCompanyIdAndEffectiveFromLessThanEqualOrderByEffectiveFromDesc(10L, periodStart))
+                .thenReturn(Optional.of(rate));
+        when(periodRepository.findByCompanyIdAndPeriodStartForUpdate(10L, periodStart))
+                .thenReturn(Optional.of(existingPeriod));
+        when(userRepository.findByCompanyIdAndUserRoleTypeAndStatus(10L, UserRole.DRIVER, UserStatus.ACTIVE))
+                .thenReturn(List.of(driverOne));
+        when(tripRepository.findByCompanyIdAndStatusAndCompletedAtGreaterThanEqualAndCompletedAtLessThan(
+                10L, TripStatus.DELIVERED, periodStart.atStartOfDay(), periodStart.plusMonths(1).atStartOfDay()))
+                .thenReturn(List.of());
+
+        var response = service.calculatePeriod(10L, "2026-11");
+
+        assertNotNull(response);
+        verify(periodRepository).flush();
+    }
+
+    @Test
+    void setTripDriversFlushesDeletedSharesBeforeInserting() {
+        when(tripRepository.findByIdAndCompanyId(77L, 10L)).thenReturn(Optional.of(trip));
+        when(periodRepository.findByCompanyIdAndPeriodStartForUpdate(10L, LocalDate.of(2026, 11, 1))).thenReturn(Optional.empty());
+        when(userRepository.findAllById(List.of(21L, 22L))).thenReturn(List.of(driverOne, driverTwo));
+        when(shareRepository.save(any(TripPayrollDriverShare.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        var response = service.setTripDrivers(10L, 77L, new SetTripPayrollDriversRequest(List.of(21L, 22L)));
+
+        assertEquals(2, response.size());
+        verify(shareRepository).deleteByTripId(77L);
+        verify(shareRepository).flush();
+    }
+
+    @Test
+    void lockPeriodSetsLockedAtWithoutFractionalSeconds() {
+        LocalDate periodStart = LocalDate.of(2026, 11, 1);
+        PayrollPeriod period = PayrollPeriod.builder()
+                .id(1L)
+                .periodStart(periodStart)
+                .status(PayrollPeriodStatus.DRAFT)
+                .driverPayrolls(List.of())
+                .build();
+        when(periodRepository.findByCompanyIdAndPeriodStart(10L, periodStart))
+                .thenReturn(Optional.of(period));
+        when(periodRepository.save(any(PayrollPeriod.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        var response = service.lockPeriod(10L, "2026-11");
+
+        assertNotNull(response);
+        assertEquals(PayrollPeriodStatus.LOCKED, response.status());
+        assertEquals(PayrollPeriodStatus.LOCKED, period.getStatus());
+        assertNotNull(period.getLockedAt());
+        assertEquals(0, period.getLockedAt().getNano(), "lockedAt must not have fractional seconds");
+        verify(periodRepository).save(period);
     }
 
     private static User driver(Long id, String name, Company company) {

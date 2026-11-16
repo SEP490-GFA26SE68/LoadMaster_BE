@@ -1,8 +1,10 @@
 package fu.se184491.loadmaster_be.service.payroll;
 
 import fu.se184491.loadmaster_be.dto.request.payroll.CompanyPayrollRateRequest;
+import fu.se184491.loadmaster_be.dto.request.payroll.DriverBaseSalaryRequest;
 import fu.se184491.loadmaster_be.dto.request.payroll.SetTripPayrollDriversRequest;
 import fu.se184491.loadmaster_be.dto.response.payroll.CompanyPayrollRateResponse;
+import fu.se184491.loadmaster_be.dto.response.payroll.DriverBaseSalaryResponse;
 import fu.se184491.loadmaster_be.dto.response.payroll.PayrollPeriodResponse;
 import fu.se184491.loadmaster_be.dto.response.payroll.PayrollStatementResponse;
 import fu.se184491.loadmaster_be.dto.response.payroll.TripPayrollDriverResponse;
@@ -14,6 +16,8 @@ public interface DriverPayrollService {
     List<CompanyPayrollRateResponse> getRates(Long companyId);
 
     CompanyPayrollRateResponse createRate(Long companyId, CompanyPayrollRateRequest request);
+
+    DriverBaseSalaryResponse setDriverBaseSalary(Long companyId, Long driverId, DriverBaseSalaryRequest request);
 
     List<TripPayrollDriverResponse> getTripDrivers(Long companyId, Long tripId);
 

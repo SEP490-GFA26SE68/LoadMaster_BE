@@ -2,8 +2,10 @@ package fu.se184491.loadmaster_be.entity.payroll;
 
 import fu.se184491.loadmaster_be.constant.payroll.PayrollPeriodStatus;
 import fu.se184491.loadmaster_be.entity.company.Company;
+import fu.se184491.loadmaster_be.entity.support.SupportTicket;
 import jakarta.persistence.*;
 import lombok.*;
+import org.hibernate.annotations.Check;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -41,7 +43,9 @@ public class PayrollPeriod {
     @Builder.Default
     private PayrollPeriodStatus status = PayrollPeriodStatus.DRAFT;
 
-    @Column(name = "locked_at")
+    @Convert(converter = SupportTicket.LocalDateTimeSecondsConverter.class)
+    @Column(name = "locked_at", length = 19, columnDefinition = "varchar(19)")
+    @Check(name = "payroll_periods_locked_at_check", constraints = "locked_at IS NULL OR locked_at ~ '^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01]) ([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]$'")
     private LocalDateTime lockedAt;
 
     @OneToMany(mappedBy = "payrollPeriod", cascade = CascadeType.ALL, orphanRemoval = true)

@@ -90,6 +90,7 @@ public enum ErrorCode {
     TRIP_NOT_FOUND("Không tìm thấy chuyến đi", HttpStatus.NOT_FOUND),
     PAYROLL_RATE_NOT_CONFIGURED("Công ty chưa cấu hình đơn giá lương cho kỳ này", HttpStatus.BAD_REQUEST),
     PAYROLL_RATE_ALREADY_EXISTS("Đã có đơn giá lương hiệu lực từ ngày này", HttpStatus.CONFLICT),
+    PAYROLL_RATE_EFFECTIVE_DATE_TOO_EARLY("Mức lương mới chỉ được áp dụng từ tháng sau", HttpStatus.BAD_REQUEST),
     PAYROLL_PERIOD_NOT_FOUND("Chưa có bảng lương cho kỳ này", HttpStatus.NOT_FOUND),
     PAYROLL_PERIOD_LOCKED("Kỳ lương đã chốt, không thể tính lại hoặc thay đổi phân chia", HttpStatus.CONFLICT),
     PAYROLL_DATA_INCOMPLETE("Thiếu dữ liệu phương án cân nặng hoặc quãng đường của chuyến", HttpStatus.BAD_REQUEST),

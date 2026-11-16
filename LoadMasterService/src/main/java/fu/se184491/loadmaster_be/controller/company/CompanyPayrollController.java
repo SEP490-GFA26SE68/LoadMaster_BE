@@ -2,8 +2,10 @@ package fu.se184491.loadmaster_be.controller.company;
 
 import fu.se184491.loadmaster_be.dto.ApiResponse;
 import fu.se184491.loadmaster_be.dto.request.payroll.CompanyPayrollRateRequest;
+import fu.se184491.loadmaster_be.dto.request.payroll.DriverBaseSalaryRequest;
 import fu.se184491.loadmaster_be.dto.request.payroll.SetTripPayrollDriversRequest;
 import fu.se184491.loadmaster_be.dto.response.payroll.CompanyPayrollRateResponse;
+import fu.se184491.loadmaster_be.dto.response.payroll.DriverBaseSalaryResponse;
 import fu.se184491.loadmaster_be.dto.response.payroll.PayrollPeriodResponse;
 import fu.se184491.loadmaster_be.dto.response.payroll.PayrollStatementResponse;
 import fu.se184491.loadmaster_be.dto.response.payroll.TripPayrollDriverResponse;
@@ -19,7 +21,7 @@ import java.util.List;
 @RestController
 @RequestMapping("/api/company/payroll")
 @RequiredArgsConstructor
-@PreAuthorize("hasRole('ADMIN')")
+@PreAuthorize("hasRole('MANAGER')")
 public class CompanyPayrollController {
 
     private final DriverPayrollService payrollService;
@@ -33,6 +35,13 @@ public class CompanyPayrollController {
     @PutMapping("/settings")
     public ApiResponse<CompanyPayrollRateResponse> createRate(@Valid @RequestBody CompanyPayrollRateRequest request) {
         return ApiResponse.success(payrollService.createRate(currentUserService.getCurrentCompanyId(), request));
+    }
+
+    @PutMapping("/drivers/{driverId}/base-salary")
+    public ApiResponse<DriverBaseSalaryResponse> setDriverBaseSalary(
+            @PathVariable Long driverId, @Valid @RequestBody DriverBaseSalaryRequest request) {
+        return ApiResponse.success(payrollService.setDriverBaseSalary(
+                currentUserService.getCurrentCompanyId(), driverId, request));
     }
 
     @PutMapping("/trips/{tripId}/drivers")

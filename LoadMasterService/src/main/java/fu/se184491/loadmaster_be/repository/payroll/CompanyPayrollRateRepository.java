@@ -16,5 +16,9 @@ public interface CompanyPayrollRateRepository extends JpaRepository<CompanyPayro
             LocalDate effectiveFrom
     );
 
+    boolean existsByCompanyId(Long companyId);
+
+    Optional<CompanyPayrollRate> findByCompanyIdAndEffectiveFrom(Long companyId, LocalDate effectiveFrom);
+
     boolean existsByCompanyIdAndEffectiveFrom(Long companyId, LocalDate effectiveFrom);
 }
