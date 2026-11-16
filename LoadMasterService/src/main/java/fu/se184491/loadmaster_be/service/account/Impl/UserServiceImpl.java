@@ -2,6 +2,7 @@ package fu.se184491.loadmaster_be.service.account.Impl;
 
 import fu.se184491.loadmaster_be.client.BrevoClient;
 import fu.se184491.loadmaster_be.client.KeycloakAdminClient;
+import fu.se184491.loadmaster_be.config.FrontendUrls;
 import fu.se184491.loadmaster_be.constant.account.UserRole;
 import fu.se184491.loadmaster_be.constant.account.UserStatus;
 import fu.se184491.loadmaster_be.constant.account.UserType;
@@ -38,6 +39,7 @@ import fu.se184491.loadmaster_be.service.audit.AuditCompany;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -74,6 +76,9 @@ public class UserServiceImpl implements UserService {
 
     @Autowired(required = false)
     private CreditAccountRepository creditAccountRepository;
+
+    @Value(FrontendUrls.URL)
+    private String frontendUrl;
 
     public UserProfileResponse getUserProfile(Jwt jwt) {
 
@@ -363,6 +368,16 @@ public class UserServiceImpl implements UserService {
                     () -> brevoClient.sendEmail(recipient, subject, htmlContent));
         }
 
+        if (currentUser.getUserRoleType() == UserRole.ADMIN
+                && company != null
+                && brevoClient != null) {
+            String subject = "LoadMaster - Thông tin tài khoản nhân viên " + company.getCompanyName();
+            String htmlContent = buildEmployeeProvisionEmailHtml(company, user, temporaryPassword);
+            String recipient = user.getEmail();
+            AfterCommit.run("email tài khoản nhân viên",
+                    () -> brevoClient.sendEmail(recipient, subject, htmlContent));
+        }
+
         logAccount(ACTION_USER_CREATED, currentUser, user, null, accountSnapshot(user));
 
         return new CreateUserResponse(
@@ -390,6 +405,107 @@ public class UserServiceImpl implements UserService {
                 adminUser.getEmail(),
                 temporaryPassword
         );
+    }
+
+    private String buildEmployeeProvisionEmailHtml(Company company, User employee, String temporaryPassword) {
+        String roleDisplayName = formatRoleDisplayName(employee.getUserRoleType());
+        String webLoginUrl = FrontendUrls.join(frontendUrl, "/login");
+        String companyName = company.getCompanyName() != null ? company.getCompanyName() : "";
+        String employeeName = employee.getFullName() != null ? employee.getFullName() : employee.getEmail();
+
+        return """
+                <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #1e293b; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 8px;">
+                    <h2 style="color: #0f172a; margin-top: 0;">Chào mừng bạn đến với LoadMaster!</h2>
+                    <p>Xin chào <strong>%s</strong>,</p>
+                    <p>Quản trị viên công ty <strong>%s</strong> đã khởi tạo tài khoản nhân viên cho bạn trên hệ thống LoadMaster với thông tin đăng nhập như sau:</p>
+                    
+                    <div style="background-color: #f8fafc; padding: 15px; border-radius: 6px; margin: 15px 0;">
+                        <ul style="list-style-type: none; padding-left: 0; margin: 0;">
+                            <li style="margin-bottom: 8px;"><strong>🏢 Doanh nghiệp:</strong> %s</li>
+                            <li style="margin-bottom: 8px;"><strong>👤 Họ và tên:</strong> %s</li>
+                            <li style="margin-bottom: 8px;"><strong>💼 Vai trò:</strong> %s</li>
+                            <li style="margin-bottom: 8px;"><strong>📧 Email đăng nhập:</strong> %s</li>
+                            <li style="margin-bottom: 8px;"><strong>🔑 Mật khẩu tạm thời:</strong> <code style="background-color: #e2e8f0; padding: 2px 6px; border-radius: 4px; font-weight: bold; color: #0284c7;">%s</code></li>
+                        </ul>
+                    </div>
+
+                    <div style="background-color: #fffbeb; border-left: 4px solid #f59e0b; padding: 12px; margin: 15px 0; border-radius: 4px;">
+                        <p style="margin: 0; color: #92400e; font-size: 14px;">
+                            <strong>⚠️ Lưu ý quan trọng:</strong> Đây là mật khẩu tạm thời. Khi đăng nhập lần đầu tiên vào hệ thống, bạn sẽ được yêu cầu đổi sang mật khẩu cá nhân mới để đảm bảo tính bảo mật.
+                        </p>
+                    </div>
+
+                    <p style="margin-top: 25px;">
+                        <a href="%s" style="background-color: #0284c7; color: white; padding: 10px 20px; text-decoration: none; border-radius: 6px; font-weight: bold; display: inline-block;">
+                            Đăng nhập vào hệ thống
+                        </a>
+                    </p>
+                    <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 25px 0;" />
+                    <p style="color: #64748b; font-size: 13px; margin-bottom: 0;">Trân trọng,<br />Đội ngũ LoadMaster</p>
+                </div>
+                """.formatted(
+                employeeName,
+                companyName,
+                companyName,
+                employeeName,
+                roleDisplayName,
+                employee.getEmail(),
+                temporaryPassword,
+                webLoginUrl
+        );
+    }
+
+    private String buildEmployeePasswordResetEmailHtml(Company company, User employee, String temporaryPassword) {
+        String webLoginUrl = FrontendUrls.join(frontendUrl, "/login");
+        String companyName = company.getCompanyName() != null ? company.getCompanyName() : "";
+        String employeeName = employee.getFullName() != null ? employee.getFullName() : employee.getEmail();
+
+        return """
+                <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #1e293b; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 8px;">
+                    <h2 style="color: #0f172a; margin-top: 0;">Thông báo Cấp lại Mật khẩu Tạm thời</h2>
+                    <p>Xin chào <strong>%s</strong>,</p>
+                    <p>Mật khẩu tài khoản của bạn tại <strong>%s</strong> trên hệ thống LoadMaster vừa được đặt lại:</p>
+                    
+                    <div style="background-color: #f8fafc; padding: 15px; border-radius: 6px; margin: 15px 0;">
+                        <ul style="list-style-type: none; padding-left: 0; margin: 0;">
+                            <li style="margin-bottom: 8px;"><strong>📧 Email đăng nhập:</strong> %s</li>
+                            <li style="margin-bottom: 8px;"><strong>🔑 Mật khẩu tạm thời mới:</strong> <code style="background-color: #e2e8f0; padding: 2px 6px; border-radius: 4px; font-weight: bold; color: #0284c7;">%s</code></li>
+                        </ul>
+                    </div>
+
+                    <div style="background-color: #fffbeb; border-left: 4px solid #f59e0b; padding: 12px; margin: 15px 0; border-radius: 4px;">
+                        <p style="margin: 0; color: #92400e; font-size: 14px;">
+                            <strong>⚠️ Lưu ý:</strong> Bạn cần đổi sang mật khẩu mới ngay khi đăng nhập vào hệ thống.
+                        </p>
+                    </div>
+
+                    <p style="margin-top: 25px;">
+                        <a href="%s" style="background-color: #0284c7; color: white; padding: 10px 20px; text-decoration: none; border-radius: 6px; font-weight: bold; display: inline-block;">
+                            Đăng nhập vào hệ thống
+                        </a>
+                    </p>
+                    <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 25px 0;" />
+                    <p style="color: #64748b; font-size: 13px; margin-bottom: 0;">Trân trọng,<br />Đội ngũ LoadMaster</p>
+                </div>
+                """.formatted(
+                employeeName,
+                companyName,
+                employee.getEmail(),
+                temporaryPassword,
+                webLoginUrl
+        );
+    }
+
+    private static String formatRoleDisplayName(UserRole role) {
+        if (role == null) return "";
+        return switch (role) {
+            case MANAGER -> "Quản lý công ty (Manager)";
+            case DISPATCHER -> "Điều phối viên (Dispatcher)";
+            case DRIVER -> "Tài xế (Driver)";
+            case WAREHOUSE_WORKER -> "Nhân viên kho (Warehouse Worker)";
+            case ADMIN -> "Quản trị viên Doanh nghiệp (Company Admin)";
+            default -> role.name();
+        };
     }
 
     private Long resolveAndValidateTargetCompanyId(User currentUser, CreateUserRequest request) {
@@ -686,6 +802,14 @@ public class UserServiceImpl implements UserService {
         keycloakAdminClient.setPassword(targetUser.getKeycloakId(), temporaryPassword, true);
         // Không ghi mật khẩu vào nhật ký.
         logAccount(ACTION_USER_PASSWORD_RESET, currentUser, targetUser, null, null);
+
+        if (targetUser.getCompany() != null && brevoClient != null) {
+            String subject = "LoadMaster - Cấp lại mật khẩu tạm thời";
+            String htmlContent = buildEmployeePasswordResetEmailHtml(targetUser.getCompany(), targetUser, temporaryPassword);
+            String recipient = targetUser.getEmail();
+            AfterCommit.run("email đặt lại mật khẩu nhân viên",
+                    () -> brevoClient.sendEmail(recipient, subject, htmlContent));
+        }
 
         return new ResetPasswordResponse(
                 targetUser.getId(),
