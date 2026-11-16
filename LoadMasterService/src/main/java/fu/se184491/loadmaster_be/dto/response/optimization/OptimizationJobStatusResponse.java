@@ -8,16 +8,8 @@ import lombok.Setter;
 
 import java.time.Instant;
 
-/**
- * Trạng thái một job tối ưu xếp hàng.
- * {@code jobId}: mã job (UUID). {@code status}: PENDING | RUNNING | COMPLETED | PARTIAL | NO_SOLUTION | FAILED
- * (job cũ còn có TIMEOUT). {@code packedPlanCount}: số phương án đã lưu của job có kiện xếp được
- * (lần chạy ba phương án: 3; NO_SOLUTION hay FAILED: 0). {@code pinnedCount}: số kiện đã ghim mà lần chạy giữ
- * nguyên (0 khi lần chạy không giữ ghim). {@code runAlgorithm}: thuật toán của lần chạy — hạng của gói
- * (EP_DBLF | EP_DBLF_GA | EP_DBLF_GA_AI); thuật toán của từng phương án nằm ở {@code algorithmName} của phương án.
- * {@code failureCode}: lý do của FAILED khi biết, ví dụ {@code JOB_INTERRUPTED} — job kẹt chờ / đang chạy quá hạn vì
- * dịch vụ tối ưu dừng giữa chừng, credit đã giữ được hoàn; null với mọi trạng thái khác.
- */
+/** Canonical job status. Credit settlement is reported separately by creditStatus;
+ * FAILED or a failureCode alone does not prove that the ledger was refunded. */
 @Getter
 @Setter
 @NoArgsConstructor
@@ -36,4 +28,5 @@ public class OptimizationJobStatusResponse {
     private Integer pinnedCount;
     private String runAlgorithm;
     private String failureCode;
+    private String creditStatus;
 }

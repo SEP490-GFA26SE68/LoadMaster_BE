@@ -25,9 +25,22 @@ public class PaymentCallbackHandler {
 
     private final PaymentTransactionRepository paymentTransactionRepository;
     private final VnPayClient vnPayClient;
+    private final MockPaymentPolicy mockPolicy;
+    private final fu.se184491.loadmaster_be.helpers.CurrentUserService currentUserService;
     private final SubscriptionService subscriptionService;
     private final CreditService creditService;
     private final fu.se184491.loadmaster_be.service.registration.GuestRegistrationService guestRegistrationService;
+
+    @Transactional
+    public Map<String, String> handleMockCheckout(String reference) {
+        mockPolicy.requireEnabled();
+        var txn = paymentTransactionRepository.findByGatewayTransactionIdForUpdate(reference)
+                .orElseThrow(() -> new fu.se184491.loadmaster_be.exception.AppException(fu.se184491.loadmaster_be.exception.ErrorCode.RESOURCE_NOT_FOUND));
+        if (txn.getCompany() == null || !java.util.Objects.equals(currentUserService.getCurrentCompanyId(), txn.getCompany().getId())) {
+            throw new org.springframework.security.access.AccessDeniedException("Payment belongs to another company");
+        }
+        return handleVnPayCallback(Map.of("vnp_TxnRef", reference, "vnp_ResponseCode", "00"));
+    }
 
     @Transactional
     public Map<String, String> handleVnPayCallback(Map<String, String> params) {
@@ -38,7 +51,7 @@ public class PaymentCallbackHandler {
         // 1. Verify Checksum — chỗ kiểm chữ ký duy nhất của mọi callback VNPay (cả đăng ký trả phí REG_…).
         // Chỉ bỏ qua khi máy chủ bật cấu hình vnpay.mock; tham số của request
         // (vnp_Mock, tiền tố MOCK_ của mã giao dịch) do người gọi tự đặt nên không bao giờ được tin.
-        if (!vnPayClient.isMock()) {
+        if (!mockPolicy.isEnabled()) {
             boolean validSignature = vnPayClient.verifyCallback(params);
             if (!validSignature) {
                 log.warn("VNPay callback signature verification failed for params: {}", LogMasks.vnpayParams(params));

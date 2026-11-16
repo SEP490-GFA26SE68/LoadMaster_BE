@@ -97,7 +97,7 @@ def test_rotation_geometry_survives_persistence(code, dims):
     plans=Mock();plans.find_by_job_id.return_value=[plan]
     placements=Mock(); placements.find_by_plan_id.return_value=[]
     unplaced=Mock(); unplaced.find_by_plan_id.return_value=[]
-    jobs=Mock();jobs.get_job.return_value=SimpleNamespace(id=9,job_uuid='test')
+    jobs=Mock();jobs.get_job.return_value=SimpleNamespace(id=9,job_uuid='test',execution_generation=None)
     db=Mock()
     svc=OptimizationResultPersistenceService(jobs,plans,placements,unplaced)
     svc.save('test',result,db)
@@ -120,11 +120,13 @@ def test_profile_without_restriction_does_not_expand_master_list():
     assert R.restrict_profile_rotations([2],SimpleNamespace(orientation='',upright_only=True))==[]
 
 
-@pytest.mark.parametrize('value',['[]','LWH','0,1'])
-def test_undefined_profile_syntax_fails_closed(value):
+@pytest.mark.parametrize('value',['[]','LWH|WLH','0,,1'])
+def test_unsupported_profile_syntax_fails_closed(value):
     from app.service.optimize.async_optimization_runner import AsyncOptimizationRunner as R
-    with pytest.raises(ValueError,match='syntax is not supported'):
+    from app.exception.app_exception import AppException
+    with pytest.raises(AppException) as error:
         R.restrict_profile_rotations([0,1,2,3,4,5],SimpleNamespace(orientation=value,upright_only=False))
+    assert error.value.error_code.code == 'PACKING_PROFILE_ORIENTATION_INVALID'
 
 
 @pytest.mark.asyncio
@@ -164,12 +166,10 @@ def test_database_profile_reaches_problem_request(profile):
             db.commit()
             runner=AsyncOptimizationRunner.__new__(AsyncOptimizationRunner)
             runner.job_service=SimpleNamespace(get_job=lambda *args:SimpleNamespace(trip_id=1,objective='MAX_VOLUME',time_limit_sec=60))
-            if profile and profile[0]:
-                with pytest.raises(ValueError,match='syntax is not supported'):
-                    runner.build_problem_request('isolated',db)
-            else:
-                request=runner.build_problem_request('isolated',db)
-                assert request.packages[0].allowed_rotations == ([0,1] if profile and profile[1] else [0,1,2,3,4,5])
+            request=runner.build_problem_request('isolated',db)
+            expected = [0] if profile and profile[0] == 'LWH' else ([0,1] if profile and profile[1] else [0,1,2,3,4,5])
+            assert request.packages[0].allowed_rotations == expected
+
     finally:
         engine.dispose()
 

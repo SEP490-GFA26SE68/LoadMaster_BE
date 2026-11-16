@@ -428,6 +428,7 @@ public class WarehouseServiceImpl implements WarehouseService {
 
         PlacementConfirmation confirmation = PlacementConfirmation.builder()
                 .placement(placement)
+                .method(fu.se184491.loadmaster_be.constant.cargo.LabelMethod.valueOf(request.getMethod().name()))
                 .confirmedBy(worker)
                 .confirmedAt(LocalDateTime.now())
                 .build();

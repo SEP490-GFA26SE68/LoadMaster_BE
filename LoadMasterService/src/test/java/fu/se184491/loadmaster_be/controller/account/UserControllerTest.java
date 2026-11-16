@@ -96,7 +96,7 @@ class UserControllerTest {
     void createUser_serializesCreatedAtAsUtcWithoutChangingSubscriptionFormat() throws Exception {
         UserListItemResponse item = new UserListItemResponse(
                 100L, "kc-100", "admin@acme.vn", "Acme Admin", "0901234567",
-                UserRole.ADMIN, UserStatus.ACTIVE, 10L, "Acme Logistics",
+                UserRole.ADMIN, null, UserStatus.ACTIVE, 10L, "Acme Logistics",
                 null, null, null, null, null, null,
                 LocalDateTime.of(2026, 12, 4, 8, 30), null,
                 Instant.parse("2026-11-04T15:00:00Z"));
@@ -114,7 +114,7 @@ class UserControllerTest {
     private UserListItemResponse timestampedUser() {
         return new UserListItemResponse(
                 100L, "kc-100", "admin@acme.vn", "Acme Admin", "0901234567",
-                UserRole.ADMIN, UserStatus.ACTIVE, 10L, "Acme Logistics",
+                UserRole.ADMIN, null, UserStatus.ACTIVE, 10L, "Acme Logistics",
                 null, null, null, null, null, null,
                 LocalDateTime.of(2026, 12, 4, 8, 30), null,
                 OffsetDateTime.parse("2026-11-04T22:00:00+07:00").toInstant());

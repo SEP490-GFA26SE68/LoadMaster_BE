@@ -110,8 +110,7 @@ class DriverDeparturePostgresTest {
         // These statements can only reach the newly created disposable container.
         sql.execute("TRUNCATE companies RESTART IDENTITY CASCADE");
         sql.update("INSERT INTO companies(id,company_code,company_name,tax_code,billing_email,status) VALUES(1,'C1','Test 1','T1','one@example.test','ACTIVE'),(2,'C2','Test 2','T2','two@example.test','ACTIVE')");
-        String stamp = new fu.se184491.loadmaster_be.converter.InstantToStringConverter()
-                .convertToDatabaseColumn(Instant.parse("2026-11-09T00:00:00Z"));
+        java.time.OffsetDateTime stamp = java.time.OffsetDateTime.parse("2026-11-09T00:00:00Z");
         for (long id : new long[]{8,9}) sql.update(
                 "INSERT INTO users(id,company_id,keycloak_id,email,full_name,user_role_type,status,created_at,updated_at) VALUES(?,1,?,?,?,'DRIVER','ACTIVE',?,?)",
                 id,"test-driver-"+id,id+"@example.test","Fixture driver",stamp,stamp);

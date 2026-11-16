@@ -53,7 +53,11 @@ public class VehicleListRepository {
             root.get("licensePlate").alias("licensePlate"),root.get("status").alias("storedStatus"),
             type.get("id").alias("typeId"),
             type.get("name").alias("typeName"),company.get("id").alias("companyId"),
-            company.get("companyName").alias("companyName"),rank.alias("rank"));
+            company.get("companyName").alias("companyName"),rank.alias("rank"),
+            root.get("maintenanceNote").alias("maintenanceNote"),root.get("maintenanceSince").alias("maintenanceSince"),
+            currentTripValue(root,query,cb,"id",Long.class).alias("currentTripId"),
+            currentTripValue(root,query,cb,"tripCode",String.class).alias("currentTripCode"),
+            currentTripValue(root,query,cb,"status",TripStatus.class).alias("currentTripStatus"));
         query.where(filters(companyId, search, typeId, status, root, rank, cb));
         Expression<?> sort = switch(field) {
             case "vehicleTypeId" -> type.get("id");
@@ -100,10 +104,33 @@ public class VehicleListRepository {
         }
         return filters.toArray(Predicate[]::new);
     }
+    /** Scalar subqueries keep the list at page + count queries, including trip metadata. */
+    private <T> Subquery<T> currentTripValue(Root<Vehicle> vehicle, CriteriaQuery<?> query,
+            CriteriaBuilder cb, String field, Class<T> type) {
+        Subquery<T> value = query.subquery(type);
+        Root<Trip> trip = value.from(Trip.class);
+        Subquery<Long> first = value.subquery(Long.class);
+        Root<Trip> candidate = first.from(Trip.class);
+        first.select(cb.min(candidate.get("id"))).where(
+            cb.equal(candidate.get("vehicle").get("id"), vehicle.get("id")),
+            candidate.get("status").in(OCCUPYING_STATUSES));
+        value.select(trip.get(field)).where(cb.equal(trip.get("id"), first));
+        return value;
+    }
+
     private VehicleResponse response(Tuple row) {
-        return new VehicleResponse(row.get("id",Long.class),row.get("name",String.class),
-            row.get("licensePlate",String.class),row.get("typeId",Long.class),row.get("typeName",String.class),
-            row.get("companyId",Long.class),row.get("companyName",String.class),
-            STATUS_ORDER.get(row.get("rank",Integer.class)));
+        VehicleStatus status = STATUS_ORDER.get(row.get("rank",Integer.class));
+        return VehicleResponse.builder()
+            .id(row.get("id",Long.class)).name(row.get("name",String.class))
+            .licensePlate(row.get("licensePlate",String.class))
+            .vehicleTypeId(row.get("typeId",Long.class)).vehicleTypeName(row.get("typeName",String.class))
+            .companyId(row.get("companyId",Long.class)).companyName(row.get("companyName",String.class))
+            .status(status)
+            .maintenanceNote(status == VehicleStatus.MAINTENANCE ? row.get("maintenanceNote",String.class) : null)
+            .maintenanceSince(status == VehicleStatus.MAINTENANCE ? row.get("maintenanceSince",java.time.LocalDateTime.class) : null)
+            .currentTripId(status == VehicleStatus.IN_TRIP ? row.get("currentTripId",Long.class) : null)
+            .currentTripCode(status == VehicleStatus.IN_TRIP ? row.get("currentTripCode",String.class) : null)
+            .currentTripStatus(status == VehicleStatus.IN_TRIP ? row.get("currentTripStatus",TripStatus.class) : null)
+            .build();
     }
 }

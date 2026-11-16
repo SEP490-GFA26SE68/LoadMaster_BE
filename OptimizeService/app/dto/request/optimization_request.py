@@ -22,6 +22,8 @@ class OptimizationJobRequest(BaseModel):
     # Khớp với trips.id BIGINT trong PostgreSQL
     trip_id: int = Field(gt=0)
 
+    job_uuid: Optional[str] = Field(default=None, min_length=1)
+
     objective: OptimizationObjective = OptimizationObjective.MAX_VOLUME
 
     time_limit_sec: int = Field(default=60, ge=10, le=600)

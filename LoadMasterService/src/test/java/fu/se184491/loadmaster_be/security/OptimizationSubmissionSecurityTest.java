@@ -21,6 +21,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @Import({TestJwtSupport.class,OptimizationSubmissionService.class})
 class OptimizationSubmissionSecurityTest {
     @Autowired MockMvc mvc;
+    @MockitoBean LoadingOptimizationService loading;
+    @MockitoBean LoadPlanQueryService plans;
     @MockitoBean OptimizationAdmissionService admission;
     @MockitoBean OptimizationAccess optimizationAccess;
     @MockitoBean OptimizationClient client;
@@ -29,7 +31,7 @@ class OptimizationSubmissionSecurityTest {
         verifyNoInteractions(admission,client);
     }
     @Test void driverCannotCreateAnAction() throws Exception {
-        mvc.perform(post("/api/trips/7/optimize-loading")
+        mvc.perform(post("/api/trips/7/optimize-loading").header("Idempotency-Key","driver-action")
             .header("Authorization","Bearer "+TestJwtSupport.userToken("u","DRIVER")))
             .andExpect(status().isForbidden());
         verifyNoInteractions(admission,client);
@@ -58,5 +60,16 @@ class OptimizationSubmissionSecurityTest {
             .header("Authorization","Bearer "+TestJwtSupport.userToken("u","DISPATCHER")))
             .andExpect(status().isForbidden());
         verifyNoInteractions(client);
+    }
+    @Test void deterministicRejectionUsesExisting400EnvelopeThroughSecurityFilters() throws Exception {
+        when(admission.reserve(7L,null,OptimizationObjective.MAX_VOLUME,60,null,"orientation-key"))
+            .thenReturn(OptimizationJob.builder().jobUuid("cb12e122-1469-490b-ae8c-4203b82f24e9").status(OptimizationJobStatus.PENDING).build());
+        when(client.createJob(any())).thenThrow(new fu.se184491.loadmaster_be.client.OptimizationDispatchRejectedException());
+        mvc.perform(post("/api/trips/7/optimize-loading").header("Idempotency-Key","orientation-key")
+            .header("Authorization","Bearer "+TestJwtSupport.userToken("u","DISPATCHER")))
+            .andExpect(status().isBadRequest()).andExpect(jsonPath("$.success").value(false))
+            .andExpect(jsonPath("$.code").value("PACKING_PROFILE_ORIENTATION_INVALID"))
+            .andExpect(jsonPath("$.data").doesNotExist());
+        verify(admission,times(1)).reserve(7L,null,OptimizationObjective.MAX_VOLUME,60,null,"orientation-key");
     }
 }

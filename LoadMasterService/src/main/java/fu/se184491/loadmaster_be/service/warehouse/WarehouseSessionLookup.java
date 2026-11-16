@@ -92,6 +92,15 @@ public class WarehouseSessionLookup {
                 packagePlacementRepository.findByLoadPlanIdOrderByStepSequenceAsc(plan.getId()));
     }
 
+    /** Serialize shortage decisions with loading/trip changes, then re-read both rows. */
+    public void lock(Trip trip, fu.se184491.loadmaster_be.entity.warehouse.StagingShortage shortage) {
+        entityManager.refresh(trip, LockModeType.PESSIMISTIC_WRITE);
+        entityManager.refresh(shortage, LockModeType.PESSIMISTIC_WRITE);
+        if (shortage.getTrip() == null || !Objects.equals(trip.getId(), shortage.getTrip().getId())) {
+            throw new AppException(ErrorCode.STAGING_SHORTAGE_NOT_FOUND);
+        }
+    }
+
     /** Phiên đang xếp ({@code IN_PROGRESS}) của chuyến. */
     public Session activeSession(Long tripId) {
         Session session = lockedSession(tripId);

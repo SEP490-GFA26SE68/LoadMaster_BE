@@ -91,7 +91,7 @@ class TestConstraintEngine(unittest.TestCase):
     def test_rotation_allowed_constraint(self):
         """Nếu rotation_allowed=false thì chỉ dùng rotation_type=0."""
         pkg_no_rotate = PackageData(id="p1", l=1.0, w=0.5, h=0.5, weight=10.0, rotation_allowed=False)
-        pkg_can_rotate = PackageData(id="p2", l=1.0, w=0.5, h=0.5, weight=10.0, rotation_allowed=True)
+        pkg_can_rotate = PackageData(id="p2", l=1.0, w=0.5, h=0.5, weight=10.0, rotation_allowed=True, allowed_rotations=[0,1])
 
         place_rotated = PlacementData(package_id="p1", x=0.0, y=0.0, z=0.0, packed_l=0.5, packed_w=1.0, packed_h=0.5, rotation_type=1)
         res_rotated = ConstraintEngine.check_rotation_allowed(pkg_no_rotate, place_rotated)
@@ -102,7 +102,11 @@ class TestConstraintEngine(unittest.TestCase):
         res_unrotated = ConstraintEngine.check_rotation_allowed(pkg_no_rotate, place_unrotated)
         self.assertTrue(res_unrotated.passed)
 
-        res_can_rotate = ConstraintEngine.check_rotation_allowed(pkg_can_rotate, place_rotated)
+        import time
+        from app.service.optimize.load_balance_search import validate_plan
+        self.assertEqual(validate_plan([place_rotated],self.vehicle,{'p2':pkg_can_rotate},time.monotonic()+5),
+                         ['INVALID_PACKAGE_PARTITION'])
+        res_can_rotate = ConstraintEngine.check_rotation_allowed(pkg_can_rotate, place_rotated.model_copy(update={"package_id": "p2"}))
         self.assertTrue(res_can_rotate.passed)
 
     def test_cog_constraint(self):

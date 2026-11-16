@@ -22,10 +22,11 @@ import java.util.*;
 public class VnPayClient {
 
     private final VnPayConfig config;
+    private final fu.se184491.loadmaster_be.service.payment.MockPaymentPolicy mockPolicy;
     private static final DateTimeFormatter DATE_FORMATTER = DateTimeFormatter.ofPattern("yyyyMMddHHmmss");
 
     public boolean isMock() {
-        return config.isMock();
+        return mockPolicy.isEnabled();
     }
 
     public String createPaymentUrl(PaymentTransaction txn, String orderInfo, String ipAddress) {
@@ -34,7 +35,7 @@ public class VnPayClient {
     }
 
     public String createPaymentUrl(String txnRef, BigDecimal amountVnd, String orderInfo, String ipAddress) {
-        if (config.isMock()) {
+        if (isMock()) {
             return "/api/payment/mock-checkout?txnRef=" + txnRef;
         }
 

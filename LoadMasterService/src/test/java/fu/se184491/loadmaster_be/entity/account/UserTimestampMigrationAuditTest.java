@@ -1,5 +1,7 @@
 package fu.se184491.loadmaster_be.entity.account;
 
+import fu.se184491.loadmaster_be.support.TestSqlFixtures;
+
 import org.flywaydb.core.Flyway;
 import org.flywaydb.core.api.FlywayException;
 import org.junit.jupiter.api.Test;
@@ -85,7 +87,7 @@ class UserTimestampMigrationAuditTest {
     @Test
     void proposedConstraintsRejectInvalidRowsAndDoNotRewriteOrPersistWithoutApproval() throws Exception {
         assumeTrue(DockerClientFactory.instance().isDockerAvailable(), "Docker is required");
-        String proposal = Files.readString(Path.of("docs/sql/proposed-users-timestamp-constraints.sql"))
+        String proposal = TestSqlFixtures.read("proposed-users-timestamp-constraints.sql")
                 .replaceFirst("(?m)^BEGIN;\\s*$", "")
                 .replaceFirst("(?m)^ROLLBACK;\\s*$", "");
         try (var postgres = new PostgreSQLContainer("postgres:17-alpine")) {

@@ -177,7 +177,7 @@ class TestSolveCandidates:
             return original(problem, strategy=strategy)
 
         monkeypatch.setattr(client, "solve_in_process", counting)
-        ticks = iter([0.0] + [999.0] * 10)  # lúc bắt đầu, rồi đã quá giờ
+        ticks = __import__("itertools").chain([0.0], __import__("itertools").repeat(999.0))  # lúc bắt đầu, rồi đã quá giờ
         monkeypatch.setattr(
             "app.service.optimize.optimization_client.time.monotonic", lambda: next(ticks)
         )

@@ -24,10 +24,10 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 @WebMvcTest(CreditInternalController.class)
-@Import(WebSecurityConfig.class)
-@AutoConfigureMockMvc(addFilters = false)
+@Import(fu.se184491.loadmaster_be.security.TestJwtSupport.class)
+@AutoConfigureMockMvc
 // Controller chỉ mở cho service account của dịch vụ tối ưu (realm role OPTIMIZATION_CREDIT).
-@WithMockUser(authorities = "ROLE_OPTIMIZATION_CREDIT")
+
 public class CreditInternalControllerTest {
 
     @Autowired
@@ -36,13 +36,13 @@ public class CreditInternalControllerTest {
     @MockitoBean
     private CreditService creditService;
 
-    @MockitoBean
-    private JwtAuthenticationConverter jwtAuthenticationConverter;
+    private String serviceToken;
 
     private ObjectMapper objectMapper;
 
     @BeforeEach
-    void setUp() {
+    void setUp() throws Exception {
+        serviceToken = fu.se184491.loadmaster_be.security.TestJwtSupport.serviceToken("loadmaster-api","optimization-service","service-account-optimization-service",java.util.List.of("OPTIMIZATION_CREDIT"));
         objectMapper = new ObjectMapper();
     }
 
@@ -56,7 +56,7 @@ public class CreditInternalControllerTest {
 
         doNothing().when(creditService).deductCredit(1L, "job-123");
 
-        mockMvc.perform(post("/api/internal/credits/deduct")
+        mockMvc.perform(post("/api/internal/credits/deduct").header("Authorization", "Bearer " + serviceToken)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isOk())
@@ -77,7 +77,7 @@ public class CreditInternalControllerTest {
         doThrow(new InsufficientCreditsException(1L, 0))
                 .when(creditService).deductCredit(1L, "job-123");
 
-        mockMvc.perform(post("/api/internal/credits/deduct")
+        mockMvc.perform(post("/api/internal/credits/deduct").header("Authorization", "Bearer " + serviceToken)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isPaymentRequired())
@@ -93,22 +93,22 @@ public class CreditInternalControllerTest {
                 .reference("job-123")
                 .build();
 
-        doNothing().when(creditService).refundCredit(null, "job-123");
+        doNothing().when(creditService).refundCredit(null, "job-123", null);
 
-        mockMvc.perform(post("/api/internal/credits/refund")
+        mockMvc.perform(post("/api/internal/credits/refund").header("Authorization", "Bearer " + serviceToken)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.message").value("Credit refunded successfully"));
 
-        verify(creditService).refundCredit(null, "job-123");
+        verify(creditService).refundCredit(null, "job-123", null);
     }
 
     @Test
     @DisplayName("Thân snake_case của dịch vụ tối ưu (company_id dạng chuỗi) vẫn đọc được")
     void acceptsSnakeCaseCompanyId() throws Exception {
-        mockMvc.perform(post("/api/internal/credits/deduct")
+        mockMvc.perform(post("/api/internal/credits/deduct").header("Authorization", "Bearer " + serviceToken)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"company_id\":\"7\",\"reference\":\"job-7\"}"))
                 .andExpect(status().isOk());

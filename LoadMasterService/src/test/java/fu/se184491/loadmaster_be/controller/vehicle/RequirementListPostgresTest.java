@@ -58,6 +58,8 @@ class RequirementListPostgresTest {
   excludeFilters=@ComponentScan.Filter(type=FilterType.REGEX,pattern="^(?!.*\\.(VehicleRepository|VehicleTypeRepository|TripRepository|DeliveryRequirementRepository|CargoPackageRepository|CustomerRepository|UserRepository)$).*$"))
  @Import({fu.se184491.loadmaster_be.controller.trip.TripController.class,fu.se184491.loadmaster_be.service.trip.impl.TripServiceImpl.class,fu.se184491.loadmaster_be.controller.planning.DeliveryRequirementController.class,fu.se184491.loadmaster_be.service.planning.Impl.DeliveryRequirementServiceImpl.class,fu.se184491.loadmaster_be.repository.vehicle.VehicleListRepository.class,VehicleController.class,VehicleServiceImpl.class,fu.se184491.loadmaster_be.exception.GlobalExceptionHandler.class,TestJwtSupport.class,FlaggedUserEnforcementFilter.class})
  static class Config {
+  @Bean fu.se184491.loadmaster_be.service.planning.RequirementPackageResolver packageResolver(fu.se184491.loadmaster_be.repository.cargo.CargoPackageRepository packages, fu.se184491.loadmaster_be.repository.planning.DeliveryRequirementRepository requirements){ return new fu.se184491.loadmaster_be.service.planning.RequirementPackageResolver(packages,requirements); }
+  @Bean com.fasterxml.jackson.databind.ObjectMapper legacyObjectMapper(){ return new com.fasterxml.jackson.databind.ObjectMapper().findAndRegisterModules(); }
   @Bean static org.springframework.dao.annotation.PersistenceExceptionTranslationPostProcessor exceptionTranslation(){ return new org.springframework.dao.annotation.PersistenceExceptionTranslationPostProcessor(); }
   @Bean tools.jackson.databind.json.JsonMapper jsonMapper(){return tools.jackson.databind.json.JsonMapper.builder().findAndAddModules().build();}
   @Bean DataSource dataSource(){

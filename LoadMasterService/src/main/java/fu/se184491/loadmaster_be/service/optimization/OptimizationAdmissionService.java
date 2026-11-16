@@ -1,5 +1,6 @@
 package fu.se184491.loadmaster_be.service.optimization;
 
+import fu.se184491.loadmaster_be.constant.billing.SubscriptionTier;
 import fu.se184491.loadmaster_be.constant.optimization.*;
 import fu.se184491.loadmaster_be.entity.optimization.OptimizationJob;
 import fu.se184491.loadmaster_be.exception.*;
@@ -28,6 +29,11 @@ public class OptimizationAdmissionService {
 
     @jakarta.persistence.PersistenceContext
     private jakarta.persistence.EntityManager entityManager;
+
+    @org.springframework.beans.factory.annotation.Value("${app.optimization.lifecycle-v2.enabled:false}")
+    private boolean lifecycleV2;
+    @org.springframework.beans.factory.annotation.Value("${app.optimization.lifecycle-v2.dispatch-deadline-seconds:120}")
+    private long dispatchDeadlineSeconds;
 
     @Transactional
     public OptimizationJob reserve(Long tripId, Long parentPlanId, OptimizationObjective objective,
@@ -76,11 +82,18 @@ public class OptimizationAdmissionService {
             return j;
         }
         var sub = entitlements.requireActive(companyId);
-        var tier = sub.getPlan().getTier();
+        SubscriptionTier tier = sub.getPlan().getTier();
         var job = OptimizationJob.builder().trip(trip).jobUuid(uuid).parentPlanId(parentPlanId)
                 .companyId(companyId.toString()).subscriptionTier(tier).algorithmTier(tier.name())
                 .algorithmName(OptimizationAlgorithm.valueOf(sub.getPlan().getAlgorithmTier().name()))
                 .objective(objective).timeLimitSec(seconds).seed(seed).status(OptimizationJobStatus.PENDING).build();
+        if (lifecycleV2) {
+            if (dispatchDeadlineSeconds <= 0) throw new IllegalStateException("Invalid dispatch deadline");
+            job.setExecutionGeneration(0L);
+            java.time.Instant databaseNow = (java.time.Instant) entityManager
+                    .createNativeQuery("select clock_timestamp()", java.time.Instant.class).getSingleResult();
+            job.setDispatchExpiresAt(databaseNow.plusSeconds(dispatchDeadlineSeconds));
+        }
         jobs.saveAndFlush(job);
         credits.deductCredit(companyId, uuid);
         // Job + account + USAGE commit together, before any network/solver call.

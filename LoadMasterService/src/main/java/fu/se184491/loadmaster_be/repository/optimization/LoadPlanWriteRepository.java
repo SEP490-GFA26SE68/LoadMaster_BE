@@ -58,7 +58,7 @@ public class LoadPlanWriteRepository {
     public int failUnfinishedJob(Long jobId, String failureCode) {
         return jdbc.update("""
                 UPDATE optimization_jobs SET status = 'FAILED', failure_code = :code
-                WHERE id = :id AND status IN ('PENDING', 'RUNNING')
+                WHERE id = :id AND execution_generation IS NULL AND status IN ('PENDING', 'RUNNING')
                 """, Map.of("id", jobId, "code", failureCode));
     }
 

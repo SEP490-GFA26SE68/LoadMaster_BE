@@ -48,6 +48,8 @@ import java.util.Map;
 @RequiredArgsConstructor
 public class TripStatusService {
 
+    private final fu.se184491.loadmaster_be.helpers.CurrentUserService currentUserService;
+    private final TripDepartureReadiness departureReadiness;
     private final TripRepository tripRepository;
     private final UserRepository userRepository;
     private final AuditLogRepository auditLogRepository;
@@ -83,7 +85,15 @@ public class TripStatusService {
      */
     @Transactional
     public Trip transitionTo(Long tripId, TripStatus newStatus, Long userId) {
-        Trip trip = lockedTrip(tripId);
+        Trip trip;
+        if (newStatus == TripStatus.IN_TRANSIT) {
+            User driver = currentUserService.getCurrentUser();
+            if (userId == null || !java.util.Objects.equals(userId, driver.getId())) throw new AppException(ErrorCode.UNAUTHORIZED);
+            trip = departureReadiness.lockAssignedTrip(tripId, driver);
+            if (!departureReadiness.canStartLocked(trip, driver)) throw new InvalidTripStatusTransitionException(trip.getStatus(), newStatus);
+        } else {
+            trip = lockedTrip(tripId);
+        }
         TripStatus currentStatus = trip.getStatus();
         if (!isValidTransition(trip, currentStatus, newStatus)) {
             throw new InvalidTripStatusTransitionException(currentStatus, newStatus);
@@ -151,8 +161,7 @@ public class TripStatusService {
                     tripId, LoadingExecutionStatus.IN_PROGRESS);
         }
         if (currentStatus == TripStatus.LOADING && newStatus == TripStatus.IN_TRANSIT) {
-            return loadingExecutionRepository.existsByLoadPlanJobTripIdAndStatus(
-                    tripId, LoadingExecutionStatus.COMPLETED);
+            return true; // The exact current plan was checked under lock in transitionTo.
         }
         if (currentStatus == TripStatus.LOADING && newStatus == TripStatus.PLANNED) {
             return !loadingExecutionRepository.existsByLoadPlanJobTripIdAndStatus(tripId, LoadingExecutionStatus.IN_PROGRESS)

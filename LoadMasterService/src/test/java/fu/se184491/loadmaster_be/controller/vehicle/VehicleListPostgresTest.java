@@ -58,6 +58,8 @@ class VehicleListPostgresTest {
   excludeFilters=@ComponentScan.Filter(type=FilterType.REGEX,pattern="^(?!.*\\.(VehicleRepository|VehicleTypeRepository|TripRepository)$).*$"))
  @Import({fu.se184491.loadmaster_be.repository.vehicle.VehicleListRepository.class,VehicleController.class,VehicleServiceImpl.class,fu.se184491.loadmaster_be.exception.GlobalExceptionHandler.class,TestJwtSupport.class,FlaggedUserEnforcementFilter.class})
  static class Config {
+  @Bean com.fasterxml.jackson.databind.ObjectMapper legacyObjectMapper(){ return new com.fasterxml.jackson.databind.ObjectMapper().findAndRegisterModules(); }
+  @Bean fu.se184491.loadmaster_be.repository.optimization.LoadPlanRepository loadPlans(){return mock(fu.se184491.loadmaster_be.repository.optimization.LoadPlanRepository.class); }
   @Bean static org.springframework.dao.annotation.PersistenceExceptionTranslationPostProcessor exceptionTranslation(){ return new org.springframework.dao.annotation.PersistenceExceptionTranslationPostProcessor(); }
   @Bean tools.jackson.databind.json.JsonMapper jsonMapper(){return tools.jackson.databind.json.JsonMapper.builder().findAndAddModules().build();}
   @Bean DataSource dataSource(){
@@ -120,6 +122,18 @@ class VehicleListPostgresTest {
  @AfterAll static void stop(){if(ctx!=null)ctx.close();if(pg!=null)pg.stop();}
  static String auth(String subject,String role)throws Exception{return "Bearer "+TestJwtSupport.userToken(subject,role);}
  org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder list()throws Exception{return get("/api/vehicles").header("Authorization",auth("company-a","DISPATCHER"));}
+ @Test void currentTripMetadataUsesTheSameTripAndPreservesMaintenancePrecedence()throws Exception{
+  sql.update("UPDATE trips SET trip_code='TRIP-ONE' WHERE id=1");
+  sql.update("UPDATE vehicles SET maintenance_note='Scheduled', maintenance_since=TIMESTAMP '2026-11-13 08:00:00' WHERE id=76");
+  http.perform(list().param("search","PLATE-001")).andExpect(status().isOk())
+    .andExpect(jsonPath("$.data[0].currentTripId").value(1))
+    .andExpect(jsonPath("$.data[0].currentTripCode").value("TRIP-ONE"))
+    .andExpect(jsonPath("$.data[0].currentTripStatus").value("LOADING"));
+  http.perform(list().param("search","PLATE-076")).andExpect(status().isOk())
+    .andExpect(jsonPath("$.data[0].status").value("MAINTENANCE"))
+    .andExpect(jsonPath("$.data[0].maintenanceNote").value("Scheduled"))
+    .andExpect(jsonPath("$.data[0].currentTripId").doesNotExist());
+ }
  @Test void maintenanceBeyondFirstPageHasFilteredTotal()throws Exception{
   http.perform(list().param("status","MAINTENANCE").param("size","25")).andExpect(status().isOk()).andExpect(jsonPath("$.totalElements").value(2)).andExpect(jsonPath("$.data[0].id").value(76));
  }

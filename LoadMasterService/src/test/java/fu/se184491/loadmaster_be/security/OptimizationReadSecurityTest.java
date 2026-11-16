@@ -34,6 +34,10 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @Import({TestJwtSupport.class,OptimizationAccess.class,CurrentUserService.class})
 class OptimizationReadSecurityTest {
  @Autowired MockMvc mvc;
+ @MockitoBean LoadingOptimizationService loading;
+ @MockitoBean LoadPlanQueryService plans;
+ @MockitoBean fu.se184491.loadmaster_be.service.driver.DriverDeliveryService driverDelivery;
+ @MockitoBean fu.se184491.loadmaster_be.service.pickup.PickupDriverService pickup;
  @MockitoBean OptimizationSubmissionService submission;
  @MockitoBean OptimizationClient client;
  @MockitoBean UserRepository users;
@@ -99,7 +103,7 @@ class OptimizationReadSecurityTest {
   mvc.perform(post("/api/warehouse/tasks/7/start").header("Authorization",user("WAREHOUSE_WORKER"))).andExpect(status().isOk());verify(warehouse).startLoading(7L,null);
  }
  @Test void placementConfirmCannotLeakForeignNextPlacement()throws Exception{
-  mvc.perform(post("/api/warehouse/placements/31/confirm").header("Authorization",user("WAREHOUSE_WORKER"))).andExpect(status().isForbidden());verifyNoInteractions(warehouse);
+  mvc.perform(post("/api/warehouse/placements/31/confirm").contentType("application/json").content("{\"tripId\":8,\"method\":\"CODE\",\"code\":\"PK-31\"}").header("Authorization",user("WAREHOUSE_WORKER"))).andExpect(status().isForbidden());verifyNoInteractions(warehouse);
  }
  @Test void anonymousWarehouseAndDriverReadsAre401()throws Exception{
   for(String p:List.of("/api/warehouse/tasks","/api/driver/trips","/api/driver/trips/7/current-stop"))mvc.perform(get(p)).andExpect(status().isUnauthorized());verifyNoInteractions(warehouse,driver);

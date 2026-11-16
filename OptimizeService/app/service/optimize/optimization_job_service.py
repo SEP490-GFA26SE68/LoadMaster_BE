@@ -64,6 +64,8 @@ class OptimizationJobService:
         Status flow: PENDING -> RUNNING -> COMPLETED / FAILED / TIMEOUT / NO_SOLUTION / PARTIAL
         """
         job = self.get_job(job_uuid, db)
+        if job.execution_generation is not None:
+            raise RuntimeError("V2 status changes require ownership protocol")
         status_val = status.value if hasattr(status, "value") else str(status)
         job.status = status_val
         if computation_ms is not None:

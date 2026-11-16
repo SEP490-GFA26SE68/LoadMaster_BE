@@ -39,7 +39,7 @@ public class LoadPlanController {
     private final LoadPlanQueryService loadPlanQueryService;
 
     @GetMapping("/{id}")
-    @PreAuthorize("hasAnyRole('DISPATCHER', 'MANAGER')")
+    @PreAuthorize("hasAnyRole('DISPATCHER', 'MANAGER', 'ADMIN', 'COMPANY_ADMIN', 'WAREHOUSE_WORKER', 'DRIVER')")
     @Operation(summary = "Get load plan", description = "Plan with placements (cm, kg) and unplaced packages")
     public ResponseEntity<ApiResponse<LoadPlanDetailResponse>> getPlan(@PathVariable("id") Long id) {
         return ResponseEntity.ok(ApiResponse.success("Kế hoạch xếp hàng", loadPlanQueryService.getPlan(id)));
@@ -87,7 +87,7 @@ public class LoadPlanController {
     }
 
     @GetMapping("/compare")
-    @PreAuthorize("hasAnyRole('DISPATCHER', 'MANAGER')")
+    @PreAuthorize("hasAnyRole('DISPATCHER', 'MANAGER', 'ADMIN', 'COMPANY_ADMIN', 'WAREHOUSE_WORKER', 'DRIVER')")
     @Operation(summary = "Compare plans", description = "Compare metrics side-by-side between two load plans")
     public ResponseEntity<ApiResponse<PlanComparisonResponse>> comparePlans(
             @RequestParam("planId1") Long planId1,

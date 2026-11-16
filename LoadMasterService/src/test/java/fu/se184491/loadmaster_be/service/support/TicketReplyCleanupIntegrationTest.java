@@ -110,8 +110,8 @@ class TicketReplyCleanupIntegrationTest {
                 .fullName("Người " + keycloakId)
                 .userRoleType(UserRole.DISPATCHER)
                 .status(UserStatus.ACTIVE)
-                .createdAt(now.minusDays(40))
-                .updatedAt(now.minusDays(40))
+                .createdAt(now.minusDays(40).toInstant(java.time.ZoneOffset.UTC))
+                .updatedAt(now.minusDays(40).toInstant(java.time.ZoneOffset.UTC))
                 .build();
         entityManager.persist(user);
         return user;

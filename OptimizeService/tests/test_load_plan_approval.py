@@ -26,7 +26,7 @@ from app.entity.common.audit_log import AuditLog
 from app.entity.optimization.optimization_job import OptimizationJob
 from app.entity.optimization.load_plan import LoadPlan
 from app.entity.optimization.package_placement import PackagePlacement
-from app.entity.trip_model import Trip
+from app.entity.trip_model import Trip, AppUser
 from app.exception.app_exception import AppException
 from app.exception.error_code import ErrorCode
 from app.service.optimize.load_plan_service import LoadPlanService
@@ -37,8 +37,12 @@ from tests.optimization_fixtures import token, install_jwks
 @pytest.fixture(autouse=True)
 def test_jwks(monkeypatch):
     install_jwks(monkeypatch)
-    yield
-    app.dependency_overrides.clear()
+    original=dict(app.dependency_overrides)
+    try:
+        yield
+    finally:
+        app.dependency_overrides.clear()
+        app.dependency_overrides.update(original)
 
 
 def make_jwt_token(roles: list[str], user_id: int = 99) -> str:
@@ -189,7 +193,6 @@ class TestLoadPlanApproveApi:
 
         response = client.post(f"/api/v1/load-plans/{plan_with_placements.id}/approve")
         assert response.status_code == 401
-        app.dependency_overrides.clear()
 
     @pytest.mark.integration  # cần token RS256 do Keycloak thật ký (JWKS)
     def test_approve_plan_unauthorized_role_returns_403(self, db_session, plan_with_placements):
@@ -203,13 +206,14 @@ class TestLoadPlanApproveApi:
             headers={"Authorization": f"Bearer {driver_token}"},
         )
         assert response.status_code == 403
-        app.dependency_overrides.clear()
 
     @pytest.mark.integration  # cần token RS256 do Keycloak thật ký (JWKS)
     def test_approve_plan_dispatcher_role_returns_200_and_approved_plan(self, db_session, plan_with_placements):
         """Role DISPATCHER duyệt plan hợp lệ -> 200 OK + LoadPlanResponse với approved=True"""
         app.dependency_overrides[get_db] = lambda: db_session
         client = TestClient(app)
+        trip=db_session.get(Trip,1);trip.company_id=1
+        db_session.add(AppUser(id=456,keycloak_id='456',company_id=1));db_session.commit()
         dispatcher_token = make_jwt_token(["DISPATCHER"], user_id=456)
 
         response = client.post(
@@ -225,7 +229,19 @@ class TestLoadPlanApproveApi:
         assert plan_data["approved_by_id"] == 456
         assert len(plan_data["placements"]) == 2
 
-        app.dependency_overrides.clear()
+
+
+class TestApprovalTenantIsolation:
+    def test_valid_dispatcher_from_other_company_cannot_approve(self,db_session,plan_with_placements):
+        db_session.get(Trip,1).company_id=1
+        db_session.add(AppUser(id=457,keycloak_id='457',company_id=2));db_session.commit()
+        app.dependency_overrides[get_db]=lambda:db_session
+        with TestClient(app) as client:
+            response=client.post(f'/api/v1/load-plans/{plan_with_placements.id}/approve',
+                headers={'Authorization':'Bearer '+make_jwt_token(['DISPATCHER'],457)})
+        assert response.status_code==404
+        db_session.refresh(plan_with_placements)
+        assert plan_with_placements.approved is False
 
 
 class TestApprovalAuditCompany:

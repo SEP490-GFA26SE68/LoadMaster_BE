@@ -129,108 +129,20 @@ class LoadPlanServiceImplTest {
         verify(optimizationEngineClient, never()).rerunOptimization(any());
     }
 
-    private LoadPlanResponse rerunWith(String engineAlgorithm) {
-        // Lần chạy trước theo Basic, công ty nay đã lên Pro: chạy lại theo hạng hiện tại
-        plan.getJob().setAlgorithmName(OptimizationAlgorithm.EP_DBLF);
-        when(companySubscriptionRepository.findByCompanyId(1L)).thenReturn(Optional.of(
-                fu.se184491.loadmaster_be.entity.billing.CompanySubscription.builder()
-                        .status(fu.se184491.loadmaster_be.constant.billing.SubscriptionStatus.ACTIVE)
-                        .plan(fu.se184491.loadmaster_be.entity.billing.SubscriptionPlan.builder()
-                                .tier(fu.se184491.loadmaster_be.constant.billing.SubscriptionTier.PRO).build())
-                        .build()));
-        when(optimizationJobRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
-        when(loadPlanRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
-        when(optimizationEngineClient.rerunOptimization(any())).thenReturn(OptimizationResultDto.builder()
-                .packedItemsCount(3).volumeUtilization(BigDecimal.ONE).weightUtilization(BigDecimal.ONE)
-                .algorithmName(engineAlgorithm).build());
-        return service.rerunOptimization(50L, new RerunOptimizationRequest());
-    }
-
-    @Test
-    void rerunKeepsTheAlgorithmTheEngineReportsBesideTheRunTier() {
-        LoadPlanResponse response = rerunWith("SA");
-
-        assertEquals("SA", response.getAlgorithmName());
-        assertEquals("EP_DBLF_GA", response.getRunAlgorithm());
-        ArgumentCaptor<LoadPlan> saved = ArgumentCaptor.forClass(LoadPlan.class);
-        verify(loadPlanRepository).save(saved.capture());
-        assertEquals("SA", saved.getValue().getAlgorithmName());
-    }
-
-    @Test
-    void rerunSendsTheCompanyTierToTheEngine() {
-        rerunWith("GA");
-
-        ArgumentCaptor<fu.se184491.loadmaster_be.dto.request.optimization.RerunEngineRequest> sent =
-                ArgumentCaptor.forClass(fu.se184491.loadmaster_be.dto.request.optimization.RerunEngineRequest.class);
-        verify(optimizationEngineClient).rerunOptimization(sent.capture());
-        assertEquals("PRO", sent.getValue().getSubscriptionTier());
-        assertEquals("EP_DBLF_GA", sent.getValue().getAlgorithmName());
-    }
-
-    @Test
-    void anExpiredSubscriptionRerunsOnTheBasicTier() {
-        plan.getJob().setAlgorithmName(OptimizationAlgorithm.EP_DBLF_GA);
-        when(companySubscriptionRepository.findByCompanyId(1L)).thenReturn(Optional.of(
-                fu.se184491.loadmaster_be.entity.billing.CompanySubscription.builder()
-                        .status(fu.se184491.loadmaster_be.constant.billing.SubscriptionStatus.EXPIRED)
-                        .plan(fu.se184491.loadmaster_be.entity.billing.SubscriptionPlan.builder()
-                                .tier(fu.se184491.loadmaster_be.constant.billing.SubscriptionTier.ULTIMATE).build())
-                        .build()));
-        when(optimizationJobRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
-        when(loadPlanRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
-        when(optimizationEngineClient.rerunOptimization(any())).thenReturn(OptimizationResultDto.builder()
-                .packedItemsCount(1).volumeUtilization(BigDecimal.ONE).weightUtilization(BigDecimal.ONE).build());
-
-        LoadPlanResponse response = service.rerunOptimization(50L, new RerunOptimizationRequest());
-
-        ArgumentCaptor<fu.se184491.loadmaster_be.dto.request.optimization.RerunEngineRequest> sent =
-                ArgumentCaptor.forClass(fu.se184491.loadmaster_be.dto.request.optimization.RerunEngineRequest.class);
-        verify(optimizationEngineClient).rerunOptimization(sent.capture());
-        assertEquals("BASIC", sent.getValue().getSubscriptionTier());
-        assertEquals("EP_DBLF", response.getRunAlgorithm());
-    }
-
-    @Test
-    void engineFailureMarksTheJobFailedAndRefundsOutsideTheReserveTransaction() {
-        when(companySubscriptionRepository.findByCompanyId(1L)).thenReturn(Optional.empty());
-        when(optimizationJobRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
-        when(optimizationEngineClient.rerunOptimization(any())).thenThrow(new IllegalStateException("engine down"));
-
-        assertThrows(IllegalStateException.class,
-                () -> service.rerunOptimization(50L, new RerunOptimizationRequest()));
-
-        ArgumentCaptor<OptimizationJob> jobs = ArgumentCaptor.forClass(OptimizationJob.class);
-        verify(optimizationJobRepository, org.mockito.Mockito.atLeast(2)).save(jobs.capture());
-        OptimizationJob job = jobs.getAllValues().get(jobs.getAllValues().size() - 1);
-        assertEquals(fu.se184491.loadmaster_be.constant.optimization.OptimizationJobStatus.FAILED, job.getStatus());
-        verify(creditService).deductCredit(1L, job.getJobUuid(), 1);
-        verify(creditService).refundCredit(1L, job.getJobUuid());
-        // Giữ credit và lưu trạng thái lỗi là hai giao dịch đã commit, không cuộn lại cùng lỗi
-        verify(transactionManager, org.mockito.Mockito.times(2)).commit(any());
-        verify(loadPlanRepository, never()).save(any());
-    }
-
-    @Test
-    void aFailedSaveAfterTheEngineRefundsTheCredit() {
-        when(companySubscriptionRepository.findByCompanyId(1L)).thenReturn(Optional.empty());
-        when(optimizationJobRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
-        when(optimizationEngineClient.rerunOptimization(any())).thenReturn(OptimizationResultDto.builder()
-                .packedItemsCount(1).volumeUtilization(BigDecimal.ONE).weightUtilization(BigDecimal.ONE).build());
-        when(loadPlanRepository.save(any())).thenThrow(new IllegalStateException("db down"));
-
-        assertThrows(IllegalStateException.class,
-                () -> service.rerunOptimization(50L, new RerunOptimizationRequest()));
-
-        verify(transactionManager).rollback(any());
-        verify(creditService).refundCredit(org.mockito.ArgumentMatchers.eq(1L), any());
-    }
-
-    @Test
-    void rerunWithoutAnEngineAlgorithmFallsBackToTheRunTier() {
-        LoadPlanResponse response = rerunWith(null);
-
-        assertEquals("EP_DBLF_GA", response.getAlgorithmName());
-        assertEquals("EP_DBLF_GA", response.getRunAlgorithm());
+    @org.junit.jupiter.params.ParameterizedTest(name="{0}")
+    @org.junit.jupiter.params.provider.ValueSource(strings={
+        "engine-reported-SA", "company-PRO", "expired-subscription", "engine-failure", "save-failure", "missing-engine-algorithm"})
+    void rerunUnavailableBeforeDebitEngineOrRefund(String formerScenario) {
+        // These former scenarios lie beyond a deliberately unavailable operation.
+        plan.getJob().setAlgorithmName(formerScenario.equals("company-PRO")
+                ? OptimizationAlgorithm.EP_DBLF_GA : OptimizationAlgorithm.EP_DBLF);
+        AppException error=assertThrows(AppException.class,
+                ()->service.rerunOptimization(50L,new RerunOptimizationRequest()));
+        assertEquals(ErrorCode.OPTIMIZATION_RERUN_UNAVAILABLE,error.getErrorCode());
+        assertEquals(org.springframework.http.HttpStatus.SERVICE_UNAVAILABLE,error.getErrorCode().getHttpStatus());
+        org.mockito.Mockito.verifyNoInteractions(creditService,optimizationEngineClient,optimizationJobRepository,
+                transactionManager,companySubscriptionRepository);
+        verify(loadPlanRepository,never()).save(any());
+        verify(auditLogRepository,never()).save(any());
     }
 }

@@ -51,9 +51,9 @@ class MockPaymentPolicyTest {
         var credits=mock(CreditService.class);
         var subscriptions=mock(SubscriptionService.class);
         var transaction=PaymentTransaction.builder().company(Company.builder().id(1L).build()).build();
-        when(repo.findByGatewayTransactionId("REF")).thenReturn(Optional.of(transaction));
+        when(repo.findByGatewayTransactionIdForUpdate("REF")).thenReturn(Optional.of(transaction));
         when(current.getCurrentCompanyId()).thenReturn(2L);
-        var handler=new PaymentCallbackHandler(repo,mock(VnPayClient.class),subscriptions,credits,policy(true,"dev"),current);
+        var handler=new PaymentCallbackHandler(repo,mock(VnPayClient.class),policy(true,"dev"),current,subscriptions,credits,mock(fu.se184491.loadmaster_be.service.registration.GuestRegistrationService.class));
         assertThrows(AccessDeniedException.class,()->handler.handleMockCheckout("REF"));
         verify(repo,never()).save(any());verifyNoInteractions(credits,subscriptions);
     }
@@ -65,9 +65,9 @@ class MockPaymentPolicyTest {
         var transaction=PaymentTransaction.builder().company(Company.builder().id(1L).build())
                 .status(PaymentStatus.PENDING).orderType("CREDIT_TOPUP").targetId(10L)
                 .gatewayTransactionId("REF").build();
-        when(repo.findByGatewayTransactionId("REF")).thenReturn(Optional.of(transaction));
+        when(repo.findByGatewayTransactionIdForUpdate("REF")).thenReturn(Optional.of(transaction));
         when(current.getCurrentCompanyId()).thenReturn(1L);
-        var handler=new PaymentCallbackHandler(repo,mock(VnPayClient.class),subscriptions,credits,policy(true,"dev"),current);
+        var handler=new PaymentCallbackHandler(repo,mock(VnPayClient.class),policy(true,"dev"),current,subscriptions,credits,mock(fu.se184491.loadmaster_be.service.registration.GuestRegistrationService.class));
         assertEquals("00",handler.handleMockCheckout("REF").get("RspCode"));
         verify(credits).addCredits(1L,10,"REF");
     }

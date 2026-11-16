@@ -14,4 +14,9 @@ public class CreditInternalRequest {
 
     @JsonAlias({"jobUuid", "job_uuid"})
     private String reference;
+    @JsonAlias("execution_generation")
+    private Long executionGeneration;
+    public CreditInternalRequest(Long companyId, String reference) {
+        this.companyId = companyId; this.reference = reference;
+    }
 }

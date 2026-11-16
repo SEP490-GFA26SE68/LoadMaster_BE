@@ -44,6 +44,11 @@ import static org.mockito.Mockito.*;
 @ExtendWith(MockitoExtension.class)
 public class CreditServiceTest {
 
+    @Mock private jakarta.persistence.EntityManager entityManager;
+
+    @Mock
+    private fu.se184491.loadmaster_be.repository.optimization.OptimizationJobRepository optimizationJobRepository;
+
     @Mock
     private CreditAccountRepository creditAccountRepository;
 
@@ -73,7 +78,16 @@ public class CreditServiceTest {
 
     @BeforeEach
     void setUp() {
+        org.springframework.test.util.ReflectionTestUtils.setField(creditService,"entityManager",entityManager);
         company = Company.builder().id(1L).build();
+        lenient().when(optimizationJobRepository.findByJobUuid(anyString())).thenAnswer(call -> {
+            String reference = call.getArgument(0);
+            return Optional.of(fu.se184491.loadmaster_be.entity.optimization.OptimizationJob.builder()
+                .jobUuid(reference).companyId("1")
+                .trip(fu.se184491.loadmaster_be.entity.trip.Trip.builder().company(company).build())
+                .parentPlanId(java.util.Set.of("job-rerun-123", "job-a", "job-b").contains(reference) ? 47L : null)
+                .build());
+        });
         creditAccount = CreditAccount.builder().id(10L).company(company).balance(5).build();
 
         proPlan = SubscriptionPlan.builder().id(1L).tier(SubscriptionTier.PRO).build();

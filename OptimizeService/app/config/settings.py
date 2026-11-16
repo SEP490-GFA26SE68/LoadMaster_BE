@@ -7,6 +7,11 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     DATABASE_URL: str
 
+    OPTIMIZATION_LIFECYCLE_V2_ENABLED: bool = False
+    OPTIMIZATION_LEASE_SECONDS: int = 30
+    OPTIMIZATION_HEARTBEAT_SECONDS: int = 5
+    OPTIMIZATION_EXECUTION_GRACE_SECONDS: int = 300
+
     APP_NAME: str = "OptimizeService"
     APP_ENV: str = "development"
     APP_PORT: int = 8000

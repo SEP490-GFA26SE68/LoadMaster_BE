@@ -32,9 +32,17 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @WebMvcTest(LoadPlanController.class)
-@Import({TestJwtSupport.class, LoadPlanServiceImpl.class, CurrentUserService.class})
+@Import({TestJwtSupport.class, LoadPlanServiceImpl.class, fu.se184491.loadmaster_be.service.optimization.Impl.LoadPlanQueryServiceImpl.class, CurrentUserService.class})
 class LoadPlanSecurityTest {
     @Autowired MockMvc mvc;
+    @MockitoBean fu.se184491.loadmaster_be.repository.optimization.LoadPlanReadRepository read;
+    @MockitoBean fu.se184491.loadmaster_be.repository.trip.TripRepository trips;
+    @MockitoBean fu.se184491.loadmaster_be.repository.trip.DeliveryStopRepository stops;
+    @MockitoBean fu.se184491.loadmaster_be.repository.billing.CompanySubscriptionRepository subscriptions;
+    @MockitoBean org.springframework.transaction.PlatformTransactionManager transactions;
+    @MockitoBean fu.se184491.loadmaster_be.service.optimization.manual.StopZoneResolver zones;
+    @MockitoBean fu.se184491.loadmaster_be.service.optimization.Impl.InterruptedOptimizationJobService interrupted;
+    @MockitoBean fu.se184491.loadmaster_be.client.OptimizationClient client;
     @MockitoBean LoadPlanRepository plans;
     @MockitoBean PackagePlacementRepository placements;
     @MockitoBean OptimizationJobRepository jobs;
@@ -47,11 +55,13 @@ class LoadPlanSecurityTest {
     @MockitoBean fu.se184491.loadmaster_be.service.optimization.OptimizationEntitlementService entitlements;
 
     @BeforeEach void setup() {
+        when(read.findPlan(47L)).thenReturn(Optional.of(new fu.se184491.loadmaster_be.repository.optimization.LoadPlanReadRepository.PlanWithCompany(fu.se184491.loadmaster_be.dto.response.optimization.LoadPlanDetailResponse.builder().id(47L).tripId(7L).build(),1L)));
+        when(read.findPlan(48L)).thenReturn(Optional.of(new fu.se184491.loadmaster_be.repository.optimization.LoadPlanReadRepository.PlanWithCompany(fu.se184491.loadmaster_be.dto.response.optimization.LoadPlanDetailResponse.builder().id(48L).tripId(8L).build(),2L)));
         Company company = Company.builder().id(1L).build();
         when(users.findByKeycloakId("own-user")).thenReturn(Optional.of(User.builder().company(company).build()));
         when(users.findByKeycloakId("other-user")).thenReturn(Optional.of(User.builder().company(Company.builder().id(2L).build()).build()));
         OptimizationJob job = OptimizationJob.builder().id(1L).algorithmName(OptimizationAlgorithm.EP_DBLF)
-                .trip(Trip.builder().company(company).build()).build();
+                .trip(Trip.builder().company(company).status(fu.se184491.loadmaster_be.constant.trip.TripStatus.PLANNED).build()).build();
         when(plans.findById(47L)).thenReturn(Optional.of(LoadPlan.builder().id(47L).version(1).job(job).build()));
         when(plans.findById(48L)).thenReturn(Optional.of(LoadPlan.builder().id(48L).version(1)
                 .job(OptimizationJob.builder().trip(Trip.builder().company(Company.builder().id(2L).build()).build()).build()).build()));
@@ -68,13 +78,13 @@ class LoadPlanSecurityTest {
         rerun(TestJwtSupport.userToken("own-user","MANAGER"),403); verifyNoInteractions(credits,engine,jobs);
     }
     @Test void dispatcherFromAnotherCompanyCannotRerun() throws Exception {
-        rerun(TestJwtSupport.userToken("other-user","DISPATCHER"),403);
+        rerun(TestJwtSupport.userToken("other-user","DISPATCHER"),404);
         verifyNoInteractions(credits,engine,jobs,placements);
         verify(plans,never()).save(any());
     }
     @Test void owningDispatcherGetsExplicitUnavailableWithoutLosingCredits() throws Exception {
         rerun(TestJwtSupport.userToken("own-user","DISPATCHER"),503);
-        verify(entitlements).requireActive(1L);
+        verifyNoInteractions(entitlements);
         verifyNoInteractions(credits,engine,jobs,placements);
         verify(plans,never()).save(any());
     }
@@ -87,7 +97,7 @@ class LoadPlanSecurityTest {
     }
     @Test void comparisonCannotReadAnotherCompanyPlan() throws Exception {
         mvc.perform(get("/api/load-plans/compare").param("planId1","47").param("planId2","48")
-                .header("Authorization","Bearer "+TestJwtSupport.userToken("own-user","MANAGER"))).andExpect(status().isForbidden());
+                .header("Authorization","Bearer "+TestJwtSupport.userToken("own-user","MANAGER"))).andExpect(status().isNotFound());
         verifyNoInteractions(credits,engine);
     }
     @Test void anonymousComparisonIs401() throws Exception {
@@ -95,12 +105,12 @@ class LoadPlanSecurityTest {
     }
     @Test void pinCannotModifyAnotherCompanyPlan() throws Exception {
         mvc.perform(post("/api/load-plans/47/pin").contentType("application/json").content("{\"placementId\":30}")
-                .header("Authorization","Bearer "+TestJwtSupport.userToken("other-user","DISPATCHER"))).andExpect(status().isForbidden());
+                .header("Authorization","Bearer "+TestJwtSupport.userToken("other-user","DISPATCHER"))).andExpect(status().isNotFound());
         verifyNoInteractions(placements,audit,credits,engine);
     }
     @Test void unpinCannotModifyAnotherCompanyPlan() throws Exception {
         mvc.perform(delete("/api/load-plans/47/pin/30")
-                .header("Authorization","Bearer "+TestJwtSupport.userToken("other-user","DISPATCHER"))).andExpect(status().isForbidden());
+                .header("Authorization","Bearer "+TestJwtSupport.userToken("other-user","DISPATCHER"))).andExpect(status().isNotFound());
         verifyNoInteractions(placements,audit,credits,engine);
     }
 }

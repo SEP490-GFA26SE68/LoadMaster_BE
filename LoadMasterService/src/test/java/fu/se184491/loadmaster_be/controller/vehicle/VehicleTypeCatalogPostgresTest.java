@@ -58,6 +58,8 @@ class VehicleTypeCatalogPostgresTest {
   excludeFilters=@ComponentScan.Filter(type=FilterType.REGEX,pattern="^(?!.*\\.(VehicleRepository|VehicleTypeRepository|TripRepository)$).*$"))
  @Import({VehicleTypeController.class,fu.se184491.loadmaster_be.service.vehicle.Impl.VehicleTypeServiceImpl.class,fu.se184491.loadmaster_be.repository.vehicle.VehicleListRepository.class,VehicleController.class,VehicleServiceImpl.class,fu.se184491.loadmaster_be.exception.GlobalExceptionHandler.class,TestJwtSupport.class,FlaggedUserEnforcementFilter.class})
  static class Config {
+  @Bean com.fasterxml.jackson.databind.ObjectMapper legacyObjectMapper(){ return new com.fasterxml.jackson.databind.ObjectMapper().findAndRegisterModules(); }
+  @Bean fu.se184491.loadmaster_be.repository.optimization.LoadPlanRepository loadPlans(){return mock(fu.se184491.loadmaster_be.repository.optimization.LoadPlanRepository.class); }
   @Bean static org.springframework.dao.annotation.PersistenceExceptionTranslationPostProcessor exceptionTranslation(){ return new org.springframework.dao.annotation.PersistenceExceptionTranslationPostProcessor(); }
   @Bean tools.jackson.databind.json.JsonMapper jsonMapper(){return tools.jackson.databind.json.JsonMapper.builder().findAndAddModules().build();}
   @Bean DataSource dataSource(){
@@ -135,7 +137,7 @@ class VehicleTypeCatalogPostgresTest {
   var principal=mock(CurrentUserService.class);
   when(principal.getCurrentUser()).thenReturn(User.builder().company(fu.se184491.loadmaster_be.entity.company.Company.builder().id(1L).build()).build());
   when(repo.findAllByCompanyId(eq(1L),any())).thenReturn(org.springframework.data.domain.Page.empty());
-  var service=new fu.se184491.loadmaster_be.service.vehicle.Impl.VehicleTypeServiceImpl(repo,mock(EntityManager.class),principal,mock(VehicleRepository.class));
+  var service=new fu.se184491.loadmaster_be.service.vehicle.Impl.VehicleTypeServiceImpl(repo,mock(EntityManager.class),principal,mock(VehicleRepository.class),mock(fu.se184491.loadmaster_be.repository.trip.TripRepository.class),mock(fu.se184491.loadmaster_be.repository.optimization.LoadPlanRepository.class));
   service.getVehicleTypes(0,20,null);
   var capture=org.mockito.ArgumentCaptor.forClass(org.springframework.data.domain.Pageable.class);
   verify(repo).findAllByCompanyId(eq(1L),capture.capture());
@@ -153,8 +155,8 @@ class VehicleTypeCatalogPostgresTest {
   http.perform(req("search=Type 100","company-a","MANAGER")).andExpect(status().isOk()).andExpect(jsonPath("$.totalElements").value(1));
   http.perform(req("","company-a","DRIVER")).andExpect(status().isForbidden());
   http.perform(req("","company-a","SYSTEM_ADMIN")).andExpect(status().isForbidden());
-  // Exact public matcher delegates denial to method security: anonymous is 403, not 401.
-  http.perform(get("/api/vehicle-types")).andExpect(status().isForbidden());
+  // Anonymous callers are rejected by the authenticated security filter chain.
+  http.perform(get("/api/vehicle-types")).andExpect(status().isUnauthorized());
   http.perform(req("","no-company","DISPATCHER")).andExpect(status().isBadRequest()).andExpect(jsonPath("$.code").value("COMPANY_REQUIRED"));
  }
  @Test void invalidAudienceAndBadPageAreRejected()throws Exception{

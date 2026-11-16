@@ -18,6 +18,7 @@ from app.dto.optimization.engine.problem_request import (
 )
 from app.exception.app_exception import AppException
 from app.exception.error_code import ErrorCode
+from app.dto.optimization.engine.packing_profile_orientation import parse_profile_orientation
 from app.service.optimize.engine_exception_handler import EngineExceptionHandler
 from app.service.optimize.optimization_client import OptimizationClient
 from app.service.optimize.optimization_job_service import OptimizationJobService
@@ -69,11 +70,28 @@ class AsyncOptimizationRunner:
     def restrict_profile_rotations(allowed, profile):
         if profile is None:
             return allowed
-        # Java's import validator explicitly leaves orientation syntax undefined.
-        # Never guess that an unparsed restriction means all orientations.
-        if profile.orientation is not None and profile.orientation.strip():
-            raise ValueError("Packing profile orientation syntax is not supported; cannot safely infer allowed rotations")
-        return [code for code in allowed if code in (0, 1)] if profile.upright_only is True else allowed
+        profile_codes = parse_profile_orientation(profile.orientation)
+        return [code for code in allowed
+                if (profile_codes is None or code in profile_codes)
+                and (profile.upright_only is not True or code in (0, 1))]
+
+    @staticmethod
+    def validate_trip_profile_orientations(trip_id, db):
+        """Read-only syntax preflight after job authorization, before scheduling/ACK.
+
+        Build also validates defensively if profiles change after the ACK.
+        No geometry, billing, status, stackability or load-bearing policy is changed.
+        """
+        from app.entity.trip_model import (CargoPackagePackingProfile,
+            DeliveryRequirement, DeliveryRequirementPackage)
+        profiles = (db.query(CargoPackagePackingProfile)
+                    .join(DeliveryRequirementPackage,
+                          DeliveryRequirementPackage.package_id == CargoPackagePackingProfile.package_id)
+                    .join(DeliveryRequirement,
+                          DeliveryRequirement.id == DeliveryRequirementPackage.delivery_requirement_id)
+                    .filter(DeliveryRequirement.trip_id == trip_id).distinct().all())
+        for profile in profiles:
+            parse_profile_orientation(profile.orientation)
 
     def build_problem_request(self, job_uuid: Union[str, UUID], db: Session) -> ProblemRequest:
         """
@@ -506,6 +524,66 @@ class AsyncOptimizationRunner:
         finally:
             if should_close and session is not None:
                 session.close()
+
+    async def run_owned(self, job_uuid, generation, problem_json):
+        import asyncio
+        import threading
+        import httpx
+        from app.config.settings import settings
+        from app.service.optimize.job_execution_protocol import JobExecutionProtocol, OwnershipLost
+        protocol = JobExecutionProtocol(self.session_factory, settings.OPTIMIZATION_LEASE_SECONDS,
+            settings.OPTIMIZATION_HEARTBEAT_SECONDS, settings.OPTIMIZATION_EXECUTION_GRACE_SECONDS)
+        # The complete worker runs outside the HTTP event loop. Heartbeats use a separate
+        # thread and fresh Sessions, including when synchronous solve() blocks its loop.
+        await asyncio.to_thread(self._execute_owned, protocol, str(job_uuid), generation, problem_json)
+
+    def _execute_owned(self, protocol, uuid, generation, problem_json):
+        import asyncio
+        import threading
+        import httpx
+        from app.service.optimize.job_execution_protocol import OwnershipLost
+        from app.dto.optimization.engine.rotation_contract import validate_result_rotations
+        stop = threading.Event()
+        lost = threading.Event()
+        try:
+            if not protocol.begin(uuid, generation):
+                return
+        except OwnershipLost:
+            return
+        def pulse():
+            while not stop.wait(protocol.heartbeat_seconds):
+                try:
+                    protocol.heartbeat(uuid, generation)
+                except Exception:
+                    lost.set()
+                    return  # DB uncertainty is fail-closed; never publish without a final DB check.
+        thread = threading.Thread(target=pulse, name="optimization-lease", daemon=True)
+        thread.start()
+        try:
+            problem = ProblemRequest.model_validate_json(problem_json)
+            result = asyncio.run(self.optimization_client.solve(problem))
+            validate_result_rotations(problem, result)
+            if lost.is_set():
+                return
+            status = _status_value(self.engine_exception_handler.classify_result(result))
+            ms = result.metrics.computation_ms if result.metrics else None
+            protocol.finalize(uuid, generation, status,
+                write_result=lambda db: self.persistence_service.save(uuid, result, db), computation_ms=ms)
+        except OwnershipLost:
+            logger.warning("optimization_execution job_uuid=%s stage=ownership_lost", uuid)
+        except Exception as exc:
+            logger.error("optimization_execution job_uuid=%s stage=execution_failed exception_type=%s", uuid, type(exc).__name__)
+            if not lost.is_set():
+                try:
+                    protocol.finalize(uuid, generation,
+                        "TIMEOUT" if isinstance(exc, httpx.TimeoutException) else "FAILED",
+                        failure_code="ENGINE_EXECUTION_FAILED")
+                except Exception:
+                    logger.warning("optimization_execution job_uuid=%s stage=terminal_not_committed", uuid)
+        finally:
+            stop.set()
+            thread.join(timeout=1)
+            # Spring reconciles the durable terminal ledger. Never refund here.
 
     async def _refund(self, company_id, job_uuid_str: str) -> None:
         """Hoàn credit đã giữ của job (Java bỏ qua lượt hoàn thứ hai cùng mã job)."""

@@ -333,7 +333,7 @@ class WarehouseServiceImplTest {
         when(packagePlacementRepository.findByLoadPlanIdOrderByStepSequenceAsc(50L)).thenReturn(List.of(first));
         when(placementConfirmationRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
 
-        service.confirmPlacement(71L, null, LabelMethod.CODE);
+        service.confirmPlacement(71L, null, label(71L));
 
         org.mockito.ArgumentCaptor<PlacementConfirmation> saved = org.mockito.ArgumentCaptor.forClass(PlacementConfirmation.class);
         verify(placementConfirmationRepository).save(saved.capture());
@@ -341,12 +341,13 @@ class WarehouseServiceImplTest {
     }
 
     @Test
-    void confirmingAPlacementWithoutAMethodCountsAsScanned() {
+    void confirmingAPlacementWithQrRecordsScannedMethod() {
         PackagePlacement first = loadingPlacement(71L, 1);
+        first.getCargoPackage().setQrToken("QR-71");
         when(packagePlacementRepository.findByLoadPlanIdOrderByStepSequenceAsc(50L)).thenReturn(List.of(first));
         when(placementConfirmationRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
 
-        service.confirmPlacement(71L, null);
+        service.confirmPlacement(71L, null, new fu.se184491.loadmaster_be.dto.request.warehouse.ConfirmPlacementRequest(10L, StagingMethod.QR, "QR-71"));
 
         org.mockito.ArgumentCaptor<PlacementConfirmation> saved = org.mockito.ArgumentCaptor.forClass(PlacementConfirmation.class);
         verify(placementConfirmationRepository).save(saved.capture());

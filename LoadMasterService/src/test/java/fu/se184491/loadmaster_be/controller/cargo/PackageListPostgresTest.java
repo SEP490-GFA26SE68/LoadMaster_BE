@@ -50,11 +50,12 @@ class PackageListPostgresTest {
 
  @Configuration @EnableWebMvc @EnableTransactionManagement
  @org.springframework.data.web.config.EnableSpringDataWebSupport
- @EnableJpaRepositories(basePackageClasses=PackageRepository.class,
-  includeFilters=@ComponentScan.Filter(type=FilterType.ASSIGNABLE_TYPE,classes={PackageRepository.class, PackageTypeRepository.class}),
-  excludeFilters=@ComponentScan.Filter(type=FilterType.REGEX,pattern="^(?!.*\\.(PackageRepository|PackageTypeRepository)$).*$"))
+ @EnableJpaRepositories(basePackageClasses=CargoPackageRepository.class,
+  includeFilters=@ComponentScan.Filter(type=FilterType.ASSIGNABLE_TYPE,classes={CargoPackageRepository.class, PackageTypeRepository.class}),
+  excludeFilters=@ComponentScan.Filter(type=FilterType.REGEX,pattern="^(?!.*\\.(CargoPackageRepository|PackageTypeRepository)$).*$"))
  @Import({PackageController.class,PackageServiceImpl.class,fu.se184491.loadmaster_be.service.cargo.Impl.PackageTypeServiceImpl.class,PackageTypeController.class,fu.se184491.loadmaster_be.exception.GlobalExceptionHandler.class,TestJwtSupport.class,FlaggedUserEnforcementFilter.class})
  static class Config {
+  @Bean com.fasterxml.jackson.databind.ObjectMapper legacyObjectMapper(){ return new com.fasterxml.jackson.databind.ObjectMapper().findAndRegisterModules(); }
   @Bean tools.jackson.databind.json.JsonMapper jsonMapper(){return tools.jackson.databind.json.JsonMapper.builder().findAndAddModules().build();}
   @Bean DataSource dataSource(){
    var uri=java.net.URI.create(pg.getJdbcUrl().substring(5));

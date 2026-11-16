@@ -5,14 +5,18 @@ import fu.se184491.loadmaster_be.constant.trip.TripStatus;
 import fu.se184491.loadmaster_be.constant.vehicle.VehicleStatus;
 import fu.se184491.loadmaster_be.dto.PageResponse;
 import fu.se184491.loadmaster_be.dto.request.vehicle.CreateVehicleRequest;
+import fu.se184491.loadmaster_be.dto.request.vehicle.UpdateVehicleRequest;
 import fu.se184491.loadmaster_be.dto.response.trip.TripVehicleConfigResponse;
+import fu.se184491.loadmaster_be.dto.response.vehicle.VehicleDeleteResponse;
 import fu.se184491.loadmaster_be.dto.response.vehicle.VehicleResponse;
 import fu.se184491.loadmaster_be.entity.account.User;
+import fu.se184491.loadmaster_be.entity.trip.Trip;
 import fu.se184491.loadmaster_be.entity.vehicle.Vehicle;
 import fu.se184491.loadmaster_be.entity.vehicle.VehicleType;
 import fu.se184491.loadmaster_be.exception.AppException;
 import fu.se184491.loadmaster_be.exception.ErrorCode;
 import fu.se184491.loadmaster_be.helpers.CurrentUserService;
+import fu.se184491.loadmaster_be.repository.optimization.LoadPlanRepository;
 import fu.se184491.loadmaster_be.repository.trip.TripRepository;
 import fu.se184491.loadmaster_be.repository.vehicle.VehicleRepository;
 import fu.se184491.loadmaster_be.repository.vehicle.VehicleTypeRepository;
@@ -336,17 +340,5 @@ public class VehicleServiceImpl implements VehicleService {
         }
         return currentTrip != null ? VehicleStatus.IN_TRIP : VehicleStatus.AVAILABLE;
 
-        if (storedStatus == VehicleStatus.MAINTENANCE) {
-            return VehicleStatus.MAINTENANCE;
-        }
-
-        boolean inTrip = tripRepository.existsByVehicleIdAndStatusIn(
-                vehicle.getId(),
-                fu.se184491.loadmaster_be.repository.vehicle.VehicleListRepository.OCCUPYING_STATUSES
-        );
-
-        return inTrip
-                ? VehicleStatus.IN_TRIP
-                : VehicleStatus.AVAILABLE;
     }
 }

@@ -51,6 +51,8 @@ class OptimizationResultPersistenceService:
         Trả LoadPlan đầu tiên đã lưu.
         """
         job = self.job_service.get_job(str(job_uuid), db)
+        if job.execution_generation is not None and db.info.get("execution_fence") != (str(job_uuid), job.execution_generation):
+            raise RuntimeError("V2 persistence requires a fenced finalization transaction")
         base_name = plan_name or f"Plan_{str(job.job_uuid)[:8]}"
 
         candidates = list(result.candidates or [])

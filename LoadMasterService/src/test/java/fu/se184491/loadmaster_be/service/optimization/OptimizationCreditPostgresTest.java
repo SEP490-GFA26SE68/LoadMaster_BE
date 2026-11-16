@@ -1,5 +1,7 @@
 package fu.se184491.loadmaster_be.service.optimization;
 
+import fu.se184491.loadmaster_be.support.TestSqlFixtures;
+
 import fu.se184491.loadmaster_be.constant.optimization.*;
 import fu.se184491.loadmaster_be.entity.optimization.OptimizationJob;
 import fu.se184491.loadmaster_be.exception.*;
@@ -46,20 +48,24 @@ class OptimizationCreditPostgresTest {
             CompanyRepository.class,TripRepository.class,LoadPlanRepository.class,OptimizationJobRepository.class,
             CompanySubscriptionRepository.class,CreditAccountRepository.class,CreditTransactionRepository.class}),
         excludeFilters=@ComponentScan.Filter(type=FilterType.REGEX,pattern="^(?!.*(?:CompanyRepository|TripRepository|LoadPlanRepository|OptimizationJobRepository|CompanySubscriptionRepository|CreditAccountRepository|CreditTransactionRepository)$).*$"))
-    @Import({CreditServiceImpl.class,OptimizationEntitlementService.class,OptimizationAdmissionService.class})
+    @Import({CreditServiceImpl.class,OptimizationEntitlementService.class,OptimizationAdmissionService.class,OptimizationLifecycleReconciler.class})
     static class Config {
+        @Bean fu.se184491.loadmaster_be.service.qr.AesQrTokenService qr(){return mock(fu.se184491.loadmaster_be.service.qr.AesQrTokenService.class);}
         @Bean DataSource dataSource() {
+            if (postgres.getMappedPort(5432)==5432) throw new IllegalStateException("Shared database port is forbidden");
             return new DriverManagerDataSource(postgres.getJdbcUrl(),postgres.getUsername(),postgres.getPassword());
         }
-        @Bean LocalContainerEntityManagerFactoryBean entityManagerFactory(DataSource dataSource) {
+        @Bean LocalContainerEntityManagerFactoryBean entityManagerFactory(DataSource dataSource, org.springframework.beans.factory.config.ConfigurableListableBeanFactory beans) {
             var bean=new LocalContainerEntityManagerFactoryBean();
             bean.setDataSource(dataSource);
             bean.setPackagesToScan("fu.se184491.loadmaster_be.entity");
             bean.setJpaVendorAdapter(new HibernateJpaVendorAdapter());
-            bean.setJpaPropertyMap(Map.of("hibernate.hbm2ddl.auto","none"));
+            bean.setJpaPropertyMap(Map.of("hibernate.hbm2ddl.auto","none", "hibernate.resource.beans.container",new org.springframework.orm.jpa.hibernate.SpringBeanContainer(beans)));
             return bean;
         }
         @Bean PlatformTransactionManager transactionManager(EntityManagerFactory factory) {return new JpaTransactionManager(factory);}
+        @Bean fu.se184491.loadmaster_be.repository.common.AuditLogRepository audit(){ return mock(fu.se184491.loadmaster_be.repository.common.AuditLogRepository.class); }
+        @Bean fu.se184491.loadmaster_be.service.payment.PaymentGatewayService payment(){return mock(fu.se184491.loadmaster_be.service.payment.PaymentGatewayService.class); }
         @Bean CurrentUserService currentUserService() {return mock(CurrentUserService.class);}
     }
 
@@ -70,6 +76,11 @@ class OptimizationCreditPostgresTest {
         sql=new JdbcTemplate(context.getBean(DataSource.class));
         // Minimal isolated schema. No production properties, migrations or startup initializers are loaded.
         for(String ddl: SCHEMA.split(";")) if(!ddl.isBlank()) sql.execute(ddl);
+        try {
+            String proposal=TestSqlFixtures.read("proposed-optimization-lifecycle-v2.sql");
+            sql.execute(proposal);
+            sql.execute(proposal); // rerun safety on an isolated schema
+        } catch (java.io.IOException e) { throw new IllegalStateException(e); }
         admission=context.getBean(OptimizationAdmissionService.class);
         credits=context.getBean(CreditService.class);
         user=context.getBean(CurrentUserService.class);
@@ -224,7 +235,7 @@ class OptimizationCreditPostgresTest {
         sql.update("INSERT INTO optimization_jobs(trip_id,job_uuid,algorithm_name,status) VALUES(7,'legacy-job','EP_DBLF','COMPLETED')");
         sql.execute("ALTER TABLE optimization_jobs DROP CONSTRAINT IF EXISTS optimization_jobs_algorithm_name_check");
         sql.execute("ALTER TABLE optimization_jobs ADD CONSTRAINT optimization_jobs_algorithm_name_check CHECK (algorithm_name IN ('EP_DBLF','GENETIC_ALGORITHM'))");
-        String script=java.nio.file.Files.readString(java.nio.file.Path.of("docs/sql/proposed-phase2-credit-migration.sql"));
+        String script=TestSqlFixtures.read("proposed-phase2-credit-migration.sql");
         sql.execute(script); // ONLY this test's brand-new disposable PostgreSQL container.
         assertEquals(10,balance());assertEquals(0,usages());assertEquals(1,jobs());
         assertEquals("COMPLETED",sql.queryForObject("select status from optimization_jobs where job_uuid='legacy-job'",String.class));
@@ -305,12 +316,12 @@ class OptimizationCreditPostgresTest {
     }
     static final String SCHEMA="""
         CREATE TABLE companies(id BIGSERIAL PRIMARY KEY,company_code varchar(50),company_name varchar(255),tax_code varchar(50),billing_email varchar(150),status varchar(30),created_at timestamptz);
-        CREATE TABLE trips(id BIGSERIAL PRIMARY KEY,company_id bigint,vehicle_id bigint,driver_user_id bigint,created_by_dispatcher_id bigint,origin_warehouse_id bigint,trip_name varchar(150),origin_name varchar(150),origin_address varchar(255),origin_latitude numeric,origin_longitude numeric,trip_code varchar(50),departure_time timestamp,status varchar(20),route_plan json,handling_class_lock varchar(20),override_reason text,created_at timestamptz);
+        CREATE TABLE trips(id BIGSERIAL PRIMARY KEY,company_id bigint,vehicle_id bigint,driver_user_id bigint,created_by_dispatcher_id bigint,origin_warehouse_id bigint,trip_name varchar(150),origin_name varchar(150),origin_address varchar(255),origin_latitude numeric,origin_longitude numeric,trip_code varchar(50),departure_time timestamp,status varchar(20),route_plan json,handling_class_lock varchar(20),override_reason text,created_at timestamptz,departed_at timestamp,completed_at timestamp,cancel_reason text,cancelled_from_status varchar(20),cancel_returned_count integer);
         CREATE TABLE subscription_plans(id BIGSERIAL PRIMARY KEY,plan_code varchar(50),name varchar(150),price numeric,billing_cycle varchar(30),tier varchar(20),monthly_credits int,algorithm_tier varchar(20),features text,active boolean);
         CREATE TABLE company_subscriptions(id BIGSERIAL PRIMARY KEY,company_id bigint UNIQUE,plan_id bigint,status varchar(20),started_at varchar(19),expires_at varchar(19),auto_renew boolean);
         CREATE TABLE credit_accounts(id BIGSERIAL PRIMARY KEY,company_id bigint UNIQUE,balance int NOT NULL CHECK(balance>=0),version bigint);
         CREATE TABLE credit_transactions(id BIGSERIAL PRIMARY KEY,credit_account_id bigint,amount int,type varchar(20),reference varchar(100),refunded boolean,created_at varchar(19));
-        CREATE TABLE optimization_jobs(id BIGSERIAL PRIMARY KEY,trip_id bigint,job_uuid varchar(64) UNIQUE,algorithm_name varchar(50),objective varchar(50),time_limit_sec int,status varchar(50),computation_ms bigint,parent_plan_id bigint,seed int,company_id varchar(64),subscription_tier varchar(50),algorithm_tier varchar(50),created_at timestamp);
-        CREATE TABLE load_plans(id BIGSERIAL PRIMARY KEY,job_id bigint,plan_name varchar(100),packed_items_count int,volume_utilization numeric,weight_utilization numeric,is_approved boolean,approved_by bigint,version int,parent_plan_id bigint,cog_x numeric,cog_y numeric,cog_z numeric,front_axle_load numeric,rear_axle_load numeric,rehandling_count int);
+        CREATE TABLE optimization_jobs(id BIGSERIAL PRIMARY KEY,trip_id bigint,job_uuid varchar(64) UNIQUE,algorithm_name varchar(50),objective varchar(50),time_limit_sec int,status varchar(50),computation_ms bigint,parent_plan_id bigint,seed int,company_id varchar(64),subscription_tier varchar(50),algorithm_tier varchar(50),created_at timestamp,failure_code varchar(100));
+        CREATE TABLE load_plans(id BIGSERIAL PRIMARY KEY,job_id bigint,plan_name varchar(100),packed_items_count int,volume_utilization numeric,weight_utilization numeric,is_approved boolean,approved_by bigint,version int,parent_plan_id bigint,cog_x numeric,cog_y numeric,cog_z numeric,front_axle_load numeric,rear_axle_load numeric,rehandling_count int,objective varchar(50),candidate_label varchar(20),algorithm_name varchar(50),manually_edited boolean,is_stale boolean);
         """;
 }

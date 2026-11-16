@@ -2,7 +2,6 @@ package fu.se184491.loadmaster_be.entity.account;
 
 import fu.se184491.loadmaster_be.constant.account.UserRole;
 import fu.se184491.loadmaster_be.constant.account.UserStatus;
-import fu.se184491.loadmaster_be.converter.InstantToStringConverter;
 import fu.se184491.loadmaster_be.entity.company.Company;
 import jakarta.persistence.*;
 import lombok.*;
@@ -105,21 +104,19 @@ public class User {
     )
     private UserStatus status;
 
+    @JdbcTypeCode(SqlTypes.TIMESTAMP_WITH_TIMEZONE)
     @Column(
             name = "created_at",
             nullable = false,
-            updatable = false,
-            columnDefinition = "varchar"
+            updatable = false
     )
-    @Convert(converter = InstantToStringConverter.class)
     private Instant createdAt;
 
+    @JdbcTypeCode(SqlTypes.TIMESTAMP_WITH_TIMEZONE)
     @Column(
             name = "updated_at",
-            nullable = false,
-            columnDefinition = "varchar"
+            nullable = false
     )
-    @Convert(converter = InstantToStringConverter.class)
     private Instant updatedAt;
 
     @PrePersist

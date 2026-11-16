@@ -29,4 +29,10 @@ class OptimizationJob(Base):
     algorithm_tier = Column(String(50), nullable=True)
     created_at = Column(DateTime, default=vietnam_now)
 
+    failure_code = Column(String(64), nullable=True)
+    execution_generation = Column(BigInteger, nullable=True)
+    dispatch_expires_at = Column(DateTime(timezone=True), nullable=True)
+    lease_expires_at = Column(DateTime(timezone=True), nullable=True)
+    execution_started_at = Column(DateTime(timezone=True), nullable=True)
+
     trip = relationship("Trip")
