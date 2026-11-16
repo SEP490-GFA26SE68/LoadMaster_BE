@@ -14,6 +14,7 @@ import fu.se184491.loadmaster_be.dto.response.driver.DeliveryIssueResponse;
 import fu.se184491.loadmaster_be.dto.response.driver.DriverLoadPlanResponse;
 import fu.se184491.loadmaster_be.dto.response.driver.DriverTripStopsResponse;
 import fu.se184491.loadmaster_be.dto.response.driver.ManualConfirmationResponse;
+import fu.se184491.loadmaster_be.dto.response.driver.DriverTripDetailResponse;
 import fu.se184491.loadmaster_be.dto.response.driver.DriverTripResponse;
 import fu.se184491.loadmaster_be.dto.response.monitoring.LocationPointResponse;
 import fu.se184491.loadmaster_be.dto.response.monitoring.TripExceptionResponse;
@@ -60,6 +61,14 @@ public class DriverController {
     public ResponseEntity<ApiResponse<List<DriverTripResponse>>> listTrips(
             @RequestParam(value = "driverId", required = false) Long driverId) {
         return ResponseEntity.ok(ApiResponse.success("Lấy danh sách chuyến đi của tài xế thành công", driverService.listTrips(driverId)));
+    }
+
+    @GetMapping("/trips/{id}/detail")
+    @Operation(summary = "Get trip detail for driver",
+            description = "Detailed information of the driver's own trip: vehicle, depot, stops, recipients, contact phone, packages")
+    public ResponseEntity<ApiResponse<DriverTripDetailResponse>> getTripDetail(
+            @PathVariable("id") String id) {
+        return ResponseEntity.ok(ApiResponse.success("Lấy chi tiết chuyến đi thành công", driverDeliveryService.getTripDetail(id)));
     }
 
     @GetMapping("/trips/{id}/current-stop")
