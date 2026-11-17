@@ -29,7 +29,7 @@ public record UserListItemResponse(
         LocalDateTime subscriptionExpiresAt,
         Integer creditBalance,
         @JsonFormat(shape = JsonFormat.Shape.STRING, timezone = "UTC")
-        Instant createdAt
+        LocalDateTime createdAt
 ) {
     public UserListItemResponse(
             Long id,

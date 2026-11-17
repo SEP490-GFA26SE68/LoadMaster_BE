@@ -1,0 +1,1110 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="29" skipped="32" tests="591" time="8.427" timestamp="2026-11-13T16:43:24.193910+07:00" hostname="DESKTOP-PJD2PC7"><testcase classname="" name="tests.test_lumo_scorer" time="0.000"><skipped message="collection skipped">('D:\\chuyennganh\\KI9\\Capstone_LoadMaster_BE\\OptimizeService\\tests\\test_lumo_scorer.py', 13, "Skipped: could not import 'torch': No module named 'torch'")</skipped></testcase><testcase classname="tests.test_3d_engine_upgrade.Test3DEngineUpgrade" name="test_fragility_constraint_in_packing" time="0.013" /><testcase classname="tests.test_3d_engine_upgrade.Test3DEngineUpgrade" name="test_metrics_cog_axle_loads" time="0.002" /><testcase classname="tests.test_3d_engine_upgrade.Test3DEngineUpgrade" name="test_rehandling_count_when_zone_overflows" time="0.035" /><testcase classname="tests.test_3d_engine_upgrade.Test3DEngineUpgrade" name="test_rotation_forbidden_in_packing" time="0.001" /><testcase classname="tests.test_3d_engine_upgrade.Test3DEngineUpgrade" name="test_zone_aware_packing_order" time="0.002" /><testcase classname="tests.test_algorithm_tier_service.TestAlgorithmTierService" name="test_tier_mapping" time="0.001" /><testcase classname="tests.test_algorithm_tier_service.TestAlgorithmTierService" name="test_algorithm_tier_validation" time="0.000" /><testcase classname="tests.test_algorithm_tier_service.TestLoadMasterCreditClient" name="test_deduct_credit_success[asyncio]" time="0.008" /><testcase classname="tests.test_algorithm_tier_service.TestLoadMasterCreditClient" name="test_deduct_credit_insufficient_raises_error[asyncio]" time="0.007" /><testcase classname="tests.test_algorithm_tier_service.TestLoadMasterCreditClient" name="test_refund_credit_success[asyncio]" time="0.004" /><testcase classname="tests.test_algorithm_tier_service.TestAsyncRunnerCreditIntegration" name="test_credit_deducted_before_solving[asyncio]" time="0.086"><failure message="app.exception.app_exception.AppException: Bạn không có quyền thực hiện hành động này">self = &lt;tests.test_algorithm_tier_service.TestAsyncRunnerCreditIntegration object at 0x0000015307D95B50&gt;
+test_db = &lt;sqlalchemy.orm.session.Session object at 0x00000153050C7950&gt;
+
+    async def test_credit_deducted_before_solving(self, test_db):
+        job_service = OptimizationJobService()
+        req = OptimizationJobRequest(
+            trip_id=100,
+            company_id="comp-1",
+            subscription_tier="PRO",
+        )
+&gt;       job = job_service.create_job(100, req, test_db)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests\test_algorithm_tier_service.py:127: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = &lt;app.service.optimize.optimization_job_service.OptimizationJobService object at 0x00000153086DAD10&gt;
+trip_id = 100
+config = OptimizationJobRequest(trip_id=100, job_uuid=None, objective=&lt;OptimizationObjective.MAX_VOLUME: 'MAX_VOLUME'&gt;, time_limit_sec=60, seed=None, algorithm_name=None, company_id='comp-1', subscription_tier='PRO', pinned_placements=[])
+db = &lt;sqlalchemy.orm.session.Session object at 0x00000153050C7950&gt;
+
+    def create_job(
+            self,
+            trip_id: int,
+            config: OptimizationJobRequest,
+            db: Session,
+    ) -&gt; OptimizationJob:
+        """
+        Retired: Spring Boot creates and charges jobs in one transaction.
+        """
+&gt;       raise AppException(ErrorCode.UNAUTHORIZED)  # Spring is the sole job/credit admission authority.
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       app.exception.app_exception.AppException: Bạn không có quyền thực hiện hành động này
+
+app\service\optimize\optimization_job_service.py:29: AppException</failure></testcase><testcase classname="tests.test_algorithm_tier_service.TestAsyncRunnerCreditIntegration" name="test_insufficient_credit_blocks_engine_and_fails_job[asyncio]" time="0.016"><failure message="app.exception.app_exception.AppException: Bạn không có quyền thực hiện hành động này">self = &lt;tests.test_algorithm_tier_service.TestAsyncRunnerCreditIntegration object at 0x0000015307D961D0&gt;
+test_db = &lt;sqlalchemy.orm.session.Session object at 0x0000015307F41F90&gt;
+
+    async def test_insufficient_credit_blocks_engine_and_fails_job(self, test_db):
+        job_service = OptimizationJobService()
+        req = OptimizationJobRequest(
+            trip_id=100,
+            company_id="comp-empty",
+            subscription_tier="BASIC",
+        )
+&gt;       job = job_service.create_job(100, req, test_db)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests\test_algorithm_tier_service.py:163: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = &lt;app.service.optimize.optimization_job_service.OptimizationJobService object at 0x00000153087ACBD0&gt;
+trip_id = 100
+config = OptimizationJobRequest(trip_id=100, job_uuid=None, objective=&lt;OptimizationObjective.MAX_VOLUME: 'MAX_VOLUME'&gt;, time_limit_sec=60, seed=None, algorithm_name=None, company_id='comp-empty', subscription_tier='BASIC', pinned_placements=[])
+db = &lt;sqlalchemy.orm.session.Session object at 0x0000015307F41F90&gt;
+
+    def create_job(
+            self,
+            trip_id: int,
+            config: OptimizationJobRequest,
+            db: Session,
+    ) -&gt; OptimizationJob:
+        """
+        Retired: Spring Boot creates and charges jobs in one transaction.
+        """
+&gt;       raise AppException(ErrorCode.UNAUTHORIZED)  # Spring is the sole job/credit admission authority.
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       app.exception.app_exception.AppException: Bạn không có quyền thực hiện hành động này
+
+app\service\optimize\optimization_job_service.py:29: AppException</failure></testcase><testcase classname="tests.test_algorithm_tier_service.TestAsyncRunnerCreditIntegration" name="test_refund_called_when_job_fails[asyncio]" time="0.015"><failure message="app.exception.app_exception.AppException: Bạn không có quyền thực hiện hành động này">self = &lt;tests.test_algorithm_tier_service.TestAsyncRunnerCreditIntegration object at 0x0000015307D96B50&gt;
+test_db = &lt;sqlalchemy.orm.session.Session object at 0x00000153087BBF90&gt;
+
+    async def test_refund_called_when_job_fails(self, test_db):
+        job_service = OptimizationJobService()
+        req = OptimizationJobRequest(
+            trip_id=100,
+            company_id="comp-1",
+            subscription_tier="BASIC",
+        )
+&gt;       job = job_service.create_job(100, req, test_db)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests\test_algorithm_tier_service.py:192: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = &lt;app.service.optimize.optimization_job_service.OptimizationJobService object at 0x00000153087DD010&gt;
+trip_id = 100
+config = OptimizationJobRequest(trip_id=100, job_uuid=None, objective=&lt;OptimizationObjective.MAX_VOLUME: 'MAX_VOLUME'&gt;, time_limit_sec=60, seed=None, algorithm_name=None, company_id='comp-1', subscription_tier='BASIC', pinned_placements=[])
+db = &lt;sqlalchemy.orm.session.Session object at 0x00000153087BBF90&gt;
+
+    def create_job(
+            self,
+            trip_id: int,
+            config: OptimizationJobRequest,
+            db: Session,
+    ) -&gt; OptimizationJob:
+        """
+        Retired: Spring Boot creates and charges jobs in one transaction.
+        """
+&gt;       raise AppException(ErrorCode.UNAUTHORIZED)  # Spring is the sole job/credit admission authority.
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       app.exception.app_exception.AppException: Bạn không có quyền thực hiện hành động này
+
+app\service\optimize\optimization_job_service.py:29: AppException</failure></testcase><testcase classname="tests.test_async_optimization_runner.TestAsyncOptimizationRunnerUnit" name="test_run_success_transitions_running_then_completed" time="0.425"><failure message="AssertionError: assert 'FAILED' == 'COMPLETED'&#10;  &#10;  - COMPLETED&#10;  + FAILED">self = &lt;tests.test_async_optimization_runner.TestAsyncOptimizationRunnerUnit object at 0x0000015307F4E810&gt;
+db_session = &lt;sqlalchemy.orm.session.Session object at 0x0000015308804610&gt;
+sample_problem = ProblemRequest(vehicle=VehicleData(obstacles=[], inner_l=3.0, inner_w=1.8, inner_h=1.8, max_payload_kg=1000.0, door_w=...on_allowed=True)], stops=[], pinned=[], objective='MAX_VOLUME_UTIL', time_limit_sec=30, seed=None, algorithm_name=None)
+
+    async def test_run_success_transitions_running_then_completed(self, db_session, sample_problem):
+        """Runner cập nhật RUNNING khi bắt đầu và COMPLETED khi giải xong"""
+        trip = db_session.query(Trip).first()
+        job_service = OptimizationJobService()
+        job = OptimizationJob(
+            job_uuid=str(uuid.uuid4()),
+            trip_id=trip.id,
+            status=OptimizationJobStatus.PENDING.value,
+            objective="MAX_VOLUME_UTIL",
+            time_limit_sec=30,
+        )
+        db_session.add(job)
+        db_session.commit()
+    
+        # Mock client solve
+        mock_client = MagicMock(spec=OptimizationClient)
+        mock_response = EngineOptimizationResponse(
+            placements=[
+                PlacementData(
+                    package_id=uuid.uuid4(), x=0, y=0, z=0,
+                    packed_l=0.5, packed_w=0.4, packed_h=0.3, rotation_type=0, step_sequence=1,
+                )
+            ],
+            unplaced=[],
+            metrics=MetricsData(volume_utilization=0.5, weight_utilization=0.5, packed_count=1, computation_ms=120),
+        )
+        mock_client.solve = AsyncMock(return_value=mock_response)
+    
+        runner = AsyncOptimizationRunner(
+            job_service=job_service,
+            optimization_client=mock_client,
+            engine_exception_handler=EngineExceptionHandler(job_service=job_service),
+        )
+    
+        await runner.run(job.job_uuid, problem=sample_problem, db=db_session)
+    
+        db_session.refresh(job)
+&gt;       assert job.status == OptimizationJobStatus.COMPLETED.value
+E       AssertionError: assert 'FAILED' == 'COMPLETED'
+E         
+E         - COMPLETED
+E         + FAILED
+
+tests\test_async_optimization_runner.py:172: AssertionError</failure></testcase><testcase classname="tests.test_async_optimization_runner.TestAsyncOptimizationRunnerUnit" name="test_run_calls_persistence_service_if_provided" time="0.299"><failure message="AssertionError: Expected 'save' to be called once. Called 0 times.">self = &lt;tests.test_async_optimization_runner.TestAsyncOptimizationRunnerUnit object at 0x0000015307F4EF50&gt;
+db_session = &lt;sqlalchemy.orm.session.Session object at 0x00000153087ECB50&gt;
+sample_problem = ProblemRequest(vehicle=VehicleData(obstacles=[], inner_l=3.0, inner_w=1.8, inner_h=1.8, max_payload_kg=1000.0, door_w=...on_allowed=True)], stops=[], pinned=[], objective='MAX_VOLUME_UTIL', time_limit_sec=30, seed=None, algorithm_name=None)
+
+    async def test_run_calls_persistence_service_if_provided(self, db_session, sample_problem):
+        """Runner gọi persistence_service.save nếu có"""
+        trip = db_session.query(Trip).first()
+        job_service = OptimizationJobService()
+        job = OptimizationJob(
+            job_uuid=str(uuid.uuid4()),
+            trip_id=trip.id,
+            status=OptimizationJobStatus.PENDING.value,
+        )
+        db_session.add(job)
+        db_session.commit()
+    
+        mock_client = MagicMock(spec=OptimizationClient)
+        mock_response = EngineOptimizationResponse(
+            placements=[
+                PlacementData(
+                    package_id=uuid.uuid4(), x=0, y=0, z=0,
+                    packed_l=0.5, packed_w=0.4, packed_h=0.3, rotation_type=0, step_sequence=1,
+                )
+            ],
+            unplaced=[],
+            metrics=MetricsData(volume_utilization=0.5, weight_utilization=0.5, packed_count=1, computation_ms=80),
+        )
+        mock_client.solve = AsyncMock(return_value=mock_response)
+        mock_persistence = MagicMock()
+    
+        runner = AsyncOptimizationRunner(
+            job_service=job_service,
+            optimization_client=mock_client,
+            persistence_service=mock_persistence,
+        )
+    
+        await runner.run(job.job_uuid, problem=sample_problem, db=db_session)
+    
+&gt;       mock_persistence.save.assert_called_once_with(job.job_uuid, mock_response, db_session)
+
+tests\test_async_optimization_runner.py:210: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = &lt;MagicMock name='mock.save' id='1456137747728'&gt;
+args = ('5a5ff12d-2ee5-44f9-8121-df0e07ec29c6', EngineOptimizationResponse(placements=[PlacementData(package_id=UUID('9322f39...andidates=[], algorithm_name=None, algorithms_tried=[]), &lt;sqlalchemy.orm.session.Session object at 0x00000153087ECB50&gt;)
+kwargs = {}
+
+    def assert_called_once_with(self, /, *args, **kwargs):
+        """assert that the mock was called exactly once and that that call was
+        with the specified arguments."""
+        if not self.call_count == 1:
+            msg = ("Expected '%s' to be called once. Called %s times.%s"
+                   % (self._mock_name or 'mock',
+                      self.call_count,
+                      self._calls_repr()))
+&gt;           raise AssertionError(msg)
+E           AssertionError: Expected 'save' to be called once. Called 0 times.
+
+D:\python\Lib\unittest\mock.py:950: AssertionError</failure></testcase><testcase classname="tests.test_async_optimization_runner.TestAsyncOptimizationRunnerUnit" name="test_run_catches_timeout_and_updates_status_timeout" time="0.315"><failure message="AssertionError: assert 'FAILED' == 'TIMEOUT'&#10;  &#10;  - TIMEOUT&#10;  + FAILED">self = &lt;tests.test_async_optimization_runner.TestAsyncOptimizationRunnerUnit object at 0x0000015307F4F750&gt;
+db_session = &lt;sqlalchemy.orm.session.Session object at 0x00000153088CB090&gt;
+sample_problem = ProblemRequest(vehicle=VehicleData(obstacles=[], inner_l=3.0, inner_w=1.8, inner_h=1.8, max_payload_kg=1000.0, door_w=...on_allowed=True)], stops=[], pinned=[], objective='MAX_VOLUME_UTIL', time_limit_sec=30, seed=None, algorithm_name=None)
+
+    async def test_run_catches_timeout_and_updates_status_timeout(self, db_session, sample_problem):
+        """Khi client ném TimeoutException, runner bắt lỗi và cập nhật TIMEOUT"""
+        trip = db_session.query(Trip).first()
+        job_service = OptimizationJobService()
+        job = OptimizationJob(
+            job_uuid=str(uuid.uuid4()),
+            trip_id=trip.id,
+            status=OptimizationJobStatus.PENDING.value,
+        )
+        db_session.add(job)
+        db_session.commit()
+    
+        mock_client = MagicMock(spec=OptimizationClient)
+        mock_client.solve = AsyncMock(side_effect=httpx.TimeoutException("Timeout"))
+    
+        runner = AsyncOptimizationRunner(
+            job_service=job_service,
+            optimization_client=mock_client,
+        )
+    
+        await runner.run(job.job_uuid, problem=sample_problem, db=db_session)
+    
+        db_session.refresh(job)
+&gt;       assert job.status == OptimizationJobStatus.TIMEOUT.value
+E       AssertionError: assert 'FAILED' == 'TIMEOUT'
+E         
+E         - TIMEOUT
+E         + FAILED
+
+tests\test_async_optimization_runner.py:235: AssertionError</failure></testcase><testcase classname="tests.test_async_optimization_runner.TestAsyncOptimizationRunnerUnit" name="test_run_catches_generic_error_and_updates_status_failed" time="0.326" /><testcase classname="tests.test_async_optimization_runner.TestAsyncOptimizationRunnerUnit" name="test_build_problem_request_from_db" time="0.041" /><testcase classname="tests.test_authorized_job_dispatch" name="test_retry_claims_existing_job_once_without_creating_another" time="0.024" /><testcase classname="tests.test_authorized_job_dispatch" name="test_missing_or_inconsistent_authorization_fails_closed[UPDATE optimization_jobs SET company_id=NULL]" time="0.019" /><testcase classname="tests.test_authorized_job_dispatch" name="test_missing_or_inconsistent_authorization_fails_closed[UPDATE optimization_jobs SET company_id='2']" time="0.014" /><testcase classname="tests.test_authorized_job_dispatch" name="test_missing_or_inconsistent_authorization_fails_closed[UPDATE trips SET company_id=NULL]" time="0.014" /><testcase classname="tests.test_authorized_job_dispatch" name="test_missing_or_inconsistent_authorization_fails_closed[UPDATE optimization_jobs SET parent_plan_id=47]" time="0.014" /><testcase classname="tests.test_authorized_job_dispatch" name="test_missing_or_inconsistent_authorization_fails_closed[UPDATE optimization_jobs SET subscription_tier='HACK']" time="0.017" /><testcase classname="tests.test_authorized_job_dispatch" name="test_missing_or_inconsistent_authorization_fails_closed[UPDATE credit_transactions SET refunded=true]" time="0.018" /><testcase classname="tests.test_authorized_job_dispatch" name="test_missing_or_inconsistent_authorization_fails_closed[DELETE FROM credit_transactions]" time="0.016" /><testcase classname="tests.test_authorized_job_dispatch" name="test_unreserved_request_cannot_create_a_job" time="0.015" /><testcase classname="tests.test_authorized_job_dispatch" name="test_runner_never_deducts_again_and_preserves_final_validation_pipeline" time="0.022" /><testcase classname="tests.test_authorized_job_dispatch" name="test_runner_with_missing_company_never_calls_solver_or_refund" time="0.022" /><testcase classname="tests.test_authorized_job_dispatch" name="test_completed_retry_does_not_schedule_execution" time="0.016" /><testcase classname="tests.test_authorized_job_dispatch" name="test_duplicate_background_tasks_execute_solver_once" time="0.028" /><testcase classname="tests.test_authorized_job_dispatch" name="test_submit_endpoint_uses_server_job_and_ignores_request_tier" time="0.017" /><testcase classname="tests.test_authorized_job_dispatch" name="test_failed_task_scheduling_can_retry_pending_job" time="0.017" /><testcase classname="tests.test_authorized_job_dispatch" name="test_dispatch_ack_preserves_identity_and_current_state[PENDING-ACCEPTED-1]" time="0.022" /><testcase classname="tests.test_authorized_job_dispatch" name="test_dispatch_ack_preserves_identity_and_current_state[RUNNING-ALREADY_RUNNING-0]" time="0.019" /><testcase classname="tests.test_authorized_job_dispatch" name="test_dispatch_ack_preserves_identity_and_current_state[COMPLETED-ALREADY_TERMINAL-0]" time="0.021" /><testcase classname="tests.test_authorized_job_dispatch" name="test_dispatch_ack_preserves_identity_and_current_state[SUCCESS-ALREADY_TERMINAL-0]" time="0.021" /><testcase classname="tests.test_authorized_job_dispatch" name="test_dispatch_ack_preserves_identity_and_current_state[FAILED-ALREADY_TERMINAL-0]" time="0.020" /><testcase classname="tests.test_authorized_job_dispatch" name="test_dispatch_ack_preserves_identity_and_current_state[TIMEOUT-ALREADY_TERMINAL-0]" time="0.018" /><testcase classname="tests.test_authorized_job_dispatch" name="test_dispatch_ack_preserves_identity_and_current_state[NO_SOLUTION-ALREADY_TERMINAL-0]" time="0.017" /><testcase classname="tests.test_authorized_job_dispatch" name="test_dispatch_ack_preserves_identity_and_current_state[PARTIAL-ALREADY_TERMINAL-0]" time="0.020" /><testcase classname="tests.test_authorized_job_dispatch" name="test_response_lost_then_dispatch_retry_cannot_execute_a_second_worker" time="0.029" /><testcase classname="tests.test_authorized_job_dispatch" name="test_duplicate_pending_dispatches_only_one_task_reaches_solver" time="0.036" /><testcase classname="tests.test_authorized_job_dispatch" name="test_unknown_status_is_not_acknowledged_or_reset" time="0.018" /><testcase classname="tests.test_authorized_job_dispatch" name="test_http_dispatch_and_get_preserve_exact_status_and_identity[PENDING]" time="0.076" /><testcase classname="tests.test_authorized_job_dispatch" name="test_http_dispatch_and_get_preserve_exact_status_and_identity[RUNNING]" time="0.044" /><testcase classname="tests.test_authorized_job_dispatch" name="test_http_dispatch_and_get_preserve_exact_status_and_identity[COMPLETED]" time="0.044" /><testcase classname="tests.test_authorized_job_dispatch" name="test_http_dispatch_and_get_preserve_exact_status_and_identity[SUCCESS]" time="0.043" /><testcase classname="tests.test_authorized_job_dispatch" name="test_http_dispatch_and_get_preserve_exact_status_and_identity[PARTIAL]" time="0.038" /><testcase classname="tests.test_authorized_job_dispatch" name="test_http_dispatch_and_get_preserve_exact_status_and_identity[FAILED]" time="0.032" /><testcase classname="tests.test_authorized_job_dispatch" name="test_http_dispatch_and_get_preserve_exact_status_and_identity[NO_SOLUTION]" time="0.031" /><testcase classname="tests.test_authorized_job_dispatch" name="test_http_dispatch_and_get_preserve_exact_status_and_identity[TIMEOUT]" time="0.038" /><testcase classname="tests.test_authorized_job_dispatch" name="test_http_dispatch_requires_both_reserved_job_and_trip[payload0]" time="0.023" /><testcase classname="tests.test_authorized_job_dispatch" name="test_http_dispatch_requires_both_reserved_job_and_trip[payload1]" time="0.025" /><testcase classname="tests.test_authorized_job_dispatch" name="test_http_dispatch_requires_both_reserved_job_and_trip[payload2]" time="0.024" /><testcase classname="tests.test_authorized_job_dispatch" name="test_runner_blocks_invalid_rotation_before_persistence[change0]" time="0.078" /><testcase classname="tests.test_authorized_job_dispatch" name="test_runner_blocks_invalid_rotation_before_persistence[change1]" time="0.018" /><testcase classname="tests.test_candidate_plans.TestPickCandidates" name="test_three_plans_in_order_a_b_c_with_objectives" time="0.001" /><testcase classname="tests.test_candidate_plans.TestPickCandidates" name="test_same_layout_for_every_objective_gives_identical_plans" time="0.001" /><testcase classname="tests.test_candidate_plans.TestPickCandidates" name="test_each_objective_picks_best_layout_by_its_own_metric" time="0.001" /><testcase classname="tests.test_candidate_plans.TestPickCandidates" name="test_b_and_c_never_trade_packages_for_their_metric" time="0.001" /><testcase classname="tests.test_candidate_plans.TestPickCandidates" name="test_tie_keeps_first_layout" time="0.001" /><testcase classname="tests.test_candidate_plans.TestPickCandidates" name="test_axle_imbalance_without_limits_uses_relative_difference" time="0.001" /><testcase classname="tests.test_candidate_plans.TestPickCandidates" name="test_axle_target_strategy_only_when_vehicle_declares_axles" time="0.000" /><testcase classname="tests.test_candidate_plans.TestJobStatus" name="test_no_solution_when_all_three_place_nothing" time="0.001" /><testcase classname="tests.test_candidate_plans.TestJobStatus" name="test_partial_when_no_plan_places_everything" time="0.001" /><testcase classname="tests.test_candidate_plans.TestJobStatus" name="test_completed_when_some_plan_places_everything" time="0.001" /><testcase classname="tests.test_candidate_plans.TestJobStatus" name="test_handler_classifies_by_candidates" time="0.001" /><testcase classname="tests.test_candidate_plans.TestSolveCandidates" name="test_in_process_solve_returns_plan_a_with_three_candidates" time="0.019" /><testcase classname="tests.test_candidate_plans.TestSolveCandidates" name="test_candidates_are_not_serialized" time="0.015" /><testcase classname="tests.test_candidate_plans.TestSolveCandidates" name="test_time_limit_covers_whole_run_first_layout_always_runs" time="0.004" /><testcase classname="tests.test_candidate_plans.TestPersistCandidates" name="test_saves_three_plans_in_order_with_label_and_objective" time="0.028" /><testcase classname="tests.test_candidate_plans.TestPersistCandidates" name="test_no_solution_saves_one_plan_without_label" time="0.019" /><testcase classname="tests.test_clock" name="test_vietnam_now_is_naive_utc_plus_seven" time="0.001" /><testcase classname="tests.test_clock" name="test_shared_tables_default_to_vietnam_time" time="0.000" /><testcase classname="tests.test_constraint_engine.TestConstraintEngine" name="test_axle_load_constraint" time="0.001" /><testcase classname="tests.test_constraint_engine.TestConstraintEngine" name="test_check_all" time="0.001" /><testcase classname="tests.test_constraint_engine.TestConstraintEngine" name="test_cog_constraint" time="0.001" /><testcase classname="tests.test_constraint_engine.TestConstraintEngine" name="test_fragility_constraint" time="0.001" /><testcase classname="tests.test_constraint_engine.TestConstraintEngine" name="test_rotation_allowed_constraint" time="0.001"><failure message="AssertionError: False is not true">self = &lt;tests.test_constraint_engine.TestConstraintEngine testMethod=test_rotation_allowed_constraint&gt;
+
+    def test_rotation_allowed_constraint(self):
+        """Nếu rotation_allowed=false thì chỉ dùng rotation_type=0."""
+        pkg_no_rotate = PackageData(id="p1", l=1.0, w=0.5, h=0.5, weight=10.0, rotation_allowed=False)
+        pkg_can_rotate = PackageData(id="p2", l=1.0, w=0.5, h=0.5, weight=10.0, rotation_allowed=True)
+    
+        place_rotated = PlacementData(package_id="p1", x=0.0, y=0.0, z=0.0, packed_l=0.5, packed_w=1.0, packed_h=0.5, rotation_type=1)
+        res_rotated = ConstraintEngine.check_rotation_allowed(pkg_no_rotate, place_rotated)
+        self.assertFalse(res_rotated.passed)
+        self.assertEqual(res_rotated.violation_code, "ORIENTATION_NOT_ALLOWED")
+    
+        place_unrotated = PlacementData(package_id="p1", x=0.0, y=0.0, z=0.0, packed_l=1.0, packed_w=0.5, packed_h=0.5, rotation_type=0)
+        res_unrotated = ConstraintEngine.check_rotation_allowed(pkg_no_rotate, place_unrotated)
+        self.assertTrue(res_unrotated.passed)
+    
+        res_can_rotate = ConstraintEngine.check_rotation_allowed(pkg_can_rotate, place_rotated)
+&gt;       self.assertTrue(res_can_rotate.passed)
+E       AssertionError: False is not true
+
+tests\test_constraint_engine.py:106: AssertionError</failure></testcase><testcase classname="tests.test_constraint_engine.TestConstraintEngine" name="test_stacking_constraint" time="0.001" /><testcase classname="tests.test_constraint_engine.TestConstraintEngine" name="test_support_area_constraint" time="0.001" /><testcase classname="tests.test_cors_and_docs.TestCorsOrigins" name="test_defaults_to_local_web" time="0.002" /><testcase classname="tests.test_cors_and_docs.TestCorsOrigins" name="test_reads_comma_separated_list_and_drops_wildcard" time="0.001" /><testcase classname="tests.test_cors_and_docs.TestCorsOrigins" name="test_falls_back_to_frontend_url" time="0.002" /><testcase classname="tests.test_cors_and_docs.TestCorsOrigins" name="test_unknown_origin_gets_no_cors_header" time="0.006" /><testcase classname="tests.test_cors_and_docs.TestCorsOrigins" name="test_configured_origin_is_allowed_without_credentials" time="0.004" /><testcase classname="tests.test_cors_and_docs.TestApiDocs" name="test_enabled_in_development" time="0.002" /><testcase classname="tests.test_cors_and_docs.TestApiDocs" name="test_disabled_outside_development" time="0.002" /><testcase classname="tests.test_cors_and_docs.TestApiDocs" name="test_explicit_flag_wins" time="0.003" /><testcase classname="tests.test_dispatch_postgres" name="test_two_workers_racing_same_billed_job_only_one_enters_solver" time="0.001"><skipped type="pytest.skip" message="Opt-in: needs Docker, always creates a private PostgreSQL container">D:\chuyennganh\KI9\Capstone_LoadMaster_BE\OptimizeService\tests\test_dispatch_postgres.py:53: Opt-in: needs Docker, always creates a private PostgreSQL container</skipped></testcase><testcase classname="tests.test_engine_exception_handler.TestEngineExceptionHandlerExceptions" name="test_handle_timeout_updates_status_to_timeout" time="0.016" /><testcase classname="tests.test_engine_exception_handler.TestEngineExceptionHandlerExceptions" name="test_handle_http_401_updates_status_to_failed_and_logs_auth_error" time="0.015" /><testcase classname="tests.test_engine_exception_handler.TestEngineExceptionHandlerExceptions" name="test_handle_http_403_updates_status_to_failed_and_logs_auth_forbidden" time="0.015" /><testcase classname="tests.test_engine_exception_handler.TestEngineExceptionHandlerExceptions" name="test_handle_http_500_updates_status_to_failed" time="0.017" /><testcase classname="tests.test_engine_exception_handler.TestEngineExceptionHandlerExceptions" name="test_handle_connect_error_updates_status_to_failed_and_logs_service_unavailable" time="0.019" /><testcase classname="tests.test_engine_exception_handler.TestEngineExceptionHandlerExceptions" name="test_handle_service_authentication_exception_updates_status_to_failed" time="0.015" /><testcase classname="tests.test_engine_exception_handler.TestEngineExceptionHandlerExceptions" name="test_handle_unexpected_generic_exception_does_not_crash" time="0.021" /><testcase classname="tests.test_engine_exception_handler.TestEngineResultClassification" name="test_classify_result_empty_placements_returns_no_solution" time="0.001" /><testcase classname="tests.test_engine_exception_handler.TestEngineResultClassification" name="test_classify_result_some_unplaced_returns_partial" time="0.001" /><testcase classname="tests.test_engine_exception_handler.TestEngineResultClassification" name="test_classify_result_all_placed_returns_completed" time="0.000" /><testcase classname="tests.test_engine_exception_handler.TestEngineResultClassification" name="test_handle_result_updates_job_status_and_computation_ms" time="0.015" /><testcase classname="tests.test_engine_exception_handler.TestEngineExceptionHandlerNotification" name="test_handle_calls_notification_service_if_provided" time="0.015" /><testcase classname="tests.test_engine_exception_handler.TestEngineExceptionHandlerNotification" name="test_handle_result_calls_notification_service_if_provided" time="0.015" /><testcase classname="tests.test_engine_exception_handler.TestEngineExceptionHandlerCreditRefund" name="test_handle_failure_calls_credit_refund" time="0.017" /><testcase classname="tests.test_hc01_boundary" name="test_hc01_boundary[0-0-0-100-80-60-True]" time="0.001" /><testcase classname="tests.test_hc01_boundary" name="test_hc01_boundary[0-0-0-450-200-200-True]" time="0.001" /><testcase classname="tests.test_hc01_boundary" name="test_hc01_boundary[350-120-140-100-80-60-True]" time="0.001" /><testcase classname="tests.test_hc01_boundary" name="test_hc01_boundary[-1-0-0-100-80-60-False]" time="0.001" /><testcase classname="tests.test_hc01_boundary" name="test_hc01_boundary[0--1-0-100-80-60-False]" time="0.001" /><testcase classname="tests.test_hc01_boundary" name="test_hc01_boundary[0-0--1-100-80-60-False]" time="0.002" /><testcase classname="tests.test_hc01_boundary" name="test_hc01_boundary[351-0-0-100-80-60-False]" time="0.001" /><testcase classname="tests.test_hc01_boundary" name="test_hc01_boundary[0-121-0-100-80-60-False]" time="0.001" /><testcase classname="tests.test_hc01_boundary" name="test_hc01_boundary[0-0-141-100-80-60-False]" time="0.001" /><testcase classname="tests.test_hc01_boundary" name="test_hc01_boundary[0-0-0-0-80-60-False]" time="0.001" /><testcase classname="tests.test_hc01_boundary" name="test_hc01_boundary[0-0-0-100--1-60-False]" time="0.001" /><testcase classname="tests.test_hc01_boundary" name="test_hc01_boundary[0-0-0-100-80-0-False]" time="0.001" /><testcase classname="tests.test_hc01_boundary" name="test_hc01_rejects_nan" time="0.000" /><testcase classname="tests.test_hc01_boundary" name="test_hc01_rejects_infinity" time="0.000" /><testcase classname="tests.test_hc01_boundary" name="test_hc01_is_called_from_check_all" time="0.001" /><testcase classname="tests.test_hc02_non_overlap" name="test_hc02_non_overlap[150-0-0-50-80-60-True]" time="0.001" /><testcase classname="tests.test_hc02_non_overlap" name="test_hc02_non_overlap[0-100-0-100-50-60-True]" time="0.001" /><testcase classname="tests.test_hc02_non_overlap" name="test_hc02_non_overlap[0-0-100-100-80-40-True]" time="0.001" /><testcase classname="tests.test_hc02_non_overlap" name="test_hc02_non_overlap[100-0-0-100-80-60-True]" time="0.001" /><testcase classname="tests.test_hc02_non_overlap" name="test_hc02_non_overlap[0-80-0-100-80-60-True]" time="0.001" /><testcase classname="tests.test_hc02_non_overlap" name="test_hc02_non_overlap[0-0-60-100-80-60-True]" time="0.001" /><testcase classname="tests.test_hc02_non_overlap" name="test_hc02_non_overlap[100-80-0-100-80-60-True]" time="0.001" /><testcase classname="tests.test_hc02_non_overlap" name="test_hc02_non_overlap[100-80-60-100-80-60-True]" time="0.001" /><testcase classname="tests.test_hc02_non_overlap" name="test_hc02_non_overlap[90-0-0-100-80-60-False]" time="0.001" /><testcase classname="tests.test_hc02_non_overlap" name="test_hc02_non_overlap[0-70-0-100-80-60-False]" time="0.001" /><testcase classname="tests.test_hc02_non_overlap" name="test_hc02_non_overlap[0-0-50-100-80-60-False]" time="0.001" /><testcase classname="tests.test_hc02_non_overlap" name="test_hc02_non_overlap[0-0-0-100-80-60-False]" time="0.001" /><testcase classname="tests.test_hc02_non_overlap" name="test_hc02_non_overlap[10-10-10-20-20-20-False]" time="0.001" /><testcase classname="tests.test_hc02_non_overlap" name="test_hc02_non_overlap[-10--10--10-150-120-100-False]" time="0.002" /><testcase classname="tests.test_hc02_non_overlap" name="test_hc02_non_overlap[50-40-30-100-80-60-False]" time="0.001" /><testcase classname="tests.test_hc02_non_overlap" name="test_hc02_empty_existing_placements" time="0.000" /><testcase classname="tests.test_hc02_non_overlap" name="test_hc02_multiple_existing_packages" time="0.001" /><testcase classname="tests.test_hc02_non_overlap" name="test_hc02_invalid_geometry[nan]" time="0.001" /><testcase classname="tests.test_hc02_non_overlap" name="test_hc02_invalid_geometry[inf]" time="0.004" /><testcase classname="tests.test_hc02_non_overlap" name="test_hc02_invalid_geometry[-inf]" time="0.001" /><testcase classname="tests.test_hc02_non_overlap" name="test_hc02_invalid_dimensions[0]" time="0.001" /><testcase classname="tests.test_hc02_non_overlap" name="test_hc02_invalid_dimensions[-1]" time="0.001" /><testcase classname="tests.test_hc02_non_overlap" name="test_hc02_called_from_check_all" time="0.001" /><testcase classname="tests.test_hc03_orientation" name="test_hc03_allowed_rotations[0-allowed_rotations0-True]" time="0.001" /><testcase classname="tests.test_hc03_orientation" name="test_hc03_allowed_rotations[1-allowed_rotations1-True]" time="0.001" /><testcase classname="tests.test_hc03_orientation" name="test_hc03_allowed_rotations[2-allowed_rotations2-False]" time="0.001" /><testcase classname="tests.test_hc03_orientation" name="test_hc03_allowed_rotations[1-allowed_rotations3-False]" time="0.001" /><testcase classname="tests.test_hc03_orientation" name="test_hc03_allowed_rotations[1-allowed_rotations4-True]" time="0.001" /><testcase classname="tests.test_hc03_orientation" name="test_hc03_allowed_rotations[1-allowed_rotations5-True]" time="0.001" /><testcase classname="tests.test_hc03_orientation" name="test_hc03_allowed_rotations[2-allowed_rotations6-False]" time="0.001" /><testcase classname="tests.test_hc03_orientation" name="test_hc03_allowed_rotations[0-allowed_rotations7-False]" time="0.001" /><testcase classname="tests.test_hc03_orientation" name="test_hc03_allowed_rotations[1-allowed_rotations8-False]" time="0.001" /><testcase classname="tests.test_hc03_orientation" name="test_hc03_rotation_locked[0-True]" time="0.001" /><testcase classname="tests.test_hc03_orientation" name="test_hc03_rotation_locked[1-False]" time="0.001" /><testcase classname="tests.test_hc03_orientation" name="test_hc03_rotation_locked[2-False]" time="0.001" /><testcase classname="tests.test_hc03_orientation" name="test_hc03_locked_package_rejects_even_if_list_allows" time="0.000" /><testcase classname="tests.test_hc03_orientation" name="test_hc03_unrotated_rejected_if_not_in_allowed_list" time="0.000" /><testcase classname="tests.test_hc03_orientation" name="test_hc03_requires_placement" time="0.000" /><testcase classname="tests.test_hc03_orientation" name="test_hc03_called_from_check_all" time="0.001" /><testcase classname="tests.test_hc03_solver" name="test_hc03_solver_uses_allowed_rotation" time="0.001" /><testcase classname="tests.test_hc03_solver" name="test_hc03_solver_rejects_forbidden_rotation" time="0.001" /><testcase classname="tests.test_hc03_solver" name="test_hc03_solver_respects_global_rotation_lock" time="0.001" /><testcase classname="tests.test_hc03_solver" name="test_hc03_solver_does_not_invent_rotation" time="0.001" /><testcase classname="tests.test_hc03_solver" name="test_hc03_solver_keeps_original_orientation" time="0.001" /><testcase classname="tests.test_hc04_payload" name="test_hc04_single_package[1000-True]" time="0.001" /><testcase classname="tests.test_hc04_payload" name="test_hc04_single_package[3000-True]" time="0.001" /><testcase classname="tests.test_hc04_payload" name="test_hc04_single_package[3500-True]" time="0.001" /><testcase classname="tests.test_hc04_payload" name="test_hc04_single_package[3500.01-False]" time="0.001" /><testcase classname="tests.test_hc04_payload" name="test_hc04_single_package[4000-False]" time="0.001" /><testcase classname="tests.test_hc04_payload" name="test_hc04_multiple_packages[existing_weights0-1000-True]" time="0.001" /><testcase classname="tests.test_hc04_payload" name="test_hc04_multiple_packages[existing_weights1-1000-True]" time="0.001" /><testcase classname="tests.test_hc04_payload" name="test_hc04_multiple_packages[existing_weights2-1000.01-False]" time="0.001" /><testcase classname="tests.test_hc04_payload" name="test_hc04_multiple_packages[existing_weights3-1000-False]" time="0.001" /><testcase classname="tests.test_hc04_payload" name="test_hc04_multiple_packages[existing_weights4-500-True]" time="0.001" /><testcase classname="tests.test_hc04_payload" name="test_hc04_invalid_vehicle_payload[0]" time="0.001" /><testcase classname="tests.test_hc04_payload" name="test_hc04_invalid_vehicle_payload[-1]" time="0.001" /><testcase classname="tests.test_hc04_payload" name="test_hc04_invalid_vehicle_payload[nan]" time="0.001" /><testcase classname="tests.test_hc04_payload" name="test_hc04_invalid_vehicle_payload[inf]" time="0.001" /><testcase classname="tests.test_hc04_payload" name="test_hc04_invalid_package_weight[0]" time="0.001" /><testcase classname="tests.test_hc04_payload" name="test_hc04_invalid_package_weight[-1]" time="0.001" /><testcase classname="tests.test_hc04_payload" name="test_hc04_invalid_package_weight[nan]" time="0.001" /><testcase classname="tests.test_hc04_payload" name="test_hc04_invalid_package_weight[inf]" time="0.001" /><testcase classname="tests.test_hc04_payload" name="test_hc04_missing_package_metadata" time="0.000" /><testcase classname="tests.test_hc04_payload" name="test_hc04_called_from_check_all" time="0.001" /><testcase classname="tests.test_hc04_payload" name="test_hc04_exact_payload_from_check_all" time="0.001" /><testcase classname="tests.test_hc05_support_area" name="test_hc05_support_threshold[100-True]" time="0.001" /><testcase classname="tests.test_hc05_support_area" name="test_hc05_support_threshold[80-True]" time="0.001" /><testcase classname="tests.test_hc05_support_area" name="test_hc05_support_threshold[70-True]" time="0.001" /><testcase classname="tests.test_hc05_support_area" name="test_hc05_support_threshold[69.99-False]" time="0.001" /><testcase classname="tests.test_hc05_support_area" name="test_hc05_support_threshold[60-False]" time="0.001" /><testcase classname="tests.test_hc05_support_area" name="test_hc05_support_threshold[30-False]" time="0.001" /><testcase classname="tests.test_hc05_support_area" name="test_hc05_package_on_floor" time="0.000" /><testcase classname="tests.test_hc05_support_area" name="test_hc05_no_support" time="0.000" /><testcase classname="tests.test_hc05_support_area" name="test_hc05_two_supports_combined" time="0.001" /><testcase classname="tests.test_hc05_support_area" name="test_hc05_overlapping_support_regions" time="0.001" /><testcase classname="tests.test_hc05_support_area" name="test_hc05_support_not_touching" time="0.000" /><testcase classname="tests.test_hc05_support_area" name="test_hc05_support_outside_base" time="0.000" /><testcase classname="tests.test_hc05_support_area" name="test_hc05_invalid_geometry[nan]" time="0.001" /><testcase classname="tests.test_hc05_support_area" name="test_hc05_invalid_geometry[inf]" time="0.001" /><testcase classname="tests.test_hc05_support_area" name="test_hc05_invalid_geometry[-inf]" time="0.001" /><testcase classname="tests.test_hc05_support_area" name="test_hc05_invalid_base" time="0.000" /><testcase classname="tests.test_hc05_support_area" name="test_hc05_negative_z" time="0.000" /><testcase classname="tests.test_hc05_support_area" name="test_hc05_called_from_check_all" time="0.001" /><testcase classname="tests.test_hc06_stability" name="test_hc06_fully_supported[0-0]" time="0.002" /><testcase classname="tests.test_hc06_stability" name="test_hc06_fully_supported[10-10]" time="0.001" /><testcase classname="tests.test_hc06_stability" name="test_hc06_fully_supported[50-50]" time="0.001" /><testcase classname="tests.test_hc06_stability" name="test_hc06_center_outside_support" time="0.001" /><testcase classname="tests.test_hc06_stability" name="test_hc06_center_on_support_boundary" time="0.001" /><testcase classname="tests.test_hc06_stability" name="test_hc06_two_supports_across_gap" time="0.000" /><testcase classname="tests.test_hc06_stability" name="test_hc06_two_supports_on_one_side" time="0.000" /><testcase classname="tests.test_hc06_stability" name="test_hc06_on_floor" time="0.000" /><testcase classname="tests.test_hc06_stability" name="test_hc06_no_support" time="0.000" /><testcase classname="tests.test_hc06_stability" name="test_hc06_support_not_touching" time="0.000" /><testcase classname="tests.test_hc06_stability" name="test_hc06_invalid_dimensions" time="0.000" /><testcase classname="tests.test_hc06_stability" name="test_hc06_negative_height_position" time="0.000" /><testcase classname="tests.test_hc06_stability" name="test_hc06_invalid_geometry[nan]" time="0.001" /><testcase classname="tests.test_hc06_stability" name="test_hc06_invalid_geometry[inf]" time="0.001" /><testcase classname="tests.test_hc06_stability" name="test_hc06_invalid_geometry[-inf]" time="0.001" /><testcase classname="tests.test_hc06_stability" name="test_hc06_called_from_check_all" time="0.001" /><testcase classname="tests.test_hc06_stability" name="test_hc06_independent_from_hc05" time="0.001" /><testcase classname="tests.test_hc07_stacking" name="test_hc07_single_layer[40-60-True]" time="0.002" /><testcase classname="tests.test_hc07_stacking" name="test_hc07_single_layer[60-60-True]" time="0.001" /><testcase classname="tests.test_hc07_stacking" name="test_hc07_single_layer[70-60-False]" time="0.001" /><testcase classname="tests.test_hc07_stacking" name="test_hc07_single_layer[100-60-False]" time="0.001" /><testcase classname="tests.test_hc07_stacking" name="test_hc07_multiple_layers[20-30-60-True]" time="0.001" /><testcase classname="tests.test_hc07_stacking" name="test_hc07_multiple_layers[30-30-60-True]" time="0.001" /><testcase classname="tests.test_hc07_stacking" name="test_hc07_multiple_layers[40-30-60-False]" time="0.001" /><testcase classname="tests.test_hc07_stacking" name="test_hc07_multiple_layers[50-30-60-False]" time="0.001" /><testcase classname="tests.test_hc07_stacking" name="test_hc07_split_load_across_two_supports" time="0.001" /><testcase classname="tests.test_hc07_stacking" name="test_hc07_split_load_exceeds_one_support" time="0.000" /><testcase classname="tests.test_hc07_stacking" name="test_hc07_new_package_on_floor" time="0.000" /><testcase classname="tests.test_hc07_stacking" name="test_hc07_missing_package_data" time="0.000" /><testcase classname="tests.test_hc07_stacking" name="test_hc07_invalid_weight[0]" time="0.001" /><testcase classname="tests.test_hc07_stacking" name="test_hc07_invalid_weight[-1]" time="0.001" /><testcase classname="tests.test_hc07_stacking" name="test_hc07_invalid_weight[nan]" time="0.001" /><testcase classname="tests.test_hc07_stacking" name="test_hc07_invalid_weight[inf]" time="0.001" /><testcase classname="tests.test_hc07_stacking" name="test_hc07_floating_package" time="0.000" /><testcase classname="tests.test_hc07_stacking" name="test_hc07_called_from_check_all" time="0.001" /><testcase classname="tests.test_hc07_stacking" name="test_hc07_null_stack_capacity_rejects_load" time="0.000" /><testcase classname="tests.test_hc07_stacking" name="test_hc07_null_stack_capacity_without_load" time="0.000" /><testcase classname="tests.test_hc07_stacking" name="test_hc07_zero_stack_capacity_rejects_load" time="0.000" /><testcase classname="tests.test_hc08_fragility" name="test_hc08_direct_stacking[False-False-True]" time="0.001" /><testcase classname="tests.test_hc08_fragility" name="test_hc08_direct_stacking[False-True-True]" time="0.001" /><testcase classname="tests.test_hc08_fragility" name="test_hc08_direct_stacking[True-False-False]" time="0.001" /><testcase classname="tests.test_hc08_fragility" name="test_hc08_direct_stacking[True-True-False]" time="0.001" /><testcase classname="tests.test_hc08_fragility" name="test_hc08_three_layers_fragile_bottom" time="0.001" /><testcase classname="tests.test_hc08_fragility" name="test_hc08_three_layers_fragile_middle" time="0.001" /><testcase classname="tests.test_hc08_fragility" name="test_hc08_three_layers_fragile_top" time="0.000" /><testcase classname="tests.test_hc08_fragility" name="test_hc08_fragile_packages_side_by_side" time="0.001" /><testcase classname="tests.test_hc08_fragility" name="test_hc08_package_above_but_not_touching" time="0.001" /><testcase classname="tests.test_hc08_fragility" name="test_hc08_package_touching_only_edge" time="0.001" /><testcase classname="tests.test_hc08_fragility" name="test_hc08_two_supports_one_fragile" time="0.001" /><testcase classname="tests.test_hc08_fragility" name="test_hc08_two_supports_none_fragile" time="0.000" /><testcase classname="tests.test_hc08_fragility" name="test_hc08_fragile_package_on_floor" time="0.000" /><testcase classname="tests.test_hc08_fragility" name="test_hc08_missing_package_metadata" time="0.000" /><testcase classname="tests.test_hc08_fragility" name="test_hc08_invalid_geometry[nan]" time="0.001" /><testcase classname="tests.test_hc08_fragility" name="test_hc08_invalid_geometry[inf]" time="0.001" /><testcase classname="tests.test_hc08_fragility" name="test_hc08_invalid_geometry[-inf]" time="0.001" /><testcase classname="tests.test_hc08_fragility" name="test_hc08_called_from_check_all" time="0.001" /><testcase classname="tests.test_hc09_stop_zones" name="test_hc09_first_stop_nearest_door" time="0.001" /><testcase classname="tests.test_hc09_stop_zones" name="test_hc09_unsorted_input" time="0.001" /><testcase classname="tests.test_hc09_stop_zones" name="test_hc09_default_buffer_is_10_cm" time="0.001" /><testcase classname="tests.test_hc09_stop_zones" name="test_hc09_custom_buffer_cm" time="0.001" /><testcase classname="tests.test_hc09_stop_zones" name="test_hc09_equal_volume_zones" time="0.001" /><testcase classname="tests.test_hc09_stop_zones" name="test_hc09_zone_length_proportional_to_volume" time="0.002" /><testcase classname="tests.test_hc09_stop_zones" name="test_hc09_single_stop" time="0.001" /><testcase classname="tests.test_hc09_stop_zones" name="test_hc09_no_stops" time="0.000" /><testcase classname="tests.test_hc09_stop_zones" name="test_hc09_invalid_buffer[-1]" time="0.001" /><testcase classname="tests.test_hc09_stop_zones" name="test_hc09_invalid_buffer[nan]" time="0.001" /><testcase classname="tests.test_hc09_stop_zones" name="test_hc09_invalid_buffer[inf]" time="0.001" /><testcase classname="tests.test_hc09_unload_feasibility" name="test_hc09_empty_plan" time="0.000" /><testcase classname="tests.test_hc09_unload_feasibility" name="test_hc09_single_package" time="0.001" /><testcase classname="tests.test_hc09_unload_feasibility" name="test_hc09_correct_stop_order" time="0.001" /><testcase classname="tests.test_hc09_unload_feasibility" name="test_hc09_later_stop_blocks_earlier_stop" time="0.001"><failure message="AssertionError: assert True is False&#10; +  where True = UnloadValidationResult(passed=True, violation_code=None, detail='', unload_sequence=['A', 'B']).passed">def test_hc09_later_stop_blocks_earlier_stop():
+        """Stop 2 nằm chắn giữa Stop 1 và cửa sau."""
+        early = make_placement("A", x=100, y=50)
+        late = make_placement("B", x=250, y=50)
+    
+        result = validate(
+            [early, late],
+            {"A": 1, "B": 2},
+        )
+    
+&gt;       assert result.passed is False
+E       AssertionError: assert True is False
+E        +  where True = UnloadValidationResult(passed=True, violation_code=None, detail='', unload_sequence=['A', 'B']).passed
+
+tests\test_hc09_unload_feasibility.py:123: AssertionError</failure></testcase><testcase classname="tests.test_hc09_unload_feasibility" name="test_hc09_different_lanes" time="0.001" /><testcase classname="tests.test_hc09_unload_feasibility" name="test_hc09_same_stop_unload_front_first" time="0.001" /><testcase classname="tests.test_hc09_unload_feasibility" name="test_hc09_narrow_door" time="0.001" /><testcase classname="tests.test_hc09_unload_feasibility" name="test_hc09_outside_door_alignment" time="0.001"><failure message="AssertionError: assert True is False&#10; +  where True = UnloadValidationResult(passed=True, violation_code=None, detail='', unload_sequence=['A']).passed">def test_hc09_outside_door_alignment():
+        """
+        Kiện nhỏ hơn cửa nhưng nằm lệch sang bên.
+        Không được dịch ngang nên không qua cửa.
+        """
+        a = make_placement("A", x=100, y=0, w=50)
+    
+        result = validate(
+            [a],
+            {"A": 1},
+            make_vehicle(door_w=100),
+        )
+    
+&gt;       assert result.passed is False
+E       AssertionError: assert True is False
+E        +  where True = UnloadValidationResult(passed=True, violation_code=None, detail='', unload_sequence=['A']).passed
+
+tests\test_hc09_unload_feasibility.py:194: AssertionError</failure></testcase><testcase classname="tests.test_hc09_unload_feasibility" name="test_hc09_door_height" time="0.001" /><testcase classname="tests.test_hc09_unload_feasibility" name="test_hc09_unloading_breaks_support" time="0.001" /><testcase classname="tests.test_hc09_unload_feasibility" name="test_hc09_unloading_top_first" time="0.001" /><testcase classname="tests.test_hc09_unload_feasibility" name="test_hc09_three_stops" time="0.001" /><testcase classname="tests.test_hc09_unload_feasibility" name="test_hc09_duplicate_package" time="0.000" /><testcase classname="tests.test_hc09_unload_feasibility" name="test_hc09_missing_stop_metadata" time="0.000" /><testcase classname="tests.test_hc09_unload_feasibility" name="test_hc09_initial_overlap" time="0.000" /><testcase classname="tests.test_hc09_unload_feasibility" name="test_hc09_initial_floating_package" time="0.000" /><testcase classname="tests.test_hc09_unload_feasibility" name="test_hc09_invalid_stop_sequence[0]" time="0.001"><failure message="pydantic_core._pydantic_core.ValidationError: 1 validation error for PackageData&#10;stop_index&#10;  Input should be greater than or equal to 1 [type=greater_than_equal, input_value=0, input_type=int]&#10;    For further information visit https://errors.pydantic.dev/2.13/v/greater_than_equal">invalid_stop = 0
+
+    @pytest.mark.parametrize(
+        "invalid_stop",
+        [0, -1],
+    )
+    def test_hc09_invalid_stop_sequence(invalid_stop):
+        """
+        Stop là số nguyên nhưng không hợp lệ.
+        Validator phải từ chối.
+        """
+        a = make_placement("A", x=100, y=50)
+    
+&gt;       result = validate(
+            [a],
+            {"A": invalid_stop},
+        )
+
+tests\test_hc09_unload_feasibility.py:323: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+tests\test_hc09_unload_feasibility.py:66: in validate
+    packages = {
+tests\test_hc09_unload_feasibility.py:67: in &lt;dictcomp&gt;
+    p.package_id: make_package(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+package_id = 'A', stop_index = 0
+
+    def make_package(package_id, stop_index):
+&gt;       return PackageData(
+            id=package_id,
+            l=50,
+            w=50,
+            h=50,
+            weight=20,
+            stop_index=stop_index,
+            fragile=False,
+            rotation_allowed=False,
+            allowed_rotations=[0],
+            max_stack_weight_kg=100,
+        )
+E       pydantic_core._pydantic_core.ValidationError: 1 validation error for PackageData
+E       stop_index
+E         Input should be greater than or equal to 1 [type=greater_than_equal, input_value=0, input_type=int]
+E           For further information visit https://errors.pydantic.dev/2.13/v/greater_than_equal
+
+tests\test_hc09_unload_feasibility.py:29: ValidationError</failure></testcase><testcase classname="tests.test_hc09_unload_feasibility" name="test_hc09_invalid_stop_sequence[-1]" time="0.001"><failure message="pydantic_core._pydantic_core.ValidationError: 1 validation error for PackageData&#10;stop_index&#10;  Input should be greater than or equal to 1 [type=greater_than_equal, input_value=-1, input_type=int]&#10;    For further information visit https://errors.pydantic.dev/2.13/v/greater_than_equal">invalid_stop = -1
+
+    @pytest.mark.parametrize(
+        "invalid_stop",
+        [0, -1],
+    )
+    def test_hc09_invalid_stop_sequence(invalid_stop):
+        """
+        Stop là số nguyên nhưng không hợp lệ.
+        Validator phải từ chối.
+        """
+        a = make_placement("A", x=100, y=50)
+    
+&gt;       result = validate(
+            [a],
+            {"A": invalid_stop},
+        )
+
+tests\test_hc09_unload_feasibility.py:323: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+tests\test_hc09_unload_feasibility.py:66: in validate
+    packages = {
+tests\test_hc09_unload_feasibility.py:67: in &lt;dictcomp&gt;
+    p.package_id: make_package(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+package_id = 'A', stop_index = -1
+
+    def make_package(package_id, stop_index):
+&gt;       return PackageData(
+            id=package_id,
+            l=50,
+            w=50,
+            h=50,
+            weight=20,
+            stop_index=stop_index,
+            fragile=False,
+            rotation_allowed=False,
+            allowed_rotations=[0],
+            max_stack_weight_kg=100,
+        )
+E       pydantic_core._pydantic_core.ValidationError: 1 validation error for PackageData
+E       stop_index
+E         Input should be greater than or equal to 1 [type=greater_than_equal, input_value=-1, input_type=int]
+E           For further information visit https://errors.pydantic.dev/2.13/v/greater_than_equal
+
+tests\test_hc09_unload_feasibility.py:29: ValidationError</failure></testcase><testcase classname="tests.test_hc09_unload_feasibility" name="test_hc09_fractional_stop_rejected_by_dto" time="0.001" /><testcase classname="tests.test_hc10_door" name="test_hc10_door_dimensions[180-180-True]" time="0.001" /><testcase classname="tests.test_hc10_door" name="test_hc10_door_dimensions[190-180-False]" time="0.001" /><testcase classname="tests.test_hc10_door" name="test_hc10_door_dimensions[180-200-False]" time="0.001" /><testcase classname="tests.test_hc10_door" name="test_hc10_door_dimensions[185-190-True]" time="0.001" /><testcase classname="tests.test_hc10_door" name="test_hc10_missing_or_invalid_door[None-190]" time="0.001" /><testcase classname="tests.test_hc10_door" name="test_hc10_missing_or_invalid_door[185-None]" time="0.001" /><testcase classname="tests.test_hc10_door" name="test_hc10_missing_or_invalid_door[None-None]" time="0.001" /><testcase classname="tests.test_hc10_door" name="test_hc10_missing_or_invalid_door[0-190]" time="0.001" /><testcase classname="tests.test_hc10_door" name="test_hc10_missing_or_invalid_door[185-0]" time="0.001" /><testcase classname="tests.test_hc10_door" name="test_hc10_is_called_from_check_all" time="0.001" /><testcase classname="tests.test_hc11_center_of_gravity" name="test_hc11_pass_centered" time="0.001" /><testcase classname="tests.test_hc11_center_of_gravity" name="test_hc11_pass_within_x_limit" time="0.000" /><testcase classname="tests.test_hc11_center_of_gravity" name="test_hc11_fail_x_offset" time="0.000" /><testcase classname="tests.test_hc11_center_of_gravity" name="test_hc11_fail_y_offset" time="0.001" /><testcase classname="tests.test_hc11_center_of_gravity" name="test_hc11_mass_weighted_center" time="0.000" /><testcase classname="tests.test_hc11_center_of_gravity" name="test_hc11_missing_package" time="0.001" /><testcase classname="tests.test_hc11_center_of_gravity" name="test_hc11_invalid_weight" time="0.001" /><testcase classname="tests.test_hc11_center_of_gravity" name="test_hc11_empty_placements" time="0.001" /><testcase classname="tests.test_hc11_hc12_solver_integration" name="test_solver_accepts_valid_hc11_hc12" time="0.001"><failure message="pydantic_core._pydantic_core.ValidationError: 1 validation error for PackageData&#10;stop_index&#10;  Input should be greater than or equal to 1 [type=greater_than_equal, input_value=0, input_type=int]&#10;    For further information visit https://errors.pydantic.dev/2.13/v/greater_than_equal">monkeypatch = &lt;_pytest.monkeypatch.MonkeyPatch object at 0x0000015309B673D0&gt;
+
+    def test_solver_accepts_valid_hc11_hc12(monkeypatch):
+        """
+        COG = (300, 120, 30), nằm chính giữa X/Y.
+    
+        Trục trước:
+          2000 + 1000 * (400-300)/400 = 2250 kg
+    
+        Trục sau:
+          2000 + 1000 * 300/400 = 2750 kg
+    
+        Cả hai không vượt giới hạn.
+        """
+    
+&gt;       problem = make_problem()
+                  ^^^^^^^^^^^^^^
+
+tests\test_hc11_hc12_solver_integration.py:116: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+zone_x = 250, cog_ratio = 0.15, front_limit = 5000, rear_limit = 6000
+package_weight = 1000
+
+    def make_problem(
+            *,
+            zone_x=250,
+            cog_ratio=0.15,
+            front_limit=5000,
+            rear_limit=6000,
+            package_weight=1000,
+    ):
+        return ProblemRequest(
+            vehicle=VehicleData(
+                inner_l=600,
+                inner_w=240,
+                inner_h=250,
+                door_w=240,
+                door_h=250,
+                max_payload_kg=10000,
+                max_cog_offset_ratio=cog_ratio,
+                front_axle_x=0,
+                rear_axle_x=400,
+                front_axle_limit_kg=front_limit,
+                rear_axle_limit_kg=rear_limit,
+                empty_front_axle_load_kg=2000,
+                empty_rear_axle_load_kg=2000,
+            ),
+            packages=[
+&gt;               PackageData(
+                    id="P1",
+                    l=100,
+                    w=240,
+                    h=60,
+                    weight=package_weight,
+                    allowed_rotations=[0],
+                    stop_index=0,
+                )
+            ],
+            stops=[],
+        )
+E       pydantic_core._pydantic_core.ValidationError: 1 validation error for PackageData
+E       stop_index
+E         Input should be greater than or equal to 1 [type=greater_than_equal, input_value=0, input_type=int]
+E           For further information visit https://errors.pydantic.dev/2.13/v/greater_than_equal
+
+tests\test_hc11_hc12_solver_integration.py:43: ValidationError</failure></testcase><testcase classname="tests.test_hc11_hc12_solver_integration" name="test_solver_rejects_hc11_violation" time="0.001"><failure message="pydantic_core._pydantic_core.ValidationError: 1 validation error for PackageData&#10;stop_index&#10;  Input should be greater than or equal to 1 [type=greater_than_equal, input_value=0, input_type=int]&#10;    For further information visit https://errors.pydantic.dev/2.13/v/greater_than_equal">monkeypatch = &lt;_pytest.monkeypatch.MonkeyPatch object at 0x0000015309B5C7D0&gt;
+
+    def test_solver_rejects_hc11_violation(monkeypatch):
+        """
+        Xếp kiện sát đầu thùng:
+        COG_X = 50 cm.
+    
+        Tâm thùng X = 300 cm.
+        Độ lệch = 250 / 600 &gt; 15%.
+    
+        Solver phải từ chối phương án.
+        """
+    
+        # Bước dời hàng theo X (_rebalance_along_x) sẽ đưa một kiện về giữa thùng;
+        # ở đây giả định không dời được để kiểm đúng lối từ chối của HC-11.
+        monkeypatch.setattr(
+            OptimizationClient,
+            "_rebalance_along_x",
+            staticmethod(lambda *args, **kwargs: None),
+        )
+&gt;       problem = make_problem()
+                  ^^^^^^^^^^^^^^
+
+tests\test_hc11_hc12_solver_integration.py:152: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+zone_x = 250, cog_ratio = 0.15, front_limit = 5000, rear_limit = 6000
+package_weight = 1000
+
+    def make_problem(
+            *,
+            zone_x=250,
+            cog_ratio=0.15,
+            front_limit=5000,
+            rear_limit=6000,
+            package_weight=1000,
+    ):
+        return ProblemRequest(
+            vehicle=VehicleData(
+                inner_l=600,
+                inner_w=240,
+                inner_h=250,
+                door_w=240,
+                door_h=250,
+                max_payload_kg=10000,
+                max_cog_offset_ratio=cog_ratio,
+                front_axle_x=0,
+                rear_axle_x=400,
+                front_axle_limit_kg=front_limit,
+                rear_axle_limit_kg=rear_limit,
+                empty_front_axle_load_kg=2000,
+                empty_rear_axle_load_kg=2000,
+            ),
+            packages=[
+&gt;               PackageData(
+                    id="P1",
+                    l=100,
+                    w=240,
+                    h=60,
+                    weight=package_weight,
+                    allowed_rotations=[0],
+                    stop_index=0,
+                )
+            ],
+            stops=[],
+        )
+E       pydantic_core._pydantic_core.ValidationError: 1 validation error for PackageData
+E       stop_index
+E         Input should be greater than or equal to 1 [type=greater_than_equal, input_value=0, input_type=int]
+E           For further information visit https://errors.pydantic.dev/2.13/v/greater_than_equal
+
+tests\test_hc11_hc12_solver_integration.py:43: ValidationError</failure></testcase><testcase classname="tests.test_hc11_hc12_solver_integration" name="test_solver_moves_cargo_to_fix_hc11" time="0.001"><failure message="pydantic_core._pydantic_core.ValidationError: 1 validation error for PackageData&#10;stop_index&#10;  Input should be greater than or equal to 1 [type=greater_than_equal, input_value=0, input_type=int]&#10;    For further information visit https://errors.pydantic.dev/2.13/v/greater_than_equal">monkeypatch = &lt;_pytest.monkeypatch.MonkeyPatch object at 0x0000015309B74F50&gt;
+
+    def test_solver_moves_cargo_to_fix_hc11(monkeypatch):
+        """Kiện bị dồn sát cửa (COG_X = 525): dời theo X về giữa thùng thì HC-11 đạt, phương án được nhận."""
+    
+&gt;       problem = make_problem()
+                  ^^^^^^^^^^^^^^
+
+tests\test_hc11_hc12_solver_integration.py:173: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+zone_x = 250, cog_ratio = 0.15, front_limit = 5000, rear_limit = 6000
+package_weight = 1000
+
+    def make_problem(
+            *,
+            zone_x=250,
+            cog_ratio=0.15,
+            front_limit=5000,
+            rear_limit=6000,
+            package_weight=1000,
+    ):
+        return ProblemRequest(
+            vehicle=VehicleData(
+                inner_l=600,
+                inner_w=240,
+                inner_h=250,
+                door_w=240,
+                door_h=250,
+                max_payload_kg=10000,
+                max_cog_offset_ratio=cog_ratio,
+                front_axle_x=0,
+                rear_axle_x=400,
+                front_axle_limit_kg=front_limit,
+                rear_axle_limit_kg=rear_limit,
+                empty_front_axle_load_kg=2000,
+                empty_rear_axle_load_kg=2000,
+            ),
+            packages=[
+&gt;               PackageData(
+                    id="P1",
+                    l=100,
+                    w=240,
+                    h=60,
+                    weight=package_weight,
+                    allowed_rotations=[0],
+                    stop_index=0,
+                )
+            ],
+            stops=[],
+        )
+E       pydantic_core._pydantic_core.ValidationError: 1 validation error for PackageData
+E       stop_index
+E         Input should be greater than or equal to 1 [type=greater_than_equal, input_value=0, input_type=int]
+E           For further information visit https://errors.pydantic.dev/2.13/v/greater_than_equal
+
+tests\test_hc11_hc12_solver_integration.py:43: ValidationError</failure></testcase><testcase classname="tests.test_hc11_hc12_solver_integration" name="test_solver_rejects_hc12_violation" time="0.001"><failure message="pydantic_core._pydantic_core.ValidationError: 1 validation error for PackageData&#10;stop_index&#10;  Input should be greater than or equal to 1 [type=greater_than_equal, input_value=0, input_type=int]&#10;    For further information visit https://errors.pydantic.dev/2.13/v/greater_than_equal">monkeypatch = &lt;_pytest.monkeypatch.MonkeyPatch object at 0x0000015309B42A10&gt;
+
+    def test_solver_rejects_hc12_violation(monkeypatch):
+        """
+        COG hợp lệ ở giữa thùng.
+    
+        Rear axle load = 2750 kg.
+        Rear axle limit = 2500 kg.
+    
+        Solver phải từ chối phương án.
+        """
+    
+&gt;       problem = make_problem(
+            rear_limit=2500,
+        )
+
+tests\test_hc11_hc12_solver_integration.py:195: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+zone_x = 250, cog_ratio = 0.15, front_limit = 5000, rear_limit = 2500
+package_weight = 1000
+
+    def make_problem(
+            *,
+            zone_x=250,
+            cog_ratio=0.15,
+            front_limit=5000,
+            rear_limit=6000,
+            package_weight=1000,
+    ):
+        return ProblemRequest(
+            vehicle=VehicleData(
+                inner_l=600,
+                inner_w=240,
+                inner_h=250,
+                door_w=240,
+                door_h=250,
+                max_payload_kg=10000,
+                max_cog_offset_ratio=cog_ratio,
+                front_axle_x=0,
+                rear_axle_x=400,
+                front_axle_limit_kg=front_limit,
+                rear_axle_limit_kg=rear_limit,
+                empty_front_axle_load_kg=2000,
+                empty_rear_axle_load_kg=2000,
+            ),
+            packages=[
+&gt;               PackageData(
+                    id="P1",
+                    l=100,
+                    w=240,
+                    h=60,
+                    weight=package_weight,
+                    allowed_rotations=[0],
+                    stop_index=0,
+                )
+            ],
+            stops=[],
+        )
+E       pydantic_core._pydantic_core.ValidationError: 1 validation error for PackageData
+E       stop_index
+E         Input should be greater than or equal to 1 [type=greater_than_equal, input_value=0, input_type=int]
+E           For further information visit https://errors.pydantic.dev/2.13/v/greater_than_equal
+
+tests\test_hc11_hc12_solver_integration.py:43: ValidationError</failure></testcase><testcase classname="tests.test_hc11_hc12_solver_integration" name="test_solver_multistop_imbalanced_weight_hc09_hc11_hc12" time="0.003" /><testcase classname="tests.test_hc12_axle_load" name="test_hc12_pass_balanced_load" time="0.001" /><testcase classname="tests.test_hc12_axle_load" name="test_hc12_fail_front_axle" time="0.001" /><testcase classname="tests.test_hc12_axle_load" name="test_hc12_fail_rear_axle" time="0.002" /><testcase classname="tests.test_hc12_axle_load" name="test_hc12_missing_axle_configuration" time="0.001" /><testcase classname="tests.test_hc12_axle_load" name="test_hc12_invalid_wheelbase" time="0.001" /><testcase classname="tests.test_hc12_axle_load" name="test_hc12_missing_package" time="0.001" /><testcase classname="tests.test_hc12_axle_load" name="test_hc12_invalid_package_weight" time="0.000" /><testcase classname="tests.test_hc12_axle_load" name="test_hc12_empty_vehicle_overload" time="0.001" /><testcase classname="tests.test_hc12_axle_load" name="test_hc12_multiple_packages" time="0.001" /><testcase classname="tests.test_hc12_axle_load" name="test_hc12_negative_front_reaction" time="0.000" /><testcase classname="tests.test_hc12_axle_load" name="test_hc12_empty_load_pass" time="0.000" /><testcase classname="tests.test_health" name="test_health_is_up_when_database_answers" time="0.014" /><testcase classname="tests.test_health" name="test_health_is_503_when_database_fails" time="0.008" /><testcase classname="tests.test_keycloak_token_provider.TestKeycloakTokenProvider" name="test_get_service_token_success" time="0.003" /><testcase classname="tests.test_keycloak_token_provider.TestKeycloakTokenProvider" name="test_get_service_token_uses_cache" time="0.003" /><testcase classname="tests.test_keycloak_token_provider.TestKeycloakTokenProvider" name="test_get_service_token_auto_refreshes_when_expiring_soon" time="0.003" /><testcase classname="tests.test_keycloak_token_provider.TestKeycloakTokenProvider" name="test_get_service_token_http_error_raises_service_authentication_exception" time="0.003" /><testcase classname="tests.test_keycloak_token_provider.TestKeycloakTokenProvider" name="test_get_service_token_network_error_raises_service_authentication_exception" time="0.004" /><testcase classname="tests.test_load_balance_search" name="test_mass_aware_zones_expand_heavy_small_volume_stop_without_changing_order" time="0.001" /><testcase classname="tests.test_load_balance_search" name="test_rigid_translation_repairs_cog_before_rejecting" time="0.002" /><testcase classname="tests.test_load_balance_search" name="test_repack_recovers_when_full_span_prevents_rigid_translation" time="0.014" /><testcase classname="tests.test_load_balance_search" name="test_one_stop_holds_most_mass_and_all_stops_unload_safely[1]" time="0.009" /><testcase classname="tests.test_load_balance_search" name="test_one_stop_holds_most_mass_and_all_stops_unload_safely[2]" time="0.008" /><testcase classname="tests.test_load_balance_search" name="test_one_stop_holds_most_mass_and_all_stops_unload_safely[3]" time="0.039" /><testcase classname="tests.test_load_balance_search" name="test_synthetic_eighteen_packages_with_uneven_mass_is_safe" time="0.027" /><testcase classname="tests.test_load_balance_search" name="test_axle_limits_steer_cog_instead_of_always_targeting_geometric_center" time="0.002" /><testcase classname="tests.test_load_balance_search" name="test_balanced_cog_never_bypasses_unload_failure" time="0.002" /><testcase classname="tests.test_load_balance_search" name="test_genuinely_impossible_axle_capacity_keeps_fail_safe" time="0.006" /><testcase classname="tests.test_load_balance_search" name="test_cargo_counterbalance_can_reduce_an_empty_axle_overload" time="0.001" /><testcase classname="tests.test_load_balance_search" name="test_duplicate_package_or_stop_identity_is_rejected" time="0.001" /><testcase classname="tests.test_load_balance_search" name="test_random_small_loads_never_duplicate_lose_or_accept_unsafe_packages[0]" time="0.007" /><testcase classname="tests.test_load_balance_search" name="test_random_small_loads_never_duplicate_lose_or_accept_unsafe_packages[1]" time="0.008" /><testcase classname="tests.test_load_balance_search" name="test_random_small_loads_never_duplicate_lose_or_accept_unsafe_packages[2]" time="0.011" /><testcase classname="tests.test_load_balance_search" name="test_random_small_loads_never_duplicate_lose_or_accept_unsafe_packages[3]" time="0.008" /><testcase classname="tests.test_load_balance_search" name="test_budget_is_cooperative_bounded_and_partition_survives_timeout" time="0.003" /><testcase classname="tests.test_load_balance_search" name="test_unload_validation_checks_absolute_deadline" time="0.001" /><testcase classname="tests.test_load_balance_search" name="test_overweight_reason_is_compatible_with_existing_postgresql_enum" time="0.001" /><testcase classname="tests.test_load_balance_search" name="test_full_revalidation_rejects_fragile_support_and_forged_rotation" time="0.001" /><testcase classname="tests.test_load_balance_search" name="test_logs_include_stop_mass_volume_zones_and_improvement_reason" time="0.002" /><testcase classname="tests.test_load_balance_search" name="test_invalid_initial_eighteen_accepts_valid_seventeen_as_partial" time="0.117" /><testcase classname="tests.test_load_balance_search" name="test_valid_initial_partial_survives_unsuccessful_improvement" time="0.002" /><testcase classname="tests.test_load_balance_search" name="test_timeout_preserves_validated_plan_through_final_response" time="0.002" /><testcase classname="tests.test_load_balance_search" name="test_timeout_during_trial_validation_keeps_previous_incumbent" time="0.001" /><testcase classname="tests.test_load_balance_search" name="test_ranking_prioritizes_count_then_volume_then_balance" time="0.001" /><testcase classname="tests.test_load_balance_search" name="test_validated_snapshot_cannot_be_changed_by_trial_or_response_mutation" time="0.001" /><testcase classname="tests.test_load_balance_search" name="test_invalid_trials_never_replace_best_validated_plan[collision]" time="0.001" /><testcase classname="tests.test_load_balance_search" name="test_invalid_trials_never_replace_best_validated_plan[stacking]" time="0.001" /><testcase classname="tests.test_load_balance_search" name="test_invalid_trials_never_replace_best_validated_plan[orientation]" time="0.001" /><testcase classname="tests.test_load_balance_search" name="test_invalid_trials_never_replace_best_validated_plan[cog]" time="0.001" /><testcase classname="tests.test_load_balance_search" name="test_invalid_trials_never_replace_best_validated_plan[axle]" time="0.001" /><testcase classname="tests.test_load_balance_search" name="test_invalid_trials_never_replace_best_validated_plan[unload]" time="0.001" /><testcase classname="tests.test_load_balance_search" name="test_full_valid_initial_is_unchanged_and_skips_repack" time="0.001" /><testcase classname="tests.test_load_balance_search" name="test_repack_retains_validated_prefix_when_next_package_times_out" time="0.002" /><testcase classname="tests.test_load_balance_search" name="test_repack_generation_and_validation_are_bounded" time="0.002" /><testcase classname="tests.test_load_plan_api_upgrade.TestLoadPlanApiUpgrade" name="test_load_plan_response_includes_3d_metrics_and_camel_case" time="0.032" /><testcase classname="tests.test_load_plan_api_upgrade.TestLoadPlanApiUpgrade" name="test_package_placement_response_includes_stop_zone_info" time="0.028" /><testcase classname="tests.test_load_plan_api_upgrade.TestLoadPlanApiUpgrade" name="test_compare_plans_returns_metrics_diff_and_deadline_feasibility" time="0.025" /><testcase classname="tests.test_load_plan_api_upgrade.TestLoadPlanApiUpgrade" name="test_compare_plans_api_without_token_returns_401" time="0.023" /><testcase classname="tests.test_load_plan_approval.TestLoadPlanServiceApproval" name="test_approving_another_plan_of_the_trip_unapproves_the_old_one" time="0.041" /><testcase classname="tests.test_load_plan_approval.TestLoadPlanServiceApproval" name="test_approve_plan_success_sets_approved_and_creates_audit_log" time="0.026" /><testcase classname="tests.test_load_plan_approval.TestLoadPlanServiceApproval" name="test_approve_plan_not_found_raises_exception" time="0.012" /><testcase classname="tests.test_load_plan_approval.TestLoadPlanServiceApproval" name="test_approve_plan_already_approved_raises_exception" time="0.020" /><testcase classname="tests.test_load_plan_approval.TestLoadPlanServiceApproval" name="test_approve_plan_has_no_placements_raises_exception" time="0.021" /><testcase classname="tests.test_load_plan_approval.TestLoadPlanServiceApproval" name="test_approve_plan_invalid_lifo_duplicate_step_sequence_raises_exception" time="0.019" /><testcase classname="tests.test_load_plan_approval.TestLoadPlanApproveApi" name="test_approve_plan_without_token_returns_401" time="0.023" /><testcase classname="tests.test_load_plan_approval.TestApprovalAuditCompany" name="test_company_of_the_job" time="0.026" /><testcase classname="tests.test_load_plan_approval.TestApprovalAuditCompany" name="test_falls_back_to_company_of_the_trip" time="0.027" /><testcase classname="tests.test_load_plan_approval.TestApprovalAuditCompany" name="test_no_company_known_stays_null" time="0.023" /><testcase classname="tests.test_loadmaster_credit_client.TestLoadmasterCreditClient" name="test_refund_credit_success" time="0.003" /><testcase classname="tests.test_loadmaster_credit_client.TestLoadmasterCreditClient" name="test_refund_credit_retry_success" time="0.026" /><testcase classname="tests.test_loadmaster_credit_client.TestLoadmasterCreditClient" name="test_refund_credit_all_retries_fail_logs_manual_review" time="0.031" /><testcase classname="tests.test_optimization_client.TestOptimizationClientHttp" name="test_solve_http_success_sends_bearer_and_returns_engine_response" time="0.003" /><testcase classname="tests.test_optimization_client.TestOptimizationClientHttp" name="test_solve_http_timeout_raises_timeout_exception" time="0.002" /><testcase classname="tests.test_optimization_client.TestOptimizationClientHttp" name="test_solve_http_server_error_raises_status_error" time="0.002" /><testcase classname="tests.test_optimization_client.TestOptimizationClientInProcess" name="test_solve_in_process_places_fitting_packages_and_computes_metrics" time="0.001" /><testcase classname="tests.test_optimization_client.TestOptimizationClientInProcess" name="test_solve_in_process_marks_oversized_packages_unplaced" time="0.001" /><testcase classname="tests.test_optimization_controller.TestOptimizationAuth" name="test_submit_job_without_token_returns_401" time="0.006" /><testcase classname="tests.test_optimization_dtos.TestProblemRequestDto" name="test_problem_request_valid_construction_and_json_roundtrip" time="0.004" /><testcase classname="tests.test_optimization_dtos.TestProblemRequestDto" name="test_problem_request_defaults" time="0.001" /><testcase classname="tests.test_optimization_dtos.TestProblemRequestDto" name="test_vehicle_data_validation_missing_required" time="0.000" /><testcase classname="tests.test_optimization_dtos.TestEngineOptimizationResponseDto" name="test_engine_response_valid_construction_and_json_roundtrip" time="0.001" /><testcase classname="tests.test_optimization_dtos.TestEngineOptimizationResponseDto" name="test_optimization_result_alias" time="0.000" /><testcase classname="tests.test_optimization_dtos.TestJobStatusNotificationDto" name="test_job_status_notification_valid" time="0.000" /><testcase classname="tests.test_optimization_dtos.TestJobStatusNotificationDto" name="test_job_status_notification_optional_fields" time="0.000" /><testcase classname="tests.test_optimization_job_service.TestCreateJob" name="test_create_job_success_sets_pending_and_generates_uuid" time="0.010"><failure message="app.exception.app_exception.AppException: Bạn không có quyền thực hiện hành động này">self = &lt;tests.test_optimization_job_service.TestCreateJob object at 0x0000015308453A10&gt;
+service = &lt;app.service.optimize.optimization_job_service.OptimizationJobService object at 0x000001530A16A890&gt;
+db_session = &lt;sqlalchemy.orm.session.Session object at 0x000001530A16A810&gt;
+existing_trip = &lt;app.entity.trip_model.Trip object at 0x000001530A16A410&gt;
+
+    def test_create_job_success_sets_pending_and_generates_uuid(self, service, db_session, existing_trip):
+        """Tạo job thành công: status=PENDING, có job_uuid hợp lệ, lưu vào DB"""
+        req = OptimizationJobRequest(
+            trip_id=existing_trip.id,
+            objective=OptimizationObjective.MAX_VOLUME,
+            time_limit_sec=60,
+        )
+    
+&gt;       job = service.create_job(trip_id=existing_trip.id, config=req, db=db_session)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests\test_optimization_job_service.py:76: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = &lt;app.service.optimize.optimization_job_service.OptimizationJobService object at 0x000001530A16A890&gt;
+trip_id = 101
+config = OptimizationJobRequest(trip_id=101, job_uuid=None, objective=&lt;OptimizationObjective.MAX_VOLUME: 'MAX_VOLUME'&gt;, time_limit_sec=60, seed=None, algorithm_name=None, company_id=None, subscription_tier='BASIC', pinned_placements=[])
+db = &lt;sqlalchemy.orm.session.Session object at 0x000001530A16A810&gt;
+
+    def create_job(
+            self,
+            trip_id: int,
+            config: OptimizationJobRequest,
+            db: Session,
+    ) -&gt; OptimizationJob:
+        """
+        Retired: Spring Boot creates and charges jobs in one transaction.
+        """
+&gt;       raise AppException(ErrorCode.UNAUTHORIZED)  # Spring is the sole job/credit admission authority.
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       app.exception.app_exception.AppException: Bạn không có quyền thực hiện hành động này
+
+app\service\optimize\optimization_job_service.py:29: AppException</failure></testcase><testcase classname="tests.test_optimization_job_service.TestCreateJob" name="test_create_job_with_non_existent_trip_raises_error" time="0.007"><failure message="AssertionError: assert &lt;ErrorCode.UN...UNAUTHORIZED'&gt; == &lt;ErrorCode.TR...IP_NOT_FOUND'&gt;&#10;  &#10;  - TRIP_NOT_FOUND&#10;  + UNAUTHORIZED">self = &lt;tests.test_optimization_job_service.TestCreateJob object at 0x0000015308453DD0&gt;
+service = &lt;app.service.optimize.optimization_job_service.OptimizationJobService object at 0x000001530A0ED910&gt;
+db_session = &lt;sqlalchemy.orm.session.Session object at 0x000001530A0EFD90&gt;
+
+    def test_create_job_with_non_existent_trip_raises_error(self, service, db_session):
+        """Tạo job với trip không tồn tại -&gt; raise AppException(TRIP_NOT_FOUND)"""
+        non_existent_trip_id = 999_999
+        req = OptimizationJobRequest(
+            trip_id=non_existent_trip_id,
+            objective=OptimizationObjective.MAX_VOLUME,
+        )
+    
+        with pytest.raises(AppException) as exc_info:
+            service.create_job(trip_id=non_existent_trip_id, config=req, db=db_session)
+    
+&gt;       assert exc_info.value.error_code == ErrorCode.TRIP_NOT_FOUND
+E       AssertionError: assert &lt;ErrorCode.UN...UNAUTHORIZED'&gt; == &lt;ErrorCode.TR...IP_NOT_FOUND'&gt;
+E         
+E         - TRIP_NOT_FOUND
+E         + UNAUTHORIZED
+
+tests\test_optimization_job_service.py:98: AssertionError</failure></testcase><testcase classname="tests.test_optimization_job_service.TestGetJob" name="test_get_job_by_uuid_returns_job_and_metadata" time="0.008"><failure message="app.exception.app_exception.AppException: Bạn không có quyền thực hiện hành động này">self = &lt;tests.test_optimization_job_service.TestGetJob object at 0x000001530845C390&gt;
+service = &lt;app.service.optimize.optimization_job_service.OptimizationJobService object at 0x000001530A12A6D0&gt;
+db_session = &lt;sqlalchemy.orm.session.Session object at 0x000001530A129450&gt;
+existing_trip = &lt;app.entity.trip_model.Trip object at 0x000001530A129490&gt;
+
+    def test_get_job_by_uuid_returns_job_and_metadata(self, service, db_session, existing_trip):
+        """get_job(job_uuid) trả về thông tin job đúng"""
+        req = OptimizationJobRequest(trip_id=existing_trip.id, objective=OptimizationObjective.AXLE_BALANCE)
+&gt;       created = service.create_job(trip_id=existing_trip.id, config=req, db=db_session)
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests\test_optimization_job_service.py:105: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = &lt;app.service.optimize.optimization_job_service.OptimizationJobService object at 0x000001530A12A6D0&gt;
+trip_id = 101
+config = OptimizationJobRequest(trip_id=101, job_uuid=None, objective=&lt;OptimizationObjective.AXLE_BALANCE: 'AXLE_BALANCE'&gt;, time_limit_sec=60, seed=None, algorithm_name=None, company_id=None, subscription_tier='BASIC', pinned_placements=[])
+db = &lt;sqlalchemy.orm.session.Session object at 0x000001530A129450&gt;
+
+    def create_job(
+            self,
+            trip_id: int,
+            config: OptimizationJobRequest,
+            db: Session,
+    ) -&gt; OptimizationJob:
+        """
+        Retired: Spring Boot creates and charges jobs in one transaction.
+        """
+&gt;       raise AppException(ErrorCode.UNAUTHORIZED)  # Spring is the sole job/credit admission authority.
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       app.exception.app_exception.AppException: Bạn không có quyền thực hiện hành động này
+
+app\service\optimize\optimization_job_service.py:29: AppException</failure></testcase><testcase classname="tests.test_optimization_job_service.TestGetJob" name="test_get_job_not_found_raises_error" time="0.008" /><testcase classname="tests.test_optimization_job_service.TestStatusFlow" name="test_status_transition_pending_to_running_to_terminal[COMPLETED]" time="0.010"><failure message="app.exception.app_exception.AppException: Bạn không có quyền thực hiện hành động này">self = &lt;tests.test_optimization_job_service.TestStatusFlow object at 0x000001530845D810&gt;
+service = &lt;app.service.optimize.optimization_job_service.OptimizationJobService object at 0x0000015309F8B350&gt;
+db_session = &lt;sqlalchemy.orm.session.Session object at 0x0000015309F67590&gt;
+existing_trip = &lt;app.entity.trip_model.Trip object at 0x0000015309FA8750&gt;
+target_status = &lt;OptimizationJobStatus.COMPLETED: 'COMPLETED'&gt;
+
+    @pytest.mark.parametrize(
+        "target_status",
+        [
+            OptimizationJobStatus.COMPLETED,
+            OptimizationJobStatus.FAILED,
+            OptimizationJobStatus.TIMEOUT,
+            OptimizationJobStatus.NO_SOLUTION,
+        ],
+    )
+    def test_status_transition_pending_to_running_to_terminal(
+        self, service, db_session, existing_trip, target_status
+    ):
+        """Kiểm tra status flow: PENDING -&gt; RUNNING -&gt; COMPLETED / FAILED / TIMEOUT / NO_SOLUTION"""
+        req = OptimizationJobRequest(trip_id=existing_trip.id, objective=OptimizationObjective.MAX_VOLUME)
+&gt;       job = service.create_job(trip_id=existing_trip.id, config=req, db=db_session)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests\test_optimization_job_service.py:137: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = &lt;app.service.optimize.optimization_job_service.OptimizationJobService object at 0x0000015309F8B350&gt;
+trip_id = 101
+config = OptimizationJobRequest(trip_id=101, job_uuid=None, objective=&lt;OptimizationObjective.MAX_VOLUME: 'MAX_VOLUME'&gt;, time_limit_sec=60, seed=None, algorithm_name=None, company_id=None, subscription_tier='BASIC', pinned_placements=[])
+db = &lt;sqlalchemy.orm.session.Session object at 0x0000015309F67590&gt;
+
+    def create_job(
+            self,
+            trip_id: int,
+            config: OptimizationJobRequest,
+            db: Session,
+    ) -&gt; OptimizationJob:
+        """
+        Retired: Spring Boot creates and charges jobs in one transaction.
+        """
+&gt;       raise AppException(ErrorCode.UNAUTHORIZED)  # Spring is the sole job/credit admission authority.
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       app.exception.app_exception.AppException: Bạn không có quyền thực hiện hành động này
+
+app\service\optimize\optimization_job_service.py:29: AppException</failure></testcase><testcase classname="tests.test_optimization_job_service.TestStatusFlow" name="test_status_transition_pending_to_running_to_terminal[FAILED]" time="0.009"><failure message="app.exception.app_exception.AppException: Bạn không có quyền thực hiện hành động này">self = &lt;tests.test_optimization_job_service.TestStatusFlow object at 0x000001530845DA50&gt;
+service = &lt;app.service.optimize.optimization_job_service.OptimizationJobService object at 0x000001530A0F3E90&gt;
+db_session = &lt;sqlalchemy.orm.session.Session object at 0x000001530A1675D0&gt;
+existing_trip = &lt;app.entity.trip_model.Trip object at 0x000001530A165F50&gt;
+target_status = &lt;OptimizationJobStatus.FAILED: 'FAILED'&gt;
+
+    @pytest.mark.parametrize(
+        "target_status",
+        [
+            OptimizationJobStatus.COMPLETED,
+            OptimizationJobStatus.FAILED,
+            OptimizationJobStatus.TIMEOUT,
+            OptimizationJobStatus.NO_SOLUTION,
+        ],
+    )
+    def test_status_transition_pending_to_running_to_terminal(
+        self, service, db_session, existing_trip, target_status
+    ):
+        """Kiểm tra status flow: PENDING -&gt; RUNNING -&gt; COMPLETED / FAILED / TIMEOUT / NO_SOLUTION"""
+        req = OptimizationJobRequest(trip_id=existing_trip.id, objective=OptimizationObjective.MAX_VOLUME)
+&gt;       job = service.create_job(trip_id=existing_trip.id, config=req, db=db_session)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests\test_optimization_job_service.py:137: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = &lt;app.service.optimize.optimization_job_service.OptimizationJobService object at 0x000001530A0F3E90&gt;
+trip_id = 101
+config = OptimizationJobRequest(trip_id=101, job_uuid=None, objective=&lt;OptimizationObjective.MAX_VOLUME: 'MAX_VOLUME'&gt;, time_limit_sec=60, seed=None, algorithm_name=None, company_id=None, subscription_tier='BASIC', pinned_placements=[])
+db = &lt;sqlalchemy.orm.session.Session object at 0x000001530A1675D0&gt;
+
+    def create_job(
+            self,
+            trip_id: int,
+            config: OptimizationJobRequest,
+            db: Session,
+    ) -&gt; OptimizationJob:
+        """
+        Retired: Spring Boot creates and charges jobs in one transaction.
+        """
+&gt;       raise AppException(ErrorCode.UNAUTHORIZED)  # Spring is the sole job/credit admission authority.
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       app.exception.app_exception.AppException: Bạn không có quyền thực hiện hành động này
+
+app\service\optimize\optimization_job_service.py:29: AppException</failure></testcase><testcase classname="tests.test_optimization_job_service.TestStatusFlow" name="test_status_transition_pending_to_running_to_terminal[TIMEOUT]" time="0.009"><failure message="app.exception.app_exception.AppException: Bạn không có quyền thực hiện hành động này">self = &lt;tests.test_optimization_job_service.TestStatusFlow object at 0x000001530845DC90&gt;
+service = &lt;app.service.optimize.optimization_job_service.OptimizationJobService object at 0x000001530A062090&gt;
+db_session = &lt;sqlalchemy.orm.session.Session object at 0x0000015309DCEC90&gt;
+existing_trip = &lt;app.entity.trip_model.Trip object at 0x000001530A060B90&gt;
+target_status = &lt;OptimizationJobStatus.TIMEOUT: 'TIMEOUT'&gt;
+
+    @pytest.mark.parametrize(
+        "target_status",
+        [
+            OptimizationJobStatus.COMPLETED,
+            OptimizationJobStatus.FAILED,
+            OptimizationJobStatus.TIMEOUT,
+            OptimizationJobStatus.NO_SOLUTION,
+        ],
+    )
+    def test_status_transition_pending_to_running_to_terminal(
+        self, service, db_session, existing_trip, target_status
+    ):
+        """Kiểm tra status flow: PENDING -&gt; RUNNING -&gt; COMPLETED / FAILED / TIMEOUT / NO_SOLUTION"""
+        req = OptimizationJobRequest(trip_id=existing_trip.id, objective=OptimizationObjective.MAX_VOLUME)
+&gt;       job = service.create_job(trip_id=existing_trip.id, config=req, db=db_session)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests\test_optimization_job_service.py:137: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = &lt;app.service.optimize.optimization_job_service.OptimizationJobService object at 0x000001530A062090&gt;
+trip_id = 101
+config = OptimizationJobRequest(trip_id=101, job_uuid=None, objective=&lt;OptimizationObjective.MAX_VOLUME: 'MAX_VOLUME'&gt;, time_limit_sec=60, seed=None, algorithm_name=None, company_id=None, subscription_tier='BASIC', pinned_placements=[])
+db = &lt;sqlalchemy.orm.session.Session object at 0x0000015309DCEC90&gt;
+
+    def create_job(
+            self,
+            trip_id: int,
+            config: OptimizationJobRequest,
+            db: Session,
+    ) -&gt; OptimizationJob:
+        """
+        Retired: Spring Boot creates and charges jobs in one transaction.
+        """
+&gt;       raise AppException(ErrorCode.UNAUTHORIZED)  # Spring is the sole job/credit admission authority.
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       app.exception.app_exception.AppException: Bạn không có quyền thực hiện hành động này
+
+app\service\optimize\optimization_job_service.py:29: AppException</failure></testcase><testcase classname="tests.test_optimization_job_service.TestStatusFlow" name="test_status_transition_pending_to_running_to_terminal[NO_SOLUTION]" time="0.008"><failure message="app.exception.app_exception.AppException: Bạn không có quyền thực hiện hành động này">self = &lt;tests.test_optimization_job_service.TestStatusFlow object at 0x000001530845DED0&gt;
+service = &lt;app.service.optimize.optimization_job_service.OptimizationJobService object at 0x0000015309F8D890&gt;
+db_session = &lt;sqlalchemy.orm.session.Session object at 0x000001530A01F6D0&gt;
+existing_trip = &lt;app.entity.trip_model.Trip object at 0x000001530A01DDD0&gt;
+target_status = &lt;OptimizationJobStatus.NO_SOLUTION: 'NO_SOLUTION'&gt;
+
+    @pytest.mark.parametrize(
+        "target_status",
+        [
+            OptimizationJobStatus.COMPLETED,
+            OptimizationJobStatus.FAILED,
+            OptimizationJobStatus.TIMEOUT,
+            OptimizationJobStatus.NO_SOLUTION,
+        ],
+    )
+    def test_status_transition_pending_to_running_to_terminal(
+        self, service, db_session, existing_trip, target_status
+    ):
+        """Kiểm tra status flow: PENDING -&gt; RUNNING -&gt; COMPLETED / FAILED / TIMEOUT / NO_SOLUTION"""
+        req = OptimizationJobRequest(trip_id=existing_trip.id, objective=OptimizationObjective.MAX_VOLUME)
+&gt;       job = service.create_job(trip_id=existing_trip.id, config=req, db=db_session)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests\test_optimization_job_service.py:137: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = &lt;app.service.optimize.optimization_job_service.OptimizationJobService object at 0x0000015309F8D890&gt;
+trip_id = 101
+config = OptimizationJobRequest(trip_id=101, job_uuid=None, objective=&lt;OptimizationObjective.MAX_VOLUME: 'MAX_VOLUME'&gt;, time_limit_sec=60, seed=None, algorithm_name=None, company_id=None, subscription_tier='BASIC', pinned_placements=[])
+db = &lt;sqlalchemy.orm.session.Session object at 0x000001530A01F6D0&gt;
+
+    def create_job(
+            self,
+            trip_id: int,
+            config: OptimizationJobRequest,
+            db: Session,
+    ) -&gt; OptimizationJob:
+        """
+        Retired: Spring Boot creates and charges jobs in one transaction.
+        """
+&gt;       raise AppException(ErrorCode.UNAUTHORIZED)  # Spring is the sole job/credit admission authority.
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       app.exception.app_exception.AppException: Bạn không có quyền thực hiện hành động này
+
+app\service\optimize\optimization_job_service.py:29: AppException</failure></testcase><testcase classname="tests.test_optimization_job_service.TestQueries" name="test_find_by_trip_id" time="0.010"><failure message="app.exception.app_exception.AppException: Bạn không có quyền thực hiện hành động này">self = &lt;tests.test_optimization_job_service.TestQueries object at 0x000001530845E490&gt;
+service = &lt;app.service.optimize.optimization_job_service.OptimizationJobService object at 0x0000015309C08ED0&gt;
+db_session = &lt;sqlalchemy.orm.session.Session object at 0x0000015309C0A450&gt;
+existing_trip = &lt;app.entity.trip_model.Trip object at 0x0000015309C0AB50&gt;
+
+    def test_find_by_trip_id(self, service, db_session, existing_trip):
+        """Query danh sách jobs theo trip_id"""
+        req1 = OptimizationJobRequest(trip_id=existing_trip.id, objective=OptimizationObjective.MAX_VOLUME)
+        req2 = OptimizationJobRequest(trip_id=existing_trip.id, objective=OptimizationObjective.AXLE_BALANCE)
+    
+&gt;       service.create_job(trip_id=existing_trip.id, config=req1, db=db_session)
+
+tests\test_optimization_job_service.py:165: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = &lt;app.service.optimize.optimization_job_service.OptimizationJobService object at 0x0000015309C08ED0&gt;
+trip_id = 101
+config = OptimizationJobRequest(trip_id=101, job_uuid=None, objective=&lt;OptimizationObjective.MAX_VOLUME: 'MAX_VOLUME'&gt;, time_limit_sec=60, seed=None, algorithm_name=None, company_id=None, subscription_tier='BASIC', pinned_placements=[])
+db = &lt;sqlalchemy.orm.session.Session object at 0x0000015309C0A450&gt;
+
+    def create_job(
+            self,
+            trip_id: int,
+            config: OptimizationJobRequest,
+            db: Session,
+    ) -&gt; OptimizationJob:
+        """
+        Retired: Spring Boot creates and charges jobs in one transaction.
+        """
+&gt;       raise AppException(ErrorCode.UNAUTHORIZED)  # Spring is the sole job/credit admission authority.
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       app.exception.app_exception.AppException: Bạn không có quyền thực hiện hành động này
+
+app\service\optimize\optimization_job_service.py:29: AppException</failure></testcase><testcase classname="tests.test_optimization_job_service.TestQueries" name="test_find_by_status" time="0.009"><failure message="app.exception.app_exception.AppException: Bạn không có quyền thực hiện hành động này">self = &lt;tests.test_optimization_job_service.TestQueries object at 0x000001530845EAD0&gt;
+service = &lt;app.service.optimize.optimization_job_service.OptimizationJobService object at 0x0000015309B38350&gt;
+db_session = &lt;sqlalchemy.orm.session.Session object at 0x0000015309B38790&gt;
+existing_trip = &lt;app.entity.trip_model.Trip object at 0x0000015309B38210&gt;
+
+    def test_find_by_status(self, service, db_session, existing_trip):
+        """Query danh sách jobs theo status"""
+        req = OptimizationJobRequest(trip_id=existing_trip.id, objective=OptimizationObjective.MAX_VOLUME)
+&gt;       job1 = service.create_job(trip_id=existing_trip.id, config=req, db=db_session)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests\test_optimization_job_service.py:175: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = &lt;app.service.optimize.optimization_job_service.OptimizationJobService object at 0x0000015309B38350&gt;
+trip_id = 101
+config = OptimizationJobRequest(trip_id=101, job_uuid=None, objective=&lt;OptimizationObjective.MAX_VOLUME: 'MAX_VOLUME'&gt;, time_limit_sec=60, seed=None, algorithm_name=None, company_id=None, subscription_tier='BASIC', pinned_placements=[])
+db = &lt;sqlalchemy.orm.session.Session object at 0x0000015309B38790&gt;
+
+    def create_job(
+            self,
+            trip_id: int,
+            config: OptimizationJobRequest,
+            db: Session,
+    ) -&gt; OptimizationJob:
+        """
+        Retired: Spring Boot creates and charges jobs in one transaction.
+        """
+&gt;       raise AppException(ErrorCode.UNAUTHORIZED)  # Spring is the sole job/credit admission authority.
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       app.exception.app_exception.AppException: Bạn không có quyền thực hiện hành động này
+
+app\service\optimize\optimization_job_service.py:29: AppException</failure></testcase><testcase classname="tests.test_optimization_result_persistence.TestOptimizationResultPersistenceService" name="test_save_inserts_load_plan_placements_and_unplaced" time="0.027" /><testcase classname="tests.test_optimization_result_persistence.TestOptimizationResultPersistenceService" name="test_save_atomic_transaction_rolls_back_on_error" time="0.021" /><testcase classname="tests.test_optimization_result_persistence.TestLoadPlanServiceQuery" name="test_get_plans_for_job_returns_persisted_plans_and_placements" time="0.030" /><testcase classname="tests.test_optimization_result_persistence.TestIntegrationEndToEndPlansApi" name="test_post_job_then_get_job_plans_returns_persisted_load_plan" time="0.024"><failure message="assert 422 == 202&#10; +  where 422 = &lt;Response [422 Unprocessable Entity]&gt;.status_code">self = &lt;tests.test_optimization_result_persistence.TestIntegrationEndToEndPlansApi object at 0x00000153084712D0&gt;
+db_session = &lt;sqlalchemy.orm.session.Session object at 0x000001530A0AD310&gt;
+
+        def test_post_job_then_get_job_plans_returns_persisted_load_plan(self, db_session):
+            """End-to-End: POST /jobs -&gt; background task solves and persists -&gt; GET /jobs/{id}/plans returns plans"""
+            headers = {}
+    
+            trip = db_session.query(Trip).first()
+            app.dependency_overrides[get_db] = lambda: db_session
+            # Giả lập service account đã được Keycloak xác thực.
+    # Chỉ áp dụng trong bài test, không ảnh hưởng production.
+            app.dependency_overrides[require_optimization_service] = lambda: {
+                "sub": "test-service-account",
+                "azp": "loadmaster-backend-service",
+                "aud": "optimization-service",
+                "resource_access": {
+                    "optimization-service": {
+                        "roles": ["OPTIMIZATION_EXECUTE"]
+                    }
+                },
+            }
+    
+            class FakeCreditClient:
+                async def deduct_credit(self, company_id, job_uuid):
+                    return None
+    
+                async def refund_credit(self, company_id, job_uuid):
+                    return None
+    
+            def get_test_runner():
+                return AsyncOptimizationRunner(
+                    credit_client=FakeCreditClient(),
+                    session_factory=lambda: db_session,
+                )
+    
+            app.dependency_overrides[get_async_runner] = get_test_runner
+    
+            client = TestClient(app)
+    
+            submit_payload = {
+                "trip_id": trip.id,
+                "objective": "MAX_VOLUME",
+                "time_limit_sec": 30,
+                "algorithm_name": "DEFAULT_GREEDY",
+            }
+    
+            # 1. POST /jobs
+            post_resp = client.post("/api/v1/optimization/jobs", json=submit_payload, headers=headers)
+&gt;           assert post_resp.status_code == 202
+E           assert 422 == 202
+E            +  where 422 = &lt;Response [422 Unprocessable Entity]&gt;.status_code
+
+tests\test_optimization_result_persistence.py:304: AssertionError</failure></testcase><testcase classname="tests.test_persistence_postgres" name="test_real_solver_runner_persists_geometry_uuid_partition_and_billing[False]" time="0.000"><skipped type="pytest.skip" message="Opt-in: requires a new dedicated full-schema PostgreSQL test container">D:\chuyennganh\KI9\Capstone_LoadMaster_BE\OptimizeService\tests\test_persistence_postgres.py:94: Opt-in: requires a new dedicated full-schema PostgreSQL test container</skipped></testcase><testcase classname="tests.test_persistence_postgres" name="test_real_solver_runner_persists_geometry_uuid_partition_and_billing[True]" time="0.000"><skipped type="pytest.skip" message="Opt-in: requires a new dedicated full-schema PostgreSQL test container">D:\chuyennganh\KI9\Capstone_LoadMaster_BE\OptimizeService\tests\test_persistence_postgres.py:94: Opt-in: requires a new dedicated full-schema PostgreSQL test container</skipped></testcase><testcase classname="tests.test_persistence_postgres" name="test_unbilled_job_rejected_before_solver" time="0.000"><skipped type="pytest.skip" message="Opt-in: requires a new dedicated full-schema PostgreSQL test container">D:\chuyennganh\KI9\Capstone_LoadMaster_BE\OptimizeService\tests\test_persistence_postgres.py:123: Opt-in: requires a new dedicated full-schema PostgreSQL test container</skipped></testcase><testcase classname="tests.test_persistence_postgres" name="test_no_solution_is_not_a_valid_plan" time="0.000"><skipped type="pytest.skip" message="Opt-in: requires a new dedicated full-schema PostgreSQL test container">D:\chuyennganh\KI9\Capstone_LoadMaster_BE\OptimizeService\tests\test_persistence_postgres.py:130: Opt-in: requires a new dedicated full-schema PostgreSQL test container</skipped></testcase><testcase classname="tests.test_persistence_postgres" name="test_real_fk_failure_rolls_back_complete_savepoint" time="0.000"><skipped type="pytest.skip" message="Opt-in: requires a new dedicated full-schema PostgreSQL test container">D:\chuyennganh\KI9\Capstone_LoadMaster_BE\OptimizeService\tests\test_persistence_postgres.py:142: Opt-in: requires a new dedicated full-schema PostgreSQL test container</skipped></testcase><testcase classname="tests.test_persistence_postgres" name="test_real_rejection_reason_check_accepts_contract_values[OVER_WEIGHT]" time="0.000"><skipped type="pytest.skip" message="Opt-in: requires a new dedicated full-schema PostgreSQL test container">D:\chuyennganh\KI9\Capstone_LoadMaster_BE\OptimizeService\tests\test_persistence_postgres.py:151: Opt-in: requires a new dedicated full-schema PostgreSQL test container</skipped></testcase><testcase classname="tests.test_persistence_postgres" name="test_real_rejection_reason_check_accepts_contract_values[OUT_OF_SPACE]" time="0.001"><skipped type="pytest.skip" message="Opt-in: requires a new dedicated full-schema PostgreSQL test container">D:\chuyennganh\KI9\Capstone_LoadMaster_BE\OptimizeService\tests\test_persistence_postgres.py:151: Opt-in: requires a new dedicated full-schema PostgreSQL test container</skipped></testcase><testcase classname="tests.test_persistence_postgres" name="test_real_rejection_reason_check_accepts_contract_values[STACKING_CONFLICT]" time="0.000"><skipped type="pytest.skip" message="Opt-in: requires a new dedicated full-schema PostgreSQL test container">D:\chuyennganh\KI9\Capstone_LoadMaster_BE\OptimizeService\tests\test_persistence_postgres.py:151: Opt-in: requires a new dedicated full-schema PostgreSQL test container</skipped></testcase><testcase classname="tests.test_persistence_postgres" name="test_real_rejection_reason_check_accepts_contract_values[LIFO_BLOCK]" time="0.000"><skipped type="pytest.skip" message="Opt-in: requires a new dedicated full-schema PostgreSQL test container">D:\chuyennganh\KI9\Capstone_LoadMaster_BE\OptimizeService\tests\test_persistence_postgres.py:151: Opt-in: requires a new dedicated full-schema PostgreSQL test container</skipped></testcase><testcase classname="tests.test_persistence_postgres" name="test_real_rejection_reason_check_accepts_contract_values[CONSTRAINT_VIOLATED]" time="0.000"><skipped type="pytest.skip" message="Opt-in: requires a new dedicated full-schema PostgreSQL test container">D:\chuyennganh\KI9\Capstone_LoadMaster_BE\OptimizeService\tests\test_persistence_postgres.py:151: Opt-in: requires a new dedicated full-schema PostgreSQL test container</skipped></testcase><testcase classname="tests.test_persistence_postgres" name="test_real_rejection_reason_check_rejects_legacy_value_atomically" time="0.000"><skipped type="pytest.skip" message="Opt-in: requires a new dedicated full-schema PostgreSQL test container">D:\chuyennganh\KI9\Capstone_LoadMaster_BE\OptimizeService\tests\test_persistence_postgres.py:159: Opt-in: requires a new dedicated full-schema PostgreSQL test container</skipped></testcase><testcase classname="tests.test_persistence_postgres" name="test_duplicate_dispatch_runs_once_and_has_one_committed_plan" time="0.000"><skipped type="pytest.skip" message="Opt-in: requires a new dedicated full-schema PostgreSQL test container">D:\chuyennganh\KI9\Capstone_LoadMaster_BE\OptimizeService\tests\test_persistence_postgres.py:166: Opt-in: requires a new dedicated full-schema PostgreSQL test container</skipped></testcase><testcase classname="tests.test_persistence_postgres" name="test_runner_revalidates_hard_constraints_before_persistence[partition]" time="0.001"><skipped type="pytest.skip" message="Opt-in: requires a new dedicated full-schema PostgreSQL test container">D:\chuyennganh\KI9\Capstone_LoadMaster_BE\OptimizeService\tests\test_persistence_postgres.py:183: Opt-in: requires a new dedicated full-schema PostgreSQL test container</skipped></testcase><testcase classname="tests.test_persistence_postgres" name="test_runner_revalidates_hard_constraints_before_persistence[boundary]" time="0.000"><skipped type="pytest.skip" message="Opt-in: requires a new dedicated full-schema PostgreSQL test container">D:\chuyennganh\KI9\Capstone_LoadMaster_BE\OptimizeService\tests\test_persistence_postgres.py:183: Opt-in: requires a new dedicated full-schema PostgreSQL test container</skipped></testcase><testcase classname="tests.test_persistence_postgres" name="test_runner_revalidates_hard_constraints_before_persistence[collision]" time="0.000"><skipped type="pytest.skip" message="Opt-in: requires a new dedicated full-schema PostgreSQL test container">D:\chuyennganh\KI9\Capstone_LoadMaster_BE\OptimizeService\tests\test_persistence_postgres.py:183: Opt-in: requires a new dedicated full-schema PostgreSQL test container</skipped></testcase><testcase classname="tests.test_persistence_postgres" name="test_runner_revalidates_hard_constraints_before_persistence[obstacle]" time="0.000"><skipped type="pytest.skip" message="Opt-in: requires a new dedicated full-schema PostgreSQL test container">D:\chuyennganh\KI9\Capstone_LoadMaster_BE\OptimizeService\tests\test_persistence_postgres.py:183: Opt-in: requires a new dedicated full-schema PostgreSQL test container</skipped></testcase><testcase classname="tests.test_persistence_postgres" name="test_runner_revalidates_hard_constraints_before_persistence[stacking]" time="0.001"><skipped type="pytest.skip" message="Opt-in: requires a new dedicated full-schema PostgreSQL test container">D:\chuyennganh\KI9\Capstone_LoadMaster_BE\OptimizeService\tests\test_persistence_postgres.py:183: Opt-in: requires a new dedicated full-schema PostgreSQL test container</skipped></testcase><testcase classname="tests.test_persistence_postgres" name="test_runner_revalidates_hard_constraints_before_persistence[cog]" time="0.000"><skipped type="pytest.skip" message="Opt-in: requires a new dedicated full-schema PostgreSQL test container">D:\chuyennganh\KI9\Capstone_LoadMaster_BE\OptimizeService\tests\test_persistence_postgres.py:183: Opt-in: requires a new dedicated full-schema PostgreSQL test container</skipped></testcase><testcase classname="tests.test_persistence_postgres" name="test_runner_revalidates_hard_constraints_before_persistence[axle]" time="0.000"><skipped type="pytest.skip" message="Opt-in: requires a new dedicated full-schema PostgreSQL test container">D:\chuyennganh\KI9\Capstone_LoadMaster_BE\OptimizeService\tests\test_persistence_postgres.py:183: Opt-in: requires a new dedicated full-schema PostgreSQL test container</skipped></testcase><testcase classname="tests.test_persistence_postgres" name="test_runner_revalidates_hard_constraints_before_persistence[unload]" time="0.000"><skipped type="pytest.skip" message="Opt-in: requires a new dedicated full-schema PostgreSQL test container">D:\chuyennganh\KI9\Capstone_LoadMaster_BE\OptimizeService\tests\test_persistence_postgres.py:183: Opt-in: requires a new dedicated full-schema PostgreSQL test container</skipped></testcase><testcase classname="tests.test_persistence_postgres" name="test_rotation_dimensions_round_trip_in_real_postgres[0-dims0]" time="0.000"><skipped type="pytest.skip" message="Opt-in: requires a new dedicated full-schema PostgreSQL test container">D:\chuyennganh\KI9\Capstone_LoadMaster_BE\OptimizeService\tests\test_persistence_postgres.py:205: Opt-in: requires a new dedicated full-schema PostgreSQL test container</skipped></testcase><testcase classname="tests.test_persistence_postgres" name="test_rotation_dimensions_round_trip_in_real_postgres[1-dims1]" time="0.000"><skipped type="pytest.skip" message="Opt-in: requires a new dedicated full-schema PostgreSQL test container">D:\chuyennganh\KI9\Capstone_LoadMaster_BE\OptimizeService\tests\test_persistence_postgres.py:205: Opt-in: requires a new dedicated full-schema PostgreSQL test container</skipped></testcase><testcase classname="tests.test_persistence_postgres" name="test_rotation_dimensions_round_trip_in_real_postgres[2-dims2]" time="0.000"><skipped type="pytest.skip" message="Opt-in: requires a new dedicated full-schema PostgreSQL test container">D:\chuyennganh\KI9\Capstone_LoadMaster_BE\OptimizeService\tests\test_persistence_postgres.py:205: Opt-in: requires a new dedicated full-schema PostgreSQL test container</skipped></testcase><testcase classname="tests.test_persistence_postgres" name="test_rotation_dimensions_round_trip_in_real_postgres[3-dims3]" time="0.000"><skipped type="pytest.skip" message="Opt-in: requires a new dedicated full-schema PostgreSQL test container">D:\chuyennganh\KI9\Capstone_LoadMaster_BE\OptimizeService\tests\test_persistence_postgres.py:205: Opt-in: requires a new dedicated full-schema PostgreSQL test container</skipped></testcase><testcase classname="tests.test_persistence_postgres" name="test_rotation_dimensions_round_trip_in_real_postgres[4-dims4]" time="0.000"><skipped type="pytest.skip" message="Opt-in: requires a new dedicated full-schema PostgreSQL test container">D:\chuyennganh\KI9\Capstone_LoadMaster_BE\OptimizeService\tests\test_persistence_postgres.py:205: Opt-in: requires a new dedicated full-schema PostgreSQL test container</skipped></testcase><testcase classname="tests.test_persistence_postgres" name="test_rotation_dimensions_round_trip_in_real_postgres[5-dims5]" time="0.000"><skipped type="pytest.skip" message="Opt-in: requires a new dedicated full-schema PostgreSQL test container">D:\chuyennganh\KI9\Capstone_LoadMaster_BE\OptimizeService\tests\test_persistence_postgres.py:205: Opt-in: requires a new dedicated full-schema PostgreSQL test container</skipped></testcase><testcase classname="tests.test_persistence_postgres" name="test_disallowed_rotation_is_blocked_before_real_persistence" time="0.000"><skipped type="pytest.skip" message="Opt-in: requires a new dedicated full-schema PostgreSQL test container">D:\chuyennganh\KI9\Capstone_LoadMaster_BE\OptimizeService\tests\test_persistence_postgres.py:225: Opt-in: requires a new dedicated full-schema PostgreSQL test container</skipped></testcase><testcase classname="tests.test_persistence_postgres" name="test_database_builder_solver_and_obstacle_persistence_pipeline" time="0.000"><skipped type="pytest.skip" message="Opt-in: requires a new dedicated full-schema PostgreSQL test container">D:\chuyennganh\KI9\Capstone_LoadMaster_BE\OptimizeService\tests\test_persistence_postgres.py:232: Opt-in: requires a new dedicated full-schema PostgreSQL test container</skipped></testcase><testcase classname="tests.test_persistence_postgres" name="test_remote_http_result_outside_vehicle_is_not_persisted" time="0.000"><skipped type="pytest.skip" message="Opt-in: requires a new dedicated full-schema PostgreSQL test container">D:\chuyennganh\KI9\Capstone_LoadMaster_BE\OptimizeService\tests\test_persistence_postgres.py:258: Opt-in: requires a new dedicated full-schema PostgreSQL test container</skipped></testcase><testcase classname="tests.test_pinned_candidates_job.TestPinnedSetIssues" name="test_valid_set_has_no_issue" time="0.001" /><testcase classname="tests.test_pinned_candidates_job.TestPinnedSetIssues" name="test_unknown_and_duplicate_packages" time="0.001" /><testcase classname="tests.test_pinned_candidates_job.TestPinnedSetIssues" name="test_out_of_bounds_overlap_and_floating_are_rejected" time="0.001" /><testcase classname="tests.test_pinned_candidates_job.TestPinnedSetIssues" name="test_payload_exceeded" time="0.001" /><testcase classname="tests.test_pinned_candidates_job.TestCandidatesKeepPins" name="test_every_candidate_keeps_the_pin_first_and_others_avoid_it" time="0.005" /><testcase classname="tests.test_pinned_candidates_job.TestSubmitJobWithPins" name="test_invalid_pins_without_reserved_identity_cannot_create_or_run_a_job" time="0.007" /><testcase classname="tests.test_pinned_candidates_job.TestSubmitJobWithPins" name="test_valid_pins_do_not_bypass_reserved_billing_contract" time="0.008" /><testcase classname="tests.test_pinned_candidates_job.TestSubmitJobWithPins" name="test_without_pins_reserved_identity_is_still_required" time="0.007" /><testcase classname="tests.test_plan_company_scope.TestCompareScope" name="test_same_company_compares" time="0.026" /><testcase classname="tests.test_plan_company_scope.TestCompareScope" name="test_plan_of_other_company_is_not_found" time="0.025" /><testcase classname="tests.test_plan_company_scope.TestCompareScope" name="test_caller_without_company_is_not_found" time="0.019" /><testcase classname="tests.test_plan_company_scope.TestApproveScope" name="test_user_of_other_company_cannot_approve" time="0.025" /><testcase classname="tests.test_plan_company_scope.TestApproveScope" name="test_user_of_same_company_approves" time="0.030" /><testcase classname="tests.test_rebalance_along_x" name="test_blocks_close_up_in_lifo_order_and_center_the_load" time="0.001" /><testcase classname="tests.test_rebalance_along_x" name="test_pinned_cargo_is_never_moved" time="0.001" /><testcase classname="tests.test_rebalance_along_x" name="test_interleaved_stop_blocks_are_left_alone" time="0.001" /><testcase classname="tests.test_rehandling_by_zone" name="test_centre_in_the_buffer_belongs_to_the_nearer_zone_and_a_tie_goes_deeper" time="0.001" /><testcase classname="tests.test_rehandling_by_zone" name="test_rehandling_counts_packages_whose_centre_lies_in_another_stops_zone" time="0.001" /><testcase classname="tests.test_rehandling_by_zone" name="test_solver_counts_on_its_final_layout_after_moving_the_load_for_the_centre_of_gravity" time="0.001" /><testcase classname="tests.test_rerun_pinned_and_service_approval.TestPinnedSolver" name="test_pinned_package_keeps_position_and_others_avoid_it" time="0.002" /><testcase classname="tests.test_rerun_pinned_and_service_approval.TestPinnedSolver" name="test_solver_logs_debug_instead_of_printing" time="0.003" /><testcase classname="tests.test_rerun_pinned_and_service_approval.TestPinnedSolver" name="test_pinned_package_outside_trip_is_ignored" time="0.002" /><testcase classname="tests.test_rerun_pinned_and_service_approval.TestPinnedSolver" name="test_pinned_rotation_derives_packed_size" time="0.001" /><testcase classname="tests.test_rerun_pinned_and_service_approval.TestRerunApi" name="test_rerun_without_token_returns_401" time="0.007" /><testcase classname="tests.test_rerun_pinned_and_service_approval.TestRerunApi" name="test_rerun_builds_from_trip_keeps_pins_and_returns_java_fields" time="0.012" /><testcase classname="tests.test_rerun_pinned_and_service_approval.TestServiceApproval" name="test_backend_service_claims_are_recognised" time="0.001" /><testcase classname="tests.test_rerun_pinned_and_service_approval.TestServiceApproval" name="test_service_token_approves_as_user_in_body" time="0.007" /><testcase classname="tests.test_rerun_pinned_and_service_approval.TestServiceApproval" name="test_service_token_without_approver_is_rejected" time="0.007" /><testcase classname="tests.test_rerun_pinned_and_service_approval.TestServiceApproval" name="test_user_token_approves_as_token_user" time="0.007" /><testcase classname="tests.test_rerun_pinned_and_service_approval.TestServiceApproval" name="test_approve_without_token_returns_401" time="0.007" /><testcase classname="tests.test_rotation_contract" name="test_missing_is_original_orientation_only" time="0.001" /><testcase classname="tests.test_rotation_contract" name="test_invalid_whitelist_is_rejected[None]" time="0.002" /><testcase classname="tests.test_rotation_contract" name="test_invalid_whitelist_is_rejected[value1]" time="0.001" /><testcase classname="tests.test_rotation_contract" name="test_invalid_whitelist_is_rejected[value2]" time="0.001" /><testcase classname="tests.test_rotation_contract" name="test_invalid_whitelist_is_rejected[value3]" time="0.001" /><testcase classname="tests.test_rotation_contract" name="test_invalid_whitelist_is_rejected[value4]" time="0.001" /><testcase classname="tests.test_rotation_contract" name="test_invalid_whitelist_is_rejected[value5]" time="0.001" /><testcase classname="tests.test_rotation_contract" name="test_invalid_whitelist_is_rejected[value6]" time="0.001" /><testcase classname="tests.test_rotation_contract" name="test_invalid_whitelist_is_rejected[value7]" time="0.001" /><testcase classname="tests.test_rotation_contract" name="test_invalid_whitelist_is_rejected[0]" time="0.001" /><testcase classname="tests.test_rotation_contract" name="test_empty_list_permits_none_in_initial_search_and_final[False]" time="0.002" /><testcase classname="tests.test_rotation_contract" name="test_empty_list_permits_none_in_initial_search_and_final[True]" time="0.003" /><testcase classname="tests.test_rotation_contract" name="test_explicit_whitelist_is_preserved_by_solver_and_improvement[codes0]" time="0.002" /><testcase classname="tests.test_rotation_contract" name="test_explicit_whitelist_is_preserved_by_solver_and_improvement[codes1]" time="0.001" /><testcase classname="tests.test_rotation_contract" name="test_explicit_whitelist_is_preserved_by_solver_and_improvement[codes2]" time="0.001" /><testcase classname="tests.test_rotation_contract" name="test_locked_switch_intersects_whitelist_instead_of_granting_zero" time="0.002" /><testcase classname="tests.test_rotation_contract" name="test_forbidden_but_fitting_rotation_is_rejected_by_final_and_partial" time="0.001" /><testcase classname="tests.test_rotation_contract" name="test_allowed_code_with_wrong_packed_dimensions_is_rejected" time="0.001" /><testcase classname="tests.test_rotation_contract" name="test_invalid_placement_rotation_rejected_at_contract[None]" time="0.001" /><testcase classname="tests.test_rotation_contract" name="test_invalid_placement_rotation_rejected_at_contract[6]" time="0.001" /><testcase classname="tests.test_rotation_contract" name="test_invalid_placement_rotation_rejected_at_contract[-1]" time="0.001" /><testcase classname="tests.test_rotation_contract" name="test_invalid_placement_rotation_rejected_at_contract[True]" time="0.001" /><testcase classname="tests.test_rotation_contract" name="test_invalid_placement_rotation_rejected_at_contract[1.5]" time="0.001" /><testcase classname="tests.test_rotation_contract" name="test_invalid_placement_rotation_rejected_at_contract[bad]" time="0.001" /><testcase classname="tests.test_rotation_contract" name="test_rotation_geometry_survives_persistence[0-dims0]" time="0.002" /><testcase classname="tests.test_rotation_contract" name="test_rotation_geometry_survives_persistence[1-dims1]" time="0.002" /><testcase classname="tests.test_rotation_contract" name="test_rotation_geometry_survives_persistence[2-dims2]" time="0.004" /><testcase classname="tests.test_rotation_contract" name="test_rotation_geometry_survives_persistence[3-dims3]" time="0.002" /><testcase classname="tests.test_rotation_contract" name="test_rotation_geometry_survives_persistence[4-dims4]" time="0.002" /><testcase classname="tests.test_rotation_contract" name="test_rotation_geometry_survives_persistence[5-dims5]" time="0.002" /><testcase classname="tests.test_rotation_contract" name="test_pre_persistence_boundary_rejects_forbidden_orientation" time="0.001" /><testcase classname="tests.test_rotation_contract" name="test_profile_without_restriction_does_not_expand_master_list" time="0.000" /><testcase classname="tests.test_rotation_contract" name="test_undefined_profile_syntax_fails_closed[[]]" time="0.001" /><testcase classname="tests.test_rotation_contract" name="test_undefined_profile_syntax_fails_closed[LWH]" time="0.001" /><testcase classname="tests.test_rotation_contract" name="test_undefined_profile_syntax_fails_closed[0,1]" time="0.001" /><testcase classname="tests.test_rotation_contract" name="test_remote_engine_cannot_bypass_rotation_without_obstacles" time="0.003" /><testcase classname="tests.test_rotation_contract" name="test_database_profile_reaches_problem_request[None]" time="0.020" /><testcase classname="tests.test_rotation_contract" name="test_database_profile_reaches_problem_request[profile1]" time="0.020" /><testcase classname="tests.test_rotation_contract" name="test_database_profile_reaches_problem_request[profile2]" time="0.029" /><testcase classname="tests.test_rotation_contract" name="test_database_profile_reaches_problem_request[profile3]" time="0.025" /><testcase classname="tests.test_rotation_contract" name="test_empty_whitelist_keeps_other_packages_as_safe_partial" time="0.008" /><testcase classname="tests.test_runner_credit" name="test_completed_run_keeps_one_deduction" time="0.007"><failure message="AssertionError: Expected deduct_credit to have been awaited once. Awaited 0 times.">@pytest.mark.asyncio
+    async def test_completed_run_keeps_one_deduction():
+        runner, credit, job_service = _runner(AsyncMock(return_value=_placed()))
+        await runner.run(JOB_UUID, problem=MagicMock(), db=MagicMock())
+&gt;       credit.deduct_credit.assert_awaited_once_with("7", JOB_UUID)
+
+tests\test_runner_credit.py:76: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = &lt;AsyncMock name='mock.deduct_credit' id='1456166007376'&gt;
+args = ('7', '11111111-2222-3333-4444-555555555555'), kwargs = {}
+
+    def assert_awaited_once_with(self, /, *args, **kwargs):
+        """
+        Assert that the mock was awaited exactly once and with the specified
+        arguments.
+        """
+        if not self.await_count == 1:
+            msg = (f"Expected {self._mock_name or 'mock'} to have been awaited once."
+                   f" Awaited {self.await_count} times.")
+&gt;           raise AssertionError(msg)
+E           AssertionError: Expected deduct_credit to have been awaited once. Awaited 0 times.
+
+D:\python\Lib\unittest\mock.py:2311: AssertionError</failure></testcase><testcase classname="tests.test_runner_credit" name="test_partial_run_keeps_one_deduction" time="0.009"><failure message="AssertionError: Expected deduct_credit to have been awaited once. Awaited 0 times.">@pytest.mark.asyncio
+    async def test_partial_run_keeps_one_deduction():
+        runner, credit, job_service = _runner(AsyncMock(return_value=_placed(unplaced=1)))
+        await runner.run(JOB_UUID, problem=MagicMock(), db=MagicMock())
+&gt;       credit.deduct_credit.assert_awaited_once()
+
+tests\test_runner_credit.py:85: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = &lt;AsyncMock name='mock.deduct_credit' id='1456165882576'&gt;
+
+    def assert_awaited_once(self):
+        """
+        Assert that the mock was awaited exactly once.
+        """
+        if not self.await_count == 1:
+            msg = (f"Expected {self._mock_name or 'mock'} to have been awaited once."
+                   f" Awaited {self.await_count} times.")
+&gt;           raise AssertionError(msg)
+E           AssertionError: Expected deduct_credit to have been awaited once. Awaited 0 times.
+
+D:\python\Lib\unittest\mock.py:2283: AssertionError</failure></testcase><testcase classname="tests.test_runner_credit" name="test_no_solution_refunds_exactly_once" time="0.009"><failure message="AssertionError: Expected deduct_credit to have been awaited once. Awaited 0 times.">@pytest.mark.asyncio
+    async def test_no_solution_refunds_exactly_once():
+        runner, credit, job_service = _runner(AsyncMock(return_value=_nothing()))
+        await runner.run(JOB_UUID, problem=MagicMock(), db=MagicMock())
+&gt;       credit.deduct_credit.assert_awaited_once()
+
+tests\test_runner_credit.py:94: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = &lt;AsyncMock name='mock.deduct_credit' id='1456166093200'&gt;
+
+    def assert_awaited_once(self):
+        """
+        Assert that the mock was awaited exactly once.
+        """
+        if not self.await_count == 1:
+            msg = (f"Expected {self._mock_name or 'mock'} to have been awaited once."
+                   f" Awaited {self.await_count} times.")
+&gt;           raise AssertionError(msg)
+E           AssertionError: Expected deduct_credit to have been awaited once. Awaited 0 times.
+
+D:\python\Lib\unittest\mock.py:2283: AssertionError</failure></testcase><testcase classname="tests.test_runner_credit" name="test_failed_run_refunds_exactly_once" time="0.010"><failure message="AssertionError: Expected deduct_credit to have been awaited once. Awaited 0 times.">@pytest.mark.asyncio
+    async def test_failed_run_refunds_exactly_once():
+        runner, credit, job_service = _runner(AsyncMock(side_effect=RuntimeError("solver crash")))
+        await runner.run(JOB_UUID, problem=MagicMock(), db=MagicMock())
+&gt;       credit.deduct_credit.assert_awaited_once()
+
+tests\test_runner_credit.py:103: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = &lt;AsyncMock name='mock.deduct_credit' id='1456165853328'&gt;
+
+    def assert_awaited_once(self):
+        """
+        Assert that the mock was awaited exactly once.
+        """
+        if not self.await_count == 1:
+            msg = (f"Expected {self._mock_name or 'mock'} to have been awaited once."
+                   f" Awaited {self.await_count} times.")
+&gt;           raise AssertionError(msg)
+E           AssertionError: Expected deduct_credit to have been awaited once. Awaited 0 times.
+
+D:\python\Lib\unittest\mock.py:2283: AssertionError</failure></testcase><testcase classname="tests.test_runner_credit" name="test_insufficient_credits_fails_job_without_running" time="0.007" /><testcase classname="tests.test_stop_zone_by_sequence" name="test_stop_zone_follows_stop_sequence_not_stop_id" time="0.002" /><testcase classname="tests.test_stop_zone_by_sequence" name="test_vehicle_without_door_reports_reason_instead_of_crashing" time="0.001" /><testcase classname="tests.test_stop_zone_calculator.TestStopZoneCalculator" name="test_buffer_is_ten_centimetres_for_large_vehicles" time="0.001" /><testcase classname="tests.test_stop_zone_calculator.TestStopZoneCalculator" name="test_dynamic_sizing_three_stops_20_35_45" time="0.001" /><testcase classname="tests.test_stop_zone_calculator.TestStopZoneCalculator" name="test_single_stop" time="0.001" /><testcase classname="tests.test_tier_algorithms.TestTierRouting" name="test_plan_algorithms_by_tier" time="0.000" /><testcase classname="tests.test_tier_algorithms.TestTierRouting" name="test_tier_resolved_from_subscription_runs_its_family" time="0.000" /><testcase classname="tests.test_tier_algorithms.TestTierRouting" name="test_basic_only_ever_runs_ep_dblf" time="0.024" /><testcase classname="tests.test_tier_algorithms.TestTierRouting" name="test_pro_runs_ga_and_sa_never_ai" time="0.074" /><testcase classname="tests.test_tier_algorithms.TestTierRouting" name="test_ultimate_without_torch_skips_ai_and_still_finishes" time="0.064" /><testcase classname="tests.test_tier_algorithms.TestTierRouting" name="test_ultimate_survives_ai_crash" time="0.067" /><testcase classname="tests.test_tier_algorithms.TestTierRouting" name="test_ultimate_with_torch_runs_lumo_models" time="0.001"><skipped type="pytest.skip" message="could not import 'torch': No module named 'torch'">D:\chuyennganh\KI9\Capstone_LoadMaster_BE\OptimizeService\tests\test_tier_algorithms.py:162: could not import 'torch': No module named 'torch'</skipped></testcase><testcase classname="tests.test_tier_algorithms.TestTierRouting" name="test_lumo_models_skip_pinned_problem_without_touching_pins" time="0.001" /><testcase classname="tests.test_tier_algorithms.TestTierRouting" name="test_lumo_models_without_torch_warn_with_install_hint" time="0.001" /><testcase classname="tests.test_tier_algorithms.TestGaSa" name="test_layouts_respect_constraints_and_carry_their_code" time="0.084" /><testcase classname="tests.test_tier_algorithms.TestGaSa" name="test_pinned_packages_stay_fixed" time="0.080" /><testcase classname="tests.test_tier_algorithms.TestGaSa" name="test_same_seed_same_result" time="0.117" /><testcase classname="tests.test_tier_algorithms.TestEvaluateFixedLayout" name="test_accepts_valid_layout_and_tags_it" time="0.001" /><testcase classname="tests.test_tier_algorithms.TestEvaluateFixedLayout" name="test_rejects_overlap" time="0.001" /><testcase classname="tests.test_tier_algorithms.TestPersistAlgorithmName" name="test_each_plan_stores_the_algorithm_that_built_it" time="0.018" /><testcase classname="tests.test_tier_algorithms.TestPersistAlgorithmName" name="test_algorithm_name_is_in_plan_dump_but_tried_list_is_not" time="0.001" /><testcase classname="tests.test_trip_validation_service.TestVehicleAssignment" name="test_no_vehicle_returns_error" time="0.000" /><testcase classname="tests.test_trip_validation_service.TestVehicleAssignment" name="test_trip_with_vehicle_passes_vehicle_check" time="0.000" /><testcase classname="tests.test_trip_validation_service.TestPackageCount" name="test_no_packages_returns_error" time="0.000" /><testcase classname="tests.test_trip_validation_service.TestPackageCount" name="test_one_package_passes_count_check" time="0.000" /><testcase classname="tests.test_trip_validation_service.TestWeightLimit" name="test_total_weight_exceeds_payload_returns_error" time="0.000" /><testcase classname="tests.test_trip_validation_service.TestWeightLimit" name="test_total_weight_equal_payload_passes" time="0.000" /><testcase classname="tests.test_trip_validation_service.TestWeightLimit" name="test_total_weight_under_payload_passes" time="0.000" /><testcase classname="tests.test_trip_validation_service.TestVolumeLimit" name="test_total_volume_exceeds_capacity_returns_error" time="0.000" /><testcase classname="tests.test_trip_validation_service.TestVolumeLimit" name="test_total_volume_fits_passes" time="0.000" /><testcase classname="tests.test_trip_validation_service.TestPackageFit" name="test_package_too_large_for_any_rotation_returns_error" time="0.000" /><testcase classname="tests.test_trip_validation_service.TestPackageFit" name="test_package_fits_in_one_rotation_passes" time="0.000" /><testcase classname="tests.test_trip_validation_service.TestValidationResponseShape" name="test_valid_trip_returns_can_optimize_true_with_empty_errors" time="0.000" /><testcase classname="tests.test_trip_validation_service.TestValidationResponseShape" name="test_result_has_required_fields" time="0.001" /><testcase classname="tests.test_trip_validation_service.TestValidationResponseShape" name="test_only_warnings_still_can_optimize" time="0.001" /><testcase classname="tests.test_trip_validation_upgrade.TestTripValidationUpgrade" name="test_handling_class_consistency_same_class_passes" time="0.001" /><testcase classname="tests.test_trip_validation_upgrade.TestTripValidationUpgrade" name="test_handling_class_mismatch_without_override_fails" time="0.001" /><testcase classname="tests.test_trip_validation_upgrade.TestTripValidationUpgrade" name="test_handling_class_mismatch_with_override_reason_passes" time="0.001" /><testcase classname="tests.test_trip_validation_upgrade.TestTripValidationUpgrade" name="test_cog_risk_warning_when_heavy_cargo_skewed_to_one_side" time="0.001" /><testcase classname="tests.test_trip_validation_upgrade.TestTripValidationUpgrade" name="test_cog_balanced_no_risk_warning" time="0.001" /><testcase classname="tests.test_trip_validation_upgrade.TestTripValidationUpgrade" name="test_missing_stop_coordinates_fails" time="0.001" /><testcase classname="tests.test_trip_validation_upgrade.TestTripValidationUpgrade" name="test_valid_stop_coordinates_passes" time="0.001" /><testcase classname="tests.test_trip_validation_upgrade.TestTripValidationUpgrade" name="test_fragile_package_with_excessive_stack_weight_when_stacking_unavoidable" time="0.001" /><testcase classname="tests.test_validate_endpoint_removed" name="test_validate_trip_endpoint_is_gone" time="0.004" /><testcase classname="tests.test_vehicle_obstacles" name="test_plan_47_package_47_is_rejected_with_real_wheel_well" time="0.005" /><testcase classname="tests.test_vehicle_obstacles" name="test_all_real_eighteen_placements_against_both_wheel_wells" time="0.001" /><testcase classname="tests.test_vehicle_obstacles" name="test_side_contact_is_allowed_but_any_positive_penetration_is_rejected[0]" time="0.001" /><testcase classname="tests.test_vehicle_obstacles" name="test_side_contact_is_allowed_but_any_positive_penetration_is_rejected[1e-08]" time="0.001" /><testcase classname="tests.test_vehicle_obstacles" name="test_side_contact_is_allowed_but_any_positive_penetration_is_rejected[0.1]" time="0.001" /><testcase classname="tests.test_vehicle_obstacles" name="test_obstacle_support_and_stacking_respect_load_bearing[False]" time="0.001" /><testcase classname="tests.test_vehicle_obstacles" name="test_obstacle_support_and_stacking_respect_load_bearing[True]" time="0.001" /><testcase classname="tests.test_vehicle_obstacles" name="test_load_bearing_foundation_does_not_disable_cargo_stack_limits" time="0.001" /><testcase classname="tests.test_vehicle_obstacles" name="test_collision_uses_rotated_dimensions" time="0.001" /><testcase classname="tests.test_vehicle_obstacles" name="test_initial_packing_and_final_guard_never_accept_obstacle_overlap" time="0.002" /><testcase classname="tests.test_vehicle_obstacles" name="test_rigid_translation_into_obstacle_is_rejected_then_repack_is_safe" time="0.002" /><testcase classname="tests.test_vehicle_obstacles" name="test_swept_unload_path_cannot_cross_fixed_obstacles[pull]" time="0.001" /><testcase classname="tests.test_vehicle_obstacles" name="test_swept_unload_path_cannot_cross_fixed_obstacles[lateral]" time="0.001" /><testcase classname="tests.test_vehicle_obstacles" name="test_swept_unload_path_cannot_cross_fixed_obstacles[lift]" time="0.001" /><testcase classname="tests.test_vehicle_obstacles" name="test_unload_can_lift_over_low_obstacle_without_penetrating_it" time="0.001" /><testcase classname="tests.test_vehicle_obstacles" name="test_obstacle_stays_after_first_delivery_stop_is_removed" time="0.001" /><testcase classname="tests.test_vehicle_obstacles" name="test_real_request_offline_solver_preserves_ids_and_all_hard_constraints" time="0.204" /><testcase classname="tests.test_vehicle_obstacles" name="test_invalid_obstacle_metadata_is_not_silently_ignored[bad0]" time="0.001" /><testcase classname="tests.test_vehicle_obstacles" name="test_invalid_obstacle_metadata_is_not_silently_ignored[bad1]" time="0.001" /><testcase classname="tests.test_vehicle_obstacles" name="test_invalid_obstacle_metadata_is_not_silently_ignored[bad2]" time="0.001" /><testcase classname="tests.test_vehicle_obstacles" name="test_duplicate_and_out_of_bounds_obstacles_are_rejected" time="0.001" /><testcase classname="tests.test_vehicle_obstacles" name="test_timeout_fallback_keeps_only_obstacle_free_validated_incumbent" time="0.001" /><testcase classname="tests.test_vehicle_obstacles" name="test_remote_engine_cannot_ignore_wheel_wells" time="0.005" /><testcase classname="tests.test_vehicle_obstacles" name="test_remote_safe_result_is_preserved" time="0.003" /><testcase classname="tests.test_vehicle_obstacles" name="test_remote_result_cannot_lose_package_ids" time="0.004" /><testcase classname="tests.test_vehicle_obstacles" name="test_unreadable_obstacle_relation_is_a_clear_error" time="0.001" /><testcase classname="tests.test_vehicle_obstacles" name="test_sqlalchemy_builder_loads_only_correct_vehicle_type_in_cm" time="0.020" /><testcase classname="tests.test_websocket_notification.TestJobNotificationServiceUnit" name="test_connect_and_disconnect" time="0.004" /><testcase classname="tests.test_websocket_notification.TestJobNotificationServiceUnit" name="test_notify_broadcasts_to_all_subscribers_of_target_job" time="0.006" /><testcase classname="tests.test_websocket_notification.TestJobNotificationServiceUnit" name="test_notify_handles_dead_connection_gracefully" time="0.005" /><testcase classname="tests.test_websocket_notification.TestWebSocketEndpointIntegration" name="test_websocket_connect_and_receive_notification" time="0.007" /></testsuite></testsuites>
