@@ -1,6 +1,7 @@
 package fu.se184491.loadmaster_be.service.driver.Impl;
 
 import fu.se184491.loadmaster_be.service.audit.AuditCompany;
+import fu.se184491.loadmaster_be.constant.cargo.HandlingClass;
 import fu.se184491.loadmaster_be.constant.cargo.LabelMethod;
 import fu.se184491.loadmaster_be.constant.cargo.PackageStatus;
 import fu.se184491.loadmaster_be.constant.optimization.LoadingExecutionStatus;
@@ -15,6 +16,7 @@ import fu.se184491.loadmaster_be.dto.response.driver.DriverTripResponse;
 import fu.se184491.loadmaster_be.dto.response.driver.StopPackageResponse;
 import fu.se184491.loadmaster_be.entity.account.User;
 import fu.se184491.loadmaster_be.entity.cargo.CargoPackage;
+import fu.se184491.loadmaster_be.entity.cargo.PackageType;
 import fu.se184491.loadmaster_be.entity.common.AuditLog;
 import fu.se184491.loadmaster_be.constant.driver.ManualConfirmStatus;
 import fu.se184491.loadmaster_be.entity.driver.DeliveryIssue;
@@ -52,6 +54,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -235,6 +238,17 @@ public class DriverServiceImpl implements DriverService {
                 && (unloadedAtById.containsKey(id) || pkg.getStatus() == PackageStatus.DELIVERED);
         DeliveryIssue issue = id != null ? state.issueById().get(id) : null;
         ManualUnloadConfirmation manual = id != null ? state.manualById().get(id) : null;
+        PackageType pt = pkg != null ? pkg.getPackageType() : null;
+        BigDecimal weight = pkg != null && pkg.getActualWeightKg() != null ? pkg.getActualWeightKg()
+                : (pt != null ? pt.getWeightKg() : null);
+        BigDecimal lengthCm = pkg != null && pkg.getActualLength() != null ? pkg.getActualLength()
+                : (pt != null && pt.getLength() != null ? BigDecimal.valueOf(pt.getLength()) : null);
+        BigDecimal widthCm = pkg != null && pkg.getActualWidth() != null ? pkg.getActualWidth()
+                : (pt != null && pt.getWidth() != null ? BigDecimal.valueOf(pt.getWidth()) : null);
+        BigDecimal heightCm = pkg != null && pkg.getActualHeight() != null ? pkg.getActualHeight()
+                : (pt != null && pt.getHeight() != null ? BigDecimal.valueOf(pt.getHeight()) : null);
+        boolean isFragile = (pkg != null && pkg.getHandlingClass() == HandlingClass.FRAGILE)
+                || (pt != null && Boolean.TRUE.equals(pt.getFragile()));
         return StopPackageResponse.builder()
                 .issueKind(issue != null && issue.getKind() != null ? issue.getKind().name() : null)
                 .issueNote(issue != null ? issue.getNote() : null)
@@ -244,10 +258,17 @@ public class DriverServiceImpl implements DriverService {
                         ? manual.getDecisionNote() : null)
                 .packageId(id)
                 .packageName(getPackageDisplayName(pkg))
+                .packageTypeName(pt != null ? pt.getName() : null)
                 .trackingBarcode(pkg != null ? pkg.getTrackingBarcode() : null)
                 .packageCode(pkg != null ? pkg.getPackageCode() : null)
                 .qrToken(pkg != null ? pkg.getQrToken() : null)
-                .weight(pkg != null ? pkg.getActualWeightKg() : null)
+                .weight(weight)
+                .lengthCm(lengthCm)
+                .widthCm(widthCm)
+                .heightCm(heightCm)
+                .handlingClass(pkg != null && pkg.getHandlingClass() != null ? pkg.getHandlingClass().name() : null)
+                .fragile(isFragile)
+                .note(pkg != null ? pkg.getNote() : null)
                 .stepSequence(stepSequence)
                 .unloadOrder(unloadOrder)
                 .unloaded(unloaded)
@@ -600,6 +621,9 @@ public class DriverServiceImpl implements DriverService {
     private String getPackageDisplayName(CargoPackage cargoPackage) {
         if (cargoPackage == null) {
             return "Kiện hàng";
+        }
+        if (cargoPackage.getPackageName() != null && !cargoPackage.getPackageName().isBlank()) {
+            return cargoPackage.getPackageName();
         }
         if (cargoPackage.getPackageType() != null && cargoPackage.getPackageType().getName() != null) {
             return cargoPackage.getPackageType().getName();

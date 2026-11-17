@@ -133,6 +133,17 @@ public class DriverController {
         return ResponseEntity.ok(ApiResponse.success("Xuất phát chuyến thành công", response));
     }
 
+    @GetMapping("/trips/{id}/exceptions")
+    @Operation(summary = "List trip-level exceptions for the driver's own trip")
+    public ResponseEntity<ApiResponse<List<TripExceptionResponse>>> listExceptions(
+            @PathVariable("id") String id
+    ) {
+        Trip trip = driverService.requireOwnTrip(id);
+        List<TripExceptionResponse> response = tripExceptionService.list(
+                String.valueOf(trip.getId()), trip.getCompany().getId());
+        return ResponseEntity.ok(ApiResponse.success("Lấy danh sách sự cố trên đường thành công", response));
+    }
+
     @PostMapping("/trips/{id}/exceptions")
     @Operation(summary = "Report a trip-level exception from the driver app")
     public ResponseEntity<ApiResponse<TripExceptionResponse>> reportException(
