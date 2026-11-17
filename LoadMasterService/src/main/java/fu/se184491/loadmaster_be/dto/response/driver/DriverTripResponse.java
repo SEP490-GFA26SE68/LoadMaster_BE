@@ -6,6 +6,7 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 @Data
@@ -26,6 +27,21 @@ public class DriverTripResponse {
 
     @Schema(description = "Tổng số điểm dừng giao hàng")
     private Integer stopCount;
+
+    @Schema(description = "Tổng số kiện hàng của chuyến")
+    private Integer totalPackages;
+
+    @Schema(description = "Tổng khối lượng kiện hàng (kg)")
+    private BigDecimal totalWeightKg;
+
+    @Schema(description = "Tổng quãng đường theo tuyến hiện hành (mét)")
+    private Integer totalDistanceMeters;
+
+    @Schema(description = "Tổng thời gian di chuyển dự kiến (giây)")
+    private Integer totalDurationSeconds;
+
+    @Schema(description = "Thời gian ước tính dự kiến hoàn thành chuyến")
+    private LocalDateTime estimatedCompletionTime;
 
     @Schema(description = "Thời gian xuất phát dự kiến")
     private LocalDateTime departureTime;

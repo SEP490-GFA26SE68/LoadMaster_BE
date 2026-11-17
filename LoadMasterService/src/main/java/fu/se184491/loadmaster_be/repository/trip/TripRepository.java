@@ -36,6 +36,8 @@ public interface TripRepository extends
             java.time.LocalDateTime end
     );
 
+    List<Trip> findByCompanyIdAndStatusAndCompletedAtIsNull(Long companyId, TripStatus status);
+
     List<Trip> findByDriver_IdOrderByDepartureTimeDesc(Long driverId);
 
 
