@@ -19,7 +19,7 @@ public class CompanyProfileController {
     private final CurrentUserService currentUserService;
 
     @GetMapping
-    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'DISPATCHER')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'DISPATCHER', 'DRIVER', 'WAREHOUSE_WORKER')")
     public ResponseEntity<CompanyResponse> getCompanyProfile() {
         Long companyId = currentUserService.getCurrentCompanyId();
         return ResponseEntity.ok(companyService.getCompanyProfile(companyId));

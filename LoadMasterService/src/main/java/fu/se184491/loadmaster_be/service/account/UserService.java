@@ -3,7 +3,9 @@ package fu.se184491.loadmaster_be.service.account;
 import fu.se184491.loadmaster_be.constant.account.UserRole;
 import fu.se184491.loadmaster_be.constant.account.UserStatus;
 import fu.se184491.loadmaster_be.dto.PageResponse;
+import fu.se184491.loadmaster_be.dto.request.account.ChangeMyPasswordRequest;
 import fu.se184491.loadmaster_be.dto.request.account.CreateUserRequest;
+import fu.se184491.loadmaster_be.dto.request.account.UpdateMyProfileRequest;
 import fu.se184491.loadmaster_be.dto.request.account.UpdateUserRequest;
 import fu.se184491.loadmaster_be.dto.request.account.UpdateUserStatusRequest;
 import fu.se184491.loadmaster_be.dto.response.account.CreateUserResponse;
@@ -15,6 +17,10 @@ import org.springframework.security.oauth2.jwt.Jwt;
 
 public interface UserService {
     UserProfileResponse getUserProfile(Jwt jwt);
+
+    UserProfileResponse updateMyProfile(Jwt jwt, UpdateMyProfileRequest request);
+
+    void changeMyPassword(Jwt jwt, ChangeMyPasswordRequest request);
 
     PageResponse<UserListItemResponse> getUsers(
             int page,

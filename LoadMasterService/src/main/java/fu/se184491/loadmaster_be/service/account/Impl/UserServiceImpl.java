@@ -9,7 +9,9 @@ import fu.se184491.loadmaster_be.constant.account.UserType;
 import fu.se184491.loadmaster_be.constant.billing.SubscriptionStatus;
 import fu.se184491.loadmaster_be.constant.company.AgreementStatus;
 import fu.se184491.loadmaster_be.dto.PageResponse;
+import fu.se184491.loadmaster_be.dto.request.account.ChangeMyPasswordRequest;
 import fu.se184491.loadmaster_be.dto.request.account.CreateUserRequest;
+import fu.se184491.loadmaster_be.dto.request.account.UpdateMyProfileRequest;
 import fu.se184491.loadmaster_be.dto.request.account.UpdateUserRequest;
 import fu.se184491.loadmaster_be.dto.request.account.UpdateUserStatusRequest;
 import fu.se184491.loadmaster_be.dto.response.account.CreateUserResponse;
@@ -90,7 +92,20 @@ public class UserServiceImpl implements UserService {
                 );
 
         Boolean subscriptionExpired = false;
+        String companyName = null;
+        String companyCode = null;
+        String companyTaxCode = null;
+        String companyBillingEmail = null;
+        fu.se184491.loadmaster_be.constant.company.CompanyStatus companyStatus = null;
+
         if (user.getCompany() != null) {
+            Company company = user.getCompany();
+            companyName = company.getCompanyName();
+            companyCode = company.getCompanyCode();
+            companyTaxCode = company.getTaxCode();
+            companyBillingEmail = company.getBillingEmail();
+            companyStatus = company.getStatus();
+
             subscriptionExpired = true;
             if (companySubscriptionRepository != null) {
                 Optional<CompanySubscription> subOpt =
@@ -116,11 +131,53 @@ public class UserServiceImpl implements UserService {
                                 ? user.getCompany().getId()
                                 : null
                 )
+                .companyName(companyName)
+                .companyCode(companyCode)
+                .companyTaxCode(companyTaxCode)
+                .companyBillingEmail(companyBillingEmail)
+                .companyStatus(companyStatus)
                 .userRoleType(user.getUserRoleType())
                 .userType(user.getUserType() != null ? user.getUserType() : UserType.OFFICIAL)
                 .status(user.getStatus())
                 .subscriptionExpired(subscriptionExpired)
                 .build();
+    }
+
+    @Override
+    @Transactional
+    public UserProfileResponse updateMyProfile(Jwt jwt, UpdateMyProfileRequest request) {
+        String keycloakId = jwt.getSubject();
+        User user = userRepository.findByKeycloakId(keycloakId)
+                .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
+
+        user.setFullName(request.fullName().trim());
+        if (request.phoneNumber() != null) {
+            user.setPhoneNumber(request.phoneNumber().trim());
+        }
+        userRepository.save(user);
+
+        try {
+            keycloakAdminClient.updateUserProfile(keycloakId, request.fullName().trim());
+        } catch (Exception ex) {
+            log.warn("Failed to sync updated profile to Keycloak: {}", ex.getMessage());
+        }
+
+        return getUserProfile(jwt);
+    }
+
+    @Override
+    @Transactional
+    public void changeMyPassword(Jwt jwt, ChangeMyPasswordRequest request) {
+        String keycloakId = jwt.getSubject();
+        User user = userRepository.findByKeycloakId(keycloakId)
+                .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
+
+        try {
+            keycloakAdminClient.setPassword(keycloakId, request.newPassword(), false);
+        } catch (Exception ex) {
+            log.error("Failed to update password in Keycloak: {}", ex.getMessage(), ex);
+            throw new AppException(ErrorCode.INTERNAL_SERVER_ERROR, "Không thể cập nhật mật khẩu, vui lòng thử lại sau.");
+        }
     }
 
     @Transactional(readOnly = true)

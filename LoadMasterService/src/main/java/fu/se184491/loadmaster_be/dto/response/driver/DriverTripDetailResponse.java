@@ -38,7 +38,13 @@ public class DriverTripDetailResponse {
     private BigDecimal maxPayloadKg;
     private String vehicleTypeName;
 
-    // Thống kê tóm tắt
+    // Người điều phối phụ trách
+    private String dispatcherName;
+    private String dispatcherPhone;
+
+    // Lộ trình & Thống kê tóm tắt
+    private Integer totalDistanceMeters;
+    private Integer totalDurationSeconds;
     private Integer totalStops;
     private Integer totalPackages;
     private BigDecimal totalWeightKg;

@@ -46,6 +46,8 @@ import fu.se184491.loadmaster_be.repository.warehouse.StagingConfirmationReposit
 import fu.se184491.loadmaster_be.repository.driver.UnloadConfirmationRepository;
 import fu.se184491.loadmaster_be.repository.monitoring.GpsTrackingRepository;
 import fu.se184491.loadmaster_be.repository.optimization.PackagePlacementRepository;
+import fu.se184491.loadmaster_be.entity.route.RoutePlan;
+import fu.se184491.loadmaster_be.repository.route.RoutePlanRepository;
 import fu.se184491.loadmaster_be.repository.trip.DeliveryStopRepository;
 import fu.se184491.loadmaster_be.repository.warehouse.DeviationRepository;
 import fu.se184491.loadmaster_be.repository.warehouse.LoadingExecutionRepository;
@@ -78,6 +80,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -107,6 +110,7 @@ public class DriverDeliveryServiceImpl implements DriverDeliveryService {
     private final GpsTrackingRepository gpsTrackingRepository;
     private final EtaCalculationService etaCalculationService;
     private final AuditLogRepository auditLogRepository;
+    private final RoutePlanRepository routePlanRepository;
 
     // ---------------------------------------------------------------------------------------------
     // Phương án kho đã xếp (khung 3D "Xem vị trí hàng")
@@ -376,6 +380,20 @@ public class DriverDeliveryServiceImpl implements DriverDeliveryService {
                     .build());
         }
 
+        User dispatcher = trip.getCreatedByDispatcher();
+        String dispatcherName = dispatcher != null ? dispatcher.getFullName() : null;
+        String dispatcherPhone = dispatcher != null ? dispatcher.getPhoneNumber() : null;
+
+        Integer totalDistanceMeters = null;
+        Integer totalDurationSeconds = null;
+        if (routePlanRepository != null) {
+            Optional<RoutePlan> activeRoutePlan = routePlanRepository.findByTripIdAndIsActiveTrue(trip.getId());
+            if (activeRoutePlan.isPresent()) {
+                totalDistanceMeters = activeRoutePlan.get().getTotalDistanceMeters();
+                totalDurationSeconds = activeRoutePlan.get().getTotalDurationSeconds();
+            }
+        }
+
         return DriverTripDetailResponse.builder()
                 .tripId(trip.getId())
                 .tripCode(trip.getTripCode())
@@ -393,6 +411,10 @@ public class DriverDeliveryServiceImpl implements DriverDeliveryService {
                 .licensePlate(vehicle != null ? vehicle.getLicensePlate() : null)
                 .maxPayloadKg(type != null ? type.getMaxPayloadKg() : null)
                 .vehicleTypeName(type != null ? type.getName() : null)
+                .dispatcherName(dispatcherName)
+                .dispatcherPhone(dispatcherPhone)
+                .totalDistanceMeters(totalDistanceMeters)
+                .totalDurationSeconds(totalDurationSeconds)
                 .totalStops(stops.size())
                 .totalPackages(totalPackages)
                 .totalWeightKg(totalWeight)
