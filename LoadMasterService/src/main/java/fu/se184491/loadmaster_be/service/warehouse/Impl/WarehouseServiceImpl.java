@@ -69,6 +69,7 @@ public class WarehouseServiceImpl implements WarehouseService {
 
     private final WarehouseSessionLookup lookup;
     private final TripRepository tripRepository;
+    private final fu.se184491.loadmaster_be.service.vehicle.VehicleDepartureEligibility vehicleEligibility;
     private final LoadPlanRepository loadPlanRepository;
     private final LoadingExecutionRepository loadingExecutionRepository;
     private final PackagePlacementRepository packagePlacementRepository;
@@ -191,13 +192,17 @@ public class WarehouseServiceImpl implements WarehouseService {
         if (request != null && request.getWorkerId() != null && !request.getWorkerId().equals(worker.getId())) {
             throw new AppException(ErrorCode.UNAUTHORIZED);
         }
-        Trip trip = requireCompanyTrip(tripId, worker);
+        Trip trip = tripRepository.findByIdAndCompanyIdForUpdate(tripId, companyOf(worker))
+                .orElseThrow(() -> new AppException(ErrorCode.TRIP_NOT_FOUND));
         if (trip.getStatus() == TripStatus.LOADING) {
             throw new AppException(ErrorCode.TRIP_ALREADY_LOADING);
         }
         if (trip.getStatus() != TripStatus.PLANNED) {
             throw new AppException(ErrorCode.TRIP_NOT_READY_FOR_LOADING);
         }
+
+        // Trip -> Vehicle -> Warehouse -> Plan -> Execution. Reentrant at transitionTo.
+        vehicleEligibility.requireLocked(companyOf(worker), trip.getOriginWarehouse() == null ? null : trip.getOriginWarehouse().getId(), trip.getVehicle().getId(), tripId);
 
         LoadPlan approvedPlan = loadPlanRepository
                 .findFirstByJobTripIdAndApprovedTrueOrderByIdDesc(tripId)

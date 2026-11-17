@@ -28,6 +28,7 @@ public record TripResponse(
 
         LocalDateTime departureTime,
 
+        Long originWarehouseId,
         String originName,
         String originAddress,
         BigDecimal originLatitude,
@@ -95,6 +96,7 @@ public record TripResponse(
 
                 .departureTime(trip.getDepartureTime())
 
+                .originWarehouseId(trip.getOriginWarehouse() == null ? null : trip.getOriginWarehouse().getId())
                 .originName(trip.getOriginName())
                 .originAddress(trip.getOriginAddress())
                 .originLatitude(trip.getOriginLatitude())

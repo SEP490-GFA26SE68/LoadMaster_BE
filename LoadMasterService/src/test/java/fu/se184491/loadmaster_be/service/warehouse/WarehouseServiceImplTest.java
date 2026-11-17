@@ -75,6 +75,7 @@ import static org.mockito.Mockito.when;
 class WarehouseServiceImplTest {
 
     @Mock private TripRepository tripRepository;
+    @Mock private fu.se184491.loadmaster_be.service.vehicle.VehicleDepartureEligibility vehicleEligibility;
     @Mock private LoadPlanRepository loadPlanRepository;
     @Mock private LoadingExecutionRepository loadingExecutionRepository;
     @Mock private PackagePlacementRepository packagePlacementRepository;
@@ -100,7 +101,7 @@ class WarehouseServiceImplTest {
     void setUp() {
         Company company = Company.builder().id(1L).build();
         User worker = User.builder().id(9L).company(company).build();
-        trip = Trip.builder().id(10L).company(company).tripCode("TRIP-10").status(TripStatus.PLANNED).build();
+        trip = Trip.builder().vehicle(fu.se184491.loadmaster_be.entity.vehicle.Vehicle.builder().id(3L).build()).id(10L).company(company).tripCode("TRIP-10").status(TripStatus.PLANNED).build();
         plan = LoadPlan.builder().id(50L).approved(true).job(OptimizationJob.builder().trip(trip).build()).build();
         var lookup = new WarehouseSessionLookup(currentUserService, tripRepository, loadPlanRepository,
                 loadingExecutionRepository, packagePlacementRepository, placementConfirmationRepository,
@@ -573,5 +574,12 @@ class WarehouseServiceImplTest {
 
         assertThrows(fu.se184491.loadmaster_be.exception.IncompleteLoadingException.class,
                 () -> service.completeLoading(10L));
+    }
+    @Test void startLoadingRevalidatesVehicleBeforeWritingExecution() {
+        org.mockito.Mockito.doThrow(new AppException(ErrorCode.VEHICLE_DEPARTURE_INELIGIBLE))
+            .when(vehicleEligibility).requireLocked(org.mockito.ArgumentMatchers.anyLong(), org.mockito.ArgumentMatchers.<Long>any(), org.mockito.ArgumentMatchers.anyLong(), org.mockito.ArgumentMatchers.<Long>any());
+        assertThrows(AppException.class, () -> service.startLoading(10L, null));
+        verify(loadingExecutionRepository, never()).save(any());
+        verify(tripStatusService, never()).transitionTo(any(), any(), any());
     }
 }

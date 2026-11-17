@@ -58,6 +58,9 @@ class VehicleTypeCatalogPostgresTest {
   excludeFilters=@ComponentScan.Filter(type=FilterType.REGEX,pattern="^(?!.*\\.(VehicleRepository|VehicleTypeRepository|TripRepository)$).*$"))
  @Import({VehicleTypeController.class,fu.se184491.loadmaster_be.service.vehicle.Impl.VehicleTypeServiceImpl.class,fu.se184491.loadmaster_be.repository.vehicle.VehicleListRepository.class,VehicleController.class,VehicleServiceImpl.class,fu.se184491.loadmaster_be.exception.GlobalExceptionHandler.class,TestJwtSupport.class,FlaggedUserEnforcementFilter.class})
  static class Config {
+  @Bean JdbcTemplate presenceJdbc(DataSource source){return new JdbcTemplate(source);}
+  @Bean fu.se184491.loadmaster_be.service.vehicle.VehiclePresenceStore presenceStore(JdbcTemplate sql){return new fu.se184491.loadmaster_be.service.vehicle.VehiclePresenceStore(sql);}
+
   @Bean com.fasterxml.jackson.databind.ObjectMapper legacyObjectMapper(){ return new com.fasterxml.jackson.databind.ObjectMapper().findAndRegisterModules(); }
   @Bean fu.se184491.loadmaster_be.repository.optimization.LoadPlanRepository loadPlans(){return mock(fu.se184491.loadmaster_be.repository.optimization.LoadPlanRepository.class); }
   @Bean static org.springframework.dao.annotation.PersistenceExceptionTranslationPostProcessor exceptionTranslation(){ return new org.springframework.dao.annotation.PersistenceExceptionTranslationPostProcessor(); }

@@ -26,6 +26,7 @@ public class TripDepartureReadiness {
     private final LoadPlanRepository plans;
     private final LoadingExecutionRepository executions;
     private final TripRepository trips;
+    private final fu.se184491.loadmaster_be.service.vehicle.VehiclePresenceStore presenceStore;
     @PersistenceContext private EntityManager entityManager;
 
     /** Must run inside the caller's write transaction. Serialize departures by Trip first. */
@@ -46,7 +47,7 @@ public class TripDepartureReadiness {
 
     public boolean canStart(Trip trip, User driver) { return evaluate(trip, driver, false); }
 
-    /** Caller holds the Trip write lock; lock/refresh the exact Plan then Execution, in that order. */
+    /** Caller holds Trip; lock Vehicle before refreshing the exact Plan then Execution. */
     public boolean canStartLocked(Trip trip, User driver) { return evaluate(trip, driver, true); }
 
     private boolean evaluate(Trip trip, User driver, boolean lock) {
@@ -58,6 +59,8 @@ public class TripDepartureReadiness {
                 || trip.getDriver() == null || !Objects.equals(driver.getId(), trip.getDriver().getId())) {
             return false;
         }
+        // The write path holds Trip first; acquire Vehicle before any Plan/Execution lock.
+        if (lock) presenceStore.lockVehicle(trip.getVehicle().getId(), trip.getCompany().getId());
         LoadPlan plan = plans.findFirstByJobTripIdAndApprovedTrueOrderByIdDesc(trip.getId()).orElse(null);
         if (plan == null) return false;
         if (lock) entityManager.refresh(plan, LockModeType.PESSIMISTIC_READ);

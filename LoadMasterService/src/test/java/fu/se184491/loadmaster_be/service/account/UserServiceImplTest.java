@@ -38,6 +38,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
 
 import java.time.Instant;
+import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.List;
@@ -189,7 +190,7 @@ class UserServiceImplTest {
         assertNotNull(createdEntity.getUpdatedAt(), "Entity updatedAt must not be null on initial creation");
         assertEquals(createdEntity.getCreatedAt(), createdEntity.getUpdatedAt(), "Initial updatedAt must equal createdAt");
 
-        Instant originalCreatedAt = Instant.parse("2026-11-01T08:30:00Z");
+        LocalDateTime originalCreatedAt = LocalDateTime.of(2026, 11, 1, 8, 30);
         createdEntity.setCreatedAt(originalCreatedAt);
         createdEntity.setUpdatedAt(originalCreatedAt);
         when(userRepository.findById(51L)).thenReturn(Optional.of(createdEntity));
@@ -591,8 +592,8 @@ class UserServiceImplTest {
                 .company(company10)
                 .userRoleType(UserRole.ADMIN)
                 .status(UserStatus.INACTIVE)
-                .createdAt(OffsetDateTime.now(ZoneOffset.UTC).minusMonths(5).toInstant())
-                .updatedAt(OffsetDateTime.now(ZoneOffset.UTC).minusMonths(3).minusDays(1).toInstant())
+                .createdAt(LocalDateTime.now().minusMonths(5))
+                .updatedAt(LocalDateTime.now().minusMonths(3).minusDays(1))
                 .build();
 
         when(userRepository.findByStatusAndUpdatedAtBefore(eq(UserStatus.INACTIVE), any(Instant.class)))

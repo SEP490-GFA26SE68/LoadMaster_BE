@@ -34,6 +34,7 @@ import java.util.List;
 public class VehicleServiceImpl implements VehicleService {
 
     private final VehicleRepository vehicleRepository;
+    private final fu.se184491.loadmaster_be.service.vehicle.VehiclePresenceStore presenceStore;
     private final fu.se184491.loadmaster_be.repository.vehicle.VehicleListRepository vehicleListRepository;
     private final VehicleTypeRepository vehicleTypeRepository;
     private final TripRepository tripRepository;
@@ -215,6 +216,7 @@ public class VehicleServiceImpl implements VehicleService {
     @Transactional
     public VehicleResponse updateVehicle(Long vehicleId, UpdateVehicleRequest request) {
         Long companyId = currentUserService.getCurrentCompanyId();
+        presenceStore.lockVehicle(vehicleId, companyId);
         Vehicle vehicle = ownVehicle(vehicleId, companyId);
         if (vehicle.getStatus() == VehicleStatus.RETIRED) {
             throw new AppException(ErrorCode.VEHICLE_RETIRED);
@@ -253,12 +255,13 @@ public class VehicleServiceImpl implements VehicleService {
     @Transactional
     public VehicleDeleteResponse deleteVehicle(Long vehicleId) {
         Long companyId = currentUserService.getCurrentCompanyId();
+        presenceStore.lockVehicle(vehicleId, companyId);
         Vehicle vehicle = ownVehicle(vehicleId, companyId);
         if (tripRepository.existsByVehicleIdAndStatusIn(vehicleId, UNFINISHED)) {
             throw new AppException(ErrorCode.VEHICLE_IN_USE);
         }
         // Chuyến đã giao / đã huỷ còn trỏ tới xe: giữ bản ghi cho lịch sử, xe ngừng sử dụng
-        if (tripRepository.existsByVehicleId(vehicleId)) {
+        if (tripRepository.existsByVehicleId(vehicleId) || presenceStore.hasReferences(vehicleId, companyId)) {
             vehicle.setStatus(VehicleStatus.RETIRED);
             vehicle.setMaintenanceNote(null);
             vehicle.setMaintenanceSince(null);
@@ -274,6 +277,7 @@ public class VehicleServiceImpl implements VehicleService {
     @Transactional
     public VehicleResponse startMaintenance(Long vehicleId, String note) {
         Long companyId = currentUserService.getCurrentCompanyId();
+        presenceStore.lockVehicle(vehicleId, companyId);
         Vehicle vehicle = ownVehicle(vehicleId, companyId);
         if (vehicle.getStatus() == VehicleStatus.RETIRED) {
             throw new AppException(ErrorCode.VEHICLE_RETIRED);
@@ -295,6 +299,7 @@ public class VehicleServiceImpl implements VehicleService {
     @Transactional
     public VehicleResponse endMaintenance(Long vehicleId) {
         Long companyId = currentUserService.getCurrentCompanyId();
+        presenceStore.lockVehicle(vehicleId, companyId);
         Vehicle vehicle = ownVehicle(vehicleId, companyId);
         if (vehicle.getStatus() == VehicleStatus.MAINTENANCE) {
             vehicle.setStatus(VehicleStatus.AVAILABLE);

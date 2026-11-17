@@ -24,6 +24,7 @@ class TripDepartureReadinessTest {
     @Mock LoadPlanRepository plans;
     @Mock LoadingExecutionRepository executions;
     @Mock TripRepository trips;
+    @Mock fu.se184491.loadmaster_be.service.vehicle.VehiclePresenceStore presenceStore;
     @Mock EntityManager entityManager;
     @InjectMocks TripDepartureReadiness readiness;
     User driver;
@@ -34,7 +35,7 @@ class TripDepartureReadinessTest {
         org.springframework.test.util.ReflectionTestUtils.setField(readiness, "entityManager", entityManager);
         Company company = Company.builder().id(1L).build();
         driver = User.builder().id(8L).company(company).userRoleType(UserRole.DRIVER).build();
-        trip = Trip.builder().id(10L).company(company).driver(driver).status(TripStatus.LOADING).build();
+        trip = Trip.builder().id(10L).vehicle(fu.se184491.loadmaster_be.entity.vehicle.Vehicle.builder().id(3L).build()).company(company).driver(driver).status(TripStatus.LOADING).build();
         current = LoadPlan.builder().id(50L).approved(true).stale(false)
                 .job(OptimizationJob.builder().id(40L).trip(trip).build()).build();
         lenient().when(plans.findFirstByJobTripIdAndApprovedTrueOrderByIdDesc(10L)).thenReturn(Optional.of(current));

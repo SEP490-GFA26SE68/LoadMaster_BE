@@ -29,7 +29,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 @WebMvcTest(PaymentWebhookController.class)
 @Import({TestJwtSupport.class, PaymentSecurityTest.Config.class, MockPaymentPolicy.class,
-         PaymentCallbackHandler.class, VnPayClient.class})
+         PaymentCallbackHandler.class, VnPayClient.class, fu.se184491.loadmaster_be.service.payment.MockCheckoutAccess.class})
 @ActiveProfiles("prod")
 class PaymentSecurityTest {
     @TestConfiguration(proxyBeanMethods=false)
@@ -47,22 +47,25 @@ class PaymentSecurityTest {
     @MockitoBean CreditService credits;
     @MockitoBean SubscriptionService subscriptions;
     @MockitoBean CurrentUserService currentUser;
+    // Callback handler now supports guest registration; this slice never calls that branch.
+    @MockitoBean fu.se184491.loadmaster_be.service.registration.GuestRegistrationService guestRegistration;
+
 
     @Test void mockCheckoutNeedsAuthentication() throws Exception {
         mvc.perform(get("/api/payment/mock-checkout").param("txnRef","MOCK_123"))
                 .andExpect(status().isUnauthorized());
         verifyNoInteractions(transactions,credits,subscriptions);
     }
-    @Test void productionRejectsMockCheckoutEvenForCompanyAdminAndTrueFlag() throws Exception {
+    @Test void productionConcealsDisabledMockEvenForCompanyAdminAndTrueFlag() throws Exception {
         mvc.perform(get("/api/payment/mock-checkout").param("txnRef","MOCK_123").param("vnp_Mock","true")
                 .header("Authorization","Bearer "+TestJwtSupport.userToken("admin","ADMIN")))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isNotFound()).andExpect(jsonPath("$.code").value("PAYMENT_TRANSACTION_NOT_FOUND"));
         verifyNoInteractions(transactions,credits,subscriptions);
     }
-    @Test void ordinaryDispatcherCannotUseMockCheckout() throws Exception {
+    @Test void productionConcealsDisabledMockForDispatcher() throws Exception {
         mvc.perform(get("/api/payment/mock-checkout").param("txnRef","MOCK_123")
                 .header("Authorization","Bearer "+TestJwtSupport.userToken("dispatcher","DISPATCHER")))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isNotFound()).andExpect(jsonPath("$.code").value("PAYMENT_TRANSACTION_NOT_FOUND"));
         verifyNoInteractions(transactions,credits,subscriptions);
     }
     @Test void publicCallbackCannotEnableMockUsingFlagOrPrefix() throws Exception {
@@ -82,7 +85,7 @@ class PaymentSecurityTest {
                           URLDecoder.decode(entry[1], StandardCharsets.UTF_8));
         }
         mvc.perform(request).andExpect(status().isOk()).andExpect(jsonPath("$.RspCode").value("01"));
-        verify(transactions).findByGatewayTransactionId("SIGNED_TEST");
+        verify(transactions).findByGatewayTransactionIdForUpdate("SIGNED_TEST");
         verifyNoInteractions(credits,subscriptions);
     }
 }

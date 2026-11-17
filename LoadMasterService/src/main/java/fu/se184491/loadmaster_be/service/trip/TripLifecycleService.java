@@ -72,6 +72,7 @@ public class TripLifecycleService {
             EnumSet.of(TripExceptionStatus.OPEN, TripExceptionStatus.ESCALATED);
 
     private final TripRepository tripRepository;
+    private final fu.se184491.loadmaster_be.service.vehicle.VehicleDepartureEligibility vehicleEligibility;
     private final DeliveryStopRepository deliveryStopRepository;
     private final DeliveryRequirementRepository deliveryRequirementRepository;
     private final VehicleRepository vehicleRepository;
@@ -99,6 +100,11 @@ public class TripLifecycleService {
         if (!EDITABLE.contains(trip.getStatus())) {
             throw new AppException(ErrorCode.TRIP_NOT_EDITABLE);
         }
+
+        // Validate even a warehouse-only PATCH or a repeated unchanged vehicle ID.
+        Vehicle eligibleVehicle = vehicleEligibility.requireLocked(companyId,
+                request.originWarehouseId() != null ? request.originWarehouseId() : trip.getOriginWarehouse() == null ? null : trip.getOriginWarehouse().getId(),
+                request.vehicleId() != null ? request.vehicleId() : trip.getVehicle().getId(), tripId);
 
         Map<String, Object> before = new HashMap<>();
         Map<String, Object> after = new HashMap<>();
@@ -138,7 +144,7 @@ public class TripLifecycleService {
         }
 
         if (request.vehicleId() != null && !request.vehicleId().equals(trip.getVehicle().getId())) {
-            Vehicle vehicle = requireUsableVehicle(request.vehicleId(), companyId);
+            Vehicle vehicle = eligibleVehicle;
             record(before, after, "vehicleId", trip.getVehicle().getId(), vehicle.getId());
             requireCarriesCargo(vehicle, trip.getId());
             trip.setVehicle(vehicle);

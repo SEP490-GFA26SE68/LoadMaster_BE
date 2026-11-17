@@ -13,9 +13,7 @@ import fu.se184491.loadmaster_be.dto.response.account.CreateUserResponse;
 import fu.se184491.loadmaster_be.dto.response.account.UserListItemResponse;
 import fu.se184491.loadmaster_be.exception.GlobalExceptionHandler;
 import fu.se184491.loadmaster_be.service.account.UserService;
-import java.time.Instant;
 import java.time.LocalDateTime;
-import java.time.OffsetDateTime;
 import java.util.List;
 import org.springframework.data.domain.PageImpl;
 
@@ -93,13 +91,13 @@ class UserControllerTest {
 
     @Test
     @WithMockUser(authorities = "USERS_CREATE")
-    void createUser_serializesCreatedAtAsUtcWithoutChangingSubscriptionFormat() throws Exception {
+    void createUser_serializesLocalCreatedAtWithoutChangingSubscriptionFormat() throws Exception {
         UserListItemResponse item = new UserListItemResponse(
                 100L, "kc-100", "admin@acme.vn", "Acme Admin", "0901234567",
                 UserRole.ADMIN, null, UserStatus.ACTIVE, 10L, "Acme Logistics",
                 null, null, null, null, null, null,
                 LocalDateTime.of(2026, 12, 4, 8, 30), null,
-                Instant.parse("2026-11-04T15:00:00Z"));
+                LocalDateTime.of(2026, 11, 4, 15, 0));
         when(userService.createUser(any(CreateUserRequest.class)))
                 .thenReturn(new CreateUserResponse(item, "Tmp#123456"));
 
@@ -107,58 +105,59 @@ class UserControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(createRequest)))
                 .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.data.user.createdAt").value("2026-11-04T15:00:00Z"))
+                .andExpect(jsonPath("$.data.user.createdAt").value("2026-11-04T15:00:00"))
                 .andExpect(jsonPath("$.data.user.subscriptionExpiresAt").value("2026-12-04 08:30:00"));
     }
 
+    // Explicit wall-clock fixture, not an Instant conversion or a guessed source timezone.
     private UserListItemResponse timestampedUser() {
         return new UserListItemResponse(
                 100L, "kc-100", "admin@acme.vn", "Acme Admin", "0901234567",
                 UserRole.ADMIN, null, UserStatus.ACTIVE, 10L, "Acme Logistics",
                 null, null, null, null, null, null,
                 LocalDateTime.of(2026, 12, 4, 8, 30), null,
-                OffsetDateTime.parse("2026-11-04T22:00:00+07:00").toInstant());
+                LocalDateTime.of(2026, 11, 4, 22, 0));
     }
 
     @Test
     @WithMockUser(authorities = "USERS_READ")
-    void listUsers_serializesCreatedAtAsUtcInPageData() throws Exception {
+    void listUsers_serializesLocalCreatedAtInPageData() throws Exception {
         when(userService.getUsers(eq(0), eq(20), isNull(), isNull(), isNull(), isNull()))
                 .thenReturn(PageResponse.of(new PageImpl<>(List.of(timestampedUser()))));
         mockMvc.perform(get("/api/users"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data[0].createdAt").value("2026-11-04T15:00:00Z"))
+                .andExpect(jsonPath("$.data[0].createdAt").value("2026-11-04T22:00:00"))
                 .andExpect(jsonPath("$.data[0].subscriptionExpiresAt").value("2026-12-04 08:30:00"));
     }
 
     @Test
     @WithMockUser(authorities = "USERS_UPDATE")
-    void updateUser_serializesCreatedAtAsUtc() throws Exception {
+    void updateUser_serializesLocalCreatedAt() throws Exception {
         when(userService.updateUser(eq(100L), any(UpdateUserRequest.class))).thenReturn(timestampedUser());
         mockMvc.perform(put("/api/users/100").contentType(MediaType.APPLICATION_JSON)
                         .content("{\"fullName\":\"Acme Admin\",\"phoneNumber\":\"0901234567\",\"role\":\"ADMIN\"}"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.createdAt").value("2026-11-04T15:00:00Z"));
+                .andExpect(jsonPath("$.data.createdAt").value("2026-11-04T22:00:00"));
     }
 
     @Test
     @WithMockUser(authorities = "USERS_LOCK")
-    void updateStatus_serializesCreatedAtAsUtc() throws Exception {
+    void updateStatus_serializesLocalCreatedAt() throws Exception {
         when(userService.updateUserStatus(eq(100L), any(UpdateUserStatusRequest.class))).thenReturn(timestampedUser());
         mockMvc.perform(patch("/api/users/100/status").contentType(MediaType.APPLICATION_JSON)
                         .content("{\"status\":\"LOCKED\"}"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.createdAt").value("2026-11-04T15:00:00Z"));
+                .andExpect(jsonPath("$.data.createdAt").value("2026-11-04T22:00:00"));
     }
 
     @Test
     @WithMockUser(authorities = "USERS_UPDATE")
-    void nestedUserInResetResponse_serializesCreatedAtAsUtcWithoutInvokingPasswordLogic() throws Exception {
+    void nestedUserInResetResponse_serializesLocalCreatedAtWithoutInvokingPasswordLogic() throws Exception {
         // Serialization only: the service is mocked, so no password or Keycloak operation runs.
         when(userService.resetPassword(100L)).thenReturn(new ResetPasswordResponse(100L, timestampedUser(), "Tmp#123456"));
         mockMvc.perform(post("/api/users/100/reset-password"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.user.createdAt").value("2026-11-04T15:00:00Z"));
+                .andExpect(jsonPath("$.data.user.createdAt").value("2026-11-04T22:00:00"));
     }
 
     @Test

@@ -22,6 +22,7 @@ import org.testcontainers.postgresql.PostgreSQLContainer;
 import java.io.StringWriter;
 import java.sql.DriverManager;
 import java.time.Instant;
+import java.time.LocalDateTime;
 import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.Map;
@@ -32,7 +33,7 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
 /** Only the newly created disposable container is reachable; no Spring application/profile is loaded. */
 class UserTimestampPostgresTest {
     @Test
-    void validatesExistingTimestamptzRoundTripsInstantsAndGeneratesNoTypeAlter() throws Exception {
+    void validatesV19LocalStringsRoundTripsSecondsAndGeneratesNoTypeAlter() throws Exception {
         assumeTrue(DockerClientFactory.instance().isDockerAvailable(), "Docker is required for PostgreSQL verification");
         try (var postgres = new PostgreSQLContainer("postgres:17-alpine")) {
             postgres.start();
@@ -56,7 +57,6 @@ class UserTimestampPostgresTest {
                         metadata,
                         SchemaManagementToolCoordinator.buildExecutionOptions(settings, ExceptionHandlerHaltImpl.INSTANCE),
                         ContributableMatcher.ALL, scriptOnly);
-                assertFalse(ddl.toString().toLowerCase(java.util.Locale.ROOT).contains("alter column"), ddl.toString());
 
                 // Building the factory validates the existing schema; it never creates or updates it.
                 try (var factory = metadata.buildSessionFactory()) {
@@ -64,8 +64,8 @@ class UserTimestampPostgresTest {
                         session.beginTransaction();
                         session.createNativeMutationQuery("SET LOCAL TIME ZONE 'Asia/Ho_Chi_Minh'").executeUpdate();
                         User existing = session.find(User.class, 1L);
-                        assertEquals(Instant.parse("2026-11-04T15:00:00.123456Z"), existing.getCreatedAt());
-                        assertEquals(Instant.parse("2026-11-04T15:00:01.654321Z"), existing.getUpdatedAt());
+                        assertEquals(LocalDateTime.of(2026, 11, 4, 22, 0), existing.getCreatedAt());
+                        assertEquals(LocalDateTime.of(2026, 11, 4, 22, 0, 1), existing.getUpdatedAt());
                         assertEquals(1L, session.createQuery("select count(u) from User u", Long.class).getSingleResult());
 
                         User user = User.builder().keycloakId("test-new").email("new@example.test")
@@ -73,7 +73,7 @@ class UserTimestampPostgresTest {
                         session.persist(user);
                         session.flush();
                         Long id = user.getId();
-                        Instant created = user.getCreatedAt();
+                        LocalDateTime created = user.getCreatedAt();
                         assertEquals(created, user.getUpdatedAt());
                         assertEquals(0, created.getNano());
                         session.clear();
@@ -86,9 +86,6 @@ class UserTimestampPostgresTest {
                         assertEquals(created, user.getCreatedAt());
                         assertFalse(user.getUpdatedAt().isBefore(created));
                         assertEquals(0, user.getUpdatedAt().getNano());
-                        var repository = new JpaRepositoryFactory(session).getRepository(UserRepository.class);
-                        assertTrue(repository.findByStatusAndUpdatedAtBefore(UserStatus.ACTIVE, Instant.now().plusSeconds(10))
-                                .stream().anyMatch(found -> id.equals(found.getId())));
                         session.getTransaction().commit();
                     }
                 }
@@ -101,14 +98,44 @@ class UserTimestampPostgresTest {
                              """)) {
                     int count = 0;
                     while (rows.next()) {
-                        assertEquals("timestamp with time zone", rows.getString(1));
+                        assertEquals("character varying", rows.getString(1));
                         count++;
                     }
                     assertEquals(2, count);
                 }
+                // Keep this release assertion after round-trip checks so a schema mismatch cannot hide them.
+                assertFalse(ddl.toString().toLowerCase(java.util.Locale.ROOT).contains("alter column"), ddl.toString());
+
             } finally {
                 StandardServiceRegistryBuilder.destroy(registry);
             }
+        }
+    }
+
+    @Test
+    void inactiveUserCutoffQueryMustRemainCompatibleWithMappedTimestamp() throws Exception {
+        assumeTrue(DockerClientFactory.instance().isDockerAvailable(), "Docker is required for PostgreSQL verification");
+        try (var postgres = new PostgreSQLContainer("postgres:17-alpine").withDatabaseName("user_cutoff_test")) {
+            postgres.start();
+            createFixture(postgres);
+            Map<String,Object> settings = new HashMap<>();
+            settings.put("hibernate.connection.url",postgres.getJdbcUrl());
+            settings.put("hibernate.connection.username",postgres.getUsername());
+            settings.put("hibernate.connection.password",postgres.getPassword());
+            settings.put("hibernate.hbm2ddl.auto","validate");
+            var registry = new StandardServiceRegistryBuilder().applySettings(settings).build();
+            try {
+                var metadata = new MetadataSources(registry).addAnnotatedClass(User.class).addAnnotatedClass(Company.class).buildMetadata();
+                try (var factory = metadata.buildSessionFactory(); var session = factory.openSession()) {
+                    session.beginTransaction();
+                    var repository = new JpaRepositoryFactory(session).getRepository(UserRepository.class);
+                    // Preserve the original query success assertion. An Instant cutoff is still the production
+                    // repository/purge contract, while the mapped field is LocalDateTime: report a real failure.
+                    assertTrue(repository.findByStatusAndUpdatedAtBefore(UserStatus.ACTIVE, Instant.now().plusSeconds(10))
+                            .stream().anyMatch(found -> Long.valueOf(1).equals(found.getId())));
+                    session.getTransaction().rollback();
+                }
+            } finally { StandardServiceRegistryBuilder.destroy(registry); }
         }
     }
 
@@ -137,6 +164,10 @@ class UserTimestampPostgresTest {
                     VALUES ('test-existing','existing@example.test','Existing user','DRIVER','ACTIVE',
                             '2026-11-04T22:00:00.123456+07','2026-11-04T22:00:01.654321+07')
                     """);
+            try (var input = UserTimestampPostgresTest.class.getResourceAsStream("/db/migration/V19__format_users_created_updated_at.sql")) {
+                assertNotNull(input);
+                statement.execute(new String(input.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8));
+            }
         }
     }
 }

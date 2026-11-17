@@ -58,6 +58,10 @@ class VehicleListPostgresTest {
   excludeFilters=@ComponentScan.Filter(type=FilterType.REGEX,pattern="^(?!.*\\.(VehicleRepository|VehicleTypeRepository|TripRepository)$).*$"))
  @Import({fu.se184491.loadmaster_be.repository.vehicle.VehicleListRepository.class,VehicleController.class,VehicleServiceImpl.class,fu.se184491.loadmaster_be.exception.GlobalExceptionHandler.class,TestJwtSupport.class,FlaggedUserEnforcementFilter.class})
  static class Config {
+  // Real store uses this same isolated datasource; list tests must not require shared presence services.
+  @Bean JdbcTemplate presenceJdbc(DataSource source){return new JdbcTemplate(source);}
+  @Bean fu.se184491.loadmaster_be.service.vehicle.VehiclePresenceStore presenceStore(JdbcTemplate sql){return new fu.se184491.loadmaster_be.service.vehicle.VehiclePresenceStore(sql);}
+
   @Bean com.fasterxml.jackson.databind.ObjectMapper legacyObjectMapper(){ return new com.fasterxml.jackson.databind.ObjectMapper().findAndRegisterModules(); }
   @Bean fu.se184491.loadmaster_be.repository.optimization.LoadPlanRepository loadPlans(){return mock(fu.se184491.loadmaster_be.repository.optimization.LoadPlanRepository.class); }
   @Bean static org.springframework.dao.annotation.PersistenceExceptionTranslationPostProcessor exceptionTranslation(){ return new org.springframework.dao.annotation.PersistenceExceptionTranslationPostProcessor(); }
@@ -110,7 +114,7 @@ class VehicleListPostgresTest {
   ctx.setServletContext(new MockServletContext());ctx.register(Config.class);ctx.refresh();
   http=MockMvcBuilders.webAppContextSetup(ctx).apply(springSecurity()).build();sql=new JdbcTemplate(ctx.getBean(DataSource.class));
   sql.update("INSERT INTO companies(id,company_code,company_name,tax_code,billing_email,status) VALUES(1,'C1','Fixture A','T1','one@example.test','ACTIVE'),(2,'C2','Fixture B','T2','two@example.test','ACTIVE')");
-  sql.update("INSERT INTO users(id,company_id,keycloak_id,email,full_name,user_role_type,status,created_at,updated_at) VALUES(8,1,'fixture','fixture@example.test','Fixture','DISPATCHER','ACTIVE','2026-11-12T00:00:00Z','2026-11-12T00:00:00Z')");
+  sql.update("INSERT INTO users(id,company_id,keycloak_id,email,full_name,user_role_type,status,created_at,updated_at) VALUES(8,1,'fixture','fixture@example.test','Fixture','DISPATCHER','ACTIVE','2026-11-12 00:00:00','2026-11-12 00:00:00')");
   for(int i=1;i<=3;i++)sql.update("INSERT INTO vehicle_types(id,company_id,name,inner_length,inner_width,inner_height,max_payload_kg,max_cog_offset_ratio,hazardous_capable) VALUES(?,?,?,400,200,200,2000,0.15,false)",i,i==3?2:1,i==2?"Cold":"Box");
   for(int i=1;i<=100;i++)sql.update("INSERT INTO vehicles(id,company_id,vehicle_type_id,name,license_plate,status) VALUES(?,1,?,?,?,?)",i,i%2==0?2:1,i==90?"Target truck":i==10||i==11?"Same name":"Vehicle "+String.format("%03d",i),"PLATE-"+String.format("%03d",i),i==76||i==77?"MAINTENANCE":i==78?"RETIRED":i==4?"IN_TRIP":"AVAILABLE");
   sql.update("INSERT INTO vehicles(id,company_id,vehicle_type_id,name,license_plate,status) VALUES(101,2,3,'Foreign truck','FOREIGN','MAINTENANCE')");

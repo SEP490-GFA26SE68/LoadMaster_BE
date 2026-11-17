@@ -39,6 +39,7 @@ public class TripVehicleChoiceService {
     private static final List<TripStatus> BUSY = List.of(TripStatus.LOADING, TripStatus.IN_TRANSIT);
 
     private final TripRepository tripRepository;
+    private final fu.se184491.loadmaster_be.service.vehicle.VehicleDepartureEligibility vehicleEligibility;
     private final VehicleRepository vehicleRepository;
     private final TripPackageResolver tripPackageResolver;
     private final CurrentUserService currentUserService;
@@ -70,7 +71,7 @@ public class TripVehicleChoiceService {
             List<Issue> issues = VehicleCargoFit.issues(vehicle.getVehicleType(), packages).stream()
                     .map(issue -> new Issue(issue.code(), issue.severity(), issue.params()))
                     .toList();
-            boolean selectable = !current && busy == null && vehicle.getStatus() == VehicleStatus.AVAILABLE
+            boolean selectable = !current && busy == null && vehicleEligibility.eligible(vehicle, trip.getOriginWarehouse() == null ? null : trip.getOriginWarehouse().getId(), tripId)
                     && issues.isEmpty();
             choices.add(new Choice(TripVehicleConfigResponse.of(vehicle),
                     vehicle.getStatus() == null ? null : vehicle.getStatus().name(),

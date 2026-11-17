@@ -52,6 +52,7 @@ public class TripServiceImpl implements TripService {
     private final fu.se184491.loadmaster_be.repository.cargo.CargoPackageRepository cargoPackageRepository;
     private final CompanyWarehouseRepository companyWarehouseRepository;
     private final TripRepository tripRepository;
+    private final fu.se184491.loadmaster_be.service.vehicle.VehicleDepartureEligibility vehicleEligibility;
     private final VehicleRepository vehicleRepository;
     private final UserRepository userRepository;
     private final CurrentUserService currentUserService;
@@ -98,25 +99,7 @@ public class TripServiceImpl implements TripService {
 
 
         // 2. Kiểm tra xe.
-        Vehicle vehicle = vehicleRepository
-                .findById(request.vehicleId())
-                .orElseThrow(() ->
-                        new AppException(
-                                ErrorCode.VEHICLE_NOT_FOUND
-                        )
-                );
-
-        if (!companyId.equals(vehicle.getCompany().getId())) {
-            throw new AppException(
-                    ErrorCode.VEHICLE_NOT_FOUND
-            );
-        }
-
-        if (vehicle.getStatus() != VehicleStatus.AVAILABLE) {
-            throw new AppException(
-                    ErrorCode.VEHICLE_NOT_AVAILABLE
-            );
-        }
+        Vehicle vehicle = vehicleEligibility.requireLocked(companyId, request.originWarehouseId(), request.vehicleId(), null);
 
         // 3. Kiểm tra tài xế (không bắt buộc).
         User driver = null;
@@ -578,6 +561,7 @@ public class TripServiceImpl implements TripService {
                 .driverName(trip.getDriver() != null ? trip.getDriver().getFullName() : null)
                 .createdByDispatcherId(trip.getCreatedByDispatcher().getId())
                 .departureTime(trip.getDepartureTime())
+                .originWarehouseId(trip.getOriginWarehouse() == null ? null : trip.getOriginWarehouse().getId())
                 .originName(trip.getOriginName())
                 .originAddress(trip.getOriginAddress())
                 .originLatitude(trip.getOriginLatitude())
@@ -623,6 +607,7 @@ public class TripServiceImpl implements TripService {
                         trip.getCreatedByDispatcher().getId()
                 )
                 .departureTime(trip.getDepartureTime())
+                .originWarehouseId(trip.getOriginWarehouse() == null ? null : trip.getOriginWarehouse().getId())
                 .originName(trip.getOriginName())
                 .originAddress(trip.getOriginAddress())
                 .originLatitude(trip.getOriginLatitude())

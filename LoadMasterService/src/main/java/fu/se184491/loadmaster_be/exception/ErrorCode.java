@@ -372,7 +372,14 @@ public enum ErrorCode {
     PICKUP_REASON_REQUIRED("Phải ghi lý do", HttpStatus.BAD_REQUEST),
     PICKUP_PACKAGE_NOT_AT_STOP("Kiện nhận không thuộc điểm nhận hiện tại", HttpStatus.CONFLICT),
     PICKUP_PACKAGE_ALREADY_PICKED("Kiện nhận này đã lên xe", HttpStatus.CONFLICT),
-    PICKUP_STOP_INCOMPLETE("Còn kiện nhận chưa đối chiếu ở điểm nhận", HttpStatus.CONFLICT);
+    PICKUP_STOP_INCOMPLETE("Còn kiện nhận chưa đối chiếu ở điểm nhận", HttpStatus.CONFLICT),
+
+    WAREHOUSE_ASSIGNMENT_INVALID("Chỉ phân công nhân viên kho đang hoạt động vào kho đang hoạt động", HttpStatus.CONFLICT),
+    DRIVER_VEHICLE_PRESENCE_UNVERIFIED("Chưa xác minh xe tại kho xuất phát. Vui lòng nhờ nhân viên được phân công tại kho xác nhận xe thực tế trước khi xuất phát", HttpStatus.CONFLICT),
+    DRIVER_VEHICLE_DEPARTURE_BLOCKED("Chưa thể xuất phát do trạng thái xe hoặc kho chưa phù hợp. Vui lòng liên hệ nhân viên kho hoặc điều phối viên để kiểm tra", HttpStatus.CONFLICT),
+    VEHICLE_DEPARTURE_INELIGIBLE("Xe không còn đủ điều kiện tại kho xuất phát. Vui lòng chọn lại xe", HttpStatus.CONFLICT),
+    VEHICLE_WAREHOUSE_FORBIDDEN("Không có quyền xác nhận xe tại kho này", HttpStatus.FORBIDDEN),
+    VEHICLE_PRESENCE_CONFLICT("Trạng thái xe hoặc mã xác nhận bị xung đột. Vui lòng tải lại", HttpStatus.CONFLICT);
 
     private final String message;
     private final HttpStatus httpStatus;

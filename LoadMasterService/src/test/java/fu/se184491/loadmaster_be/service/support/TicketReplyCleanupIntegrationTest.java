@@ -52,6 +52,10 @@ class TicketReplyCleanupIntegrationTest {
     @Autowired
     private TicketReplyRepository ticketReplyRepository;
 
+    // Redis is unrelated to these database scenarios; never initialize a shared/dev connection factory.
+    @MockitoBean
+    private org.springframework.data.redis.connection.lettuce.LettuceConnectionFactory redisConnectionFactory;
+
     @MockitoBean
     private JwtDecoder jwtDecoder;
 
@@ -110,8 +114,8 @@ class TicketReplyCleanupIntegrationTest {
                 .fullName("Người " + keycloakId)
                 .userRoleType(UserRole.DISPATCHER)
                 .status(UserStatus.ACTIVE)
-                .createdAt(now.minusDays(40).toInstant(java.time.ZoneOffset.UTC))
-                .updatedAt(now.minusDays(40).toInstant(java.time.ZoneOffset.UTC))
+                .createdAt(now.minusDays(40))
+                .updatedAt(now.minusDays(40))
                 .build();
         entityManager.persist(user);
         return user;

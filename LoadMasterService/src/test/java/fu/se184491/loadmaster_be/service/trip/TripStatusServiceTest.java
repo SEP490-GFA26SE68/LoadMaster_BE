@@ -35,6 +35,8 @@ import static org.mockito.Mockito.when;
 @ExtendWith(MockitoExtension.class)
 class TripStatusServiceTest {
 
+    @Mock private fu.se184491.loadmaster_be.service.vehicle.VehicleDepartureEligibility vehicleEligibility;
+    @Mock private fu.se184491.loadmaster_be.service.vehicle.VehiclePresenceService vehiclePresence;
     @Mock private TripDepartureReadiness departureReadiness;
     @Mock private fu.se184491.loadmaster_be.helpers.CurrentUserService currentUserService;
     @Mock private TripRepository tripRepository;
@@ -74,6 +76,7 @@ class TripStatusServiceTest {
         service.transitionTo(10L, TripStatus.IN_TRANSIT, 8L);
         assertThrows(InvalidTripStatusTransitionException.class,
                 () -> service.transitionTo(10L, TripStatus.IN_TRANSIT, 8L));
+        verify(vehiclePresence, org.mockito.Mockito.times(1)).departure(trip, 8L);
         verify(tripRepository, org.mockito.Mockito.times(1)).save(trip);
         verify(auditLogRepository, org.mockito.Mockito.times(1)).save(any());
     }
