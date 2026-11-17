@@ -861,4 +861,36 @@ class UserServiceImplTest {
         assertNotNull(profile);
         assertFalse(profile.subscriptionExpired());
     }
+
+    @Test
+    @DisplayName("updateMyProfile: Cho phép cập nhật họ tên và số điện thoại của chính mình")
+    void updateMyProfile_shouldUpdateFullNameAndPhone() {
+        Jwt jwt = new Jwt(
+                "token",
+                Instant.now(),
+                Instant.now().plusSeconds(3600),
+                Map.of("alg", "none"),
+                Map.of("sub", "kc-driver-1", "preferred_username", "driver@test.vn")
+        );
+
+        User user = User.builder()
+                .id(88L)
+                .keycloakId("kc-driver-1")
+                .email("driver@test.vn")
+                .fullName("Tên cũ")
+                .phoneNumber("0900000000")
+                .userRoleType(UserRole.DRIVER)
+                .status(UserStatus.ACTIVE)
+                .build();
+        when(userRepository.findByKeycloakId("kc-driver-1")).thenReturn(Optional.of(user));
+
+        fu.se184491.loadmaster_be.dto.request.account.UpdateMyProfileRequest request =
+                new fu.se184491.loadmaster_be.dto.request.account.UpdateMyProfileRequest("Tên Mới", "0911222333");
+        UserProfileResponse response = userService.updateMyProfile(jwt, request);
+
+        assertEquals("Tên Mới", user.getFullName());
+        assertEquals("0911222333", user.getPhoneNumber());
+        verify(userRepository).save(user);
+        verify(keycloakAdminClient).updateUserProfile("kc-driver-1", "Tên Mới");
+    }
 }

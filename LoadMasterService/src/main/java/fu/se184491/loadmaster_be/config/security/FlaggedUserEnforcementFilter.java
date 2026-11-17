@@ -218,7 +218,7 @@ public class FlaggedUserEnforcementFilter extends OncePerRequestFilter {
         if (path == null) {
             return false;
         }
-        if (path.equals("/api/users/me") || path.equals("/swagger-ui.html")) {
+        if (path.equals("/api/users/me") || path.startsWith("/api/users/me/") || path.equals("/swagger-ui.html")) {
             return true;
         }
         for (String prefix : ALLOWED_PREFIXES) {

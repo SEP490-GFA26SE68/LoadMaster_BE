@@ -5,6 +5,7 @@ import fu.se184491.loadmaster_be.dto.request.driver.RejectManualConfirmRequest;
 import fu.se184491.loadmaster_be.dto.request.driver.ReportDeliveryIssueRequest;
 import fu.se184491.loadmaster_be.dto.response.driver.DeliveryIssueResponse;
 import fu.se184491.loadmaster_be.dto.response.driver.DriverLoadPlanResponse;
+import fu.se184491.loadmaster_be.dto.response.driver.DriverTripDetailResponse;
 import fu.se184491.loadmaster_be.dto.response.driver.DriverTripStopsResponse;
 import fu.se184491.loadmaster_be.dto.response.driver.ManualConfirmationResponse;
 
@@ -15,6 +16,9 @@ import java.util.List;
  * các điểm, sự cố theo kiện, xác nhận tay khi dỡ — và phần duyệt xác nhận tay của điều phối viên.
  */
 public interface DriverDeliveryService {
+
+    /** Chi tiết đầy đủ của chuyến cho chính tài xế: thông tin xe, kho, danh sách điểm dừng, người nhận, kiện hàng. */
+    DriverTripDetailResponse getTripDetail(String tripIdOrCode);
 
     /** Phương án kho đã xếp lên xe của chuyến của chính tài xế (Đang xếp hàng hoặc Đang vận chuyển). */
     DriverLoadPlanResponse getLoadPlan(String tripIdOrCode);
