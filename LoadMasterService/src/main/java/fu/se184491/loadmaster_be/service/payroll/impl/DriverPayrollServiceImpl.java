@@ -24,12 +24,12 @@ import fu.se184491.loadmaster_be.entity.payroll.DriverPayroll;
 import fu.se184491.loadmaster_be.entity.payroll.DriverPayrollTripLine;
 import fu.se184491.loadmaster_be.entity.payroll.PayrollPeriod;
 import fu.se184491.loadmaster_be.entity.payroll.TripPayrollDriverShare;
-import fu.se184491.loadmaster_be.entity.route.RoutePlan;
 import fu.se184491.loadmaster_be.entity.trip.DeliveryStop;
 import fu.se184491.loadmaster_be.entity.trip.Trip;
 import fu.se184491.loadmaster_be.exception.AppException;
 import fu.se184491.loadmaster_be.exception.ErrorCode;
 import fu.se184491.loadmaster_be.repository.account.UserRepository;
+import fu.se184491.loadmaster_be.repository.company.CompanyRepository;
 import fu.se184491.loadmaster_be.repository.optimization.LoadPlanRepository;
 import fu.se184491.loadmaster_be.repository.optimization.PackagePlacementRepository;
 import fu.se184491.loadmaster_be.repository.payroll.CompanyPayrollRateRepository;
@@ -37,7 +37,6 @@ import fu.se184491.loadmaster_be.repository.payroll.DriverBaseSalaryOverrideRepo
 import fu.se184491.loadmaster_be.repository.payroll.DriverPayrollRepository;
 import fu.se184491.loadmaster_be.repository.payroll.PayrollPeriodRepository;
 import fu.se184491.loadmaster_be.repository.payroll.TripPayrollDriverShareRepository;
-import fu.se184491.loadmaster_be.repository.route.RoutePlanRepository;
 import fu.se184491.loadmaster_be.repository.trip.DeliveryStopRepository;
 import fu.se184491.loadmaster_be.repository.trip.TripRepository;
 import fu.se184491.loadmaster_be.service.payroll.DriverPayrollService;
@@ -60,6 +59,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -69,17 +69,16 @@ import java.util.stream.Collectors;
 public class DriverPayrollServiceImpl implements DriverPayrollService {
 
     private static final BigDecimal ONE_HUNDRED = new BigDecimal("100");
-    private static final BigDecimal METERS_PER_KILOMETER = new BigDecimal("1000");
     private static final ZoneId VIETNAM_TIME_ZONE = ZoneId.of("Asia/Ho_Chi_Minh");
 
     private final CompanyPayrollRateRepository rateRepository;
+    private final CompanyRepository companyRepository;
     private final DriverBaseSalaryOverrideRepository baseSalaryOverrideRepository;
     private final PayrollPeriodRepository periodRepository;
     private final DriverPayrollRepository driverPayrollRepository;
     private final TripPayrollDriverShareRepository shareRepository;
     private final TripRepository tripRepository;
     private final DeliveryStopRepository deliveryStopRepository;
-    private final RoutePlanRepository routePlanRepository;
     private final LoadPlanRepository loadPlanRepository;
     private final PackagePlacementRepository packagePlacementRepository;
     private final UserRepository userRepository;
@@ -94,23 +93,34 @@ public class DriverPayrollServiceImpl implements DriverPayrollService {
 
     @Override
     public CompanyPayrollRateResponse createRate(Long companyId, CompanyPayrollRateRequest request) {
+        lockCompanyForPayrollUpdate(companyId);
         LocalDate effectiveFrom = request.effectiveFrom();
         if (effectiveFrom.getDayOfMonth() != 1) {
             throw new AppException(ErrorCode.PAYROLL_INVALID_PERIOD);
         }
+        Optional<CompanyPayrollRate> existingRate = rateRepository.findByCompanyIdAndEffectiveFrom(companyId, effectiveFrom);
         boolean hasExistingRate = rateRepository.existsByCompanyId(companyId);
         LocalDate earliestAllowed = hasExistingRate
                 ? YearMonth.now(VIETNAM_TIME_ZONE).plusMonths(1).atDay(1)
                 : YearMonth.now(VIETNAM_TIME_ZONE).atDay(1);
-        if (effectiveFrom.isBefore(earliestAllowed)) {
+        if (existingRate.isEmpty() && effectiveFrom.isBefore(earliestAllowed)) {
             throw new AppException(ErrorCode.PAYROLL_RATE_EFFECTIVE_DATE_TOO_EARLY);
         }
 
+        // Chỉ bảng lương đã chốt mới chặn sửa; bảng nháp được tính lại ở bên dưới sau khi lưu mức lương.
         periodRepository.findByCompanyIdAndPeriodStart(companyId, effectiveFrom)
                 .filter(period -> period.getStatus() == PayrollPeriodStatus.LOCKED)
                 .ifPresent(period -> { throw new AppException(ErrorCode.PAYROLL_PERIOD_LOCKED); });
+        if (existingRate.isPresent() && periodRepository.existsByCompanyIdAndPayrollRateIdAndStatus(
+                companyId, existingRate.get().getId(), PayrollPeriodStatus.LOCKED)) {
+            throw new AppException(ErrorCode.PAYROLL_PERIOD_LOCKED);
+        }
+        List<PayrollPeriod> affectedDrafts = existingRate.isPresent()
+                ? periodRepository.findByCompanyIdAndPayrollRateIdAndStatusOrderByPeriodStartAsc(
+                        companyId, existingRate.get().getId(), PayrollPeriodStatus.DRAFT)
+                : List.of();
 
-        CompanyPayrollRate rate = rateRepository.findByCompanyIdAndEffectiveFrom(companyId, effectiveFrom)
+        CompanyPayrollRate rate = existingRate
                 .orElseGet(() -> CompanyPayrollRate.builder()
                         .company(companyReference(companyId))
                         .effectiveFrom(effectiveFrom)
@@ -118,9 +128,15 @@ public class DriverPayrollServiceImpl implements DriverPayrollService {
 
         rate.setBaseSalaryVnd(request.baseSalaryVnd());
         rate.setRateVndPerKg(request.rateVndPerKg());
-        rate.setRateVndPerKm(request.rateVndPerKm());
+        rate.setCommissionPercent(request.commissionPercent());
+        rate.setHandlingFeeVndPerKg(request.handlingFeeVndPerKg());
+        rate.setHandlingDriverPercent(request.handlingDriverPercent());
 
-        return rateResponse(rateRepository.save(rate));
+        CompanyPayrollRate savedRate = rateRepository.save(rate);
+        for (PayrollPeriod draft : affectedDrafts) {
+            calculatePeriod(companyId, YearMonth.from(draft.getPeriodStart()).toString());
+        }
+        return rateResponse(savedRate);
     }
 
     @Override
@@ -201,6 +217,7 @@ public class DriverPayrollServiceImpl implements DriverPayrollService {
 
     @Override
     public PayrollPeriodResponse calculatePeriod(Long companyId, String period) {
+        lockCompanyForPayrollUpdate(companyId);
         YearMonth month = parsePeriod(period);
         LocalDate periodStart = month.atDay(1);
         CompanyPayrollRate rate = rateRepository
@@ -279,7 +296,24 @@ public class DriverPayrollServiceImpl implements DriverPayrollService {
         User driver = userRepository.findById(driverId)
                 .filter(user -> isCompanyDriver(user, companyId))
                 .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
-        return statement(companyId, driver, parsePeriod(period));
+        YearMonth month = parsePeriod(period);
+        LocalDate periodStart = month.atDay(1);
+        PayrollPeriod payrollPeriod = periodRepository.findByCompanyIdAndPeriodStart(companyId, periodStart).orElse(null);
+        if (payrollPeriod != null && payrollPeriod.getStatus() == PayrollPeriodStatus.LOCKED) {
+            return statement(companyId, driver, month);
+        }
+        // Chưa chốt: tài xế chỉ thấy lương cứng của tháng; hoa hồng và bốc dỡ hiện sau khi chốt.
+        PayrollPeriodStatus status = payrollPeriod == null ? null : payrollPeriod.getStatus();
+        BigDecimal baseSalary = rateRepository
+                .findFirstByCompanyIdAndEffectiveFromLessThanEqualOrderByEffectiveFromDesc(companyId, periodStart)
+                .map(rate -> baseSalaryOverrideRepository
+                        .findFirstByDriverIdAndEffectiveFromLessThanEqualOrderByEffectiveFromDesc(driver.getId(), periodStart)
+                        .map(DriverBaseSalaryOverride::getBaseSalaryVnd)
+                        .orElse(rate.getBaseSalaryVnd())
+                        .setScale(0, RoundingMode.HALF_UP))
+                .orElse(null);
+        return new PayrollStatementResponse(false, month.toString(), status, driver.getId(), driver.getFullName(),
+                baseSalary, null, null, null, null, null, null, null, null, List.of());
     }
 
     @Override
@@ -293,6 +327,15 @@ public class DriverPayrollServiceImpl implements DriverPayrollService {
         return periodResponse(payrollPeriod);
     }
 
+    @Override
+    public void deleteDraftPeriod(Long companyId, String period) {
+        PayrollPeriod payrollPeriod = findPeriodForUpdate(companyId, parsePeriod(period).atDay(1));
+        if (payrollPeriod.getStatus() == PayrollPeriodStatus.LOCKED) {
+            throw new AppException(ErrorCode.PAYROLL_PERIOD_LOCKED);
+        }
+        periodRepository.delete(payrollPeriod);
+    }
+
     private void addTripToPayroll(
             Trip trip,
             PayrollPeriod payrollPeriod,
@@ -304,13 +347,9 @@ public class DriverPayrollServiceImpl implements DriverPayrollService {
         List<PackagePlacement> placements = packagePlacementRepository.findByLoadPlanId(loadPlan.getId());
         BigDecimal planKg = plannedWeight(placements);
 
-        RoutePlan routePlan = routePlanRepository.findByTripIdAndIsActiveTrue(trip.getId())
-                .filter(route -> route.getTotalDistanceMeters() != null && route.getTotalDistanceMeters() > 0)
-                .orElseThrow(() -> new AppException(ErrorCode.PAYROLL_DATA_INCOMPLETE));
-        BigDecimal planKm = BigDecimal.valueOf(routePlan.getTotalDistanceMeters())
-                .divide(METERS_PER_KILOMETER, 3, RoundingMode.HALF_UP);
         PayrollMath.TripAmounts tripAmounts = PayrollMath.calculateTripAmounts(
-                planKg, planKm, rate.getRateVndPerKg(), rate.getRateVndPerKm());
+                planKg, rate.getRateVndPerKg(), rate.getCommissionPercent(),
+                rate.getHandlingFeeVndPerKg(), rate.getHandlingDriverPercent());
 
         List<TripPayrollDriverShare> shares = shareRepository.findByTripId(trip.getId());
         if (shares.isEmpty()) {
@@ -322,9 +361,8 @@ public class DriverPayrollServiceImpl implements DriverPayrollService {
 
         List<BigDecimal> percentages = shares.stream().map(TripPayrollDriverShare::getSharePercent).toList();
         List<BigDecimal> allocatedKgShares = PayrollMath.allocateQuantityByPercent(planKg, percentages);
-        List<BigDecimal> allocatedKmShares = PayrollMath.allocateQuantityByPercent(planKm, percentages);
-        List<BigDecimal> kgAmounts = PayrollMath.splitEvenly(tripAmounts.kgAmount(), shares.size());
-        List<BigDecimal> kmAmounts = PayrollMath.splitEvenly(tripAmounts.kmAmount(), shares.size());
+        List<BigDecimal> kgAmounts = PayrollMath.splitEvenly(tripAmounts.commissionAmount(), shares.size());
+        List<BigDecimal> handlingAmounts = PayrollMath.splitEvenly(tripAmounts.handlingAmount(), shares.size());
         for (int i = 0; i < shares.size(); i++) {
             TripPayrollDriverShare share = shares.get(i);
             User driver = share.getDriver();
@@ -333,32 +371,26 @@ public class DriverPayrollServiceImpl implements DriverPayrollService {
                     driver.getId(), ignored -> newDriverPayroll(
                             payrollPeriod, driver, rate, driver.getStatus() == UserStatus.ACTIVE));
             BigDecimal allocatedKg = allocatedKgShares.get(i);
-            BigDecimal allocatedKm = allocatedKmShares.get(i);
             BigDecimal kgAmount = kgAmounts.get(i);
-            BigDecimal kmAmount = kmAmounts.get(i);
+            BigDecimal handlingAmount = handlingAmounts.get(i);
             DriverPayrollTripLine line = DriverPayrollTripLine.builder()
                     .driverPayroll(payroll)
                     .trip(trip)
                     .loadPlanId(loadPlan.getId())
-                    .routePlanId(routePlan.getId())
                     .planKg(planKg)
-                    .planKm(planKm)
                     .sharePercent(share.getSharePercent())
                     .allocatedKg(allocatedKg)
-                    .allocatedKm(allocatedKm)
                     .rateVndPerKg(rate.getRateVndPerKg())
-                    .rateVndPerKm(rate.getRateVndPerKm())
                     .kgAmountVnd(kgAmount)
-                    .kmAmountVnd(kmAmount)
-                    .totalAmountVnd(kgAmount.add(kmAmount))
+                    .handlingAmountVnd(handlingAmount)
+                    .totalAmountVnd(kgAmount.add(handlingAmount))
                     .build();
             payroll.getTrips().add(line);
             payroll.setTotalKg(payroll.getTotalKg().add(allocatedKg));
-            payroll.setTotalKm(payroll.getTotalKm().add(allocatedKm));
             payroll.setKgAmountVnd(payroll.getKgAmountVnd().add(kgAmount));
-            payroll.setKmAmountVnd(payroll.getKmAmountVnd().add(kmAmount));
+            payroll.setHandlingAmountVnd(payroll.getHandlingAmountVnd().add(handlingAmount));
             payroll.setTotalSalaryVnd(payroll.getBaseSalaryVnd()
-                    .add(payroll.getKgAmountVnd()).add(payroll.getKmAmountVnd()));
+                    .add(payroll.getKgAmountVnd()).add(payroll.getHandlingAmountVnd()));
         }
     }
 
@@ -417,8 +449,7 @@ public class DriverPayrollServiceImpl implements DriverPayrollService {
                 .baseSalaryVnd(baseSalary)
                 .totalKg(BigDecimal.ZERO.setScale(3))
                 .kgAmountVnd(BigDecimal.ZERO)
-                .totalKm(BigDecimal.ZERO.setScale(3))
-                .kmAmountVnd(BigDecimal.ZERO)
+                .handlingAmountVnd(BigDecimal.ZERO)
                 .totalSalaryVnd(baseSalary)
                 .trips(new ArrayList<>())
                 .build();
@@ -429,19 +460,20 @@ public class DriverPayrollServiceImpl implements DriverPayrollService {
         PayrollPeriod payrollPeriod = periodRepository.findByCompanyIdAndPeriodStart(companyId, periodStart).orElse(null);
         if (payrollPeriod == null) {
             return new PayrollStatementResponse(false, month.toString(), null, driver.getId(), driver.getFullName(),
-                    null, null, null, null, null, null, null, null, List.of());
+                    null, null, null, null, null, null, null, null, null, List.of());
         }
         DriverPayroll payroll = driverPayrollRepository
                 .findByPayrollPeriodIdAndDriverId(payrollPeriod.getId(), driver.getId()).orElse(null);
         if (payroll == null) {
             return new PayrollStatementResponse(false, month.toString(), payrollPeriod.getStatus(), driver.getId(), driver.getFullName(),
-                    null, null, null, null, null, null, null, null, List.of());
+                    null, null, null, null, null, null, null, null, null, List.of());
         }
         CompanyPayrollRate rate = payrollPeriod.getPayrollRate();
         List<PayrollTripLineResponse> lines = payroll.getTrips().stream().map(this::lineResponse).toList();
         return new PayrollStatementResponse(true, month.toString(), payrollPeriod.getStatus(), driver.getId(), driver.getFullName(),
                 payroll.getBaseSalaryVnd(), payroll.getTotalKg(), rate.getRateVndPerKg(), payroll.getKgAmountVnd(),
-                payroll.getTotalKm(), rate.getRateVndPerKm(), payroll.getKmAmountVnd(), payroll.getTotalSalaryVnd(), lines);
+                rate.getCommissionPercent(), rate.getHandlingFeeVndPerKg(), rate.getHandlingDriverPercent(),
+                payroll.getHandlingAmountVnd(), payroll.getTotalSalaryVnd(), lines);
     }
 
     private PayrollPeriod findPeriod(Long companyId, LocalDate periodStart) {
@@ -459,7 +491,7 @@ public class DriverPayrollServiceImpl implements DriverPayrollService {
                 .sorted(Comparator.comparing(payroll -> payroll.getDriver().getId()))
                 .map(payroll -> new PayrollDriverSummaryResponse(
                         payroll.getDriver().getId(), payroll.getDriver().getFullName(), payroll.getBaseSalaryVnd(),
-                        payroll.getTotalKg(), payroll.getKgAmountVnd(), payroll.getTotalKm(), payroll.getKmAmountVnd(),
+                        payroll.getTotalKg(), payroll.getKgAmountVnd(), payroll.getHandlingAmountVnd(),
                         payroll.getTotalSalaryVnd()))
                 .toList();
         return new PayrollPeriodResponse(YearMonth.from(period.getPeriodStart()).toString(), period.getStatus(), drivers);
@@ -467,8 +499,8 @@ public class DriverPayrollServiceImpl implements DriverPayrollService {
 
     private PayrollTripLineResponse lineResponse(DriverPayrollTripLine line) {
         return new PayrollTripLineResponse(line.getTrip().getId(), line.getTrip().getTripCode(), line.getPlanKg(),
-                line.getPlanKm(), line.getSharePercent(), line.getAllocatedKg(), line.getAllocatedKm(),
-                line.getKgAmountVnd(), line.getKmAmountVnd(), line.getTotalAmountVnd());
+                line.getSharePercent(), line.getAllocatedKg(),
+                line.getKgAmountVnd(), line.getHandlingAmountVnd(), line.getTotalAmountVnd());
     }
 
     private List<TripPayrollDriverResponse> shareResponse(List<TripPayrollDriverShare> shares) {
@@ -481,7 +513,8 @@ public class DriverPayrollServiceImpl implements DriverPayrollService {
 
     private CompanyPayrollRateResponse rateResponse(CompanyPayrollRate rate) {
         return new CompanyPayrollRateResponse(rate.getId(), rate.getEffectiveFrom(), rate.getBaseSalaryVnd(),
-                rate.getRateVndPerKg(), rate.getRateVndPerKm());
+                rate.getRateVndPerKg(), rate.getCommissionPercent(), rate.getHandlingFeeVndPerKg(),
+                rate.getHandlingDriverPercent());
     }
 
     private YearMonth parsePeriod(String period) {
@@ -551,6 +584,11 @@ public class DriverPayrollServiceImpl implements DriverPayrollService {
 
     private fu.se184491.loadmaster_be.entity.company.Company companyReference(Long companyId) {
         return fu.se184491.loadmaster_be.entity.company.Company.builder().id(companyId).build();
+    }
+
+    private void lockCompanyForPayrollUpdate(Long companyId) {
+        companyRepository.findByIdForPayrollUpdate(companyId)
+                .orElseThrow(() -> new AppException(ErrorCode.COMPANY_NOT_FOUND));
     }
 
     private void payrollRepositorySave(PayrollPeriod period) {

@@ -42,7 +42,7 @@ class CompanyPayrollControllerTest {
         MockMvcBuilders.standaloneSetup(new CompanyPayrollController(service, currentUser)).build()
                 .perform(put("/api/company/payroll/settings")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"effectiveFrom\":\"" + nextMonth + "\",\"baseSalaryVnd\":8000000,\"rateVndPerKg\":100,\"rateVndPerKm\":2000}"))
+                        .content("{\"effectiveFrom\":\"" + nextMonth + "\",\"baseSalaryVnd\":8000000,\"rateVndPerKg\":100,\"commissionPercent\":15,\"handlingFeeVndPerKg\":150,\"handlingDriverPercent\":85}"))
                 .andExpect(status().isOk());
     }
 }

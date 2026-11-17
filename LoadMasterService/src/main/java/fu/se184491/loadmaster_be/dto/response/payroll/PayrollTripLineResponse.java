@@ -6,12 +6,10 @@ public record PayrollTripLineResponse(
         Long tripId,
         String tripCode,
         BigDecimal planKg,
-        BigDecimal planKm,
         BigDecimal sharePercent,
         BigDecimal allocatedKg,
-        BigDecimal allocatedKm,
         BigDecimal kgAmountVnd,
-        BigDecimal kmAmountVnd,
+        BigDecimal handlingAmountVnd,
         BigDecimal totalAmountVnd
 ) {
 }

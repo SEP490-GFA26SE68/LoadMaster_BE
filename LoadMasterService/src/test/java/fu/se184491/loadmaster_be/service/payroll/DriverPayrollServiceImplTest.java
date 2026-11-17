@@ -18,11 +18,11 @@ import fu.se184491.loadmaster_be.entity.payroll.DriverBaseSalaryOverride;
 import fu.se184491.loadmaster_be.entity.payroll.DriverPayroll;
 import fu.se184491.loadmaster_be.entity.payroll.PayrollPeriod;
 import fu.se184491.loadmaster_be.entity.payroll.TripPayrollDriverShare;
-import fu.se184491.loadmaster_be.entity.route.RoutePlan;
 import fu.se184491.loadmaster_be.entity.trip.DeliveryStop;
 import fu.se184491.loadmaster_be.entity.trip.Trip;
 import fu.se184491.loadmaster_be.exception.AppException;
 import fu.se184491.loadmaster_be.repository.account.UserRepository;
+import fu.se184491.loadmaster_be.repository.company.CompanyRepository;
 import fu.se184491.loadmaster_be.repository.optimization.LoadPlanRepository;
 import fu.se184491.loadmaster_be.repository.optimization.PackagePlacementRepository;
 import fu.se184491.loadmaster_be.repository.payroll.CompanyPayrollRateRepository;
@@ -30,7 +30,6 @@ import fu.se184491.loadmaster_be.repository.payroll.DriverBaseSalaryOverrideRepo
 import fu.se184491.loadmaster_be.repository.payroll.DriverPayrollRepository;
 import fu.se184491.loadmaster_be.repository.payroll.PayrollPeriodRepository;
 import fu.se184491.loadmaster_be.repository.payroll.TripPayrollDriverShareRepository;
-import fu.se184491.loadmaster_be.repository.route.RoutePlanRepository;
 import fu.se184491.loadmaster_be.repository.trip.DeliveryStopRepository;
 import fu.se184491.loadmaster_be.repository.trip.TripRepository;
 import fu.se184491.loadmaster_be.service.payroll.impl.DriverPayrollServiceImpl;
@@ -62,13 +61,13 @@ import static org.mockito.Mockito.when;
 class DriverPayrollServiceImplTest {
 
     @Mock private CompanyPayrollRateRepository rateRepository;
+    @Mock private CompanyRepository companyRepository;
     @Mock private DriverBaseSalaryOverrideRepository baseSalaryOverrideRepository;
     @Mock private PayrollPeriodRepository periodRepository;
     @Mock private DriverPayrollRepository driverPayrollRepository;
     @Mock private TripPayrollDriverShareRepository shareRepository;
     @Mock private TripRepository tripRepository;
     @Mock private DeliveryStopRepository deliveryStopRepository;
-    @Mock private RoutePlanRepository routePlanRepository;
     @Mock private LoadPlanRepository loadPlanRepository;
     @Mock private PackagePlacementRepository packagePlacementRepository;
     @Mock private UserRepository userRepository;
@@ -83,6 +82,7 @@ class DriverPayrollServiceImplTest {
     @BeforeEach
     void setUp() {
         company = Company.builder().id(10L).build();
+        lenient().when(companyRepository.findByIdForPayrollUpdate(10L)).thenReturn(Optional.of(company));
         driverOne = driver(21L, "Tài xế Một", company);
         driverTwo = driver(22L, "Tài xế Hai", company);
         trip = Trip.builder()
@@ -99,7 +99,7 @@ class DriverPayrollServiceImplTest {
     void allowsCurrentMonthRateForNewCompanyWithoutPriorRates() {
         LocalDate currentMonth = YearMonth.now(ZoneId.of("Asia/Ho_Chi_Minh")).atDay(1);
         CompanyPayrollRateRequest request = new CompanyPayrollRateRequest(
-                currentMonth, new BigDecimal("8000000"), new BigDecimal("100"), new BigDecimal("2000"));
+                currentMonth, new BigDecimal("8000000"), new BigDecimal("100"), new BigDecimal("15"), new BigDecimal("150"), new BigDecimal("85"));
         when(rateRepository.existsByCompanyId(10L)).thenReturn(false);
         when(periodRepository.findByCompanyIdAndPeriodStart(10L, currentMonth)).thenReturn(Optional.empty());
         when(rateRepository.findByCompanyIdAndEffectiveFrom(10L, currentMonth)).thenReturn(Optional.empty());
@@ -121,7 +121,7 @@ class DriverPayrollServiceImplTest {
     void rejectsPastMonthRateForNewCompanyWithoutPriorRates() {
         LocalDate pastMonth = YearMonth.now(ZoneId.of("Asia/Ho_Chi_Minh")).minusMonths(1).atDay(1);
         CompanyPayrollRateRequest request = new CompanyPayrollRateRequest(
-                pastMonth, new BigDecimal("8000000"), new BigDecimal("100"), new BigDecimal("2000"));
+                pastMonth, new BigDecimal("8000000"), new BigDecimal("100"), new BigDecimal("15"), new BigDecimal("150"), new BigDecimal("85"));
         when(rateRepository.existsByCompanyId(10L)).thenReturn(false);
 
         AppException error = assertThrows(AppException.class, () -> service.createRate(10L, request));
@@ -133,12 +133,184 @@ class DriverPayrollServiceImplTest {
     void rejectsCompanyRateEffectiveInCurrentMonthWhenRatesAlreadyExist() {
         LocalDate currentMonth = YearMonth.now(ZoneId.of("Asia/Ho_Chi_Minh")).atDay(1);
         CompanyPayrollRateRequest request = new CompanyPayrollRateRequest(
-                currentMonth, new BigDecimal("1000000"), new BigDecimal("1000"), new BigDecimal("1000"));
+                currentMonth, new BigDecimal("1000000"), new BigDecimal("1000"), new BigDecimal("15"), new BigDecimal("150"), new BigDecimal("85"));
         when(rateRepository.existsByCompanyId(10L)).thenReturn(true);
 
         AppException error = assertThrows(AppException.class, () -> service.createRate(10L, request));
 
         assertEquals("PAYROLL_RATE_EFFECTIVE_DATE_TOO_EARLY", error.getErrorCode().name());
+    }
+
+    @Test
+    void updatesExistingCurrentMonthRateAndRecalculatesWhilePayrollIsDraft() {
+        LocalDate currentMonth = YearMonth.now(ZoneId.of("Asia/Ho_Chi_Minh")).atDay(1);
+        CompanyPayrollRate existing = CompanyPayrollRate.builder()
+                .id(5L).company(company).effectiveFrom(currentMonth)
+                .baseSalaryVnd(new BigDecimal("200000"))
+                .rateVndPerKg(new BigDecimal("2000"))
+                .commissionPercent(new BigDecimal("15")).handlingFeeVndPerKg(new BigDecimal("150")).handlingDriverPercent(new BigDecimal("85"))
+                .build();
+        PayrollPeriod draft = PayrollPeriod.builder()
+                .id(9L).company(company).periodStart(currentMonth).status(PayrollPeriodStatus.DRAFT).build();
+        when(rateRepository.existsByCompanyId(10L)).thenReturn(true);
+        when(rateRepository.findByCompanyIdAndEffectiveFrom(10L, currentMonth)).thenReturn(Optional.of(existing));
+        when(periodRepository.findByCompanyIdAndPeriodStart(10L, currentMonth)).thenReturn(Optional.of(draft));
+        when(periodRepository.findByCompanyIdAndPayrollRateIdAndStatusOrderByPeriodStartAsc(
+                10L, 5L, PayrollPeriodStatus.DRAFT)).thenReturn(List.of(draft));
+        when(rateRepository.save(any(CompanyPayrollRate.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(rateRepository.findFirstByCompanyIdAndEffectiveFromLessThanEqualOrderByEffectiveFromDesc(10L, currentMonth))
+                .thenReturn(Optional.of(existing));
+        when(periodRepository.findByCompanyIdAndPeriodStartForUpdate(10L, currentMonth)).thenReturn(Optional.of(draft));
+
+        var response = service.createRate(10L, new CompanyPayrollRateRequest(currentMonth,
+                new BigDecimal("200000"), new BigDecimal("4000"), new BigDecimal("15"), new BigDecimal("150"), new BigDecimal("85")));
+
+        assertEquals(new BigDecimal("4000"), response.rateVndPerKg());
+        assertEquals(PayrollPeriodStatus.DRAFT, draft.getStatus());
+        verify(periodRepository).findByCompanyIdAndPeriodStartForUpdate(10L, currentMonth);
+    }
+
+    @Test
+    void updatesExistingPastMonthRateIfPayrollWasNeverLocked() {
+        LocalDate pastMonth = YearMonth.now(ZoneId.of("Asia/Ho_Chi_Minh")).minusMonths(1).atDay(1);
+        CompanyPayrollRate existing = CompanyPayrollRate.builder()
+                .id(6L).company(company).effectiveFrom(pastMonth)
+                .baseSalaryVnd(new BigDecimal("20000"))
+                .rateVndPerKg(new BigDecimal("1000"))
+                .commissionPercent(new BigDecimal("15")).handlingFeeVndPerKg(new BigDecimal("150")).handlingDriverPercent(new BigDecimal("85"))
+                .build();
+        when(rateRepository.existsByCompanyId(10L)).thenReturn(true);
+        when(rateRepository.findByCompanyIdAndEffectiveFrom(10L, pastMonth)).thenReturn(Optional.of(existing));
+        when(periodRepository.findByCompanyIdAndPeriodStart(10L, pastMonth)).thenReturn(Optional.empty());
+        when(rateRepository.save(any(CompanyPayrollRate.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        var response = service.createRate(10L, new CompanyPayrollRateRequest(pastMonth,
+                new BigDecimal("200000"), new BigDecimal("1000"), new BigDecimal("15"), new BigDecimal("150"), new BigDecimal("85")));
+
+        assertEquals(6L, response.id());
+        assertEquals(new BigDecimal("200000"), response.baseSalaryVnd());
+    }
+
+    @Test
+    void rejectsExistingCurrentMonthRateWhenPayrollIsLocked() {
+        LocalDate currentMonth = YearMonth.now(ZoneId.of("Asia/Ho_Chi_Minh")).atDay(1);
+        CompanyPayrollRate existing = CompanyPayrollRate.builder()
+                .id(5L).company(company).effectiveFrom(currentMonth).build();
+        when(rateRepository.existsByCompanyId(10L)).thenReturn(true);
+        when(rateRepository.findByCompanyIdAndEffectiveFrom(10L, currentMonth)).thenReturn(Optional.of(existing));
+        when(periodRepository.findByCompanyIdAndPeriodStart(10L, currentMonth))
+                .thenReturn(Optional.of(PayrollPeriod.builder().status(PayrollPeriodStatus.LOCKED).build()));
+
+        AppException error = assertThrows(AppException.class, () -> service.createRate(10L,
+                new CompanyPayrollRateRequest(currentMonth, new BigDecimal("200000"),
+                        new BigDecimal("4000"), new BigDecimal("15"), new BigDecimal("150"), new BigDecimal("85"))));
+
+        assertEquals("PAYROLL_PERIOD_LOCKED", error.getErrorCode().name());
+    }
+
+    @Test
+    void rejectsExistingRateUsedByALaterLockedPayrollPeriod() {
+        LocalDate pastMonth = YearMonth.now(ZoneId.of("Asia/Ho_Chi_Minh")).minusMonths(1).atDay(1);
+        CompanyPayrollRate existing = CompanyPayrollRate.builder()
+                .id(5L).company(company).effectiveFrom(pastMonth)
+                .baseSalaryVnd(new BigDecimal("20000"))
+                .rateVndPerKg(new BigDecimal("1000"))
+                .commissionPercent(new BigDecimal("15")).handlingFeeVndPerKg(new BigDecimal("150")).handlingDriverPercent(new BigDecimal("85"))
+                .build();
+        when(rateRepository.existsByCompanyId(10L)).thenReturn(true);
+        when(rateRepository.findByCompanyIdAndEffectiveFrom(10L, pastMonth)).thenReturn(Optional.of(existing));
+        when(periodRepository.findByCompanyIdAndPeriodStart(10L, pastMonth)).thenReturn(Optional.empty());
+        when(periodRepository.existsByCompanyIdAndPayrollRateIdAndStatus(10L, 5L, PayrollPeriodStatus.LOCKED))
+                .thenReturn(true);
+
+        AppException error = assertThrows(AppException.class, () -> service.createRate(10L,
+                new CompanyPayrollRateRequest(pastMonth, new BigDecimal("200000"),
+                        new BigDecimal("1000"), new BigDecimal("15"), new BigDecimal("150"), new BigDecimal("85"))));
+
+        assertEquals("PAYROLL_PERIOD_LOCKED", error.getErrorCode().name());
+    }
+
+    @Test
+    void updatesExistingRateAndRecalculatesAnotherDraftPayrollPeriod() {
+        LocalDate month = YearMonth.now(ZoneId.of("Asia/Ho_Chi_Minh")).atDay(1);
+        LocalDate nextMonth = month.plusMonths(1);
+        CompanyPayrollRate existing = CompanyPayrollRate.builder()
+                .id(5L).company(company).effectiveFrom(month)
+                .baseSalaryVnd(new BigDecimal("20000"))
+                .rateVndPerKg(new BigDecimal("1000"))
+                .commissionPercent(new BigDecimal("15")).handlingFeeVndPerKg(new BigDecimal("150")).handlingDriverPercent(new BigDecimal("85"))
+                .build();
+        DriverPayroll oldPayroll = DriverPayroll.builder().driver(driverOne)
+                .baseSalaryVnd(new BigDecimal("20000"))
+                .totalKg(BigDecimal.ZERO).kgAmountVnd(BigDecimal.ZERO)
+                .handlingAmountVnd(BigDecimal.ZERO)
+                .totalSalaryVnd(new BigDecimal("20000")).build();
+        PayrollPeriod laterDraft = PayrollPeriod.builder().id(99L).company(company)
+                .payrollRate(existing).periodStart(nextMonth).status(PayrollPeriodStatus.DRAFT)
+                .driverPayrolls(new java.util.ArrayList<>(List.of(oldPayroll))).build();
+        when(rateRepository.existsByCompanyId(10L)).thenReturn(true);
+        when(rateRepository.findByCompanyIdAndEffectiveFrom(10L, month)).thenReturn(Optional.of(existing));
+        when(periodRepository.findByCompanyIdAndPeriodStart(10L, month)).thenReturn(Optional.empty());
+        when(periodRepository.findByCompanyIdAndPayrollRateIdAndStatusOrderByPeriodStartAsc(
+                10L, 5L, PayrollPeriodStatus.DRAFT)).thenReturn(List.of(laterDraft));
+        when(rateRepository.save(any(CompanyPayrollRate.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(rateRepository.findFirstByCompanyIdAndEffectiveFromLessThanEqualOrderByEffectiveFromDesc(10L, nextMonth))
+                .thenReturn(Optional.of(existing));
+        when(periodRepository.findByCompanyIdAndPeriodStartForUpdate(10L, nextMonth))
+                .thenReturn(Optional.of(laterDraft));
+        when(userRepository.findByCompanyIdAndUserRoleTypeAndStatus(10L, UserRole.DRIVER, UserStatus.ACTIVE))
+                .thenReturn(List.of(driverOne));
+        when(tripRepository.findByCompanyIdAndStatusAndCompletedAtGreaterThanEqualAndCompletedAtLessThan(
+                10L, TripStatus.DELIVERED, nextMonth.atStartOfDay(), nextMonth.plusMonths(1).atStartOfDay()))
+                .thenReturn(List.of());
+
+        var response = service.createRate(10L,
+                new CompanyPayrollRateRequest(month, new BigDecimal("30000"),
+                        new BigDecimal("1000"), new BigDecimal("15"), new BigDecimal("150"), new BigDecimal("85")));
+
+        assertEquals(new BigDecimal("30000"), response.baseSalaryVnd());
+        assertEquals(new BigDecimal("30000"), laterDraft.getDriverPayrolls().get(0).getTotalSalaryVnd());
+    }
+
+    @Test
+    void deletesOnlyCompanyDraftPayroll() {
+        LocalDate month = LocalDate.of(2026, 11, 1);
+        PayrollPeriod draft = PayrollPeriod.builder().id(44L).company(company)
+                .periodStart(month).status(PayrollPeriodStatus.DRAFT).build();
+        when(periodRepository.findByCompanyIdAndPeriodStartForUpdate(10L, month))
+                .thenReturn(Optional.of(draft));
+
+        service.deleteDraftPeriod(10L, "2026-11");
+
+        verify(periodRepository).delete(draft);
+    }
+
+    @Test
+    void refusesToDeleteLockedPayroll() {
+        LocalDate month = LocalDate.of(2026, 11, 1);
+        PayrollPeriod locked = PayrollPeriod.builder().id(44L).company(company)
+                .periodStart(month).status(PayrollPeriodStatus.LOCKED).build();
+        when(periodRepository.findByCompanyIdAndPeriodStartForUpdate(10L, month))
+                .thenReturn(Optional.of(locked));
+
+        AppException error = assertThrows(AppException.class,
+                () -> service.deleteDraftPeriod(10L, "2026-11"));
+
+        assertEquals("PAYROLL_PERIOD_LOCKED", error.getErrorCode().name());
+        verify(periodRepository, never()).delete(any(PayrollPeriod.class));
+    }
+
+    @Test
+    void refusesToDeleteAnotherCompanyPayroll() {
+        LocalDate month = LocalDate.of(2026, 11, 1);
+        when(periodRepository.findByCompanyIdAndPeriodStartForUpdate(10L, month))
+                .thenReturn(Optional.empty());
+
+        AppException error = assertThrows(AppException.class,
+                () -> service.deleteDraftPeriod(10L, "2026-11"));
+
+        assertEquals("PAYROLL_PERIOD_NOT_FOUND", error.getErrorCode().name());
+        verify(periodRepository, never()).delete(any(PayrollPeriod.class));
     }
 
     @Test
@@ -150,7 +322,7 @@ class DriverPayrollServiceImplTest {
                 .effectiveFrom(nextMonth)
                 .baseSalaryVnd(new BigDecimal("8000000"))
                 .rateVndPerKg(new BigDecimal("100"))
-                .rateVndPerKm(new BigDecimal("2000"))
+                .commissionPercent(new BigDecimal("15")).handlingFeeVndPerKg(new BigDecimal("150")).handlingDriverPercent(new BigDecimal("85"))
                 .build();
         when(rateRepository.existsByCompanyId(10L)).thenReturn(true);
         when(periodRepository.findByCompanyIdAndPeriodStart(10L, nextMonth)).thenReturn(Optional.empty());
@@ -158,7 +330,7 @@ class DriverPayrollServiceImplTest {
         when(rateRepository.save(any(CompanyPayrollRate.class))).thenAnswer(inv -> inv.getArgument(0));
 
         CompanyPayrollRateRequest updateRequest = new CompanyPayrollRateRequest(
-                nextMonth, new BigDecimal("9000000"), new BigDecimal("150"), new BigDecimal("2500"));
+                nextMonth, new BigDecimal("9000000"), new BigDecimal("150"), new BigDecimal("15"), new BigDecimal("150"), new BigDecimal("85"));
 
         var response = service.createRate(10L, updateRequest);
 
@@ -166,7 +338,7 @@ class DriverPayrollServiceImplTest {
         assertEquals(5L, response.id());
         assertEquals(new BigDecimal("9000000"), response.baseSalaryVnd());
         assertEquals(new BigDecimal("150"), response.rateVndPerKg());
-        assertEquals(new BigDecimal("2500"), response.rateVndPerKm());
+        assertEquals(new BigDecimal("15"), response.commissionPercent());
     }
 
     @Test
@@ -179,7 +351,7 @@ class DriverPayrollServiceImplTest {
         when(periodRepository.findByCompanyIdAndPeriodStart(10L, nextMonth)).thenReturn(Optional.of(lockedPeriod));
 
         CompanyPayrollRateRequest updateRequest = new CompanyPayrollRateRequest(
-                nextMonth, new BigDecimal("9000000"), new BigDecimal("150"), new BigDecimal("2500"));
+                nextMonth, new BigDecimal("9000000"), new BigDecimal("150"), new BigDecimal("15"), new BigDecimal("150"), new BigDecimal("85"));
 
         AppException error = assertThrows(AppException.class, () -> service.createRate(10L, updateRequest));
 
@@ -223,12 +395,11 @@ class DriverPayrollServiceImplTest {
                 .effectiveFrom(periodStart)
                 .baseSalaryVnd(new BigDecimal("8000000"))
                 .rateVndPerKg(new BigDecimal("100"))
-                .rateVndPerKm(new BigDecimal("2000"))
+                .commissionPercent(new BigDecimal("15")).handlingFeeVndPerKg(new BigDecimal("150")).handlingDriverPercent(new BigDecimal("85"))
                 .build();
         LoadPlan loadPlan = LoadPlan.builder().id(55L).approved(true).build();
         CargoPackage cargoPackage = CargoPackage.builder().actualWeightKg(new BigDecimal("1000")).build();
         PackagePlacement placement = PackagePlacement.builder().cargoPackage(cargoPackage).build();
-        RoutePlan routePlan = RoutePlan.builder().id(66L).totalDistanceMeters(120_000).isActive(true).build();
         List<TripPayrollDriverShare> shares = List.of(
                 TripPayrollDriverShare.builder().trip(trip).driver(driverOne).sharePercent(new BigDecimal("50.00")).build(),
                 TripPayrollDriverShare.builder().trip(trip).driver(driverTwo).sharePercent(new BigDecimal("50.00")).build()
@@ -244,18 +415,17 @@ class DriverPayrollServiceImplTest {
                 .thenReturn(List.of(trip));
         when(loadPlanRepository.findFirstByJobTripIdAndApprovedTrueOrderByIdDesc(77L)).thenReturn(Optional.of(loadPlan));
         when(packagePlacementRepository.findByLoadPlanId(55L)).thenReturn(List.of(placement));
-        when(routePlanRepository.findByTripIdAndIsActiveTrue(77L)).thenReturn(Optional.of(routePlan));
         when(shareRepository.findByTripId(77L)).thenReturn(shares);
 
         PayrollPeriodResponse response = service.calculatePeriod(10L, "2026-11");
 
         assertEquals(2, response.drivers().size());
-        assertEquals(new BigDecimal("8170000"), response.drivers().get(0).totalSalaryVnd());
-        assertEquals(new BigDecimal("8170000"), response.drivers().get(1).totalSalaryVnd());
+        // 1000 kg × 100 đ × 15% = 15.000 hoa hồng; 1000 kg × 150 đ × 85% = 127.500 bốc dỡ; chia đôi hai tài xế.
+        assertEquals(new BigDecimal("8071250"), response.drivers().get(0).totalSalaryVnd());
+        assertEquals(new BigDecimal("8071250"), response.drivers().get(1).totalSalaryVnd());
         assertEquals(new BigDecimal("500.000"), response.drivers().get(0).totalKg());
-        assertEquals(new BigDecimal("60.000"), response.drivers().get(0).totalKm());
-        assertEquals(new BigDecimal("50000"), response.drivers().get(0).kgAmountVnd());
-        assertEquals(new BigDecimal("120000"), response.drivers().get(0).kmAmountVnd());
+        assertEquals(new BigDecimal("7500"), response.drivers().get(0).kgAmountVnd());
+        assertEquals(new BigDecimal("63750"), response.drivers().get(0).handlingAmountVnd());
     }
 
     @Test
@@ -267,12 +437,11 @@ class DriverPayrollServiceImplTest {
                 .effectiveFrom(periodStart)
                 .baseSalaryVnd(new BigDecimal("8000000"))
                 .rateVndPerKg(new BigDecimal("100"))
-                .rateVndPerKm(new BigDecimal("2000"))
+                .commissionPercent(new BigDecimal("15")).handlingFeeVndPerKg(new BigDecimal("150")).handlingDriverPercent(new BigDecimal("85"))
                 .build();
         LoadPlan loadPlan = LoadPlan.builder().id(55L).approved(true).build();
         CargoPackage cargoPackage = CargoPackage.builder().actualWeightKg(new BigDecimal("1000")).build();
         PackagePlacement placement = PackagePlacement.builder().cargoPackage(cargoPackage).build();
-        RoutePlan routePlan = RoutePlan.builder().id(66L).totalDistanceMeters(120_000).isActive(true).build();
         List<TripPayrollDriverShare> shares = List.of(
                 TripPayrollDriverShare.builder().trip(trip).driver(driverOne).sharePercent(new BigDecimal("50.00")).build(),
                 TripPayrollDriverShare.builder().trip(trip).driver(driverTwo).sharePercent(new BigDecimal("50.00")).build()
@@ -288,14 +457,13 @@ class DriverPayrollServiceImplTest {
                 .thenReturn(List.of(trip));
         when(loadPlanRepository.findFirstByJobTripIdAndApprovedTrueOrderByIdDesc(77L)).thenReturn(Optional.of(loadPlan));
         when(packagePlacementRepository.findByLoadPlanId(55L)).thenReturn(List.of(placement));
-        when(routePlanRepository.findByTripIdAndIsActiveTrue(77L)).thenReturn(Optional.of(routePlan));
         when(shareRepository.findByTripId(77L)).thenReturn(shares);
 
         PayrollPeriodResponse response = service.calculatePeriod(10L, "2026-11");
 
-        assertEquals(new BigDecimal("8170000"), response.drivers().get(0).totalSalaryVnd());
+        assertEquals(new BigDecimal("8071250"), response.drivers().get(0).totalSalaryVnd());
         assertEquals(BigDecimal.ZERO, response.drivers().get(1).baseSalaryVnd());
-        assertEquals(new BigDecimal("170000"), response.drivers().get(1).totalSalaryVnd());
+        assertEquals(new BigDecimal("71250"), response.drivers().get(1).totalSalaryVnd());
         assertEquals(new BigDecimal("500.000"), response.drivers().get(1).totalKg());
     }
 
@@ -307,7 +475,7 @@ class DriverPayrollServiceImplTest {
                 .effectiveFrom(periodStart)
                 .baseSalaryVnd(new BigDecimal("8000000"))
                 .rateVndPerKg(new BigDecimal("100"))
-                .rateVndPerKm(new BigDecimal("2000"))
+                .commissionPercent(new BigDecimal("15")).handlingFeeVndPerKg(new BigDecimal("150")).handlingDriverPercent(new BigDecimal("85"))
                 .build();
         DriverBaseSalaryOverride override = DriverBaseSalaryOverride.builder()
                 .driver(driverOne)
@@ -363,7 +531,7 @@ class DriverPayrollServiceImplTest {
                 .effectiveFrom(periodStart)
                 .baseSalaryVnd(new BigDecimal("8000000"))
                 .rateVndPerKg(new BigDecimal("100"))
-                .rateVndPerKm(new BigDecimal("2000"))
+                .commissionPercent(new BigDecimal("15")).handlingFeeVndPerKg(new BigDecimal("150")).handlingDriverPercent(new BigDecimal("85"))
                 .build();
         DriverPayroll existingDriverPayroll = DriverPayroll.builder()
                 .id(101L)
@@ -371,8 +539,7 @@ class DriverPayrollServiceImplTest {
                 .baseSalaryVnd(new BigDecimal("8000000"))
                 .totalKg(BigDecimal.ZERO)
                 .kgAmountVnd(BigDecimal.ZERO)
-                .totalKm(BigDecimal.ZERO)
-                .kmAmountVnd(BigDecimal.ZERO)
+                .handlingAmountVnd(BigDecimal.ZERO)
                 .totalSalaryVnd(new BigDecimal("8000000"))
                 .build();
         PayrollPeriod existingPeriod = PayrollPeriod.builder()
@@ -447,7 +614,7 @@ class DriverPayrollServiceImplTest {
                 .effectiveFrom(periodStart)
                 .baseSalaryVnd(new BigDecimal("1000000"))
                 .rateVndPerKg(new BigDecimal("100"))
-                .rateVndPerKm(new BigDecimal("2000"))
+                .commissionPercent(new BigDecimal("15")).handlingFeeVndPerKg(new BigDecimal("150")).handlingDriverPercent(new BigDecimal("85"))
                 .build();
         Trip legacyTrip = Trip.builder()
                 .id(88L)
@@ -466,7 +633,6 @@ class DriverPayrollServiceImplTest {
         LoadPlan loadPlan = LoadPlan.builder().id(901L).approved(true).build();
         CargoPackage pkg = CargoPackage.builder().id(1001L).actualWeightKg(new BigDecimal("50.000")).build();
         PackagePlacement placement = PackagePlacement.builder().id(1101L).loadPlan(loadPlan).cargoPackage(pkg).build();
-        RoutePlan routePlan = RoutePlan.builder().id(951L).trip(legacyTrip).isActive(true).totalDistanceMeters(10_000).build();
 
         when(rateRepository.findFirstByCompanyIdAndEffectiveFromLessThanEqualOrderByEffectiveFromDesc(10L, periodStart))
                 .thenReturn(Optional.of(rate));
@@ -481,7 +647,6 @@ class DriverPayrollServiceImplTest {
         when(deliveryStopRepository.findByTripIdOrderByStopSequenceAsc(88L)).thenReturn(List.of(stop));
         when(loadPlanRepository.findFirstByJobTripIdAndApprovedTrueOrderByIdDesc(88L)).thenReturn(Optional.of(loadPlan));
         when(packagePlacementRepository.findByLoadPlanId(901L)).thenReturn(List.of(placement));
-        when(routePlanRepository.findByTripIdAndIsActiveTrue(88L)).thenReturn(Optional.of(routePlan));
         when(shareRepository.findByTripId(88L)).thenReturn(List.of());
 
         PayrollPeriodResponse response = service.calculatePeriod(10L, "2026-11");
@@ -490,9 +655,107 @@ class DriverPayrollServiceImplTest {
         verify(tripRepository).save(legacyTrip);
         assertEquals(1, response.drivers().size());
         assertEquals(0, new BigDecimal("50.000").compareTo(response.drivers().get(0).totalKg()));
-        assertEquals(0, new BigDecimal("10.000").compareTo(response.drivers().get(0).totalKm()));
-        // base 1,000,000 + 50kg*100 (5,000) + 10km*2000 (20,000) = 1,025,000
-        assertEquals(0, new BigDecimal("1025000").compareTo(response.drivers().get(0).totalSalaryVnd()));
+        // base 1.000.000 + 50kg*100*15% (750) + 50kg*150*85% (6.375) = 1.007.125
+        assertEquals(0, new BigDecimal("1007125").compareTo(response.drivers().get(0).totalSalaryVnd()));
+    }
+
+    @Test
+    void driverSeesOnlyBaseSalaryWhilePeriodIsStillDraft() {
+        LocalDate periodStart = LocalDate.of(2026, 11, 1);
+        CompanyPayrollRate rate = CompanyPayrollRate.builder()
+                .id(5L).company(company).effectiveFrom(periodStart)
+                .baseSalaryVnd(new BigDecimal("15000000"))
+                .rateVndPerKg(new BigDecimal("40000"))
+                .commissionPercent(new BigDecimal("15")).handlingFeeVndPerKg(new BigDecimal("150")).handlingDriverPercent(new BigDecimal("85"))
+                .build();
+        PayrollPeriod draft = PayrollPeriod.builder().id(9L).company(company).periodStart(periodStart)
+                .payrollRate(rate).status(PayrollPeriodStatus.DRAFT).build();
+        when(userRepository.findById(21L)).thenReturn(Optional.of(driverOne));
+        when(periodRepository.findByCompanyIdAndPeriodStart(10L, periodStart)).thenReturn(Optional.of(draft));
+        when(rateRepository.findFirstByCompanyIdAndEffectiveFromLessThanEqualOrderByEffectiveFromDesc(10L, periodStart))
+                .thenReturn(Optional.of(rate));
+
+        var statement = service.getDriverStatement(10L, 21L, "2026-11");
+
+        assertEquals(false, statement.calculated());
+        assertEquals(PayrollPeriodStatus.DRAFT, statement.status());
+        assertEquals(new BigDecimal("15000000"), statement.baseSalaryVnd());
+        assertEquals(null, statement.kgAmountVnd());
+        assertEquals(null, statement.handlingAmountVnd());
+        assertEquals(null, statement.totalSalaryVnd());
+        assertEquals(0, statement.trips().size());
+        verify(driverPayrollRepository, never()).findByPayrollPeriodIdAndDriverId(any(), any());
+    }
+
+    @Test
+    void driverSeesBaseSalaryEvenBeforeAnyPeriodExistsUsingTheirOwnRaise() {
+        LocalDate periodStart = LocalDate.of(2026, 12, 1);
+        CompanyPayrollRate rate = CompanyPayrollRate.builder()
+                .id(5L).company(company).effectiveFrom(LocalDate.of(2026, 11, 1))
+                .baseSalaryVnd(new BigDecimal("15000000"))
+                .build();
+        DriverBaseSalaryOverride raise = DriverBaseSalaryOverride.builder()
+                .company(company).driver(driverOne).effectiveFrom(periodStart)
+                .baseSalaryVnd(new BigDecimal("16000000")).build();
+        when(userRepository.findById(21L)).thenReturn(Optional.of(driverOne));
+        when(periodRepository.findByCompanyIdAndPeriodStart(10L, periodStart)).thenReturn(Optional.empty());
+        when(rateRepository.findFirstByCompanyIdAndEffectiveFromLessThanEqualOrderByEffectiveFromDesc(10L, periodStart))
+                .thenReturn(Optional.of(rate));
+        when(baseSalaryOverrideRepository
+                .findFirstByDriverIdAndEffectiveFromLessThanEqualOrderByEffectiveFromDesc(21L, periodStart))
+                .thenReturn(Optional.of(raise));
+
+        var statement = service.getDriverStatement(10L, 21L, "2026-12");
+
+        assertEquals(false, statement.calculated());
+        assertEquals(null, statement.status());
+        assertEquals(new BigDecimal("16000000"), statement.baseSalaryVnd());
+    }
+
+    @Test
+    void driverSeesNothingWhenCompanyHasNoRateForThatMonth() {
+        LocalDate periodStart = LocalDate.of(2026, 10, 1);
+        when(userRepository.findById(21L)).thenReturn(Optional.of(driverOne));
+        when(periodRepository.findByCompanyIdAndPeriodStart(10L, periodStart)).thenReturn(Optional.empty());
+        when(rateRepository.findFirstByCompanyIdAndEffectiveFromLessThanEqualOrderByEffectiveFromDesc(10L, periodStart))
+                .thenReturn(Optional.empty());
+
+        var statement = service.getDriverStatement(10L, 21L, "2026-10");
+
+        assertEquals(false, statement.calculated());
+        assertEquals(null, statement.baseSalaryVnd());
+    }
+
+    @Test
+    void driverSeesCommissionAndHandlingOnceThePeriodIsLocked() {
+        LocalDate periodStart = LocalDate.of(2026, 11, 1);
+        CompanyPayrollRate rate = CompanyPayrollRate.builder()
+                .id(5L).company(company).effectiveFrom(periodStart)
+                .baseSalaryVnd(new BigDecimal("15000000"))
+                .rateVndPerKg(new BigDecimal("40000"))
+                .commissionPercent(new BigDecimal("15")).handlingFeeVndPerKg(new BigDecimal("150")).handlingDriverPercent(new BigDecimal("85"))
+                .build();
+        PayrollPeriod locked = PayrollPeriod.builder().id(9L).company(company).periodStart(periodStart)
+                .payrollRate(rate).status(PayrollPeriodStatus.LOCKED).build();
+        DriverPayroll payroll = DriverPayroll.builder()
+                .payrollPeriod(locked).driver(driverOne)
+                .baseSalaryVnd(new BigDecimal("15000000"))
+                .totalKg(new BigDecimal("100.000"))
+                .kgAmountVnd(new BigDecimal("600000"))
+                .handlingAmountVnd(new BigDecimal("12750"))
+                .totalSalaryVnd(new BigDecimal("15612750"))
+                .trips(new java.util.ArrayList<>())
+                .build();
+        when(userRepository.findById(21L)).thenReturn(Optional.of(driverOne));
+        when(periodRepository.findByCompanyIdAndPeriodStart(10L, periodStart)).thenReturn(Optional.of(locked));
+        when(driverPayrollRepository.findByPayrollPeriodIdAndDriverId(9L, 21L)).thenReturn(Optional.of(payroll));
+
+        var statement = service.getDriverStatement(10L, 21L, "2026-11");
+
+        assertEquals(true, statement.calculated());
+        assertEquals(new BigDecimal("600000"), statement.kgAmountVnd());
+        assertEquals(new BigDecimal("12750"), statement.handlingAmountVnd());
+        assertEquals(new BigDecimal("15612750"), statement.totalSalaryVnd());
     }
 
     private static User driver(Long id, String name, Company company) {

@@ -32,14 +32,11 @@ public class DriverPayrollTripLine {
     @Column(name = "load_plan_id", nullable = false)
     private Long loadPlanId;
 
-    @Column(name = "route_plan_id", nullable = false)
+    @Column(name = "route_plan_id")
     private Long routePlanId;
 
     @Column(name = "plan_kg", nullable = false, precision = 15, scale = 3)
     private BigDecimal planKg;
-
-    @Column(name = "plan_km", nullable = false, precision = 15, scale = 3)
-    private BigDecimal planKm;
 
     @Column(name = "share_percent", nullable = false, precision = 7, scale = 4)
     private BigDecimal sharePercent;
@@ -47,20 +44,15 @@ public class DriverPayrollTripLine {
     @Column(name = "allocated_kg", nullable = false, precision = 15, scale = 3)
     private BigDecimal allocatedKg;
 
-    @Column(name = "allocated_km", nullable = false, precision = 15, scale = 3)
-    private BigDecimal allocatedKm;
-
     @Column(name = "rate_vnd_per_kg", nullable = false, precision = 15, scale = 2)
     private BigDecimal rateVndPerKg;
 
-    @Column(name = "rate_vnd_per_km", nullable = false, precision = 15, scale = 2)
-    private BigDecimal rateVndPerKm;
-
+    /** Hoa hồng theo kg của tài xế (đã chia theo tỷ lệ chuyến). */
     @Column(name = "kg_amount_vnd", nullable = false, precision = 15, scale = 0)
     private BigDecimal kgAmountVnd;
 
-    @Column(name = "km_amount_vnd", nullable = false, precision = 15, scale = 0)
-    private BigDecimal kmAmountVnd;
+    @Column(name = "handling_amount_vnd", nullable = false, precision = 15, scale = 0)
+    private BigDecimal handlingAmountVnd;
 
     @Column(name = "total_amount_vnd", nullable = false, precision = 15, scale = 0)
     private BigDecimal totalAmountVnd;
