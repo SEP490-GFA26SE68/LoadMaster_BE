@@ -12,19 +12,35 @@ import java.util.List;
 
 public final class PayrollMath {
 
+    private static final BigDecimal ONE_HUNDRED = BigDecimal.valueOf(100);
+
     private PayrollMath() {
     }
 
+    /**
+     * Phần tiền của tài xế cho một chuyến: hoa hồng trên cước theo kg + phần bốc dỡ theo kg.
+     * Mỗi khoản làm tròn về đồng (HALF_UP) trước khi cộng.
+     */
     public static TripAmounts calculateTripAmounts(
             BigDecimal planKg,
-            BigDecimal planKm,
-            BigDecimal rateVndPerKg,
-            BigDecimal rateVndPerKm
+            BigDecimal freightVndPerKg,
+            BigDecimal commissionPercent,
+            BigDecimal handlingFeeVndPerKg,
+            BigDecimal handlingDriverPercent
     ) {
-        requireNonNegative(planKg, planKm, rateVndPerKg, rateVndPerKm);
-        BigDecimal kgAmount = planKg.multiply(rateVndPerKg).setScale(0, RoundingMode.HALF_UP);
-        BigDecimal kmAmount = planKm.multiply(rateVndPerKm).setScale(0, RoundingMode.HALF_UP);
-        return new TripAmounts(kgAmount, kmAmount, kgAmount.add(kmAmount));
+        requireNonNegative(planKg, freightVndPerKg, commissionPercent, handlingFeeVndPerKg, handlingDriverPercent);
+        requirePercent(commissionPercent, handlingDriverPercent);
+        BigDecimal commission = planKg.multiply(freightVndPerKg).multiply(commissionPercent)
+                .divide(ONE_HUNDRED, 0, RoundingMode.HALF_UP);
+        BigDecimal handling = planKg.multiply(handlingFeeVndPerKg).multiply(handlingDriverPercent)
+                .divide(ONE_HUNDRED, 0, RoundingMode.HALF_UP);
+        return new TripAmounts(commission, handling, commission.add(handling));
+    }
+
+    private static void requirePercent(BigDecimal... values) {
+        for (BigDecimal value : values) {
+            if (value.compareTo(ONE_HUNDRED) > 0) throw new AppException(ErrorCode.PAYROLL_INVALID_AMOUNT);
+        }
     }
 
     public static List<BigDecimal> splitEvenly(BigDecimal amount, int participantCount) {
@@ -118,6 +134,6 @@ public final class PayrollMath {
     private record QuantityShare(int index, BigInteger wholeUnits, BigDecimal fractionalUnits) {
     }
 
-    public record TripAmounts(BigDecimal kgAmount, BigDecimal kmAmount, BigDecimal totalAmount) {
+    public record TripAmounts(BigDecimal commissionAmount, BigDecimal handlingAmount, BigDecimal totalAmount) {
     }
 }

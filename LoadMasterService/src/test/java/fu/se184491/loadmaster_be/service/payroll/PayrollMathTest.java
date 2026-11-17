@@ -13,17 +13,44 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 class PayrollMathTest {
 
     @Test
-    void calculatesKgAndPlannedKmAsSeparateAdditiveAmounts() {
+    void driverGetsCommissionOnFreightPlusHandlingShareOnTheSameKg() {
+        // 1000 kg, cước 40.000 đ/kg, tài xế hưởng 15% cước; bốc dỡ 150 đ/kg, tài xế hưởng 85%.
         PayrollMath.TripAmounts amounts = PayrollMath.calculateTripAmounts(
                 new BigDecimal("1000"),
-                new BigDecimal("120"),
-                new BigDecimal("100"),
-                new BigDecimal("2000")
+                new BigDecimal("40000"),
+                new BigDecimal("15"),
+                new BigDecimal("150"),
+                new BigDecimal("85")
         );
 
-        assertEquals(new BigDecimal("100000"), amounts.kgAmount());
-        assertEquals(new BigDecimal("240000"), amounts.kmAmount());
-        assertEquals(new BigDecimal("340000"), amounts.totalAmount());
+        assertEquals(new BigDecimal("6000000"), amounts.commissionAmount());
+        assertEquals(new BigDecimal("127500"), amounts.handlingAmount());
+        assertEquals(new BigDecimal("6127500"), amounts.totalAmount());
+    }
+
+    @Test
+    void roundsCommissionAndHandlingToWholeVndHalfUp() {
+        // 0,333 kg × 150 × 85% = 42,4575 -> 42 ; 0,333 × 1000 × 15% = 49,95 -> 50
+        PayrollMath.TripAmounts amounts = PayrollMath.calculateTripAmounts(
+                new BigDecimal("0.333"),
+                new BigDecimal("1000"),
+                new BigDecimal("15"),
+                new BigDecimal("150"),
+                new BigDecimal("85")
+        );
+
+        assertEquals(new BigDecimal("50"), amounts.commissionAmount());
+        assertEquals(new BigDecimal("42"), amounts.handlingAmount());
+        assertEquals(new BigDecimal("92"), amounts.totalAmount());
+    }
+
+    @Test
+    void rejectsPercentAboveOneHundred() {
+        AppException error = assertThrows(AppException.class, () -> PayrollMath.calculateTripAmounts(
+                new BigDecimal("10"), new BigDecimal("1000"), new BigDecimal("101"),
+                new BigDecimal("150"), new BigDecimal("85")));
+
+        assertEquals(ErrorCode.PAYROLL_INVALID_AMOUNT, error.getErrorCode());
     }
 
     @Test
@@ -52,7 +79,7 @@ class PayrollMathTest {
     @Test
     void reportsNegativeWeightUsingPayrollErrorCode() {
         AppException exception = assertThrows(AppException.class, () -> PayrollMath.calculateTripAmounts(
-                new BigDecimal("-1"), BigDecimal.ONE, BigDecimal.ONE, BigDecimal.ONE));
+                new BigDecimal("-1"), BigDecimal.ONE, BigDecimal.ONE, BigDecimal.ONE, BigDecimal.ONE));
 
         assertEquals(ErrorCode.PAYROLL_INVALID_AMOUNT, exception.getErrorCode());
     }

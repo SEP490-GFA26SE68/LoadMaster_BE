@@ -17,9 +17,10 @@ public record PayrollStatementResponse(
         BigDecimal totalKg,
         BigDecimal rateVndPerKg,
         BigDecimal kgAmountVnd,
-        BigDecimal totalKm,
-        BigDecimal rateVndPerKm,
-        BigDecimal kmAmountVnd,
+        BigDecimal commissionPercent,
+        BigDecimal handlingFeeVndPerKg,
+        BigDecimal handlingDriverPercent,
+        BigDecimal handlingAmountVnd,
         BigDecimal totalSalaryVnd,
         List<PayrollTripLineResponse> trips
 ) {

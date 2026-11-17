@@ -47,8 +47,9 @@ spring:
       password: ${REDIS_PASSWORD:}
 
   flyway:
+    # DB dùng chung đã baseline ở V41 (schema trước đó do Hibernate tạo); từ V42 trở đi do Flyway chạy khi khởi động.
     baseline-on-migrate: true
-    baseline-version: 0
+    baseline-version: 41
 
   jpa:
     # Giữ bật có chủ ý: còn service không có @Transactional mà vẫn đi qua quan hệ lazy (ví dụ xuất nhãn PDF đọc
