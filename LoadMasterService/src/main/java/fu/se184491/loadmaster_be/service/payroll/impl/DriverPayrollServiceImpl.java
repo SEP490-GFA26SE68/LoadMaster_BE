@@ -25,6 +25,7 @@ import fu.se184491.loadmaster_be.entity.payroll.DriverPayrollTripLine;
 import fu.se184491.loadmaster_be.entity.payroll.PayrollPeriod;
 import fu.se184491.loadmaster_be.entity.payroll.TripPayrollDriverShare;
 import fu.se184491.loadmaster_be.entity.route.RoutePlan;
+import fu.se184491.loadmaster_be.entity.trip.DeliveryStop;
 import fu.se184491.loadmaster_be.entity.trip.Trip;
 import fu.se184491.loadmaster_be.exception.AppException;
 import fu.se184491.loadmaster_be.exception.ErrorCode;
@@ -37,6 +38,7 @@ import fu.se184491.loadmaster_be.repository.payroll.DriverPayrollRepository;
 import fu.se184491.loadmaster_be.repository.payroll.PayrollPeriodRepository;
 import fu.se184491.loadmaster_be.repository.payroll.TripPayrollDriverShareRepository;
 import fu.se184491.loadmaster_be.repository.route.RoutePlanRepository;
+import fu.se184491.loadmaster_be.repository.trip.DeliveryStopRepository;
 import fu.se184491.loadmaster_be.repository.trip.TripRepository;
 import fu.se184491.loadmaster_be.service.payroll.DriverPayrollService;
 import fu.se184491.loadmaster_be.service.payroll.PayrollMath;
@@ -76,6 +78,7 @@ public class DriverPayrollServiceImpl implements DriverPayrollService {
     private final DriverPayrollRepository driverPayrollRepository;
     private final TripPayrollDriverShareRepository shareRepository;
     private final TripRepository tripRepository;
+    private final DeliveryStopRepository deliveryStopRepository;
     private final RoutePlanRepository routePlanRepository;
     private final LoadPlanRepository loadPlanRepository;
     private final PackagePlacementRepository packagePlacementRepository;
@@ -227,8 +230,24 @@ public class DriverPayrollServiceImpl implements DriverPayrollService {
 
         LocalDateTime start = month.atDay(1).atStartOfDay();
         LocalDateTime end = month.plusMonths(1).atDay(1).atStartOfDay();
-        List<Trip> completedTrips = tripRepository.findByCompanyIdAndStatusAndCompletedAtGreaterThanEqualAndCompletedAtLessThan(
-                companyId, TripStatus.DELIVERED, start, end);
+        List<Trip> completedTrips = new ArrayList<>(
+                tripRepository.findByCompanyIdAndStatusAndCompletedAtGreaterThanEqualAndCompletedAtLessThan(
+                        companyId, TripStatus.DELIVERED, start, end));
+        // Fallback cho các chuyến DELIVERED cũ/seed bị trống completed_at: suy ra từ giờ hoàn tất/đến điểm cuối rồi backfill luôn.
+        List<Trip> legacyDelivered = tripRepository.findByCompanyIdAndStatusAndCompletedAtIsNull(
+                companyId, TripStatus.DELIVERED);
+        if (legacyDelivered != null) {
+            for (Trip legacyTrip : legacyDelivered) {
+                LocalDateTime resolved = resolveEffectiveCompletedAt(legacyTrip);
+                if (resolved != null) {
+                    legacyTrip.setCompletedAt(resolved);
+                    tripRepository.save(legacyTrip);
+                    if (!resolved.isBefore(start) && resolved.isBefore(end)) {
+                        completedTrips.add(legacyTrip);
+                    }
+                }
+            }
+        }
         for (Trip trip : completedTrips) {
             addTripToPayroll(trip, payrollPeriod, rate, payrollByDriver);
         }
@@ -476,11 +495,47 @@ public class DriverPayrollServiceImpl implements DriverPayrollService {
     }
 
     private void rejectAssignmentChangeForLockedPeriod(Trip trip) {
-        if (trip.getCompletedAt() == null) return;
-        LocalDate periodStart = trip.getCompletedAt().toLocalDate().withDayOfMonth(1);
+        LocalDateTime effectiveCompletedAt = resolveEffectiveCompletedAt(trip);
+        if (effectiveCompletedAt == null) return;
+        LocalDate periodStart = effectiveCompletedAt.toLocalDate().withDayOfMonth(1);
         periodRepository.findByCompanyIdAndPeriodStartForUpdate(trip.getCompany().getId(), periodStart)
                 .filter(period -> period.getStatus() == PayrollPeriodStatus.LOCKED)
                 .ifPresent(period -> { throw new AppException(ErrorCode.PAYROLL_PERIOD_LOCKED); });
+    }
+
+    /**
+     * Thời điểm hoàn tất hiệu lực của chuyến DELIVERED: ưu tiên trips.completed_at; nếu null (dữ liệu cũ/seed)
+     * thì lấy giờ hoàn tất muộn nhất hoặc giờ đến thực tế muộn nhất của các điểm dừng, cuối cùng fallback về departureTime.
+     */
+    private LocalDateTime resolveEffectiveCompletedAt(Trip trip) {
+        if (trip.getCompletedAt() != null) {
+            return trip.getCompletedAt();
+        }
+        if (trip.getStatus() != TripStatus.DELIVERED) {
+            return null;
+        }
+        if (deliveryStopRepository != null && trip.getId() != null) {
+            List<DeliveryStop> stops = deliveryStopRepository.findByTripIdOrderByStopSequenceAsc(trip.getId());
+            if (stops != null && !stops.isEmpty()) {
+                LocalDateTime maxStopCompleted = stops.stream()
+                        .map(DeliveryStop::getCompletedAt)
+                        .filter(Objects::nonNull)
+                        .max(LocalDateTime::compareTo)
+                        .orElse(null);
+                if (maxStopCompleted != null) {
+                    return maxStopCompleted;
+                }
+                LocalDateTime maxActualArrival = stops.stream()
+                        .map(DeliveryStop::getActualArrival)
+                        .filter(Objects::nonNull)
+                        .max(LocalDateTime::compareTo)
+                        .orElse(null);
+                if (maxActualArrival != null) {
+                    return maxActualArrival;
+                }
+            }
+        }
+        return trip.getDepartureTime();
     }
 
     private boolean isActiveCompanyDriver(User user, Long companyId) {

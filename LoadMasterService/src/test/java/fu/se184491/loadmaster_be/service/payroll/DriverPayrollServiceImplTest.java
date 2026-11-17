@@ -19,6 +19,7 @@ import fu.se184491.loadmaster_be.entity.payroll.DriverPayroll;
 import fu.se184491.loadmaster_be.entity.payroll.PayrollPeriod;
 import fu.se184491.loadmaster_be.entity.payroll.TripPayrollDriverShare;
 import fu.se184491.loadmaster_be.entity.route.RoutePlan;
+import fu.se184491.loadmaster_be.entity.trip.DeliveryStop;
 import fu.se184491.loadmaster_be.entity.trip.Trip;
 import fu.se184491.loadmaster_be.exception.AppException;
 import fu.se184491.loadmaster_be.repository.account.UserRepository;
@@ -30,6 +31,7 @@ import fu.se184491.loadmaster_be.repository.payroll.DriverPayrollRepository;
 import fu.se184491.loadmaster_be.repository.payroll.PayrollPeriodRepository;
 import fu.se184491.loadmaster_be.repository.payroll.TripPayrollDriverShareRepository;
 import fu.se184491.loadmaster_be.repository.route.RoutePlanRepository;
+import fu.se184491.loadmaster_be.repository.trip.DeliveryStopRepository;
 import fu.se184491.loadmaster_be.repository.trip.TripRepository;
 import fu.se184491.loadmaster_be.service.payroll.impl.DriverPayrollServiceImpl;
 import org.junit.jupiter.api.BeforeEach;
@@ -65,6 +67,7 @@ class DriverPayrollServiceImplTest {
     @Mock private DriverPayrollRepository driverPayrollRepository;
     @Mock private TripPayrollDriverShareRepository shareRepository;
     @Mock private TripRepository tripRepository;
+    @Mock private DeliveryStopRepository deliveryStopRepository;
     @Mock private RoutePlanRepository routePlanRepository;
     @Mock private LoadPlanRepository loadPlanRepository;
     @Mock private PackagePlacementRepository packagePlacementRepository;
@@ -432,6 +435,64 @@ class DriverPayrollServiceImplTest {
         assertNotNull(period.getLockedAt());
         assertEquals(0, period.getLockedAt().getNano(), "lockedAt must not have fractional seconds");
         verify(periodRepository).save(period);
+    }
+
+    @Test
+    void calculatesLegacyDeliveredTripsWithNullCompletedAtUsingStopArrival() {
+        LocalDate periodStart = LocalDate.of(2026, 11, 1);
+        LocalDateTime stopArrival = LocalDateTime.of(2026, 11, 6, 16, 6);
+        CompanyPayrollRate rate = CompanyPayrollRate.builder()
+                .id(1L)
+                .company(company)
+                .effectiveFrom(periodStart)
+                .baseSalaryVnd(new BigDecimal("1000000"))
+                .rateVndPerKg(new BigDecimal("100"))
+                .rateVndPerKm(new BigDecimal("2000"))
+                .build();
+        Trip legacyTrip = Trip.builder()
+                .id(88L)
+                .tripCode("TRIP-LEGACY-88")
+                .company(company)
+                .driver(driverOne)
+                .status(TripStatus.DELIVERED)
+                .completedAt(null)
+                .build();
+        DeliveryStop stop = DeliveryStop.builder()
+                .id(501L)
+                .trip(legacyTrip)
+                .stopSequence(1)
+                .actualArrival(stopArrival)
+                .build();
+        LoadPlan loadPlan = LoadPlan.builder().id(901L).approved(true).build();
+        CargoPackage pkg = CargoPackage.builder().id(1001L).actualWeightKg(new BigDecimal("50.000")).build();
+        PackagePlacement placement = PackagePlacement.builder().id(1101L).loadPlan(loadPlan).cargoPackage(pkg).build();
+        RoutePlan routePlan = RoutePlan.builder().id(951L).trip(legacyTrip).isActive(true).totalDistanceMeters(10_000).build();
+
+        when(rateRepository.findFirstByCompanyIdAndEffectiveFromLessThanEqualOrderByEffectiveFromDesc(10L, periodStart))
+                .thenReturn(Optional.of(rate));
+        when(periodRepository.findByCompanyIdAndPeriodStartForUpdate(10L, periodStart)).thenReturn(Optional.empty());
+        when(userRepository.findByCompanyIdAndUserRoleTypeAndStatus(10L, UserRole.DRIVER, UserStatus.ACTIVE))
+                .thenReturn(List.of(driverOne));
+        when(tripRepository.findByCompanyIdAndStatusAndCompletedAtGreaterThanEqualAndCompletedAtLessThan(
+                10L, TripStatus.DELIVERED, periodStart.atStartOfDay(), periodStart.plusMonths(1).atStartOfDay()))
+                .thenReturn(List.of());
+        when(tripRepository.findByCompanyIdAndStatusAndCompletedAtIsNull(10L, TripStatus.DELIVERED))
+                .thenReturn(List.of(legacyTrip));
+        when(deliveryStopRepository.findByTripIdOrderByStopSequenceAsc(88L)).thenReturn(List.of(stop));
+        when(loadPlanRepository.findFirstByJobTripIdAndApprovedTrueOrderByIdDesc(88L)).thenReturn(Optional.of(loadPlan));
+        when(packagePlacementRepository.findByLoadPlanId(901L)).thenReturn(List.of(placement));
+        when(routePlanRepository.findByTripIdAndIsActiveTrue(88L)).thenReturn(Optional.of(routePlan));
+        when(shareRepository.findByTripId(88L)).thenReturn(List.of());
+
+        PayrollPeriodResponse response = service.calculatePeriod(10L, "2026-11");
+
+        assertEquals(stopArrival, legacyTrip.getCompletedAt());
+        verify(tripRepository).save(legacyTrip);
+        assertEquals(1, response.drivers().size());
+        assertEquals(0, new BigDecimal("50.000").compareTo(response.drivers().get(0).totalKg()));
+        assertEquals(0, new BigDecimal("10.000").compareTo(response.drivers().get(0).totalKm()));
+        // base 1,000,000 + 50kg*100 (5,000) + 10km*2000 (20,000) = 1,025,000
+        assertEquals(0, new BigDecimal("1025000").compareTo(response.drivers().get(0).totalSalaryVnd()));
     }
 
     private static User driver(Long id, String name, Company company) {
