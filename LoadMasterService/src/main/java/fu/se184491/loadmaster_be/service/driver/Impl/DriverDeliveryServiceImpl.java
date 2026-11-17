@@ -306,14 +306,26 @@ public class DriverDeliveryServiceImpl implements DriverDeliveryService {
 
         Vehicle vehicle = trip.getVehicle();
         VehicleType type = vehicle != null ? vehicle.getVehicleType() : null;
+        Integer innerLengthCm = type != null ? type.getInnerLength() : null;
+        Integer innerWidthCm = type != null ? type.getInnerWidth() : null;
+        Integer innerHeightCm = type != null ? type.getInnerHeight() : null;
+        BigDecimal maxVolumeM3 = null;
+        if (innerLengthCm != null && innerWidthCm != null && innerHeightCm != null) {
+            maxVolumeM3 = BigDecimal.valueOf((long) innerLengthCm * innerWidthCm * innerHeightCm)
+                    .divide(BigDecimal.valueOf(1_000_000), 2, java.math.RoundingMode.HALF_UP);
+        }
 
         String depotName = trip.getOriginName();
         String depotAddress = trip.getOriginAddress();
         BigDecimal depotLat = trip.getOriginLatitude();
         BigDecimal depotLng = trip.getOriginLongitude();
-        if (depotName == null && trip.getOriginWarehouse() != null) {
-            depotName = trip.getOriginWarehouse().getWarehouseName();
-            depotAddress = trip.getOriginWarehouse().getAddress();
+        if (trip.getOriginWarehouse() != null) {
+            if (depotName == null) {
+                depotName = trip.getOriginWarehouse().getWarehouseName();
+            }
+            if (depotAddress == null) {
+                depotAddress = trip.getOriginWarehouse().getAddress();
+            }
             if (depotLat == null) {
                 depotLat = trip.getOriginWarehouse().getLatitude();
             }
@@ -356,7 +368,15 @@ public class DriverDeliveryServiceImpl implements DriverDeliveryService {
                         .packageName(packageName(pkg))
                         .weightKg(weight)
                         .status(pkg.getStatus() != null ? pkg.getStatus().name() : null)
+                        .handlingClass(pkg.getHandlingClass() != null ? pkg.getHandlingClass().name() : null)
                         .build());
+            }
+
+            BigDecimal stopLat = stop.getLatitude();
+            BigDecimal stopLng = stop.getLongitude();
+            if ((stopLat == null || stopLng == null) && req != null) {
+                if (stopLat == null) stopLat = req.getDestinationLat();
+                if (stopLng == null) stopLng = req.getDestinationLng();
             }
 
             stopDetails.add(DriverTripDetailResponse.StopDetail.builder()
@@ -364,8 +384,8 @@ public class DriverDeliveryServiceImpl implements DriverDeliveryService {
                     .stopSequence(stop.getStopSequence())
                     .stopName(stop.getStopName())
                     .address(stop.getAddress())
-                    .lat(stop.getLatitude())
-                    .lng(stop.getLongitude())
+                    .lat(stopLat)
+                    .lng(stopLng)
                     .status(stop.getStatus() != null ? stop.getStatus().name() : null)
                     .stopType(stop.kind().name())
                     .plannedArrival(stop.getPlannedArrival())
@@ -411,6 +431,10 @@ public class DriverDeliveryServiceImpl implements DriverDeliveryService {
                 .licensePlate(vehicle != null ? vehicle.getLicensePlate() : null)
                 .maxPayloadKg(type != null ? type.getMaxPayloadKg() : null)
                 .vehicleTypeName(type != null ? type.getName() : null)
+                .innerLengthCm(innerLengthCm)
+                .innerWidthCm(innerWidthCm)
+                .innerHeightCm(innerHeightCm)
+                .maxVolumeM3(maxVolumeM3)
                 .dispatcherName(dispatcherName)
                 .dispatcherPhone(dispatcherPhone)
                 .totalDistanceMeters(totalDistanceMeters)
@@ -743,6 +767,9 @@ public class DriverDeliveryServiceImpl implements DriverDeliveryService {
     private static String packageName(CargoPackage pkg) {
         if (pkg == null) {
             return null;
+        }
+        if (pkg.getPackageName() != null && !pkg.getPackageName().isBlank()) {
+            return pkg.getPackageName();
         }
         if (pkg.getPackageType() != null && pkg.getPackageType().getName() != null) {
             return pkg.getPackageType().getName();

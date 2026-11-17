@@ -37,6 +37,10 @@ public class DriverTripDetailResponse {
     private String licensePlate;
     private BigDecimal maxPayloadKg;
     private String vehicleTypeName;
+    private Integer innerLengthCm;
+    private Integer innerWidthCm;
+    private Integer innerHeightCm;
+    private BigDecimal maxVolumeM3;
 
     // Người điều phối phụ trách
     private String dispatcherName;
@@ -94,5 +98,6 @@ public class DriverTripDetailResponse {
         private BigDecimal weightKg;
         private String status;
         private Integer unloadOrder;
+        private String handlingClass;
     }
 }
