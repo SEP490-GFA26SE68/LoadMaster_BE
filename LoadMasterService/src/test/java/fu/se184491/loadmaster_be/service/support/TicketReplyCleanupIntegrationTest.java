@@ -52,6 +52,10 @@ class TicketReplyCleanupIntegrationTest {
     @Autowired
     private TicketReplyRepository ticketReplyRepository;
 
+    // Redis is unrelated to these database scenarios; never initialize a shared/dev connection factory.
+    @MockitoBean
+    private org.springframework.data.redis.connection.lettuce.LettuceConnectionFactory redisConnectionFactory;
+
     @MockitoBean
     private JwtDecoder jwtDecoder;
 

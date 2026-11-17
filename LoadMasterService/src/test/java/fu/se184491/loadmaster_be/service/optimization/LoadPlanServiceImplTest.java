@@ -236,6 +236,21 @@ class LoadPlanServiceImplTest {
 
         assertEquals("EP_DBLF_GA", response.getAlgorithmName());
         assertEquals("EP_DBLF_GA", response.getRunAlgorithm());
+    @org.junit.jupiter.params.ParameterizedTest(name="{0}")
+    @org.junit.jupiter.params.provider.ValueSource(strings={
+        "engine-reported-SA", "company-PRO", "expired-subscription", "engine-failure", "save-failure", "missing-engine-algorithm"})
+    void rerunUnavailableBeforeDebitEngineOrRefund(String formerScenario) {
+        // These former scenarios lie beyond a deliberately unavailable operation.
+        plan.getJob().setAlgorithmName(formerScenario.equals("company-PRO")
+                ? OptimizationAlgorithm.EP_DBLF_GA : OptimizationAlgorithm.EP_DBLF);
+        AppException error=assertThrows(AppException.class,
+                ()->service.rerunOptimization(50L,new RerunOptimizationRequest()));
+        assertEquals(ErrorCode.OPTIMIZATION_RERUN_UNAVAILABLE,error.getErrorCode());
+        assertEquals(org.springframework.http.HttpStatus.SERVICE_UNAVAILABLE,error.getErrorCode().getHttpStatus());
+        org.mockito.Mockito.verifyNoInteractions(creditService,optimizationEngineClient,optimizationJobRepository,
+                transactionManager,companySubscriptionRepository);
+        verify(loadPlanRepository,never()).save(any());
+        verify(auditLogRepository,never()).save(any());
     }
 
     @Test

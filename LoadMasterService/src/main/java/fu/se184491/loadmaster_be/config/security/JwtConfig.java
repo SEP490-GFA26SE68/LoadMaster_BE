@@ -26,19 +26,14 @@ public class JwtConfig {
         NimbusJwtDecoder decoder =
                 JwtDecoders.fromIssuerLocation(issuer);
 
-        OAuth2TokenValidator<Jwt> issuerValidator =
-                JwtValidators.createDefaultWithIssuer(issuer);
-
-        OAuth2TokenValidator<Jwt> audienceValidator =
-                new AudienceValidator(AUDIENCE);
-
-        decoder.setJwtValidator(
-                new DelegatingOAuth2TokenValidator<>(
-                        issuerValidator,
-                        audienceValidator
-                )
-        );
-
+        decoder.setJwtValidator(validatorsFor(issuer));
         return decoder;
+    }
+
+    /** Shared with filter integration tests using a local signing key; production validation stays strict. */
+    public static OAuth2TokenValidator<Jwt> validatorsFor(String issuer) {
+        return new DelegatingOAuth2TokenValidator<>(
+                JwtValidators.createDefaultWithIssuer(issuer),
+                new AudienceValidator(AUDIENCE));
     }
 }

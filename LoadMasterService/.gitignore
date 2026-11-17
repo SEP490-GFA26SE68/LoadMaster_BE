@@ -47,3 +47,16 @@ Optimization.txt
 
 application-local.yml
 .vscode/
+
+# Local documentation and Codex reports
+docs/
+
+# Local Codex reports
+/LoadMasterService/docs/reports/
+/LoadMasterService/docs/audits/
+/LoadMasterService/docs/screenshots/
+
+# JVM crash diagnostics
+hs_err_pid*.log
+replay_pid*.log
+*.hprof

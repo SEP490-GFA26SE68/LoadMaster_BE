@@ -14,6 +14,7 @@ import lombok.Setter;
 @AllArgsConstructor
 @Builder
 public class RecordDeviationRequest {
+    @NotNull private Long tripId;
 
     @NotNull(message = "Tọa độ X thực tế không được để trống")
     private Integer actualPosX;

@@ -17,6 +17,8 @@ public class PackageResponse {
     private Long id;
     private Long orderId;
     private Long packageTypeId;
+    private String packageTypeName;
+    private String packageTypeCode;
 
     private String packageCode;
     private String packageName;

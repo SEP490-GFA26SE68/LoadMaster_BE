@@ -24,8 +24,11 @@ import java.util.List;
 @Builder
 public class StartLoadingResponse {
 
+    /** Null on the read-only /plan endpoint before loading starts; status is NOT_STARTED. */
     private Long executionId;
     private Long loadPlanId;
+    private Boolean approved;
+    private Boolean stale;
     private Long tripId;
     private String tripCode;
     private String vehicleInfo;
@@ -38,6 +41,7 @@ public class StartLoadingResponse {
     private Integer doorHeight;
     /** Tải trọng tối đa của xe (kg), lấy từ loại xe; null khi chưa khai. */
     private BigDecimal maxPayloadKg;
+    private List<fu.se184491.loadmaster_be.dto.response.trip.TripVehicleConfigResponse.Obstacle> obstacles;
     private Integer totalPackages;
     private Integer confirmedCount;
     private Integer deviationCount;

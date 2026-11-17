@@ -1,7 +1,6 @@
 package fu.se184491.loadmaster_be.controller.optimization;
 
 import fu.se184491.loadmaster_be.dto.ApiResponse;
-import fu.se184491.loadmaster_be.dto.request.optimization.OptimizeLoadingRequest;
 import fu.se184491.loadmaster_be.dto.response.optimization.LoadPlanDetailResponse;
 import fu.se184491.loadmaster_be.dto.response.optimization.OptimizationJobStartResponse;
 import fu.se184491.loadmaster_be.dto.response.optimization.OptimizationJobStatusResponse;
@@ -15,7 +14,6 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -31,25 +29,36 @@ import java.util.List;
 @RequiredArgsConstructor
 public class LoadingOptimizationController {
 
+    private final fu.se184491.loadmaster_be.service.optimization.OptimizationAccess optimizationAccess;
     private final LoadingOptimizationService loadingOptimizationService;
     private final LoadPlanQueryService loadPlanQueryService;
+    private final fu.se184491.loadmaster_be.service.optimization.OptimizationSubmissionService submission;
 
     @PostMapping("/{tripId}/optimize-loading")
     @PreAuthorize("hasRole('DISPATCHER')")
-    public ResponseEntity<ApiResponse<OptimizationJobStartResponse>> optimizeLoading(
+    public ResponseEntity<ApiResponse<java.util.Map<String, Object>>> optimizeLoading(
             @PathVariable Long tripId,
-            @RequestBody(required = false) OptimizeLoadingRequest request
+            @org.springframework.web.bind.annotation.RequestHeader("Idempotency-Key") String key,
+            @org.springframework.web.bind.annotation.RequestBody(required = false)
+            fu.se184491.loadmaster_be.dto.request.optimization.OptimizeLoadingRequest request
     ) {
-        OptimizationJobStartResponse response = loadingOptimizationService.startLoadingOptimization(
-                tripId, request == null ? null : request.keepPinsFromPlanId());
-        return ResponseEntity
-                .status(HttpStatus.ACCEPTED)
-                .body(ApiResponse.success("Tác vụ tối ưu đã được khởi tạo", response));
+        if (request != null && request.keepPinsFromPlanId() != null) {
+            throw new fu.se184491.loadmaster_be.exception.AppException(
+                    fu.se184491.loadmaster_be.exception.ErrorCode.OPTIMIZATION_RERUN_UNAVAILABLE);
+        }
+        var result = submission.submitInitial(tripId, key);
+        java.util.Map<String, Object> data = new java.util.LinkedHashMap<>(result.getData());
+        // Preserve the team's camelCase reader alongside the reserved-job contract.
+        data.put("jobId", data.get("job_id"));
+        data.put("tripId", tripId);
+        data.put("pinnedCount", 0);
+        return ResponseEntity.status(HttpStatus.ACCEPTED).header("Idempotency-Key", key)
+                .body(ApiResponse.success("Optimization action reserved", data));
     }
 
     /** Trạng thái job: status, thời gian chạy và số phương án đã lưu có kiện ({@code packedPlanCount}). */
     @GetMapping("/optimization-jobs/{jobId}")
-    @PreAuthorize("hasAnyRole('DISPATCHER', 'MANAGER')")
+    @PreAuthorize("hasAnyRole('DISPATCHER', 'MANAGER') and @optimizationAccess.canReadJob(#jobId)")
     public ResponseEntity<ApiResponse<OptimizationJobStatusResponse>> getOptimizationJobStatus(
             @PathVariable String jobId
     ) {
@@ -58,7 +67,7 @@ public class LoadingOptimizationController {
     }
 
     @GetMapping("/optimization-jobs/{jobId}/plans")
-    @PreAuthorize("hasAnyRole('DISPATCHER', 'MANAGER')")
+    @PreAuthorize("hasAnyRole('DISPATCHER', 'MANAGER') and @optimizationAccess.canReadJob(#jobId)")
     public ResponseEntity<ApiResponse<List<LoadPlanDetailResponse>>> getOptimizationJobPlans(
             @PathVariable String jobId
     ) {

@@ -1,4 +1,6 @@
 import logging
+from contextlib import asynccontextmanager
+from app.config.diagnostics import DiagnosticMiddleware, mark, failure, startup_identity
 
 from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -19,7 +21,14 @@ logger = logging.getLogger(__name__)
 # Tài liệu API chỉ mở ở máy dev hoặc khi API_DOCS_ENABLED=true.
 _docs_enabled = settings.api_docs_enabled()
 
+@asynccontextmanager
+async def lifespan(app):
+    startup_identity(__file__)
+    yield
+
+
 app = FastAPI(
+    lifespan=lifespan,
     title=settings.APP_NAME,
     version="1.0.0",
     docs_url="/docs" if _docs_enabled else None,
@@ -45,10 +54,14 @@ if not torch_available():
         "Cài bằng: pip install -r requirements-ai.txt"
     )
 
+app.add_middleware(DiagnosticMiddleware)
+
 # Exception handlers
 register_exception_handlers(app)
 
 # Routers
+from app.controller.optimization.lifecycle_router import router as lifecycle_router
+app.include_router(lifecycle_router)
 app.include_router(optimization_router)
 app.include_router(load_plan_router)
 app.include_router(rerun_router)
@@ -57,14 +70,16 @@ app.include_router(rerun_router)
 @app.get("/health")
 def health_check(db: Session = Depends(get_db)):
     # Kiểm DB thật: DB không trả lời thì 503 để nơi theo dõi biết dịch vụ chưa dùng được.
+    mark("health_execute_started")
     try:
         db.execute(text("SELECT 1"))
-    except Exception:
-        logger.exception("Health check: không truy vấn được DB")
+    except Exception as exc:
+        failure(exc, event="health_execute_failed")
         return JSONResponse(
             status_code=503,
             content={"status": "DOWN", "service": settings.APP_NAME},
         )
+    mark("health_execute_completed")
     return {"status": "UP", "service": settings.APP_NAME}
 
 

@@ -1,0 +1,1893 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="15" failures="27" skipped="0" tests="166" time="6.663" timestamp="2026-11-13T13:12:55.315044+07:00" hostname="DESKTOP-PJD2PC7"><testcase classname="tests.test_authorized_job_dispatch" name="test_retry_claims_existing_job_once_without_creating_another" time="0.234" /><testcase classname="tests.test_authorized_job_dispatch" name="test_missing_or_inconsistent_authorization_fails_closed[UPDATE optimization_jobs SET company_id=NULL]" time="0.013" /><testcase classname="tests.test_authorized_job_dispatch" name="test_missing_or_inconsistent_authorization_fails_closed[UPDATE optimization_jobs SET company_id='2']" time="0.012" /><testcase classname="tests.test_authorized_job_dispatch" name="test_missing_or_inconsistent_authorization_fails_closed[UPDATE trips SET company_id=NULL]" time="0.012" /><testcase classname="tests.test_authorized_job_dispatch" name="test_missing_or_inconsistent_authorization_fails_closed[UPDATE optimization_jobs SET parent_plan_id=47]" time="0.011" /><testcase classname="tests.test_authorized_job_dispatch" name="test_missing_or_inconsistent_authorization_fails_closed[UPDATE optimization_jobs SET subscription_tier='HACK']" time="0.012" /><testcase classname="tests.test_authorized_job_dispatch" name="test_missing_or_inconsistent_authorization_fails_closed[UPDATE credit_transactions SET refunded=true]" time="0.012" /><testcase classname="tests.test_authorized_job_dispatch" name="test_missing_or_inconsistent_authorization_fails_closed[DELETE FROM credit_transactions]" time="0.012" /><testcase classname="tests.test_authorized_job_dispatch" name="test_unreserved_request_cannot_create_a_job" time="0.011" /><testcase classname="tests.test_authorized_job_dispatch" name="test_runner_never_deducts_again_and_preserves_final_validation_pipeline" time="0.012"><failure message="RuntimeError: REAL_NETWORK_DISABLED_IN_MERGE_REGRESSION">db = &lt;sqlalchemy.orm.session.Session object at 0x000001D34F9C41D0&gt;
+
+    def test_runner_never_deducts_again_and_preserves_final_validation_pipeline(db):
+        problem, result = rotation_fixture()
+        solver=Mock(solve=AsyncMock(return_value=result))
+        persistence=Mock();handler=Mock();credit=Mock(deduct_credit=AsyncMock(),refund_credit=AsyncMock())
+        runner=AsyncOptimizationRunner(optimization_client=solver,persistence_service=persistence,
+                                       engine_exception_handler=handler,credit_client=credit)
+&gt;       asyncio.run(runner.run("authorized",problem=problem,db=db))
+
+tests\test_authorized_job_dispatch.py:75: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+D:\python\Lib\asyncio\runners.py:189: in run
+    with Runner(debug=debug) as runner:
+D:\python\Lib\asyncio\runners.py:59: in __enter__
+    self._lazy_init()
+D:\python\Lib\asyncio\runners.py:137: in _lazy_init
+    self._loop = events.new_event_loop()
+                 ^^^^^^^^^^^^^^^^^^^^^^^
+D:\python\Lib\asyncio\events.py:810: in new_event_loop
+    return get_event_loop_policy().new_event_loop()
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+D:\python\Lib\asyncio\events.py:699: in new_event_loop
+    return self._loop_factory()
+           ^^^^^^^^^^^^^^^^^^^^
+D:\python\Lib\asyncio\windows_events.py:315: in __init__
+    super().__init__(proactor)
+D:\python\Lib\asyncio\proactor_events.py:639: in __init__
+    self._make_self_pipe()
+D:\python\Lib\asyncio\proactor_events.py:784: in _make_self_pipe
+    self._ssock, self._csock = socket.socketpair()
+                               ^^^^^^^^^^^^^^^^^^^
+D:\python\Lib\socket.py:641: in socketpair
+    csock.connect((addr, port))
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+args = (&lt;socket.socket [closed] fd=-1, family=2, type=1, proto=0&gt;, ('127.0.0.1', 64481))
+kwargs = {}
+
+&gt;   def blocked(*args,**kwargs):raise RuntimeError('REAL_NETWORK_DISABLED_IN_MERGE_REGRESSION')
+                                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   RuntimeError: REAL_NETWORK_DISABLED_IN_MERGE_REGRESSION
+
+docs\reports\merge-repair\offline_pytest.py:8: RuntimeError</failure></testcase><testcase classname="tests.test_authorized_job_dispatch" name="test_runner_with_missing_company_never_calls_solver_or_refund" time="0.012"><failure message="RuntimeError: REAL_NETWORK_DISABLED_IN_MERGE_REGRESSION">db = &lt;sqlalchemy.orm.session.Session object at 0x000001D34F7CC450&gt;
+
+    def test_runner_with_missing_company_never_calls_solver_or_refund(db):
+        db.execute(text("UPDATE optimization_jobs SET company_id=NULL"));db.commit()
+        solver=Mock(solve=AsyncMock());handler=Mock();credit=Mock(deduct_credit=AsyncMock(),refund_credit=AsyncMock())
+        runner=AsyncOptimizationRunner(optimization_client=solver,persistence_service=Mock(),
+                                       engine_exception_handler=handler,credit_client=credit)
+&gt;       asyncio.run(runner.run("authorized",problem=object(),db=db))
+
+tests\test_authorized_job_dispatch.py:86: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+D:\python\Lib\asyncio\runners.py:189: in run
+    with Runner(debug=debug) as runner:
+D:\python\Lib\asyncio\runners.py:59: in __enter__
+    self._lazy_init()
+D:\python\Lib\asyncio\runners.py:137: in _lazy_init
+    self._loop = events.new_event_loop()
+                 ^^^^^^^^^^^^^^^^^^^^^^^
+D:\python\Lib\asyncio\events.py:810: in new_event_loop
+    return get_event_loop_policy().new_event_loop()
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+D:\python\Lib\asyncio\events.py:699: in new_event_loop
+    return self._loop_factory()
+           ^^^^^^^^^^^^^^^^^^^^
+D:\python\Lib\asyncio\windows_events.py:315: in __init__
+    super().__init__(proactor)
+D:\python\Lib\asyncio\proactor_events.py:639: in __init__
+    self._make_self_pipe()
+D:\python\Lib\asyncio\proactor_events.py:784: in _make_self_pipe
+    self._ssock, self._csock = socket.socketpair()
+                               ^^^^^^^^^^^^^^^^^^^
+D:\python\Lib\socket.py:641: in socketpair
+    csock.connect((addr, port))
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+args = (&lt;socket.socket [closed] fd=-1, family=2, type=1, proto=0&gt;, ('127.0.0.1', 64482))
+kwargs = {}
+
+&gt;   def blocked(*args,**kwargs):raise RuntimeError('REAL_NETWORK_DISABLED_IN_MERGE_REGRESSION')
+                                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   RuntimeError: REAL_NETWORK_DISABLED_IN_MERGE_REGRESSION
+
+docs\reports\merge-repair\offline_pytest.py:8: RuntimeError</failure></testcase><testcase classname="tests.test_authorized_job_dispatch" name="test_completed_retry_does_not_schedule_execution" time="0.014" /><testcase classname="tests.test_authorized_job_dispatch" name="test_duplicate_background_tasks_execute_solver_once" time="0.018"><failure message="RuntimeError: REAL_NETWORK_DISABLED_IN_MERGE_REGRESSION">db = &lt;sqlalchemy.orm.session.Session object at 0x000001D34F973BD0&gt;
+
+    def test_duplicate_background_tasks_execute_solver_once(db):
+        problem, result = rotation_fixture()
+        solver=Mock(solve=AsyncMock(return_value=result))
+        handler=Mock();credit=Mock(deduct_credit=AsyncMock(),refund_credit=AsyncMock())
+        runner=AsyncOptimizationRunner(optimization_client=solver,persistence_service=Mock(),
+                                       engine_exception_handler=handler,credit_client=credit)
+&gt;       asyncio.run(runner.run("authorized",problem=problem,db=db))
+
+tests\test_authorized_job_dispatch.py:100: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+D:\python\Lib\asyncio\runners.py:189: in run
+    with Runner(debug=debug) as runner:
+D:\python\Lib\asyncio\runners.py:59: in __enter__
+    self._lazy_init()
+D:\python\Lib\asyncio\runners.py:137: in _lazy_init
+    self._loop = events.new_event_loop()
+                 ^^^^^^^^^^^^^^^^^^^^^^^
+D:\python\Lib\asyncio\events.py:810: in new_event_loop
+    return get_event_loop_policy().new_event_loop()
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+D:\python\Lib\asyncio\events.py:699: in new_event_loop
+    return self._loop_factory()
+           ^^^^^^^^^^^^^^^^^^^^
+D:\python\Lib\asyncio\windows_events.py:315: in __init__
+    super().__init__(proactor)
+D:\python\Lib\asyncio\proactor_events.py:639: in __init__
+    self._make_self_pipe()
+D:\python\Lib\asyncio\proactor_events.py:784: in _make_self_pipe
+    self._ssock, self._csock = socket.socketpair()
+                               ^^^^^^^^^^^^^^^^^^^
+D:\python\Lib\socket.py:641: in socketpair
+    csock.connect((addr, port))
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+args = (&lt;socket.socket [closed] fd=-1, family=2, type=1, proto=0&gt;, ('127.0.0.1', 64483))
+kwargs = {}
+
+&gt;   def blocked(*args,**kwargs):raise RuntimeError('REAL_NETWORK_DISABLED_IN_MERGE_REGRESSION')
+                                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   RuntimeError: REAL_NETWORK_DISABLED_IN_MERGE_REGRESSION
+
+docs\reports\merge-repair\offline_pytest.py:8: RuntimeError</failure></testcase><testcase classname="tests.test_authorized_job_dispatch" name="test_submit_endpoint_uses_server_job_and_ignores_request_tier" time="0.090"><failure message="RuntimeError: REAL_NETWORK_DISABLED_IN_MERGE_REGRESSION">db = &lt;sqlalchemy.orm.session.Session object at 0x000001D34F6933D0&gt;
+
+    def test_submit_endpoint_uses_server_job_and_ignores_request_tier(db):
+        from fastapi import BackgroundTasks
+        from app.controller.optimization.optimization_router import submit_job
+        runner=Mock()
+        tasks=BackgroundTasks()
+        request=OptimizationJobRequest(trip_id=7,job_uuid="authorized",company_id="attacker",
+                                       subscription_tier="ULTIMATE",algorithm_name="AI")
+&gt;       response=asyncio.run(submit_job(request,tasks,db,Mock(),runner,{}))
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests\test_authorized_job_dispatch.py:112: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+D:\python\Lib\asyncio\runners.py:189: in run
+    with Runner(debug=debug) as runner:
+D:\python\Lib\asyncio\runners.py:59: in __enter__
+    self._lazy_init()
+D:\python\Lib\asyncio\runners.py:137: in _lazy_init
+    self._loop = events.new_event_loop()
+                 ^^^^^^^^^^^^^^^^^^^^^^^
+D:\python\Lib\asyncio\events.py:810: in new_event_loop
+    return get_event_loop_policy().new_event_loop()
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+D:\python\Lib\asyncio\events.py:699: in new_event_loop
+    return self._loop_factory()
+           ^^^^^^^^^^^^^^^^^^^^
+D:\python\Lib\asyncio\windows_events.py:315: in __init__
+    super().__init__(proactor)
+D:\python\Lib\asyncio\proactor_events.py:639: in __init__
+    self._make_self_pipe()
+D:\python\Lib\asyncio\proactor_events.py:784: in _make_self_pipe
+    self._ssock, self._csock = socket.socketpair()
+                               ^^^^^^^^^^^^^^^^^^^
+D:\python\Lib\socket.py:641: in socketpair
+    csock.connect((addr, port))
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+args = (&lt;socket.socket [closed] fd=-1, family=2, type=1, proto=0&gt;, ('127.0.0.1', 64484))
+kwargs = {}
+
+&gt;   def blocked(*args,**kwargs):raise RuntimeError('REAL_NETWORK_DISABLED_IN_MERGE_REGRESSION')
+                                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   RuntimeError: REAL_NETWORK_DISABLED_IN_MERGE_REGRESSION
+
+docs\reports\merge-repair\offline_pytest.py:8: RuntimeError</failure></testcase><testcase classname="tests.test_authorized_job_dispatch" name="test_failed_task_scheduling_can_retry_pending_job" time="0.018" /><testcase classname="tests.test_authorized_job_dispatch" name="test_dispatch_ack_preserves_identity_and_current_state[PENDING-ACCEPTED-1]" time="0.014"><failure message="RuntimeError: REAL_NETWORK_DISABLED_IN_MERGE_REGRESSION">db = &lt;sqlalchemy.orm.session.Session object at 0x000001D34F936850&gt;
+state = 'PENDING', ack = 'ACCEPTED', count = 1
+
+    @pytest.mark.parametrize("state,ack,count", [
+        ("PENDING","ACCEPTED",1),("RUNNING","ALREADY_RUNNING",0),
+        *[(s,"ALREADY_TERMINAL",0) for s in
+          ["COMPLETED","SUCCESS","FAILED","TIMEOUT","NO_SOLUTION","PARTIAL"]],
+    ])
+    def test_dispatch_ack_preserves_identity_and_current_state(db,state,ack,count):
+        from fastapi import BackgroundTasks
+        from app.controller.optimization.optimization_router import submit_job
+        db.execute(text("UPDATE optimization_jobs SET status=:state"),{"state":state});db.commit()
+        tasks=BackgroundTasks()
+&gt;       result=asyncio.run(submit_job(OptimizationJobRequest(trip_id=7,job_uuid="authorized"),tasks,db,Mock(),Mock(),{}))
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests\test_authorized_job_dispatch.py:139: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+D:\python\Lib\asyncio\runners.py:189: in run
+    with Runner(debug=debug) as runner:
+D:\python\Lib\asyncio\runners.py:59: in __enter__
+    self._lazy_init()
+D:\python\Lib\asyncio\runners.py:137: in _lazy_init
+    self._loop = events.new_event_loop()
+                 ^^^^^^^^^^^^^^^^^^^^^^^
+D:\python\Lib\asyncio\events.py:810: in new_event_loop
+    return get_event_loop_policy().new_event_loop()
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+D:\python\Lib\asyncio\events.py:699: in new_event_loop
+    return self._loop_factory()
+           ^^^^^^^^^^^^^^^^^^^^
+D:\python\Lib\asyncio\windows_events.py:315: in __init__
+    super().__init__(proactor)
+D:\python\Lib\asyncio\proactor_events.py:639: in __init__
+    self._make_self_pipe()
+D:\python\Lib\asyncio\proactor_events.py:784: in _make_self_pipe
+    self._ssock, self._csock = socket.socketpair()
+                               ^^^^^^^^^^^^^^^^^^^
+D:\python\Lib\socket.py:641: in socketpair
+    csock.connect((addr, port))
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+args = (&lt;socket.socket [closed] fd=-1, family=2, type=1, proto=0&gt;, ('127.0.0.1', 64486))
+kwargs = {}
+
+&gt;   def blocked(*args,**kwargs):raise RuntimeError('REAL_NETWORK_DISABLED_IN_MERGE_REGRESSION')
+                                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   RuntimeError: REAL_NETWORK_DISABLED_IN_MERGE_REGRESSION
+
+docs\reports\merge-repair\offline_pytest.py:8: RuntimeError</failure></testcase><testcase classname="tests.test_authorized_job_dispatch" name="test_dispatch_ack_preserves_identity_and_current_state[RUNNING-ALREADY_RUNNING-0]" time="0.011"><failure message="RuntimeError: REAL_NETWORK_DISABLED_IN_MERGE_REGRESSION">db = &lt;sqlalchemy.orm.session.Session object at 0x000001D34FF26C90&gt;
+state = 'RUNNING', ack = 'ALREADY_RUNNING', count = 0
+
+    @pytest.mark.parametrize("state,ack,count", [
+        ("PENDING","ACCEPTED",1),("RUNNING","ALREADY_RUNNING",0),
+        *[(s,"ALREADY_TERMINAL",0) for s in
+          ["COMPLETED","SUCCESS","FAILED","TIMEOUT","NO_SOLUTION","PARTIAL"]],
+    ])
+    def test_dispatch_ack_preserves_identity_and_current_state(db,state,ack,count):
+        from fastapi import BackgroundTasks
+        from app.controller.optimization.optimization_router import submit_job
+        db.execute(text("UPDATE optimization_jobs SET status=:state"),{"state":state});db.commit()
+        tasks=BackgroundTasks()
+&gt;       result=asyncio.run(submit_job(OptimizationJobRequest(trip_id=7,job_uuid="authorized"),tasks,db,Mock(),Mock(),{}))
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests\test_authorized_job_dispatch.py:139: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+D:\python\Lib\asyncio\runners.py:189: in run
+    with Runner(debug=debug) as runner:
+D:\python\Lib\asyncio\runners.py:59: in __enter__
+    self._lazy_init()
+D:\python\Lib\asyncio\runners.py:137: in _lazy_init
+    self._loop = events.new_event_loop()
+                 ^^^^^^^^^^^^^^^^^^^^^^^
+D:\python\Lib\asyncio\events.py:810: in new_event_loop
+    return get_event_loop_policy().new_event_loop()
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+D:\python\Lib\asyncio\events.py:699: in new_event_loop
+    return self._loop_factory()
+           ^^^^^^^^^^^^^^^^^^^^
+D:\python\Lib\asyncio\windows_events.py:315: in __init__
+    super().__init__(proactor)
+D:\python\Lib\asyncio\proactor_events.py:639: in __init__
+    self._make_self_pipe()
+D:\python\Lib\asyncio\proactor_events.py:784: in _make_self_pipe
+    self._ssock, self._csock = socket.socketpair()
+                               ^^^^^^^^^^^^^^^^^^^
+D:\python\Lib\socket.py:641: in socketpair
+    csock.connect((addr, port))
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+args = (&lt;socket.socket [closed] fd=-1, family=2, type=1, proto=0&gt;, ('127.0.0.1', 64487))
+kwargs = {}
+
+&gt;   def blocked(*args,**kwargs):raise RuntimeError('REAL_NETWORK_DISABLED_IN_MERGE_REGRESSION')
+                                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   RuntimeError: REAL_NETWORK_DISABLED_IN_MERGE_REGRESSION
+
+docs\reports\merge-repair\offline_pytest.py:8: RuntimeError</failure></testcase><testcase classname="tests.test_authorized_job_dispatch" name="test_dispatch_ack_preserves_identity_and_current_state[COMPLETED-ALREADY_TERMINAL-0]" time="0.012"><failure message="RuntimeError: REAL_NETWORK_DISABLED_IN_MERGE_REGRESSION">db = &lt;sqlalchemy.orm.session.Session object at 0x000001D3500E3450&gt;
+state = 'COMPLETED', ack = 'ALREADY_TERMINAL', count = 0
+
+    @pytest.mark.parametrize("state,ack,count", [
+        ("PENDING","ACCEPTED",1),("RUNNING","ALREADY_RUNNING",0),
+        *[(s,"ALREADY_TERMINAL",0) for s in
+          ["COMPLETED","SUCCESS","FAILED","TIMEOUT","NO_SOLUTION","PARTIAL"]],
+    ])
+    def test_dispatch_ack_preserves_identity_and_current_state(db,state,ack,count):
+        from fastapi import BackgroundTasks
+        from app.controller.optimization.optimization_router import submit_job
+        db.execute(text("UPDATE optimization_jobs SET status=:state"),{"state":state});db.commit()
+        tasks=BackgroundTasks()
+&gt;       result=asyncio.run(submit_job(OptimizationJobRequest(trip_id=7,job_uuid="authorized"),tasks,db,Mock(),Mock(),{}))
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests\test_authorized_job_dispatch.py:139: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+D:\python\Lib\asyncio\runners.py:189: in run
+    with Runner(debug=debug) as runner:
+D:\python\Lib\asyncio\runners.py:59: in __enter__
+    self._lazy_init()
+D:\python\Lib\asyncio\runners.py:137: in _lazy_init
+    self._loop = events.new_event_loop()
+                 ^^^^^^^^^^^^^^^^^^^^^^^
+D:\python\Lib\asyncio\events.py:810: in new_event_loop
+    return get_event_loop_policy().new_event_loop()
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+D:\python\Lib\asyncio\events.py:699: in new_event_loop
+    return self._loop_factory()
+           ^^^^^^^^^^^^^^^^^^^^
+D:\python\Lib\asyncio\windows_events.py:315: in __init__
+    super().__init__(proactor)
+D:\python\Lib\asyncio\proactor_events.py:639: in __init__
+    self._make_self_pipe()
+D:\python\Lib\asyncio\proactor_events.py:784: in _make_self_pipe
+    self._ssock, self._csock = socket.socketpair()
+                               ^^^^^^^^^^^^^^^^^^^
+D:\python\Lib\socket.py:641: in socketpair
+    csock.connect((addr, port))
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+args = (&lt;socket.socket [closed] fd=-1, family=2, type=1, proto=0&gt;, ('127.0.0.1', 64488))
+kwargs = {}
+
+&gt;   def blocked(*args,**kwargs):raise RuntimeError('REAL_NETWORK_DISABLED_IN_MERGE_REGRESSION')
+                                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   RuntimeError: REAL_NETWORK_DISABLED_IN_MERGE_REGRESSION
+
+docs\reports\merge-repair\offline_pytest.py:8: RuntimeError</failure></testcase><testcase classname="tests.test_authorized_job_dispatch" name="test_dispatch_ack_preserves_identity_and_current_state[SUCCESS-ALREADY_TERMINAL-0]" time="0.011"><failure message="RuntimeError: REAL_NETWORK_DISABLED_IN_MERGE_REGRESSION">db = &lt;sqlalchemy.orm.session.Session object at 0x000001D34FDCE150&gt;
+state = 'SUCCESS', ack = 'ALREADY_TERMINAL', count = 0
+
+    @pytest.mark.parametrize("state,ack,count", [
+        ("PENDING","ACCEPTED",1),("RUNNING","ALREADY_RUNNING",0),
+        *[(s,"ALREADY_TERMINAL",0) for s in
+          ["COMPLETED","SUCCESS","FAILED","TIMEOUT","NO_SOLUTION","PARTIAL"]],
+    ])
+    def test_dispatch_ack_preserves_identity_and_current_state(db,state,ack,count):
+        from fastapi import BackgroundTasks
+        from app.controller.optimization.optimization_router import submit_job
+        db.execute(text("UPDATE optimization_jobs SET status=:state"),{"state":state});db.commit()
+        tasks=BackgroundTasks()
+&gt;       result=asyncio.run(submit_job(OptimizationJobRequest(trip_id=7,job_uuid="authorized"),tasks,db,Mock(),Mock(),{}))
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests\test_authorized_job_dispatch.py:139: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+D:\python\Lib\asyncio\runners.py:189: in run
+    with Runner(debug=debug) as runner:
+D:\python\Lib\asyncio\runners.py:59: in __enter__
+    self._lazy_init()
+D:\python\Lib\asyncio\runners.py:137: in _lazy_init
+    self._loop = events.new_event_loop()
+                 ^^^^^^^^^^^^^^^^^^^^^^^
+D:\python\Lib\asyncio\events.py:810: in new_event_loop
+    return get_event_loop_policy().new_event_loop()
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+D:\python\Lib\asyncio\events.py:699: in new_event_loop
+    return self._loop_factory()
+           ^^^^^^^^^^^^^^^^^^^^
+D:\python\Lib\asyncio\windows_events.py:315: in __init__
+    super().__init__(proactor)
+D:\python\Lib\asyncio\proactor_events.py:639: in __init__
+    self._make_self_pipe()
+D:\python\Lib\asyncio\proactor_events.py:784: in _make_self_pipe
+    self._ssock, self._csock = socket.socketpair()
+                               ^^^^^^^^^^^^^^^^^^^
+D:\python\Lib\socket.py:641: in socketpair
+    csock.connect((addr, port))
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+args = (&lt;socket.socket [closed] fd=-1, family=2, type=1, proto=0&gt;, ('127.0.0.1', 64489))
+kwargs = {}
+
+&gt;   def blocked(*args,**kwargs):raise RuntimeError('REAL_NETWORK_DISABLED_IN_MERGE_REGRESSION')
+                                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   RuntimeError: REAL_NETWORK_DISABLED_IN_MERGE_REGRESSION
+
+docs\reports\merge-repair\offline_pytest.py:8: RuntimeError</failure></testcase><testcase classname="tests.test_authorized_job_dispatch" name="test_dispatch_ack_preserves_identity_and_current_state[FAILED-ALREADY_TERMINAL-0]" time="0.009"><failure message="RuntimeError: REAL_NETWORK_DISABLED_IN_MERGE_REGRESSION">db = &lt;sqlalchemy.orm.session.Session object at 0x000001D34F91E9D0&gt;
+state = 'FAILED', ack = 'ALREADY_TERMINAL', count = 0
+
+    @pytest.mark.parametrize("state,ack,count", [
+        ("PENDING","ACCEPTED",1),("RUNNING","ALREADY_RUNNING",0),
+        *[(s,"ALREADY_TERMINAL",0) for s in
+          ["COMPLETED","SUCCESS","FAILED","TIMEOUT","NO_SOLUTION","PARTIAL"]],
+    ])
+    def test_dispatch_ack_preserves_identity_and_current_state(db,state,ack,count):
+        from fastapi import BackgroundTasks
+        from app.controller.optimization.optimization_router import submit_job
+        db.execute(text("UPDATE optimization_jobs SET status=:state"),{"state":state});db.commit()
+        tasks=BackgroundTasks()
+&gt;       result=asyncio.run(submit_job(OptimizationJobRequest(trip_id=7,job_uuid="authorized"),tasks,db,Mock(),Mock(),{}))
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests\test_authorized_job_dispatch.py:139: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+D:\python\Lib\asyncio\runners.py:189: in run
+    with Runner(debug=debug) as runner:
+D:\python\Lib\asyncio\runners.py:59: in __enter__
+    self._lazy_init()
+D:\python\Lib\asyncio\runners.py:137: in _lazy_init
+    self._loop = events.new_event_loop()
+                 ^^^^^^^^^^^^^^^^^^^^^^^
+D:\python\Lib\asyncio\events.py:810: in new_event_loop
+    return get_event_loop_policy().new_event_loop()
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+D:\python\Lib\asyncio\events.py:699: in new_event_loop
+    return self._loop_factory()
+           ^^^^^^^^^^^^^^^^^^^^
+D:\python\Lib\asyncio\windows_events.py:315: in __init__
+    super().__init__(proactor)
+D:\python\Lib\asyncio\proactor_events.py:639: in __init__
+    self._make_self_pipe()
+D:\python\Lib\asyncio\proactor_events.py:784: in _make_self_pipe
+    self._ssock, self._csock = socket.socketpair()
+                               ^^^^^^^^^^^^^^^^^^^
+D:\python\Lib\socket.py:641: in socketpair
+    csock.connect((addr, port))
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+args = (&lt;socket.socket [closed] fd=-1, family=2, type=1, proto=0&gt;, ('127.0.0.1', 64490))
+kwargs = {}
+
+&gt;   def blocked(*args,**kwargs):raise RuntimeError('REAL_NETWORK_DISABLED_IN_MERGE_REGRESSION')
+                                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   RuntimeError: REAL_NETWORK_DISABLED_IN_MERGE_REGRESSION
+
+docs\reports\merge-repair\offline_pytest.py:8: RuntimeError</failure></testcase><testcase classname="tests.test_authorized_job_dispatch" name="test_dispatch_ack_preserves_identity_and_current_state[TIMEOUT-ALREADY_TERMINAL-0]" time="0.013"><failure message="RuntimeError: REAL_NETWORK_DISABLED_IN_MERGE_REGRESSION">db = &lt;sqlalchemy.orm.session.Session object at 0x000001D34F9681D0&gt;
+state = 'TIMEOUT', ack = 'ALREADY_TERMINAL', count = 0
+
+    @pytest.mark.parametrize("state,ack,count", [
+        ("PENDING","ACCEPTED",1),("RUNNING","ALREADY_RUNNING",0),
+        *[(s,"ALREADY_TERMINAL",0) for s in
+          ["COMPLETED","SUCCESS","FAILED","TIMEOUT","NO_SOLUTION","PARTIAL"]],
+    ])
+    def test_dispatch_ack_preserves_identity_and_current_state(db,state,ack,count):
+        from fastapi import BackgroundTasks
+        from app.controller.optimization.optimization_router import submit_job
+        db.execute(text("UPDATE optimization_jobs SET status=:state"),{"state":state});db.commit()
+        tasks=BackgroundTasks()
+&gt;       result=asyncio.run(submit_job(OptimizationJobRequest(trip_id=7,job_uuid="authorized"),tasks,db,Mock(),Mock(),{}))
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests\test_authorized_job_dispatch.py:139: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+D:\python\Lib\asyncio\runners.py:189: in run
+    with Runner(debug=debug) as runner:
+D:\python\Lib\asyncio\runners.py:59: in __enter__
+    self._lazy_init()
+D:\python\Lib\asyncio\runners.py:137: in _lazy_init
+    self._loop = events.new_event_loop()
+                 ^^^^^^^^^^^^^^^^^^^^^^^
+D:\python\Lib\asyncio\events.py:810: in new_event_loop
+    return get_event_loop_policy().new_event_loop()
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+D:\python\Lib\asyncio\events.py:699: in new_event_loop
+    return self._loop_factory()
+           ^^^^^^^^^^^^^^^^^^^^
+D:\python\Lib\asyncio\windows_events.py:315: in __init__
+    super().__init__(proactor)
+D:\python\Lib\asyncio\proactor_events.py:639: in __init__
+    self._make_self_pipe()
+D:\python\Lib\asyncio\proactor_events.py:784: in _make_self_pipe
+    self._ssock, self._csock = socket.socketpair()
+                               ^^^^^^^^^^^^^^^^^^^
+D:\python\Lib\socket.py:641: in socketpair
+    csock.connect((addr, port))
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+args = (&lt;socket.socket [closed] fd=-1, family=2, type=1, proto=0&gt;, ('127.0.0.1', 64491))
+kwargs = {}
+
+&gt;   def blocked(*args,**kwargs):raise RuntimeError('REAL_NETWORK_DISABLED_IN_MERGE_REGRESSION')
+                                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   RuntimeError: REAL_NETWORK_DISABLED_IN_MERGE_REGRESSION
+
+docs\reports\merge-repair\offline_pytest.py:8: RuntimeError</failure></testcase><testcase classname="tests.test_authorized_job_dispatch" name="test_dispatch_ack_preserves_identity_and_current_state[NO_SOLUTION-ALREADY_TERMINAL-0]" time="0.011"><failure message="RuntimeError: REAL_NETWORK_DISABLED_IN_MERGE_REGRESSION">db = &lt;sqlalchemy.orm.session.Session object at 0x000001D34F97F0D0&gt;
+state = 'NO_SOLUTION', ack = 'ALREADY_TERMINAL', count = 0
+
+    @pytest.mark.parametrize("state,ack,count", [
+        ("PENDING","ACCEPTED",1),("RUNNING","ALREADY_RUNNING",0),
+        *[(s,"ALREADY_TERMINAL",0) for s in
+          ["COMPLETED","SUCCESS","FAILED","TIMEOUT","NO_SOLUTION","PARTIAL"]],
+    ])
+    def test_dispatch_ack_preserves_identity_and_current_state(db,state,ack,count):
+        from fastapi import BackgroundTasks
+        from app.controller.optimization.optimization_router import submit_job
+        db.execute(text("UPDATE optimization_jobs SET status=:state"),{"state":state});db.commit()
+        tasks=BackgroundTasks()
+&gt;       result=asyncio.run(submit_job(OptimizationJobRequest(trip_id=7,job_uuid="authorized"),tasks,db,Mock(),Mock(),{}))
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests\test_authorized_job_dispatch.py:139: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+D:\python\Lib\asyncio\runners.py:189: in run
+    with Runner(debug=debug) as runner:
+D:\python\Lib\asyncio\runners.py:59: in __enter__
+    self._lazy_init()
+D:\python\Lib\asyncio\runners.py:137: in _lazy_init
+    self._loop = events.new_event_loop()
+                 ^^^^^^^^^^^^^^^^^^^^^^^
+D:\python\Lib\asyncio\events.py:810: in new_event_loop
+    return get_event_loop_policy().new_event_loop()
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+D:\python\Lib\asyncio\events.py:699: in new_event_loop
+    return self._loop_factory()
+           ^^^^^^^^^^^^^^^^^^^^
+D:\python\Lib\asyncio\windows_events.py:315: in __init__
+    super().__init__(proactor)
+D:\python\Lib\asyncio\proactor_events.py:639: in __init__
+    self._make_self_pipe()
+D:\python\Lib\asyncio\proactor_events.py:784: in _make_self_pipe
+    self._ssock, self._csock = socket.socketpair()
+                               ^^^^^^^^^^^^^^^^^^^
+D:\python\Lib\socket.py:641: in socketpair
+    csock.connect((addr, port))
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+args = (&lt;socket.socket [closed] fd=-1, family=2, type=1, proto=0&gt;, ('127.0.0.1', 64492))
+kwargs = {}
+
+&gt;   def blocked(*args,**kwargs):raise RuntimeError('REAL_NETWORK_DISABLED_IN_MERGE_REGRESSION')
+                                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   RuntimeError: REAL_NETWORK_DISABLED_IN_MERGE_REGRESSION
+
+docs\reports\merge-repair\offline_pytest.py:8: RuntimeError</failure></testcase><testcase classname="tests.test_authorized_job_dispatch" name="test_dispatch_ack_preserves_identity_and_current_state[PARTIAL-ALREADY_TERMINAL-0]" time="0.009"><failure message="RuntimeError: REAL_NETWORK_DISABLED_IN_MERGE_REGRESSION">db = &lt;sqlalchemy.orm.session.Session object at 0x000001D34F92FFD0&gt;
+state = 'PARTIAL', ack = 'ALREADY_TERMINAL', count = 0
+
+    @pytest.mark.parametrize("state,ack,count", [
+        ("PENDING","ACCEPTED",1),("RUNNING","ALREADY_RUNNING",0),
+        *[(s,"ALREADY_TERMINAL",0) for s in
+          ["COMPLETED","SUCCESS","FAILED","TIMEOUT","NO_SOLUTION","PARTIAL"]],
+    ])
+    def test_dispatch_ack_preserves_identity_and_current_state(db,state,ack,count):
+        from fastapi import BackgroundTasks
+        from app.controller.optimization.optimization_router import submit_job
+        db.execute(text("UPDATE optimization_jobs SET status=:state"),{"state":state});db.commit()
+        tasks=BackgroundTasks()
+&gt;       result=asyncio.run(submit_job(OptimizationJobRequest(trip_id=7,job_uuid="authorized"),tasks,db,Mock(),Mock(),{}))
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests\test_authorized_job_dispatch.py:139: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+D:\python\Lib\asyncio\runners.py:189: in run
+    with Runner(debug=debug) as runner:
+D:\python\Lib\asyncio\runners.py:59: in __enter__
+    self._lazy_init()
+D:\python\Lib\asyncio\runners.py:137: in _lazy_init
+    self._loop = events.new_event_loop()
+                 ^^^^^^^^^^^^^^^^^^^^^^^
+D:\python\Lib\asyncio\events.py:810: in new_event_loop
+    return get_event_loop_policy().new_event_loop()
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+D:\python\Lib\asyncio\events.py:699: in new_event_loop
+    return self._loop_factory()
+           ^^^^^^^^^^^^^^^^^^^^
+D:\python\Lib\asyncio\windows_events.py:315: in __init__
+    super().__init__(proactor)
+D:\python\Lib\asyncio\proactor_events.py:639: in __init__
+    self._make_self_pipe()
+D:\python\Lib\asyncio\proactor_events.py:784: in _make_self_pipe
+    self._ssock, self._csock = socket.socketpair()
+                               ^^^^^^^^^^^^^^^^^^^
+D:\python\Lib\socket.py:641: in socketpair
+    csock.connect((addr, port))
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+args = (&lt;socket.socket [closed] fd=-1, family=2, type=1, proto=0&gt;, ('127.0.0.1', 64493))
+kwargs = {}
+
+&gt;   def blocked(*args,**kwargs):raise RuntimeError('REAL_NETWORK_DISABLED_IN_MERGE_REGRESSION')
+                                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   RuntimeError: REAL_NETWORK_DISABLED_IN_MERGE_REGRESSION
+
+docs\reports\merge-repair\offline_pytest.py:8: RuntimeError</failure></testcase><testcase classname="tests.test_authorized_job_dispatch" name="test_response_lost_then_dispatch_retry_cannot_execute_a_second_worker" time="0.013"><failure message="RuntimeError: REAL_NETWORK_DISABLED_IN_MERGE_REGRESSION">db = &lt;sqlalchemy.orm.session.Session object at 0x000001D34F693690&gt;
+
+    def test_response_lost_then_dispatch_retry_cannot_execute_a_second_worker(db):
+        from fastapi import BackgroundTasks
+        from app.controller.optimization.optimization_router import submit_job
+        problem, result = rotation_fixture()
+        solver=Mock(solve=AsyncMock(return_value=result))
+        runner=AsyncOptimizationRunner(optimization_client=solver,persistence_service=Mock(),
+                                       engine_exception_handler=Mock(),credit_client=Mock())
+        tasks=BackgroundTasks()
+        req=OptimizationJobRequest(trip_id=7,job_uuid="authorized")
+&gt;       asyncio.run(submit_job(req,tasks,db,Mock(),runner,{})) # ACK lost at transport boundary.
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests\test_authorized_job_dispatch.py:157: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+D:\python\Lib\asyncio\runners.py:189: in run
+    with Runner(debug=debug) as runner:
+D:\python\Lib\asyncio\runners.py:59: in __enter__
+    self._lazy_init()
+D:\python\Lib\asyncio\runners.py:137: in _lazy_init
+    self._loop = events.new_event_loop()
+                 ^^^^^^^^^^^^^^^^^^^^^^^
+D:\python\Lib\asyncio\events.py:810: in new_event_loop
+    return get_event_loop_policy().new_event_loop()
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+D:\python\Lib\asyncio\events.py:699: in new_event_loop
+    return self._loop_factory()
+           ^^^^^^^^^^^^^^^^^^^^
+D:\python\Lib\asyncio\windows_events.py:315: in __init__
+    super().__init__(proactor)
+D:\python\Lib\asyncio\proactor_events.py:639: in __init__
+    self._make_self_pipe()
+D:\python\Lib\asyncio\proactor_events.py:784: in _make_self_pipe
+    self._ssock, self._csock = socket.socketpair()
+                               ^^^^^^^^^^^^^^^^^^^
+D:\python\Lib\socket.py:641: in socketpair
+    csock.connect((addr, port))
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+args = (&lt;socket.socket [closed] fd=-1, family=2, type=1, proto=0&gt;, ('127.0.0.1', 64494))
+kwargs = {}
+
+&gt;   def blocked(*args,**kwargs):raise RuntimeError('REAL_NETWORK_DISABLED_IN_MERGE_REGRESSION')
+                                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   RuntimeError: REAL_NETWORK_DISABLED_IN_MERGE_REGRESSION
+
+docs\reports\merge-repair\offline_pytest.py:8: RuntimeError</failure></testcase><testcase classname="tests.test_authorized_job_dispatch" name="test_duplicate_pending_dispatches_only_one_task_reaches_solver" time="0.011"><failure message="RuntimeError: REAL_NETWORK_DISABLED_IN_MERGE_REGRESSION">db = &lt;sqlalchemy.orm.session.Session object at 0x000001D34CAC0090&gt;
+
+    def test_duplicate_pending_dispatches_only_one_task_reaches_solver(db):
+        from fastapi import BackgroundTasks
+        from app.controller.optimization.optimization_router import submit_job
+        problem, result = rotation_fixture()
+        solver=Mock(solve=AsyncMock(return_value=result))
+        runner=AsyncOptimizationRunner(optimization_client=solver,persistence_service=Mock(),
+                                       engine_exception_handler=Mock(),credit_client=Mock())
+        # Both requests can see PENDING and schedule. The DB CAS, not in-memory scheduling, owns admission.
+        tasks=BackgroundTasks()
+        for _ in range(2):
+&gt;           asyncio.run(submit_job(OptimizationJobRequest(trip_id=7,job_uuid="authorized"),tasks,db,Mock(),runner,{}))
+
+tests\test_authorized_job_dispatch.py:178: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+D:\python\Lib\asyncio\runners.py:189: in run
+    with Runner(debug=debug) as runner:
+D:\python\Lib\asyncio\runners.py:59: in __enter__
+    self._lazy_init()
+D:\python\Lib\asyncio\runners.py:137: in _lazy_init
+    self._loop = events.new_event_loop()
+                 ^^^^^^^^^^^^^^^^^^^^^^^
+D:\python\Lib\asyncio\events.py:810: in new_event_loop
+    return get_event_loop_policy().new_event_loop()
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+D:\python\Lib\asyncio\events.py:699: in new_event_loop
+    return self._loop_factory()
+           ^^^^^^^^^^^^^^^^^^^^
+D:\python\Lib\asyncio\windows_events.py:315: in __init__
+    super().__init__(proactor)
+D:\python\Lib\asyncio\proactor_events.py:639: in __init__
+    self._make_self_pipe()
+D:\python\Lib\asyncio\proactor_events.py:784: in _make_self_pipe
+    self._ssock, self._csock = socket.socketpair()
+                               ^^^^^^^^^^^^^^^^^^^
+D:\python\Lib\socket.py:641: in socketpair
+    csock.connect((addr, port))
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+args = (&lt;socket.socket [closed] fd=-1, family=2, type=1, proto=0&gt;, ('127.0.0.1', 64495))
+kwargs = {}
+
+&gt;   def blocked(*args,**kwargs):raise RuntimeError('REAL_NETWORK_DISABLED_IN_MERGE_REGRESSION')
+                                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   RuntimeError: REAL_NETWORK_DISABLED_IN_MERGE_REGRESSION
+
+docs\reports\merge-repair\offline_pytest.py:8: RuntimeError</failure></testcase><testcase classname="tests.test_authorized_job_dispatch" name="test_unknown_status_is_not_acknowledged_or_reset" time="0.014" /><testcase classname="tests.test_authorized_job_dispatch" name="test_http_dispatch_and_get_preserve_exact_status_and_identity[PENDING]" time="0.021"><error message="failed on setup with &quot;RuntimeError: REAL_NETWORK_DISABLED_IN_MERGE_REGRESSION&quot;">db = &lt;sqlalchemy.orm.session.Session object at 0x000001D34F967590&gt;
+
+    @pytest.fixture
+    def http_client(db):
+        from fastapi import FastAPI
+        from fastapi.testclient import TestClient
+        from app.controller.optimization.optimization_router import router, get_async_runner
+        from app.config.database import get_db
+        from app.service.auth.auth_dependency import require_optimization_service
+        app=FastAPI()
+        app.include_router(router)
+        app.dependency_overrides[get_db]=lambda: db
+        app.dependency_overrides[require_optimization_service]=lambda: {"service":"offline-test"}
+        app.dependency_overrides[get_async_runner]=lambda: Mock(run=AsyncMock())
+&gt;       with TestClient(app) as client: yield client
+
+tests\test_authorized_job_dispatch.py:202: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+.venv\Lib\site-packages\starlette\testclient.py:504: in __enter__
+    self.portal = portal = stack.enter_context(anyio.from_thread.start_blocking_portal(**self.async_backend))
+                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+D:\python\Lib\contextlib.py:517: in enter_context
+    result = _enter(cm)
+             ^^^^^^^^^^
+D:\python\Lib\contextlib.py:137: in __enter__
+    return next(self.gen)
+           ^^^^^^^^^^^^^^
+.venv\Lib\site-packages\anyio\from_thread.py:554: in start_blocking_portal
+    portal = future.result()
+             ^^^^^^^^^^^^^^^
+D:\python\Lib\concurrent\futures\_base.py:456: in result
+    return self.__get_result()
+           ^^^^^^^^^^^^^^^^^^^
+D:\python\Lib\concurrent\futures\_base.py:401: in __get_result
+    raise self._exception
+.venv\Lib\site-packages\anyio\from_thread.py:538: in run_blocking_portal
+    run_eventloop(
+.venv\Lib\site-packages\anyio\_core\_eventloop.py:83: in run
+    return async_backend.run(func, args, {}, backend_options)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv\Lib\site-packages\anyio\_backends\_asyncio.py:2547: in run
+    with Runner(debug=debug, loop_factory=loop_factory) as runner:
+D:\python\Lib\asyncio\runners.py:59: in __enter__
+    self._lazy_init()
+D:\python\Lib\asyncio\runners.py:137: in _lazy_init
+    self._loop = events.new_event_loop()
+                 ^^^^^^^^^^^^^^^^^^^^^^^
+D:\python\Lib\asyncio\events.py:810: in new_event_loop
+    return get_event_loop_policy().new_event_loop()
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+D:\python\Lib\asyncio\events.py:699: in new_event_loop
+    return self._loop_factory()
+           ^^^^^^^^^^^^^^^^^^^^
+D:\python\Lib\asyncio\windows_events.py:315: in __init__
+    super().__init__(proactor)
+D:\python\Lib\asyncio\proactor_events.py:639: in __init__
+    self._make_self_pipe()
+D:\python\Lib\asyncio\proactor_events.py:784: in _make_self_pipe
+    self._ssock, self._csock = socket.socketpair()
+                               ^^^^^^^^^^^^^^^^^^^
+D:\python\Lib\socket.py:641: in socketpair
+    csock.connect((addr, port))
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+args = (&lt;socket.socket [closed] fd=-1, family=2, type=1, proto=0&gt;, ('127.0.0.1', 64496))
+kwargs = {}
+
+&gt;   def blocked(*args,**kwargs):raise RuntimeError('REAL_NETWORK_DISABLED_IN_MERGE_REGRESSION')
+                                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   RuntimeError: REAL_NETWORK_DISABLED_IN_MERGE_REGRESSION
+
+docs\reports\merge-repair\offline_pytest.py:8: RuntimeError</error></testcase><testcase classname="tests.test_authorized_job_dispatch" name="test_http_dispatch_and_get_preserve_exact_status_and_identity[RUNNING]" time="0.017"><error message="failed on setup with &quot;RuntimeError: REAL_NETWORK_DISABLED_IN_MERGE_REGRESSION&quot;">db = &lt;sqlalchemy.orm.session.Session object at 0x000001D3501D8290&gt;
+
+    @pytest.fixture
+    def http_client(db):
+        from fastapi import FastAPI
+        from fastapi.testclient import TestClient
+        from app.controller.optimization.optimization_router import router, get_async_runner
+        from app.config.database import get_db
+        from app.service.auth.auth_dependency import require_optimization_service
+        app=FastAPI()
+        app.include_router(router)
+        app.dependency_overrides[get_db]=lambda: db
+        app.dependency_overrides[require_optimization_service]=lambda: {"service":"offline-test"}
+        app.dependency_overrides[get_async_runner]=lambda: Mock(run=AsyncMock())
+&gt;       with TestClient(app) as client: yield client
+
+tests\test_authorized_job_dispatch.py:202: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+.venv\Lib\site-packages\starlette\testclient.py:504: in __enter__
+    self.portal = portal = stack.enter_context(anyio.from_thread.start_blocking_portal(**self.async_backend))
+                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+D:\python\Lib\contextlib.py:517: in enter_context
+    result = _enter(cm)
+             ^^^^^^^^^^
+D:\python\Lib\contextlib.py:137: in __enter__
+    return next(self.gen)
+           ^^^^^^^^^^^^^^
+.venv\Lib\site-packages\anyio\from_thread.py:554: in start_blocking_portal
+    portal = future.result()
+             ^^^^^^^^^^^^^^^
+D:\python\Lib\concurrent\futures\_base.py:456: in result
+    return self.__get_result()
+           ^^^^^^^^^^^^^^^^^^^
+D:\python\Lib\concurrent\futures\_base.py:401: in __get_result
+    raise self._exception
+.venv\Lib\site-packages\anyio\from_thread.py:538: in run_blocking_portal
+    run_eventloop(
+.venv\Lib\site-packages\anyio\_core\_eventloop.py:83: in run
+    return async_backend.run(func, args, {}, backend_options)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv\Lib\site-packages\anyio\_backends\_asyncio.py:2547: in run
+    with Runner(debug=debug, loop_factory=loop_factory) as runner:
+D:\python\Lib\asyncio\runners.py:59: in __enter__
+    self._lazy_init()
+D:\python\Lib\asyncio\runners.py:137: in _lazy_init
+    self._loop = events.new_event_loop()
+                 ^^^^^^^^^^^^^^^^^^^^^^^
+D:\python\Lib\asyncio\events.py:810: in new_event_loop
+    return get_event_loop_policy().new_event_loop()
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+D:\python\Lib\asyncio\events.py:699: in new_event_loop
+    return self._loop_factory()
+           ^^^^^^^^^^^^^^^^^^^^
+D:\python\Lib\asyncio\windows_events.py:315: in __init__
+    super().__init__(proactor)
+D:\python\Lib\asyncio\proactor_events.py:639: in __init__
+    self._make_self_pipe()
+D:\python\Lib\asyncio\proactor_events.py:784: in _make_self_pipe
+    self._ssock, self._csock = socket.socketpair()
+                               ^^^^^^^^^^^^^^^^^^^
+D:\python\Lib\socket.py:641: in socketpair
+    csock.connect((addr, port))
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+args = (&lt;socket.socket [closed] fd=-1, family=2, type=1, proto=0&gt;, ('127.0.0.1', 64497))
+kwargs = {}
+
+&gt;   def blocked(*args,**kwargs):raise RuntimeError('REAL_NETWORK_DISABLED_IN_MERGE_REGRESSION')
+                                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   RuntimeError: REAL_NETWORK_DISABLED_IN_MERGE_REGRESSION
+
+docs\reports\merge-repair\offline_pytest.py:8: RuntimeError</error></testcase><testcase classname="tests.test_authorized_job_dispatch" name="test_http_dispatch_and_get_preserve_exact_status_and_identity[COMPLETED]" time="0.013"><error message="failed on setup with &quot;RuntimeError: REAL_NETWORK_DISABLED_IN_MERGE_REGRESSION&quot;">db = &lt;sqlalchemy.orm.session.Session object at 0x000001D34CB68A10&gt;
+
+    @pytest.fixture
+    def http_client(db):
+        from fastapi import FastAPI
+        from fastapi.testclient import TestClient
+        from app.controller.optimization.optimization_router import router, get_async_runner
+        from app.config.database import get_db
+        from app.service.auth.auth_dependency import require_optimization_service
+        app=FastAPI()
+        app.include_router(router)
+        app.dependency_overrides[get_db]=lambda: db
+        app.dependency_overrides[require_optimization_service]=lambda: {"service":"offline-test"}
+        app.dependency_overrides[get_async_runner]=lambda: Mock(run=AsyncMock())
+&gt;       with TestClient(app) as client: yield client
+
+tests\test_authorized_job_dispatch.py:202: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+.venv\Lib\site-packages\starlette\testclient.py:504: in __enter__
+    self.portal = portal = stack.enter_context(anyio.from_thread.start_blocking_portal(**self.async_backend))
+                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+D:\python\Lib\contextlib.py:517: in enter_context
+    result = _enter(cm)
+             ^^^^^^^^^^
+D:\python\Lib\contextlib.py:137: in __enter__
+    return next(self.gen)
+           ^^^^^^^^^^^^^^
+.venv\Lib\site-packages\anyio\from_thread.py:554: in start_blocking_portal
+    portal = future.result()
+             ^^^^^^^^^^^^^^^
+D:\python\Lib\concurrent\futures\_base.py:456: in result
+    return self.__get_result()
+           ^^^^^^^^^^^^^^^^^^^
+D:\python\Lib\concurrent\futures\_base.py:401: in __get_result
+    raise self._exception
+.venv\Lib\site-packages\anyio\from_thread.py:538: in run_blocking_portal
+    run_eventloop(
+.venv\Lib\site-packages\anyio\_core\_eventloop.py:83: in run
+    return async_backend.run(func, args, {}, backend_options)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv\Lib\site-packages\anyio\_backends\_asyncio.py:2547: in run
+    with Runner(debug=debug, loop_factory=loop_factory) as runner:
+D:\python\Lib\asyncio\runners.py:59: in __enter__
+    self._lazy_init()
+D:\python\Lib\asyncio\runners.py:137: in _lazy_init
+    self._loop = events.new_event_loop()
+                 ^^^^^^^^^^^^^^^^^^^^^^^
+D:\python\Lib\asyncio\events.py:810: in new_event_loop
+    return get_event_loop_policy().new_event_loop()
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+D:\python\Lib\asyncio\events.py:699: in new_event_loop
+    return self._loop_factory()
+           ^^^^^^^^^^^^^^^^^^^^
+D:\python\Lib\asyncio\windows_events.py:315: in __init__
+    super().__init__(proactor)
+D:\python\Lib\asyncio\proactor_events.py:639: in __init__
+    self._make_self_pipe()
+D:\python\Lib\asyncio\proactor_events.py:784: in _make_self_pipe
+    self._ssock, self._csock = socket.socketpair()
+                               ^^^^^^^^^^^^^^^^^^^
+D:\python\Lib\socket.py:641: in socketpair
+    csock.connect((addr, port))
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+args = (&lt;socket.socket [closed] fd=-1, family=2, type=1, proto=0&gt;, ('127.0.0.1', 64498))
+kwargs = {}
+
+&gt;   def blocked(*args,**kwargs):raise RuntimeError('REAL_NETWORK_DISABLED_IN_MERGE_REGRESSION')
+                                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   RuntimeError: REAL_NETWORK_DISABLED_IN_MERGE_REGRESSION
+
+docs\reports\merge-repair\offline_pytest.py:8: RuntimeError</error></testcase><testcase classname="tests.test_authorized_job_dispatch" name="test_http_dispatch_and_get_preserve_exact_status_and_identity[SUCCESS]" time="0.009"><error message="failed on setup with &quot;RuntimeError: REAL_NETWORK_DISABLED_IN_MERGE_REGRESSION&quot;">db = &lt;sqlalchemy.orm.session.Session object at 0x000001D34F6F9E50&gt;
+
+    @pytest.fixture
+    def http_client(db):
+        from fastapi import FastAPI
+        from fastapi.testclient import TestClient
+        from app.controller.optimization.optimization_router import router, get_async_runner
+        from app.config.database import get_db
+        from app.service.auth.auth_dependency import require_optimization_service
+        app=FastAPI()
+        app.include_router(router)
+        app.dependency_overrides[get_db]=lambda: db
+        app.dependency_overrides[require_optimization_service]=lambda: {"service":"offline-test"}
+        app.dependency_overrides[get_async_runner]=lambda: Mock(run=AsyncMock())
+&gt;       with TestClient(app) as client: yield client
+
+tests\test_authorized_job_dispatch.py:202: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+.venv\Lib\site-packages\starlette\testclient.py:504: in __enter__
+    self.portal = portal = stack.enter_context(anyio.from_thread.start_blocking_portal(**self.async_backend))
+                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+D:\python\Lib\contextlib.py:517: in enter_context
+    result = _enter(cm)
+             ^^^^^^^^^^
+D:\python\Lib\contextlib.py:137: in __enter__
+    return next(self.gen)
+           ^^^^^^^^^^^^^^
+.venv\Lib\site-packages\anyio\from_thread.py:554: in start_blocking_portal
+    portal = future.result()
+             ^^^^^^^^^^^^^^^
+D:\python\Lib\concurrent\futures\_base.py:456: in result
+    return self.__get_result()
+           ^^^^^^^^^^^^^^^^^^^
+D:\python\Lib\concurrent\futures\_base.py:401: in __get_result
+    raise self._exception
+.venv\Lib\site-packages\anyio\from_thread.py:538: in run_blocking_portal
+    run_eventloop(
+.venv\Lib\site-packages\anyio\_core\_eventloop.py:83: in run
+    return async_backend.run(func, args, {}, backend_options)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv\Lib\site-packages\anyio\_backends\_asyncio.py:2547: in run
+    with Runner(debug=debug, loop_factory=loop_factory) as runner:
+D:\python\Lib\asyncio\runners.py:59: in __enter__
+    self._lazy_init()
+D:\python\Lib\asyncio\runners.py:137: in _lazy_init
+    self._loop = events.new_event_loop()
+                 ^^^^^^^^^^^^^^^^^^^^^^^
+D:\python\Lib\asyncio\events.py:810: in new_event_loop
+    return get_event_loop_policy().new_event_loop()
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+D:\python\Lib\asyncio\events.py:699: in new_event_loop
+    return self._loop_factory()
+           ^^^^^^^^^^^^^^^^^^^^
+D:\python\Lib\asyncio\windows_events.py:315: in __init__
+    super().__init__(proactor)
+D:\python\Lib\asyncio\proactor_events.py:639: in __init__
+    self._make_self_pipe()
+D:\python\Lib\asyncio\proactor_events.py:784: in _make_self_pipe
+    self._ssock, self._csock = socket.socketpair()
+                               ^^^^^^^^^^^^^^^^^^^
+D:\python\Lib\socket.py:641: in socketpair
+    csock.connect((addr, port))
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+args = (&lt;socket.socket [closed] fd=-1, family=2, type=1, proto=0&gt;, ('127.0.0.1', 64499))
+kwargs = {}
+
+&gt;   def blocked(*args,**kwargs):raise RuntimeError('REAL_NETWORK_DISABLED_IN_MERGE_REGRESSION')
+                                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   RuntimeError: REAL_NETWORK_DISABLED_IN_MERGE_REGRESSION
+
+docs\reports\merge-repair\offline_pytest.py:8: RuntimeError</error></testcase><testcase classname="tests.test_authorized_job_dispatch" name="test_http_dispatch_and_get_preserve_exact_status_and_identity[PARTIAL]" time="0.013"><error message="failed on setup with &quot;RuntimeError: REAL_NETWORK_DISABLED_IN_MERGE_REGRESSION&quot;">db = &lt;sqlalchemy.orm.session.Session object at 0x000001D351840A10&gt;
+
+    @pytest.fixture
+    def http_client(db):
+        from fastapi import FastAPI
+        from fastapi.testclient import TestClient
+        from app.controller.optimization.optimization_router import router, get_async_runner
+        from app.config.database import get_db
+        from app.service.auth.auth_dependency import require_optimization_service
+        app=FastAPI()
+        app.include_router(router)
+        app.dependency_overrides[get_db]=lambda: db
+        app.dependency_overrides[require_optimization_service]=lambda: {"service":"offline-test"}
+        app.dependency_overrides[get_async_runner]=lambda: Mock(run=AsyncMock())
+&gt;       with TestClient(app) as client: yield client
+
+tests\test_authorized_job_dispatch.py:202: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+.venv\Lib\site-packages\starlette\testclient.py:504: in __enter__
+    self.portal = portal = stack.enter_context(anyio.from_thread.start_blocking_portal(**self.async_backend))
+                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+D:\python\Lib\contextlib.py:517: in enter_context
+    result = _enter(cm)
+             ^^^^^^^^^^
+D:\python\Lib\contextlib.py:137: in __enter__
+    return next(self.gen)
+           ^^^^^^^^^^^^^^
+.venv\Lib\site-packages\anyio\from_thread.py:554: in start_blocking_portal
+    portal = future.result()
+             ^^^^^^^^^^^^^^^
+D:\python\Lib\concurrent\futures\_base.py:456: in result
+    return self.__get_result()
+           ^^^^^^^^^^^^^^^^^^^
+D:\python\Lib\concurrent\futures\_base.py:401: in __get_result
+    raise self._exception
+.venv\Lib\site-packages\anyio\from_thread.py:538: in run_blocking_portal
+    run_eventloop(
+.venv\Lib\site-packages\anyio\_core\_eventloop.py:83: in run
+    return async_backend.run(func, args, {}, backend_options)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv\Lib\site-packages\anyio\_backends\_asyncio.py:2547: in run
+    with Runner(debug=debug, loop_factory=loop_factory) as runner:
+D:\python\Lib\asyncio\runners.py:59: in __enter__
+    self._lazy_init()
+D:\python\Lib\asyncio\runners.py:137: in _lazy_init
+    self._loop = events.new_event_loop()
+                 ^^^^^^^^^^^^^^^^^^^^^^^
+D:\python\Lib\asyncio\events.py:810: in new_event_loop
+    return get_event_loop_policy().new_event_loop()
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+D:\python\Lib\asyncio\events.py:699: in new_event_loop
+    return self._loop_factory()
+           ^^^^^^^^^^^^^^^^^^^^
+D:\python\Lib\asyncio\windows_events.py:315: in __init__
+    super().__init__(proactor)
+D:\python\Lib\asyncio\proactor_events.py:639: in __init__
+    self._make_self_pipe()
+D:\python\Lib\asyncio\proactor_events.py:784: in _make_self_pipe
+    self._ssock, self._csock = socket.socketpair()
+                               ^^^^^^^^^^^^^^^^^^^
+D:\python\Lib\socket.py:641: in socketpair
+    csock.connect((addr, port))
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+args = (&lt;socket.socket [closed] fd=-1, family=2, type=1, proto=0&gt;, ('127.0.0.1', 64500))
+kwargs = {}
+
+&gt;   def blocked(*args,**kwargs):raise RuntimeError('REAL_NETWORK_DISABLED_IN_MERGE_REGRESSION')
+                                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   RuntimeError: REAL_NETWORK_DISABLED_IN_MERGE_REGRESSION
+
+docs\reports\merge-repair\offline_pytest.py:8: RuntimeError</error></testcase><testcase classname="tests.test_authorized_job_dispatch" name="test_http_dispatch_and_get_preserve_exact_status_and_identity[FAILED]" time="0.013"><error message="failed on setup with &quot;RuntimeError: REAL_NETWORK_DISABLED_IN_MERGE_REGRESSION&quot;">db = &lt;sqlalchemy.orm.session.Session object at 0x000001D35016C090&gt;
+
+    @pytest.fixture
+    def http_client(db):
+        from fastapi import FastAPI
+        from fastapi.testclient import TestClient
+        from app.controller.optimization.optimization_router import router, get_async_runner
+        from app.config.database import get_db
+        from app.service.auth.auth_dependency import require_optimization_service
+        app=FastAPI()
+        app.include_router(router)
+        app.dependency_overrides[get_db]=lambda: db
+        app.dependency_overrides[require_optimization_service]=lambda: {"service":"offline-test"}
+        app.dependency_overrides[get_async_runner]=lambda: Mock(run=AsyncMock())
+&gt;       with TestClient(app) as client: yield client
+
+tests\test_authorized_job_dispatch.py:202: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+.venv\Lib\site-packages\starlette\testclient.py:504: in __enter__
+    self.portal = portal = stack.enter_context(anyio.from_thread.start_blocking_portal(**self.async_backend))
+                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+D:\python\Lib\contextlib.py:517: in enter_context
+    result = _enter(cm)
+             ^^^^^^^^^^
+D:\python\Lib\contextlib.py:137: in __enter__
+    return next(self.gen)
+           ^^^^^^^^^^^^^^
+.venv\Lib\site-packages\anyio\from_thread.py:554: in start_blocking_portal
+    portal = future.result()
+             ^^^^^^^^^^^^^^^
+D:\python\Lib\concurrent\futures\_base.py:456: in result
+    return self.__get_result()
+           ^^^^^^^^^^^^^^^^^^^
+D:\python\Lib\concurrent\futures\_base.py:401: in __get_result
+    raise self._exception
+.venv\Lib\site-packages\anyio\from_thread.py:538: in run_blocking_portal
+    run_eventloop(
+.venv\Lib\site-packages\anyio\_core\_eventloop.py:83: in run
+    return async_backend.run(func, args, {}, backend_options)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv\Lib\site-packages\anyio\_backends\_asyncio.py:2547: in run
+    with Runner(debug=debug, loop_factory=loop_factory) as runner:
+D:\python\Lib\asyncio\runners.py:59: in __enter__
+    self._lazy_init()
+D:\python\Lib\asyncio\runners.py:137: in _lazy_init
+    self._loop = events.new_event_loop()
+                 ^^^^^^^^^^^^^^^^^^^^^^^
+D:\python\Lib\asyncio\events.py:810: in new_event_loop
+    return get_event_loop_policy().new_event_loop()
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+D:\python\Lib\asyncio\events.py:699: in new_event_loop
+    return self._loop_factory()
+           ^^^^^^^^^^^^^^^^^^^^
+D:\python\Lib\asyncio\windows_events.py:315: in __init__
+    super().__init__(proactor)
+D:\python\Lib\asyncio\proactor_events.py:639: in __init__
+    self._make_self_pipe()
+D:\python\Lib\asyncio\proactor_events.py:784: in _make_self_pipe
+    self._ssock, self._csock = socket.socketpair()
+                               ^^^^^^^^^^^^^^^^^^^
+D:\python\Lib\socket.py:641: in socketpair
+    csock.connect((addr, port))
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+args = (&lt;socket.socket [closed] fd=-1, family=2, type=1, proto=0&gt;, ('127.0.0.1', 64501))
+kwargs = {}
+
+&gt;   def blocked(*args,**kwargs):raise RuntimeError('REAL_NETWORK_DISABLED_IN_MERGE_REGRESSION')
+                                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   RuntimeError: REAL_NETWORK_DISABLED_IN_MERGE_REGRESSION
+
+docs\reports\merge-repair\offline_pytest.py:8: RuntimeError</error></testcase><testcase classname="tests.test_authorized_job_dispatch" name="test_http_dispatch_and_get_preserve_exact_status_and_identity[NO_SOLUTION]" time="0.016"><error message="failed on setup with &quot;RuntimeError: REAL_NETWORK_DISABLED_IN_MERGE_REGRESSION&quot;">db = &lt;sqlalchemy.orm.session.Session object at 0x000001D3513780D0&gt;
+
+    @pytest.fixture
+    def http_client(db):
+        from fastapi import FastAPI
+        from fastapi.testclient import TestClient
+        from app.controller.optimization.optimization_router import router, get_async_runner
+        from app.config.database import get_db
+        from app.service.auth.auth_dependency import require_optimization_service
+        app=FastAPI()
+        app.include_router(router)
+        app.dependency_overrides[get_db]=lambda: db
+        app.dependency_overrides[require_optimization_service]=lambda: {"service":"offline-test"}
+        app.dependency_overrides[get_async_runner]=lambda: Mock(run=AsyncMock())
+&gt;       with TestClient(app) as client: yield client
+
+tests\test_authorized_job_dispatch.py:202: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+.venv\Lib\site-packages\starlette\testclient.py:504: in __enter__
+    self.portal = portal = stack.enter_context(anyio.from_thread.start_blocking_portal(**self.async_backend))
+                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+D:\python\Lib\contextlib.py:517: in enter_context
+    result = _enter(cm)
+             ^^^^^^^^^^
+D:\python\Lib\contextlib.py:137: in __enter__
+    return next(self.gen)
+           ^^^^^^^^^^^^^^
+.venv\Lib\site-packages\anyio\from_thread.py:554: in start_blocking_portal
+    portal = future.result()
+             ^^^^^^^^^^^^^^^
+D:\python\Lib\concurrent\futures\_base.py:456: in result
+    return self.__get_result()
+           ^^^^^^^^^^^^^^^^^^^
+D:\python\Lib\concurrent\futures\_base.py:401: in __get_result
+    raise self._exception
+.venv\Lib\site-packages\anyio\from_thread.py:538: in run_blocking_portal
+    run_eventloop(
+.venv\Lib\site-packages\anyio\_core\_eventloop.py:83: in run
+    return async_backend.run(func, args, {}, backend_options)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv\Lib\site-packages\anyio\_backends\_asyncio.py:2547: in run
+    with Runner(debug=debug, loop_factory=loop_factory) as runner:
+D:\python\Lib\asyncio\runners.py:59: in __enter__
+    self._lazy_init()
+D:\python\Lib\asyncio\runners.py:137: in _lazy_init
+    self._loop = events.new_event_loop()
+                 ^^^^^^^^^^^^^^^^^^^^^^^
+D:\python\Lib\asyncio\events.py:810: in new_event_loop
+    return get_event_loop_policy().new_event_loop()
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+D:\python\Lib\asyncio\events.py:699: in new_event_loop
+    return self._loop_factory()
+           ^^^^^^^^^^^^^^^^^^^^
+D:\python\Lib\asyncio\windows_events.py:315: in __init__
+    super().__init__(proactor)
+D:\python\Lib\asyncio\proactor_events.py:639: in __init__
+    self._make_self_pipe()
+D:\python\Lib\asyncio\proactor_events.py:784: in _make_self_pipe
+    self._ssock, self._csock = socket.socketpair()
+                               ^^^^^^^^^^^^^^^^^^^
+D:\python\Lib\socket.py:641: in socketpair
+    csock.connect((addr, port))
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+args = (&lt;socket.socket [closed] fd=-1, family=2, type=1, proto=0&gt;, ('127.0.0.1', 64502))
+kwargs = {}
+
+&gt;   def blocked(*args,**kwargs):raise RuntimeError('REAL_NETWORK_DISABLED_IN_MERGE_REGRESSION')
+                                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   RuntimeError: REAL_NETWORK_DISABLED_IN_MERGE_REGRESSION
+
+docs\reports\merge-repair\offline_pytest.py:8: RuntimeError</error></testcase><testcase classname="tests.test_authorized_job_dispatch" name="test_http_dispatch_and_get_preserve_exact_status_and_identity[TIMEOUT]" time="0.014"><error message="failed on setup with &quot;RuntimeError: REAL_NETWORK_DISABLED_IN_MERGE_REGRESSION&quot;">db = &lt;sqlalchemy.orm.session.Session object at 0x000001D35185D810&gt;
+
+    @pytest.fixture
+    def http_client(db):
+        from fastapi import FastAPI
+        from fastapi.testclient import TestClient
+        from app.controller.optimization.optimization_router import router, get_async_runner
+        from app.config.database import get_db
+        from app.service.auth.auth_dependency import require_optimization_service
+        app=FastAPI()
+        app.include_router(router)
+        app.dependency_overrides[get_db]=lambda: db
+        app.dependency_overrides[require_optimization_service]=lambda: {"service":"offline-test"}
+        app.dependency_overrides[get_async_runner]=lambda: Mock(run=AsyncMock())
+&gt;       with TestClient(app) as client: yield client
+
+tests\test_authorized_job_dispatch.py:202: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+.venv\Lib\site-packages\starlette\testclient.py:504: in __enter__
+    self.portal = portal = stack.enter_context(anyio.from_thread.start_blocking_portal(**self.async_backend))
+                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+D:\python\Lib\contextlib.py:517: in enter_context
+    result = _enter(cm)
+             ^^^^^^^^^^
+D:\python\Lib\contextlib.py:137: in __enter__
+    return next(self.gen)
+           ^^^^^^^^^^^^^^
+.venv\Lib\site-packages\anyio\from_thread.py:554: in start_blocking_portal
+    portal = future.result()
+             ^^^^^^^^^^^^^^^
+D:\python\Lib\concurrent\futures\_base.py:456: in result
+    return self.__get_result()
+           ^^^^^^^^^^^^^^^^^^^
+D:\python\Lib\concurrent\futures\_base.py:401: in __get_result
+    raise self._exception
+.venv\Lib\site-packages\anyio\from_thread.py:538: in run_blocking_portal
+    run_eventloop(
+.venv\Lib\site-packages\anyio\_core\_eventloop.py:83: in run
+    return async_backend.run(func, args, {}, backend_options)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv\Lib\site-packages\anyio\_backends\_asyncio.py:2547: in run
+    with Runner(debug=debug, loop_factory=loop_factory) as runner:
+D:\python\Lib\asyncio\runners.py:59: in __enter__
+    self._lazy_init()
+D:\python\Lib\asyncio\runners.py:137: in _lazy_init
+    self._loop = events.new_event_loop()
+                 ^^^^^^^^^^^^^^^^^^^^^^^
+D:\python\Lib\asyncio\events.py:810: in new_event_loop
+    return get_event_loop_policy().new_event_loop()
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+D:\python\Lib\asyncio\events.py:699: in new_event_loop
+    return self._loop_factory()
+           ^^^^^^^^^^^^^^^^^^^^
+D:\python\Lib\asyncio\windows_events.py:315: in __init__
+    super().__init__(proactor)
+D:\python\Lib\asyncio\proactor_events.py:639: in __init__
+    self._make_self_pipe()
+D:\python\Lib\asyncio\proactor_events.py:784: in _make_self_pipe
+    self._ssock, self._csock = socket.socketpair()
+                               ^^^^^^^^^^^^^^^^^^^
+D:\python\Lib\socket.py:641: in socketpair
+    csock.connect((addr, port))
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+args = (&lt;socket.socket [closed] fd=-1, family=2, type=1, proto=0&gt;, ('127.0.0.1', 64503))
+kwargs = {}
+
+&gt;   def blocked(*args,**kwargs):raise RuntimeError('REAL_NETWORK_DISABLED_IN_MERGE_REGRESSION')
+                                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   RuntimeError: REAL_NETWORK_DISABLED_IN_MERGE_REGRESSION
+
+docs\reports\merge-repair\offline_pytest.py:8: RuntimeError</error></testcase><testcase classname="tests.test_authorized_job_dispatch" name="test_http_dispatch_requires_both_reserved_job_and_trip[payload0]" time="0.010"><error message="failed on setup with &quot;RuntimeError: REAL_NETWORK_DISABLED_IN_MERGE_REGRESSION&quot;">db = &lt;sqlalchemy.orm.session.Session object at 0x000001D3501F5890&gt;
+
+    @pytest.fixture
+    def http_client(db):
+        from fastapi import FastAPI
+        from fastapi.testclient import TestClient
+        from app.controller.optimization.optimization_router import router, get_async_runner
+        from app.config.database import get_db
+        from app.service.auth.auth_dependency import require_optimization_service
+        app=FastAPI()
+        app.include_router(router)
+        app.dependency_overrides[get_db]=lambda: db
+        app.dependency_overrides[require_optimization_service]=lambda: {"service":"offline-test"}
+        app.dependency_overrides[get_async_runner]=lambda: Mock(run=AsyncMock())
+&gt;       with TestClient(app) as client: yield client
+
+tests\test_authorized_job_dispatch.py:202: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+.venv\Lib\site-packages\starlette\testclient.py:504: in __enter__
+    self.portal = portal = stack.enter_context(anyio.from_thread.start_blocking_portal(**self.async_backend))
+                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+D:\python\Lib\contextlib.py:517: in enter_context
+    result = _enter(cm)
+             ^^^^^^^^^^
+D:\python\Lib\contextlib.py:137: in __enter__
+    return next(self.gen)
+           ^^^^^^^^^^^^^^
+.venv\Lib\site-packages\anyio\from_thread.py:554: in start_blocking_portal
+    portal = future.result()
+             ^^^^^^^^^^^^^^^
+D:\python\Lib\concurrent\futures\_base.py:456: in result
+    return self.__get_result()
+           ^^^^^^^^^^^^^^^^^^^
+D:\python\Lib\concurrent\futures\_base.py:401: in __get_result
+    raise self._exception
+.venv\Lib\site-packages\anyio\from_thread.py:538: in run_blocking_portal
+    run_eventloop(
+.venv\Lib\site-packages\anyio\_core\_eventloop.py:83: in run
+    return async_backend.run(func, args, {}, backend_options)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv\Lib\site-packages\anyio\_backends\_asyncio.py:2547: in run
+    with Runner(debug=debug, loop_factory=loop_factory) as runner:
+D:\python\Lib\asyncio\runners.py:59: in __enter__
+    self._lazy_init()
+D:\python\Lib\asyncio\runners.py:137: in _lazy_init
+    self._loop = events.new_event_loop()
+                 ^^^^^^^^^^^^^^^^^^^^^^^
+D:\python\Lib\asyncio\events.py:810: in new_event_loop
+    return get_event_loop_policy().new_event_loop()
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+D:\python\Lib\asyncio\events.py:699: in new_event_loop
+    return self._loop_factory()
+           ^^^^^^^^^^^^^^^^^^^^
+D:\python\Lib\asyncio\windows_events.py:315: in __init__
+    super().__init__(proactor)
+D:\python\Lib\asyncio\proactor_events.py:639: in __init__
+    self._make_self_pipe()
+D:\python\Lib\asyncio\proactor_events.py:784: in _make_self_pipe
+    self._ssock, self._csock = socket.socketpair()
+                               ^^^^^^^^^^^^^^^^^^^
+D:\python\Lib\socket.py:641: in socketpair
+    csock.connect((addr, port))
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+args = (&lt;socket.socket [closed] fd=-1, family=2, type=1, proto=0&gt;, ('127.0.0.1', 64504))
+kwargs = {}
+
+&gt;   def blocked(*args,**kwargs):raise RuntimeError('REAL_NETWORK_DISABLED_IN_MERGE_REGRESSION')
+                                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   RuntimeError: REAL_NETWORK_DISABLED_IN_MERGE_REGRESSION
+
+docs\reports\merge-repair\offline_pytest.py:8: RuntimeError</error></testcase><testcase classname="tests.test_authorized_job_dispatch" name="test_http_dispatch_requires_both_reserved_job_and_trip[payload1]" time="0.014"><error message="failed on setup with &quot;RuntimeError: REAL_NETWORK_DISABLED_IN_MERGE_REGRESSION&quot;">db = &lt;sqlalchemy.orm.session.Session object at 0x000001D351819210&gt;
+
+    @pytest.fixture
+    def http_client(db):
+        from fastapi import FastAPI
+        from fastapi.testclient import TestClient
+        from app.controller.optimization.optimization_router import router, get_async_runner
+        from app.config.database import get_db
+        from app.service.auth.auth_dependency import require_optimization_service
+        app=FastAPI()
+        app.include_router(router)
+        app.dependency_overrides[get_db]=lambda: db
+        app.dependency_overrides[require_optimization_service]=lambda: {"service":"offline-test"}
+        app.dependency_overrides[get_async_runner]=lambda: Mock(run=AsyncMock())
+&gt;       with TestClient(app) as client: yield client
+
+tests\test_authorized_job_dispatch.py:202: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+.venv\Lib\site-packages\starlette\testclient.py:504: in __enter__
+    self.portal = portal = stack.enter_context(anyio.from_thread.start_blocking_portal(**self.async_backend))
+                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+D:\python\Lib\contextlib.py:517: in enter_context
+    result = _enter(cm)
+             ^^^^^^^^^^
+D:\python\Lib\contextlib.py:137: in __enter__
+    return next(self.gen)
+           ^^^^^^^^^^^^^^
+.venv\Lib\site-packages\anyio\from_thread.py:554: in start_blocking_portal
+    portal = future.result()
+             ^^^^^^^^^^^^^^^
+D:\python\Lib\concurrent\futures\_base.py:456: in result
+    return self.__get_result()
+           ^^^^^^^^^^^^^^^^^^^
+D:\python\Lib\concurrent\futures\_base.py:401: in __get_result
+    raise self._exception
+.venv\Lib\site-packages\anyio\from_thread.py:538: in run_blocking_portal
+    run_eventloop(
+.venv\Lib\site-packages\anyio\_core\_eventloop.py:83: in run
+    return async_backend.run(func, args, {}, backend_options)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv\Lib\site-packages\anyio\_backends\_asyncio.py:2547: in run
+    with Runner(debug=debug, loop_factory=loop_factory) as runner:
+D:\python\Lib\asyncio\runners.py:59: in __enter__
+    self._lazy_init()
+D:\python\Lib\asyncio\runners.py:137: in _lazy_init
+    self._loop = events.new_event_loop()
+                 ^^^^^^^^^^^^^^^^^^^^^^^
+D:\python\Lib\asyncio\events.py:810: in new_event_loop
+    return get_event_loop_policy().new_event_loop()
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+D:\python\Lib\asyncio\events.py:699: in new_event_loop
+    return self._loop_factory()
+           ^^^^^^^^^^^^^^^^^^^^
+D:\python\Lib\asyncio\windows_events.py:315: in __init__
+    super().__init__(proactor)
+D:\python\Lib\asyncio\proactor_events.py:639: in __init__
+    self._make_self_pipe()
+D:\python\Lib\asyncio\proactor_events.py:784: in _make_self_pipe
+    self._ssock, self._csock = socket.socketpair()
+                               ^^^^^^^^^^^^^^^^^^^
+D:\python\Lib\socket.py:641: in socketpair
+    csock.connect((addr, port))
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+args = (&lt;socket.socket [closed] fd=-1, family=2, type=1, proto=0&gt;, ('127.0.0.1', 64505))
+kwargs = {}
+
+&gt;   def blocked(*args,**kwargs):raise RuntimeError('REAL_NETWORK_DISABLED_IN_MERGE_REGRESSION')
+                                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   RuntimeError: REAL_NETWORK_DISABLED_IN_MERGE_REGRESSION
+
+docs\reports\merge-repair\offline_pytest.py:8: RuntimeError</error></testcase><testcase classname="tests.test_authorized_job_dispatch" name="test_http_dispatch_requires_both_reserved_job_and_trip[payload2]" time="0.016"><error message="failed on setup with &quot;RuntimeError: REAL_NETWORK_DISABLED_IN_MERGE_REGRESSION&quot;">db = &lt;sqlalchemy.orm.session.Session object at 0x000001D350065190&gt;
+
+    @pytest.fixture
+    def http_client(db):
+        from fastapi import FastAPI
+        from fastapi.testclient import TestClient
+        from app.controller.optimization.optimization_router import router, get_async_runner
+        from app.config.database import get_db
+        from app.service.auth.auth_dependency import require_optimization_service
+        app=FastAPI()
+        app.include_router(router)
+        app.dependency_overrides[get_db]=lambda: db
+        app.dependency_overrides[require_optimization_service]=lambda: {"service":"offline-test"}
+        app.dependency_overrides[get_async_runner]=lambda: Mock(run=AsyncMock())
+&gt;       with TestClient(app) as client: yield client
+
+tests\test_authorized_job_dispatch.py:202: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+.venv\Lib\site-packages\starlette\testclient.py:504: in __enter__
+    self.portal = portal = stack.enter_context(anyio.from_thread.start_blocking_portal(**self.async_backend))
+                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+D:\python\Lib\contextlib.py:517: in enter_context
+    result = _enter(cm)
+             ^^^^^^^^^^
+D:\python\Lib\contextlib.py:137: in __enter__
+    return next(self.gen)
+           ^^^^^^^^^^^^^^
+.venv\Lib\site-packages\anyio\from_thread.py:554: in start_blocking_portal
+    portal = future.result()
+             ^^^^^^^^^^^^^^^
+D:\python\Lib\concurrent\futures\_base.py:456: in result
+    return self.__get_result()
+           ^^^^^^^^^^^^^^^^^^^
+D:\python\Lib\concurrent\futures\_base.py:401: in __get_result
+    raise self._exception
+.venv\Lib\site-packages\anyio\from_thread.py:538: in run_blocking_portal
+    run_eventloop(
+.venv\Lib\site-packages\anyio\_core\_eventloop.py:83: in run
+    return async_backend.run(func, args, {}, backend_options)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv\Lib\site-packages\anyio\_backends\_asyncio.py:2547: in run
+    with Runner(debug=debug, loop_factory=loop_factory) as runner:
+D:\python\Lib\asyncio\runners.py:59: in __enter__
+    self._lazy_init()
+D:\python\Lib\asyncio\runners.py:137: in _lazy_init
+    self._loop = events.new_event_loop()
+                 ^^^^^^^^^^^^^^^^^^^^^^^
+D:\python\Lib\asyncio\events.py:810: in new_event_loop
+    return get_event_loop_policy().new_event_loop()
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+D:\python\Lib\asyncio\events.py:699: in new_event_loop
+    return self._loop_factory()
+           ^^^^^^^^^^^^^^^^^^^^
+D:\python\Lib\asyncio\windows_events.py:315: in __init__
+    super().__init__(proactor)
+D:\python\Lib\asyncio\proactor_events.py:639: in __init__
+    self._make_self_pipe()
+D:\python\Lib\asyncio\proactor_events.py:784: in _make_self_pipe
+    self._ssock, self._csock = socket.socketpair()
+                               ^^^^^^^^^^^^^^^^^^^
+D:\python\Lib\socket.py:641: in socketpair
+    csock.connect((addr, port))
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+args = (&lt;socket.socket [closed] fd=-1, family=2, type=1, proto=0&gt;, ('127.0.0.1', 64506))
+kwargs = {}
+
+&gt;   def blocked(*args,**kwargs):raise RuntimeError('REAL_NETWORK_DISABLED_IN_MERGE_REGRESSION')
+                                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   RuntimeError: REAL_NETWORK_DISABLED_IN_MERGE_REGRESSION
+
+docs\reports\merge-repair\offline_pytest.py:8: RuntimeError</error></testcase><testcase classname="tests.test_authorized_job_dispatch" name="test_runner_blocks_invalid_rotation_before_persistence[change0]" time="0.010"><failure message="RuntimeError: REAL_NETWORK_DISABLED_IN_MERGE_REGRESSION">db = &lt;sqlalchemy.orm.session.Session object at 0x000001D3517C0FD0&gt;
+change = {'rotation_type': 1, 'packed_l': 30, 'packed_w': 40}
+
+    @pytest.mark.parametrize("change", [dict(rotation_type=1,packed_l=30,packed_w=40),dict(packed_l=41)])
+    def test_runner_blocks_invalid_rotation_before_persistence(db, change):
+        problem, result = rotation_fixture()
+        result.placements[0] = result.placements[0].model_copy(update=change)
+        persistence=Mock(); handler=Mock()
+        runner=AsyncOptimizationRunner(optimization_client=Mock(solve=AsyncMock(return_value=result)),
+                                      persistence_service=persistence,engine_exception_handler=handler,
+                                      credit_client=Mock(refund_credit=AsyncMock()))
+&gt;       asyncio.run(runner.run("authorized",problem=problem,db=db))
+
+tests\test_authorized_job_dispatch.py:232: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+D:\python\Lib\asyncio\runners.py:189: in run
+    with Runner(debug=debug) as runner:
+D:\python\Lib\asyncio\runners.py:59: in __enter__
+    self._lazy_init()
+D:\python\Lib\asyncio\runners.py:137: in _lazy_init
+    self._loop = events.new_event_loop()
+                 ^^^^^^^^^^^^^^^^^^^^^^^
+D:\python\Lib\asyncio\events.py:810: in new_event_loop
+    return get_event_loop_policy().new_event_loop()
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+D:\python\Lib\asyncio\events.py:699: in new_event_loop
+    return self._loop_factory()
+           ^^^^^^^^^^^^^^^^^^^^
+D:\python\Lib\asyncio\windows_events.py:315: in __init__
+    super().__init__(proactor)
+D:\python\Lib\asyncio\proactor_events.py:639: in __init__
+    self._make_self_pipe()
+D:\python\Lib\asyncio\proactor_events.py:784: in _make_self_pipe
+    self._ssock, self._csock = socket.socketpair()
+                               ^^^^^^^^^^^^^^^^^^^
+D:\python\Lib\socket.py:641: in socketpair
+    csock.connect((addr, port))
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+args = (&lt;socket.socket [closed] fd=-1, family=2, type=1, proto=0&gt;, ('127.0.0.1', 64507))
+kwargs = {}
+
+&gt;   def blocked(*args,**kwargs):raise RuntimeError('REAL_NETWORK_DISABLED_IN_MERGE_REGRESSION')
+                                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   RuntimeError: REAL_NETWORK_DISABLED_IN_MERGE_REGRESSION
+
+docs\reports\merge-repair\offline_pytest.py:8: RuntimeError</failure></testcase><testcase classname="tests.test_authorized_job_dispatch" name="test_runner_blocks_invalid_rotation_before_persistence[change1]" time="0.012"><failure message="RuntimeError: REAL_NETWORK_DISABLED_IN_MERGE_REGRESSION">db = &lt;sqlalchemy.orm.session.Session object at 0x000001D34FEB37D0&gt;
+change = {'packed_l': 41}
+
+    @pytest.mark.parametrize("change", [dict(rotation_type=1,packed_l=30,packed_w=40),dict(packed_l=41)])
+    def test_runner_blocks_invalid_rotation_before_persistence(db, change):
+        problem, result = rotation_fixture()
+        result.placements[0] = result.placements[0].model_copy(update=change)
+        persistence=Mock(); handler=Mock()
+        runner=AsyncOptimizationRunner(optimization_client=Mock(solve=AsyncMock(return_value=result)),
+                                      persistence_service=persistence,engine_exception_handler=handler,
+                                      credit_client=Mock(refund_credit=AsyncMock()))
+&gt;       asyncio.run(runner.run("authorized",problem=problem,db=db))
+
+tests\test_authorized_job_dispatch.py:232: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+D:\python\Lib\asyncio\runners.py:189: in run
+    with Runner(debug=debug) as runner:
+D:\python\Lib\asyncio\runners.py:59: in __enter__
+    self._lazy_init()
+D:\python\Lib\asyncio\runners.py:137: in _lazy_init
+    self._loop = events.new_event_loop()
+                 ^^^^^^^^^^^^^^^^^^^^^^^
+D:\python\Lib\asyncio\events.py:810: in new_event_loop
+    return get_event_loop_policy().new_event_loop()
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+D:\python\Lib\asyncio\events.py:699: in new_event_loop
+    return self._loop_factory()
+           ^^^^^^^^^^^^^^^^^^^^
+D:\python\Lib\asyncio\windows_events.py:315: in __init__
+    super().__init__(proactor)
+D:\python\Lib\asyncio\proactor_events.py:639: in __init__
+    self._make_self_pipe()
+D:\python\Lib\asyncio\proactor_events.py:784: in _make_self_pipe
+    self._ssock, self._csock = socket.socketpair()
+                               ^^^^^^^^^^^^^^^^^^^
+D:\python\Lib\socket.py:641: in socketpair
+    csock.connect((addr, port))
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+args = (&lt;socket.socket [closed] fd=-1, family=2, type=1, proto=0&gt;, ('127.0.0.1', 64508))
+kwargs = {}
+
+&gt;   def blocked(*args,**kwargs):raise RuntimeError('REAL_NETWORK_DISABLED_IN_MERGE_REGRESSION')
+                                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   RuntimeError: REAL_NETWORK_DISABLED_IN_MERGE_REGRESSION
+
+docs\reports\merge-repair\offline_pytest.py:8: RuntimeError</failure></testcase><testcase classname="tests.test_rotation_contract" name="test_missing_is_original_orientation_only" time="0.001" /><testcase classname="tests.test_rotation_contract" name="test_invalid_whitelist_is_rejected[None]" time="0.001" /><testcase classname="tests.test_rotation_contract" name="test_invalid_whitelist_is_rejected[value1]" time="0.000" /><testcase classname="tests.test_rotation_contract" name="test_invalid_whitelist_is_rejected[value2]" time="0.000" /><testcase classname="tests.test_rotation_contract" name="test_invalid_whitelist_is_rejected[value3]" time="0.000" /><testcase classname="tests.test_rotation_contract" name="test_invalid_whitelist_is_rejected[value4]" time="0.000" /><testcase classname="tests.test_rotation_contract" name="test_invalid_whitelist_is_rejected[value5]" time="0.001" /><testcase classname="tests.test_rotation_contract" name="test_invalid_whitelist_is_rejected[value6]" time="0.001" /><testcase classname="tests.test_rotation_contract" name="test_invalid_whitelist_is_rejected[value7]" time="0.001" /><testcase classname="tests.test_rotation_contract" name="test_invalid_whitelist_is_rejected[0]" time="0.001" /><testcase classname="tests.test_rotation_contract" name="test_empty_list_permits_none_in_initial_search_and_final[False]" time="0.001" /><testcase classname="tests.test_rotation_contract" name="test_empty_list_permits_none_in_initial_search_and_final[True]" time="0.002" /><testcase classname="tests.test_rotation_contract" name="test_explicit_whitelist_is_preserved_by_solver_and_improvement[codes0]" time="0.002" /><testcase classname="tests.test_rotation_contract" name="test_explicit_whitelist_is_preserved_by_solver_and_improvement[codes1]" time="0.001" /><testcase classname="tests.test_rotation_contract" name="test_explicit_whitelist_is_preserved_by_solver_and_improvement[codes2]" time="0.001" /><testcase classname="tests.test_rotation_contract" name="test_locked_switch_intersects_whitelist_instead_of_granting_zero" time="0.001" /><testcase classname="tests.test_rotation_contract" name="test_forbidden_but_fitting_rotation_is_rejected_by_final_and_partial" time="0.001" /><testcase classname="tests.test_rotation_contract" name="test_allowed_code_with_wrong_packed_dimensions_is_rejected" time="0.000" /><testcase classname="tests.test_rotation_contract" name="test_invalid_placement_rotation_rejected_at_contract[None]" time="0.001" /><testcase classname="tests.test_rotation_contract" name="test_invalid_placement_rotation_rejected_at_contract[6]" time="0.001" /><testcase classname="tests.test_rotation_contract" name="test_invalid_placement_rotation_rejected_at_contract[-1]" time="0.000" /><testcase classname="tests.test_rotation_contract" name="test_invalid_placement_rotation_rejected_at_contract[True]" time="0.000" /><testcase classname="tests.test_rotation_contract" name="test_invalid_placement_rotation_rejected_at_contract[1.5]" time="0.000" /><testcase classname="tests.test_rotation_contract" name="test_invalid_placement_rotation_rejected_at_contract[bad]" time="0.001" /><testcase classname="tests.test_rotation_contract" name="test_rotation_geometry_survives_persistence[0-dims0]" time="0.002" /><testcase classname="tests.test_rotation_contract" name="test_rotation_geometry_survives_persistence[1-dims1]" time="0.002" /><testcase classname="tests.test_rotation_contract" name="test_rotation_geometry_survives_persistence[2-dims2]" time="0.002" /><testcase classname="tests.test_rotation_contract" name="test_rotation_geometry_survives_persistence[3-dims3]" time="0.002" /><testcase classname="tests.test_rotation_contract" name="test_rotation_geometry_survives_persistence[4-dims4]" time="0.004" /><testcase classname="tests.test_rotation_contract" name="test_rotation_geometry_survives_persistence[5-dims5]" time="0.004" /><testcase classname="tests.test_rotation_contract" name="test_pre_persistence_boundary_rejects_forbidden_orientation" time="0.001" /><testcase classname="tests.test_rotation_contract" name="test_profile_without_restriction_does_not_expand_master_list" time="0.000" /><testcase classname="tests.test_rotation_contract" name="test_undefined_profile_syntax_fails_closed[[]]" time="0.001" /><testcase classname="tests.test_rotation_contract" name="test_undefined_profile_syntax_fails_closed[LWH]" time="0.000" /><testcase classname="tests.test_rotation_contract" name="test_undefined_profile_syntax_fails_closed[0,1]" time="0.001" /><testcase classname="tests.test_rotation_contract" name="test_remote_engine_cannot_bypass_rotation_without_obstacles" time="0.001"><error message="failed on setup with &quot;RuntimeError: REAL_NETWORK_DISABLED_IN_MERGE_REGRESSION&quot;">self = &lt;Coroutine test_remote_engine_cannot_bypass_rotation_without_obstacles&gt;
+
+    def setup(self) -&gt; None:
+        runner_fixture_id = f"_{self._loop_scope}_scoped_runner"
+        if runner_fixture_id not in self.fixturenames:
+            self.fixturenames.append(runner_fixture_id)
+        # When loop factories are configured, resolve the loop factory
+        # fixture early so that a factory variant change cascades cache
+        # invalidation before any async fixture checks its cache.
+        hook_caller = self.config.hook.pytest_asyncio_loop_factories
+        if hook_caller.get_hookimpls():
+            _ = self._request.getfixturevalue(_asyncio_loop_factory.__name__)
+&gt;       return super().setup()
+               ^^^^^^^^^^^^^^^
+
+.venv\Lib\site-packages\pytest_asyncio\plugin.py:558: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+.venv\Lib\site-packages\pytest_asyncio\plugin.py:924: in pytest_fixture_setup
+    return (yield)
+            ^^^^^
+.venv\Lib\site-packages\pytest_asyncio\plugin.py:1039: in _scoped_runner
+    ).__enter__()
+      ^^^^^^^^^^^
+D:\python\Lib\asyncio\runners.py:59: in __enter__
+    self._lazy_init()
+D:\python\Lib\asyncio\runners.py:137: in _lazy_init
+    self._loop = events.new_event_loop()
+                 ^^^^^^^^^^^^^^^^^^^^^^^
+D:\python\Lib\asyncio\events.py:810: in new_event_loop
+    return get_event_loop_policy().new_event_loop()
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+D:\python\Lib\asyncio\events.py:699: in new_event_loop
+    return self._loop_factory()
+           ^^^^^^^^^^^^^^^^^^^^
+D:\python\Lib\asyncio\windows_events.py:315: in __init__
+    super().__init__(proactor)
+D:\python\Lib\asyncio\proactor_events.py:639: in __init__
+    self._make_self_pipe()
+D:\python\Lib\asyncio\proactor_events.py:784: in _make_self_pipe
+    self._ssock, self._csock = socket.socketpair()
+                               ^^^^^^^^^^^^^^^^^^^
+D:\python\Lib\socket.py:641: in socketpair
+    csock.connect((addr, port))
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+args = (&lt;socket.socket [closed] fd=-1, family=2, type=1, proto=0&gt;, ('127.0.0.1', 64509))
+kwargs = {}
+
+&gt;   def blocked(*args,**kwargs):raise RuntimeError('REAL_NETWORK_DISABLED_IN_MERGE_REGRESSION')
+                                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   RuntimeError: REAL_NETWORK_DISABLED_IN_MERGE_REGRESSION
+
+docs\reports\merge-repair\offline_pytest.py:8: RuntimeError</error></testcase><testcase classname="tests.test_rotation_contract" name="test_database_profile_reaches_problem_request[None]" time="0.025" /><testcase classname="tests.test_rotation_contract" name="test_database_profile_reaches_problem_request[profile1]" time="0.031" /><testcase classname="tests.test_rotation_contract" name="test_database_profile_reaches_problem_request[profile2]" time="0.019" /><testcase classname="tests.test_rotation_contract" name="test_database_profile_reaches_problem_request[profile3]" time="0.021" /><testcase classname="tests.test_rotation_contract" name="test_empty_whitelist_keeps_other_packages_as_safe_partial" time="0.001" /><testcase classname="tests.test_vehicle_obstacles" name="test_plan_47_package_47_is_rejected_with_real_wheel_well" time="0.003" /><testcase classname="tests.test_vehicle_obstacles" name="test_all_real_eighteen_placements_against_both_wheel_wells" time="0.001" /><testcase classname="tests.test_vehicle_obstacles" name="test_side_contact_is_allowed_but_any_positive_penetration_is_rejected[0]" time="0.001" /><testcase classname="tests.test_vehicle_obstacles" name="test_side_contact_is_allowed_but_any_positive_penetration_is_rejected[1e-08]" time="0.001" /><testcase classname="tests.test_vehicle_obstacles" name="test_side_contact_is_allowed_but_any_positive_penetration_is_rejected[0.1]" time="0.001" /><testcase classname="tests.test_vehicle_obstacles" name="test_obstacle_support_and_stacking_respect_load_bearing[False]" time="0.001" /><testcase classname="tests.test_vehicle_obstacles" name="test_obstacle_support_and_stacking_respect_load_bearing[True]" time="0.001" /><testcase classname="tests.test_vehicle_obstacles" name="test_load_bearing_foundation_does_not_disable_cargo_stack_limits" time="0.001" /><testcase classname="tests.test_vehicle_obstacles" name="test_collision_uses_rotated_dimensions" time="0.001" /><testcase classname="tests.test_vehicle_obstacles" name="test_initial_packing_and_final_guard_never_accept_obstacle_overlap" time="0.002"><failure message="assert ([])">monkeypatch = &lt;_pytest.monkeypatch.MonkeyPatch object at 0x000001D3512A1310&gt;
+
+    def test_initial_packing_and_final_guard_never_accept_obstacle_overlap(monkeypatch):
+        request = problem([package("A"), package("B")], vehicle=vehicle(max_cog_offset_ratio=0.25, obstacles=[obstacle(
+            x=280, y=90, length=70, width=70, height=50)]))
+        captured = []
+        def keep_initial(self, initial, zones):
+            captured.extend(initial)
+            return initial
+        monkeypatch.setattr(LoadBalanceSearch, "improve", keep_initial)
+        result = OptimizationClient().solve_in_process(request)
+&gt;       assert captured and result.placements
+E       assert ([])
+
+tests\test_vehicle_obstacles.py:119: AssertionError</failure></testcase><testcase classname="tests.test_vehicle_obstacles" name="test_rigid_translation_into_obstacle_is_rejected_then_repack_is_safe" time="0.002" /><testcase classname="tests.test_vehicle_obstacles" name="test_swept_unload_path_cannot_cross_fixed_obstacles[pull]" time="0.001" /><testcase classname="tests.test_vehicle_obstacles" name="test_swept_unload_path_cannot_cross_fixed_obstacles[lateral]" time="0.001" /><testcase classname="tests.test_vehicle_obstacles" name="test_swept_unload_path_cannot_cross_fixed_obstacles[lift]" time="0.001" /><testcase classname="tests.test_vehicle_obstacles" name="test_unload_can_lift_over_low_obstacle_without_penetrating_it" time="0.001" /><testcase classname="tests.test_vehicle_obstacles" name="test_obstacle_stays_after_first_delivery_stop_is_removed" time="0.001" /><testcase classname="tests.test_vehicle_obstacles" name="test_real_request_offline_solver_preserves_ids_and_all_hard_constraints" time="0.008"><failure message="AssertionError: assert 0 == 18&#10; +  where 0 = len([])&#10; +    where [] = EngineOptimizationResponse(placements=[], unplaced=[UnplacedData(package_id='57', reason='CONSTRAINT_VIOLATED', violat...ront_axle_load=None, rear_axle_load=None, rehandling_count=0), candidates=[], algorithm_name=None, algorithms_tried=[]).placements">def test_real_request_offline_solver_preserves_ids_and_all_hard_constraints():
+        request, _ = real_case()
+        request.time_limit_sec = 5
+        result = OptimizationClient().solve_in_process(request)
+&gt;       assert len(result.placements) == 18  # Verified feasible with both real wheel wells, not forced by the solver.
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       AssertionError: assert 0 == 18
+E        +  where 0 = len([])
+E        +    where [] = EngineOptimizationResponse(placements=[], unplaced=[UnplacedData(package_id='57', reason='CONSTRAINT_VIOLATED', violat...ront_axle_load=None, rear_axle_load=None, rehandling_count=0), candidates=[], algorithm_name=None, algorithms_tried=[]).placements
+
+tests\test_vehicle_obstacles.py:183: AssertionError</failure></testcase><testcase classname="tests.test_vehicle_obstacles" name="test_invalid_obstacle_metadata_is_not_silently_ignored[bad0]" time="0.002" /><testcase classname="tests.test_vehicle_obstacles" name="test_invalid_obstacle_metadata_is_not_silently_ignored[bad1]" time="0.001" /><testcase classname="tests.test_vehicle_obstacles" name="test_invalid_obstacle_metadata_is_not_silently_ignored[bad2]" time="0.001" /><testcase classname="tests.test_vehicle_obstacles" name="test_duplicate_and_out_of_bounds_obstacles_are_rejected" time="0.001" /><testcase classname="tests.test_vehicle_obstacles" name="test_timeout_fallback_keeps_only_obstacle_free_validated_incumbent" time="0.002" /><testcase classname="tests.test_vehicle_obstacles" name="test_remote_engine_cannot_ignore_wheel_wells" time="0.004"><error message="failed on setup with &quot;RuntimeError: REAL_NETWORK_DISABLED_IN_MERGE_REGRESSION&quot;">self = &lt;Coroutine test_remote_engine_cannot_ignore_wheel_wells&gt;
+
+    def setup(self) -&gt; None:
+        runner_fixture_id = f"_{self._loop_scope}_scoped_runner"
+        if runner_fixture_id not in self.fixturenames:
+            self.fixturenames.append(runner_fixture_id)
+        # When loop factories are configured, resolve the loop factory
+        # fixture early so that a factory variant change cascades cache
+        # invalidation before any async fixture checks its cache.
+        hook_caller = self.config.hook.pytest_asyncio_loop_factories
+        if hook_caller.get_hookimpls():
+            _ = self._request.getfixturevalue(_asyncio_loop_factory.__name__)
+&gt;       return super().setup()
+               ^^^^^^^^^^^^^^^
+
+.venv\Lib\site-packages\pytest_asyncio\plugin.py:558: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+.venv\Lib\site-packages\pytest_asyncio\plugin.py:924: in pytest_fixture_setup
+    return (yield)
+            ^^^^^
+.venv\Lib\site-packages\pytest_asyncio\plugin.py:1039: in _scoped_runner
+    ).__enter__()
+      ^^^^^^^^^^^
+D:\python\Lib\asyncio\runners.py:59: in __enter__
+    self._lazy_init()
+D:\python\Lib\asyncio\runners.py:137: in _lazy_init
+    self._loop = events.new_event_loop()
+                 ^^^^^^^^^^^^^^^^^^^^^^^
+D:\python\Lib\asyncio\events.py:810: in new_event_loop
+    return get_event_loop_policy().new_event_loop()
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+D:\python\Lib\asyncio\events.py:699: in new_event_loop
+    return self._loop_factory()
+           ^^^^^^^^^^^^^^^^^^^^
+D:\python\Lib\asyncio\windows_events.py:315: in __init__
+    super().__init__(proactor)
+D:\python\Lib\asyncio\proactor_events.py:639: in __init__
+    self._make_self_pipe()
+D:\python\Lib\asyncio\proactor_events.py:784: in _make_self_pipe
+    self._ssock, self._csock = socket.socketpair()
+                               ^^^^^^^^^^^^^^^^^^^
+D:\python\Lib\socket.py:641: in socketpair
+    csock.connect((addr, port))
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+args = (&lt;socket.socket [closed] fd=-1, family=2, type=1, proto=0&gt;, ('127.0.0.1', 64510))
+kwargs = {}
+
+&gt;   def blocked(*args,**kwargs):raise RuntimeError('REAL_NETWORK_DISABLED_IN_MERGE_REGRESSION')
+                                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   RuntimeError: REAL_NETWORK_DISABLED_IN_MERGE_REGRESSION
+
+docs\reports\merge-repair\offline_pytest.py:8: RuntimeError</error></testcase><testcase classname="tests.test_vehicle_obstacles" name="test_remote_safe_result_is_preserved" time="0.002"><error message="failed on setup with &quot;RuntimeError: REAL_NETWORK_DISABLED_IN_MERGE_REGRESSION&quot;">self = &lt;Coroutine test_remote_safe_result_is_preserved&gt;
+
+    def setup(self) -&gt; None:
+        runner_fixture_id = f"_{self._loop_scope}_scoped_runner"
+        if runner_fixture_id not in self.fixturenames:
+            self.fixturenames.append(runner_fixture_id)
+        # When loop factories are configured, resolve the loop factory
+        # fixture early so that a factory variant change cascades cache
+        # invalidation before any async fixture checks its cache.
+        hook_caller = self.config.hook.pytest_asyncio_loop_factories
+        if hook_caller.get_hookimpls():
+            _ = self._request.getfixturevalue(_asyncio_loop_factory.__name__)
+&gt;       return super().setup()
+               ^^^^^^^^^^^^^^^
+
+.venv\Lib\site-packages\pytest_asyncio\plugin.py:558: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+.venv\Lib\site-packages\pytest_asyncio\plugin.py:924: in pytest_fixture_setup
+    return (yield)
+            ^^^^^
+.venv\Lib\site-packages\pytest_asyncio\plugin.py:1039: in _scoped_runner
+    ).__enter__()
+      ^^^^^^^^^^^
+D:\python\Lib\asyncio\runners.py:59: in __enter__
+    self._lazy_init()
+D:\python\Lib\asyncio\runners.py:137: in _lazy_init
+    self._loop = events.new_event_loop()
+                 ^^^^^^^^^^^^^^^^^^^^^^^
+D:\python\Lib\asyncio\events.py:810: in new_event_loop
+    return get_event_loop_policy().new_event_loop()
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+D:\python\Lib\asyncio\events.py:699: in new_event_loop
+    return self._loop_factory()
+           ^^^^^^^^^^^^^^^^^^^^
+D:\python\Lib\asyncio\windows_events.py:315: in __init__
+    super().__init__(proactor)
+D:\python\Lib\asyncio\proactor_events.py:639: in __init__
+    self._make_self_pipe()
+D:\python\Lib\asyncio\proactor_events.py:784: in _make_self_pipe
+    self._ssock, self._csock = socket.socketpair()
+                               ^^^^^^^^^^^^^^^^^^^
+D:\python\Lib\socket.py:641: in socketpair
+    csock.connect((addr, port))
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+args = (&lt;socket.socket [closed] fd=-1, family=2, type=1, proto=0&gt;, ('127.0.0.1', 64511))
+kwargs = {}
+
+&gt;   def blocked(*args,**kwargs):raise RuntimeError('REAL_NETWORK_DISABLED_IN_MERGE_REGRESSION')
+                                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   RuntimeError: REAL_NETWORK_DISABLED_IN_MERGE_REGRESSION
+
+docs\reports\merge-repair\offline_pytest.py:8: RuntimeError</error></testcase><testcase classname="tests.test_vehicle_obstacles" name="test_remote_result_cannot_lose_package_ids" time="0.002"><error message="failed on setup with &quot;RuntimeError: REAL_NETWORK_DISABLED_IN_MERGE_REGRESSION&quot;">self = &lt;Coroutine test_remote_result_cannot_lose_package_ids&gt;
+
+    def setup(self) -&gt; None:
+        runner_fixture_id = f"_{self._loop_scope}_scoped_runner"
+        if runner_fixture_id not in self.fixturenames:
+            self.fixturenames.append(runner_fixture_id)
+        # When loop factories are configured, resolve the loop factory
+        # fixture early so that a factory variant change cascades cache
+        # invalidation before any async fixture checks its cache.
+        hook_caller = self.config.hook.pytest_asyncio_loop_factories
+        if hook_caller.get_hookimpls():
+            _ = self._request.getfixturevalue(_asyncio_loop_factory.__name__)
+&gt;       return super().setup()
+               ^^^^^^^^^^^^^^^
+
+.venv\Lib\site-packages\pytest_asyncio\plugin.py:558: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+.venv\Lib\site-packages\pytest_asyncio\plugin.py:924: in pytest_fixture_setup
+    return (yield)
+            ^^^^^
+.venv\Lib\site-packages\pytest_asyncio\plugin.py:1039: in _scoped_runner
+    ).__enter__()
+      ^^^^^^^^^^^
+D:\python\Lib\asyncio\runners.py:59: in __enter__
+    self._lazy_init()
+D:\python\Lib\asyncio\runners.py:137: in _lazy_init
+    self._loop = events.new_event_loop()
+                 ^^^^^^^^^^^^^^^^^^^^^^^
+D:\python\Lib\asyncio\events.py:810: in new_event_loop
+    return get_event_loop_policy().new_event_loop()
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+D:\python\Lib\asyncio\events.py:699: in new_event_loop
+    return self._loop_factory()
+           ^^^^^^^^^^^^^^^^^^^^
+D:\python\Lib\asyncio\windows_events.py:315: in __init__
+    super().__init__(proactor)
+D:\python\Lib\asyncio\proactor_events.py:639: in __init__
+    self._make_self_pipe()
+D:\python\Lib\asyncio\proactor_events.py:784: in _make_self_pipe
+    self._ssock, self._csock = socket.socketpair()
+                               ^^^^^^^^^^^^^^^^^^^
+D:\python\Lib\socket.py:641: in socketpair
+    csock.connect((addr, port))
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+args = (&lt;socket.socket [closed] fd=-1, family=2, type=1, proto=0&gt;, ('127.0.0.1', 64512))
+kwargs = {}
+
+&gt;   def blocked(*args,**kwargs):raise RuntimeError('REAL_NETWORK_DISABLED_IN_MERGE_REGRESSION')
+                                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   RuntimeError: REAL_NETWORK_DISABLED_IN_MERGE_REGRESSION
+
+docs\reports\merge-repair\offline_pytest.py:8: RuntimeError</error></testcase><testcase classname="tests.test_vehicle_obstacles" name="test_unreadable_obstacle_relation_is_a_clear_error" time="0.001" /><testcase classname="tests.test_vehicle_obstacles" name="test_sqlalchemy_builder_loads_only_correct_vehicle_type_in_cm" time="0.059" /><testcase classname="tests.test_load_balance_search" name="test_mass_aware_zones_expand_heavy_small_volume_stop_without_changing_order" time="0.001" /><testcase classname="tests.test_load_balance_search" name="test_rigid_translation_repairs_cog_before_rejecting" time="0.001" /><testcase classname="tests.test_load_balance_search" name="test_repack_recovers_when_full_span_prevents_rigid_translation" time="0.006" /><testcase classname="tests.test_load_balance_search" name="test_one_stop_holds_most_mass_and_all_stops_unload_safely[1]" time="0.007" /><testcase classname="tests.test_load_balance_search" name="test_one_stop_holds_most_mass_and_all_stops_unload_safely[2]" time="0.005" /><testcase classname="tests.test_load_balance_search" name="test_one_stop_holds_most_mass_and_all_stops_unload_safely[3]" time="0.006" /><testcase classname="tests.test_load_balance_search" name="test_synthetic_eighteen_packages_with_uneven_mass_is_safe" time="0.021" /><testcase classname="tests.test_load_balance_search" name="test_axle_limits_steer_cog_instead_of_always_targeting_geometric_center" time="0.001"><failure message="AssertionError: assert 0 == 1&#10; +  where 0 = len([])&#10; +    where [] = EngineOptimizationResponse(placements=[], unplaced=[UnplacedData(package_id='A', reason='CONSTRAINT_VIOLATED', violate...ront_axle_load=None, rear_axle_load=None, rehandling_count=0), candidates=[], algorithm_name=None, algorithms_tried=[]).placements">def test_axle_limits_steer_cog_instead_of_always_targeting_geometric_center():
+        request = problem([package("A", weight=1000, l=100, w=100)],
+                          vehicle=vehicle(inner_l=600, front_axle_x=0, rear_axle_x=400,
+                                          max_cog_offset_ratio=0.3, empty_front_axle_load_kg=2000,
+                                          empty_rear_axle_load_kg=2000, front_axle_limit_kg=2600, rear_axle_limit_kg=2500))
+        result = OptimizationClient().solve_in_process(request)
+&gt;       assert len(result.placements) == 1
+E       AssertionError: assert 0 == 1
+E        +  where 0 = len([])
+E        +    where [] = EngineOptimizationResponse(placements=[], unplaced=[UnplacedData(package_id='A', reason='CONSTRAINT_VIOLATED', violate...ront_axle_load=None, rear_axle_load=None, rehandling_count=0), candidates=[], algorithm_name=None, algorithms_tried=[]).placements
+
+tests\test_load_balance_search.py:133: AssertionError</failure></testcase><testcase classname="tests.test_load_balance_search" name="test_balanced_cog_never_bypasses_unload_failure" time="0.002"><failure message="AssertionError: assert [PlacementDat...pinned=False)] == []&#10;  &#10;  Left contains 2 more items, first extra item: PlacementData(package_id='late', x=205.0, y=0.0, z=0.0, packed_l=100.0, packed_w=240.0, packed_h=50.0, rotation_type=0, step_sequence=1, stop_zone_id='S2', pinned=False)&#10;  Use -v to get more diff">monkeypatch = &lt;_pytest.monkeypatch.MonkeyPatch object at 0x000001D34FC18750&gt;
+
+    def test_balanced_cog_never_bypasses_unload_failure(monkeypatch):
+        request = problem([package("early", 1, l=100, w=240, h=50), package("late", 2, l=100, w=240, h=50)],
+                          vehicle=vehicle(inner_h=50, door_w=240, door_h=50))
+        blocked = [placement(request.packages[0], 100, 0), placement(request.packages[1], 300, 0)]
+        metadata = {p.id: p for p in request.packages}
+        assert ConstraintEngine.check_cog(blocked, request.vehicle, metadata).passed
+        assert not UnloadFeasibilityValidator.validate(blocked, metadata, request.vehicle).passed
+        monkeypatch.setattr(LoadBalanceSearch, "improve", lambda self, initial, zones: blocked)
+        result = OptimizationClient().solve_in_process(request)
+&gt;       assert result.placements == []
+E       AssertionError: assert [PlacementDat...pinned=False)] == []
+E         
+E         Left contains 2 more items, first extra item: PlacementData(package_id='late', x=205.0, y=0.0, z=0.0, packed_l=100.0, packed_w=240.0, packed_h=50.0, rotation_type=0, step_sequence=1, stop_zone_id='S2', pinned=False)
+E         Use -v to get more diff
+
+tests\test_load_balance_search.py:148: AssertionError</failure></testcase><testcase classname="tests.test_load_balance_search" name="test_genuinely_impossible_axle_capacity_keeps_fail_safe" time="0.002" /><testcase classname="tests.test_load_balance_search" name="test_cargo_counterbalance_can_reduce_an_empty_axle_overload" time="0.001"><failure message="AssertionError: assert 0 == 1&#10; +  where 0 = len([])&#10; +    where [] = EngineOptimizationResponse(placements=[], unplaced=[UnplacedData(package_id='counterweight', reason='CONSTRAINT_VIOLAT...ront_axle_load=None, rear_axle_load=None, rehandling_count=0), candidates=[], algorithm_name=None, algorithms_tried=[]).placements">def test_cargo_counterbalance_can_reduce_an_empty_axle_overload():
+        request = problem([package("counterweight", weight=500)], vehicle=vehicle(
+            max_cog_offset_ratio=0.4, empty_front_axle_load_kg=2200, empty_rear_axle_load_kg=1000,
+            front_axle_limit_kg=2000, rear_axle_limit_kg=5000))
+        # The existing static model permits the rear overhang to unload the front axle. Check the loaded plan, not just tare.
+        result = OptimizationClient().solve_in_process(request)
+&gt;       assert len(result.placements) == 1
+E       AssertionError: assert 0 == 1
+E        +  where 0 = len([])
+E        +    where [] = EngineOptimizationResponse(placements=[], unplaced=[UnplacedData(package_id='counterweight', reason='CONSTRAINT_VIOLAT...ront_axle_load=None, rear_axle_load=None, rehandling_count=0), candidates=[], algorithm_name=None, algorithms_tried=[]).placements
+
+tests\test_load_balance_search.py:168: AssertionError</failure></testcase><testcase classname="tests.test_load_balance_search" name="test_duplicate_package_or_stop_identity_is_rejected" time="0.001"><failure message="Failed: DID NOT RAISE ValueError">def test_duplicate_package_or_stop_identity_is_rejected():
+&gt;       with pytest.raises(ValueError, match="Duplicate package"):
+E       Failed: DID NOT RAISE ValueError
+
+tests\test_load_balance_search.py:174: Failed</failure></testcase><testcase classname="tests.test_load_balance_search" name="test_random_small_loads_never_duplicate_lose_or_accept_unsafe_packages[0]" time="0.005" /><testcase classname="tests.test_load_balance_search" name="test_random_small_loads_never_duplicate_lose_or_accept_unsafe_packages[1]" time="0.005" /><testcase classname="tests.test_load_balance_search" name="test_random_small_loads_never_duplicate_lose_or_accept_unsafe_packages[2]" time="0.005" /><testcase classname="tests.test_load_balance_search" name="test_random_small_loads_never_duplicate_lose_or_accept_unsafe_packages[3]" time="0.005" /><testcase classname="tests.test_load_balance_search" name="test_budget_is_cooperative_bounded_and_partition_survives_timeout" time="0.081"><failure message="assert False&#10; +  where False = any(&lt;generator object test_budget_is_cooperative_bounded_and_partition_survives_timeout.&lt;locals&gt;.&lt;genexpr&gt; at 0x000001D34FE63140&gt;)">monkeypatch = &lt;_pytest.monkeypatch.MonkeyPatch object at 0x000001D351833A50&gt;
+
+    def test_budget_is_cooperative_bounded_and_partition_survives_timeout(monkeypatch):
+        class Clock:
+            tick = 0.0
+            def __call__(self):
+                self.tick += 0.01
+                return self.tick
+        request = problem([package(i, i % 3 + 1) for i in range(60)], time_limit_sec=1)
+        monkeypatch.setattr("app.service.optimize.optimization_client.time.monotonic", Clock())
+        started = time.perf_counter()
+        result = OptimizationClient().solve_in_process(request)
+        assert time.perf_counter() - started &lt; 2
+        assert_partition(result, request)
+&gt;       assert any("TIME_LIMIT" in code for u in result.unplaced for code in u.violated_constraints)
+E       assert False
+E        +  where False = any(&lt;generator object test_budget_is_cooperative_bounded_and_partition_survives_timeout.&lt;locals&gt;.&lt;genexpr&gt; at 0x000001D34FE63140&gt;)
+
+tests\test_load_balance_search.py:202: AssertionError</failure></testcase><testcase classname="tests.test_load_balance_search" name="test_unload_validation_checks_absolute_deadline" time="0.001" /><testcase classname="tests.test_load_balance_search" name="test_overweight_reason_is_compatible_with_existing_postgresql_enum" time="0.001"><failure message="AssertionError: assert 'WEIGHT_LIMIT_EXCEEDED' == 'OVER_WEIGHT'&#10;  &#10;  - OVER_WEIGHT&#10;  + WEIGHT_LIMIT_EXCEEDED">def test_overweight_reason_is_compatible_with_existing_postgresql_enum():
+        request = problem([package("A", weight=6000)])
+        result = OptimizationClient().solve_in_process(request)
+        assert result.placements == []
+&gt;       assert result.unplaced[0].reason == "OVER_WEIGHT"
+E       AssertionError: assert 'WEIGHT_LIMIT_EXCEEDED' == 'OVER_WEIGHT'
+E         
+E         - OVER_WEIGHT
+E         + WEIGHT_LIMIT_EXCEEDED
+
+tests\test_load_balance_search.py:216: AssertionError</failure></testcase><testcase classname="tests.test_load_balance_search" name="test_full_revalidation_rejects_fragile_support_and_forged_rotation" time="0.001" /><testcase classname="tests.test_load_balance_search" name="test_logs_include_stop_mass_volume_zones_and_improvement_reason" time="0.002"><failure message="AssertionError: assert '[INPUT CHECK]' in 'INFO     app.service.optimize.stop_zone_calculator:stop_zone_calculator.py:228 [ZONE] Stop=S1 Sequence=1 Packages=1 W...228 [ZONE] Stop=S2 Sequence=2 Packages=1 Weight=1.0 Volume=30000.0 X=(0.0,305.0) ExpectedCOG_X=152.5 WeightBlend=0.0\n'&#10; +  where 'INFO     app.service.optimize.stop_zone_calculator:stop_zone_calculator.py:228 [ZONE] Stop=S1 Sequence=1 Packages=1 W...228 [ZONE] Stop=S2 Sequence=2 Packages=1 Weight=1.0 Volume=30000.0 X=(0.0,305.0) ExpectedCOG_X=152.5 WeightBlend=0.0\n' = &lt;_pytest.logging.LogCaptureFixture object at 0x000001D350088690&gt;.text">caplog = &lt;_pytest.logging.LogCaptureFixture object at 0x000001D350088690&gt;
+
+    def test_logs_include_stop_mass_volume_zones_and_improvement_reason(caplog):
+        caplog.set_level(logging.INFO)
+        request = problem([package("A", 1, 90), package("B", 2, 1)])
+        OptimizationClient().solve_in_process(request)
+        for marker in ("[INPUT CHECK]", "[ZONE]", "ExpectedCOG_X", "Weight=", "Volume=", "[INITIAL PLAN]",
+                       "[IMPROVEMENT]", "Reason=", "[FINAL VALIDATION]", "[OPTIMIZATION SUMMARY]"):
+&gt;           assert marker in caplog.text
+E           AssertionError: assert '[INPUT CHECK]' in 'INFO     app.service.optimize.stop_zone_calculator:stop_zone_calculator.py:228 [ZONE] Stop=S1 Sequence=1 Packages=1 W...228 [ZONE] Stop=S2 Sequence=2 Packages=1 Weight=1.0 Volume=30000.0 X=(0.0,305.0) ExpectedCOG_X=152.5 WeightBlend=0.0\n'
+E            +  where 'INFO     app.service.optimize.stop_zone_calculator:stop_zone_calculator.py:228 [ZONE] Stop=S1 Sequence=1 Packages=1 W...228 [ZONE] Stop=S2 Sequence=2 Packages=1 Weight=1.0 Volume=30000.0 X=(0.0,305.0) ExpectedCOG_X=152.5 WeightBlend=0.0\n' = &lt;_pytest.logging.LogCaptureFixture object at 0x000001D350088690&gt;.text
+
+tests\test_load_balance_search.py:237: AssertionError</failure></testcase><testcase classname="tests.test_load_balance_search" name="test_invalid_initial_eighteen_accepts_valid_seventeen_as_partial" time="0.021"><failure message="AssertionError: assert 18 == 17&#10; +  where 18 = len([PlacementData(package_id='heavy', x=310.0, y=120.0, z=0.0, packed_l=20.0, packed_w=20.0, packed_h=20.0, rotation_type..., packed_l=20.0, packed_w=20.0, packed_h=20.0, rotation_type=0, step_sequence=6, stop_zone_id='S1', pinned=False), ...])&#10; +    where [PlacementData(package_id='heavy', x=310.0, y=120.0, z=0.0, packed_l=20.0, packed_w=20.0, packed_h=20.0, rotation_type..., packed_l=20.0, packed_w=20.0, packed_h=20.0, rotation_type=0, step_sequence=6, stop_zone_id='S1', pinned=False), ...] = EngineOptimizationResponse(placements=[PlacementData(package_id='heavy', x=310.0, y=120.0, z=0.0, packed_l=20.0, packe..._axle_load=1575.6, rear_axle_load=2241.4, rehandling_count=0), candidates=[], algorithm_name=None, algorithms_tried=[]).placements">monkeypatch = &lt;_pytest.monkeypatch.MonkeyPatch object at 0x000001D35017D890&gt;
+
+    def test_invalid_initial_eighteen_accepts_valid_seventeen_as_partial(monkeypatch):
+        from app.service.optimize.engine_exception_handler import EngineExceptionHandler
+        request, initial, safe = partial_eighteen_fixture()
+        metadata = {p.id: p for p in request.packages}
+        assert validate_plan(safe, request.vehicle, metadata, time.monotonic() + 3) == []
+        assert "CENTER_OF_GRAVITY_OUT_OF_RANGE" in validate_plan(initial, request.vehicle, metadata, time.monotonic() + 3)
+        improve = LoadBalanceSearch.improve
+        monkeypatch.setattr(LoadBalanceSearch, "_repack", lambda *args: safe)
+        monkeypatch.setattr(LoadBalanceSearch, "improve", lambda self, ignored, zones: improve(self, initial, zones))
+        result = OptimizationClient().solve_in_process(request)
+&gt;       assert len(result.placements) == 17
+E       AssertionError: assert 18 == 17
+E        +  where 18 = len([PlacementData(package_id='heavy', x=310.0, y=120.0, z=0.0, packed_l=20.0, packed_w=20.0, packed_h=20.0, rotation_type..., packed_l=20.0, packed_w=20.0, packed_h=20.0, rotation_type=0, step_sequence=6, stop_zone_id='S1', pinned=False), ...])
+E        +    where [PlacementData(package_id='heavy', x=310.0, y=120.0, z=0.0, packed_l=20.0, packed_w=20.0, packed_h=20.0, rotation_type..., packed_l=20.0, packed_w=20.0, packed_h=20.0, rotation_type=0, step_sequence=6, stop_zone_id='S1', pinned=False), ...] = EngineOptimizationResponse(placements=[PlacementData(package_id='heavy', x=310.0, y=120.0, z=0.0, packed_l=20.0, packe..._axle_load=1575.6, rear_axle_load=2241.4, rehandling_count=0), candidates=[], algorithm_name=None, algorithms_tried=[]).placements
+
+tests\test_load_balance_search.py:263: AssertionError</failure></testcase><testcase classname="tests.test_load_balance_search" name="test_valid_initial_partial_survives_unsuccessful_improvement" time="0.001" /><testcase classname="tests.test_load_balance_search" name="test_timeout_preserves_validated_plan_through_final_response" time="0.003"><failure message="AssertionError: assert ['A', 'B'] == ['A']&#10;  &#10;  Left contains one more item: 'B'&#10;  Use -v to get more diff">monkeypatch = &lt;_pytest.monkeypatch.MonkeyPatch object at 0x000001D3516B4DD0&gt;
+
+    def test_timeout_preserves_validated_plan_through_final_response(monkeypatch):
+        class Clock:
+            now = 0.0
+            def __call__(self):
+                return self.now
+        clock = Clock()
+        request = problem([package("A"), package("B")], time_limit_sec=10)
+        safe = [placement(request.packages[0], 290, 105)]
+        improve = LoadBalanceSearch.improve
+        def repack(self, *args):
+            clock.now = 100.0
+            return [placement(request.packages[1], 550)]  # Unvalidated: must never replace A.
+        def improve_until_timeout(self, ignored, zones):
+            result = improve(self, safe, zones)
+            clock.now = 100.0
+            return result
+        monkeypatch.setattr("app.service.optimize.optimization_client.time.monotonic", clock)
+        monkeypatch.setattr(LoadBalanceSearch, "_repack", repack)
+        monkeypatch.setattr(LoadBalanceSearch, "improve", improve_until_timeout)
+        result = OptimizationClient().solve_in_process(request)
+&gt;       assert [p.package_id for p in result.placements] == ["A"]
+E       AssertionError: assert ['A', 'B'] == ['A']
+E         
+E         Left contains one more item: 'B'
+E         Use -v to get more diff
+
+tests\test_load_balance_search.py:299: AssertionError</failure></testcase><testcase classname="tests.test_load_balance_search" name="test_timeout_during_trial_validation_keeps_previous_incumbent" time="0.001" /><testcase classname="tests.test_load_balance_search" name="test_ranking_prioritizes_count_then_volume_then_balance" time="0.002" /><testcase classname="tests.test_load_balance_search" name="test_validated_snapshot_cannot_be_changed_by_trial_or_response_mutation" time="0.001" /><testcase classname="tests.test_load_balance_search" name="test_invalid_trials_never_replace_best_validated_plan[collision]" time="0.001" /><testcase classname="tests.test_load_balance_search" name="test_invalid_trials_never_replace_best_validated_plan[stacking]" time="0.001" /><testcase classname="tests.test_load_balance_search" name="test_invalid_trials_never_replace_best_validated_plan[orientation]" time="0.001" /><testcase classname="tests.test_load_balance_search" name="test_invalid_trials_never_replace_best_validated_plan[cog]" time="0.001" /><testcase classname="tests.test_load_balance_search" name="test_invalid_trials_never_replace_best_validated_plan[axle]" time="0.001" /><testcase classname="tests.test_load_balance_search" name="test_invalid_trials_never_replace_best_validated_plan[unload]" time="0.001" /><testcase classname="tests.test_load_balance_search" name="test_full_valid_initial_is_unchanged_and_skips_repack" time="0.001" /><testcase classname="tests.test_load_balance_search" name="test_repack_retains_validated_prefix_when_next_package_times_out" time="0.002" /><testcase classname="tests.test_load_balance_search" name="test_repack_generation_and_validation_are_bounded" time="0.002" /><testcase classname="tests.test_optimization_dtos.TestProblemRequestDto" name="test_problem_request_valid_construction_and_json_roundtrip" time="0.004" /><testcase classname="tests.test_optimization_dtos.TestProblemRequestDto" name="test_problem_request_defaults" time="0.001" /><testcase classname="tests.test_optimization_dtos.TestProblemRequestDto" name="test_vehicle_data_validation_missing_required" time="0.001" /><testcase classname="tests.test_optimization_dtos.TestEngineOptimizationResponseDto" name="test_engine_response_valid_construction_and_json_roundtrip" time="0.001" /><testcase classname="tests.test_optimization_dtos.TestEngineOptimizationResponseDto" name="test_optimization_result_alias" time="0.001" /><testcase classname="tests.test_optimization_dtos.TestJobStatusNotificationDto" name="test_job_status_notification_valid" time="0.001" /><testcase classname="tests.test_optimization_dtos.TestJobStatusNotificationDto" name="test_job_status_notification_optional_fields" time="0.001" /><testcase classname="tests.test_hc03_orientation" name="test_hc03_allowed_rotations[0-allowed_rotations0-True]" time="0.001" /><testcase classname="tests.test_hc03_orientation" name="test_hc03_allowed_rotations[1-allowed_rotations1-True]" time="0.001" /><testcase classname="tests.test_hc03_orientation" name="test_hc03_allowed_rotations[2-allowed_rotations2-False]" time="0.002" /><testcase classname="tests.test_hc03_orientation" name="test_hc03_allowed_rotations[1-allowed_rotations3-False]" time="0.001" /><testcase classname="tests.test_hc03_orientation" name="test_hc03_allowed_rotations[1-allowed_rotations4-True]" time="0.001" /><testcase classname="tests.test_hc03_orientation" name="test_hc03_allowed_rotations[1-allowed_rotations5-True]" time="0.001" /><testcase classname="tests.test_hc03_orientation" name="test_hc03_allowed_rotations[2-allowed_rotations6-False]" time="0.001" /><testcase classname="tests.test_hc03_orientation" name="test_hc03_allowed_rotations[0-allowed_rotations7-False]" time="0.001" /><testcase classname="tests.test_hc03_orientation" name="test_hc03_allowed_rotations[1-allowed_rotations8-False]" time="0.001" /><testcase classname="tests.test_hc03_orientation" name="test_hc03_rotation_locked[0-True]" time="0.001" /><testcase classname="tests.test_hc03_orientation" name="test_hc03_rotation_locked[1-False]" time="0.001" /><testcase classname="tests.test_hc03_orientation" name="test_hc03_rotation_locked[2-False]" time="0.001" /><testcase classname="tests.test_hc03_orientation" name="test_hc03_locked_package_rejects_even_if_list_allows" time="0.000" /><testcase classname="tests.test_hc03_orientation" name="test_hc03_unrotated_rejected_if_not_in_allowed_list" time="0.001" /><testcase classname="tests.test_hc03_orientation" name="test_hc03_requires_placement" time="0.000" /><testcase classname="tests.test_hc03_orientation" name="test_hc03_called_from_check_all" time="0.001" /></testsuite></testsuites>

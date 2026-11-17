@@ -5,6 +5,7 @@ import fu.se184491.loadmaster_be.constant.account.UserRole;
 import fu.se184491.loadmaster_be.constant.account.UserStatus;
 import fu.se184491.loadmaster_be.constant.account.UserType;
 
+import java.time.Instant;
 import java.time.LocalDateTime;
 
 public record UserListItemResponse(
@@ -27,7 +28,7 @@ public record UserListItemResponse(
         @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
         LocalDateTime subscriptionExpiresAt,
         Integer creditBalance,
-        @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
+        @JsonFormat(shape = JsonFormat.Shape.STRING, timezone = "UTC")
         LocalDateTime createdAt
 ) {
     public UserListItemResponse(

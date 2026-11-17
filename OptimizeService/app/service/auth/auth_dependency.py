@@ -9,6 +9,7 @@ from fastapi import Depends
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 
 from app.config.settings import settings
+from app.config.diagnostics import mark, failure
 from app.exception.app_exception import AppException
 from app.exception.error_code import ErrorCode
 
@@ -63,16 +64,10 @@ def decode_token(token: str) -> dict[str, Any]:
     except AppException:
         raise
     except (PyJWTError, ValueError, TypeError) as exc:
-        logger.warning(
-            "JWT validation failed: %s: %s",
-            type(exc).__name__,
-            exc,
-        )
+        failure(exc, event="authentication_failed")
         raise AppException(ErrorCode.UNAUTHENTICATED) from exc
     except Exception as exc:
-        logger.exception(
-            "Unexpected authentication error"
-        )
+        failure(exc, event="authentication_failed")
         raise AppException(ErrorCode.UNAUTHENTICATED) from exc
 
 
@@ -117,6 +112,7 @@ def require_role(*allowed_roles: str):
             ] = Depends(security),
     ) -> dict[str, Any]:
 
+        mark("authentication_started")
         if (
                 credentials is None
                 or credentials.scheme.lower() != "bearer"
@@ -145,6 +141,7 @@ def require_optimization_service(
     if payload.get("azp") != settings.KEYCLOAK_ALLOWED_CLIENT_ID:
         raise AppException(ErrorCode.UNAUTHORIZED)
 
+    mark("authentication_completed")
     return payload
 
 

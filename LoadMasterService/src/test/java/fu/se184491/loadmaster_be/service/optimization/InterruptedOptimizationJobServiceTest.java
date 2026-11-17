@@ -46,44 +46,10 @@ class InterruptedOptimizationJobServiceTest {
     }
 
     @Test
-    void runningJobPastLimitAndGraceIsFailedAndRefunded() {
-        when(writeRepository.failUnfinishedJob(5L, "JOB_INTERRUPTED")).thenReturn(1);
-
-        boolean failed = service.failIfInterrupted(OWNER, job("RUNNING"), CREATED.plusSeconds(361));
-
-        assertThat(failed).isTrue();
-        verify(creditService).refundCredit(1L, "job-uuid");
-    }
-
-    @Test
-    void pendingJobPastLimitIsAlsoClosed() {
-        when(writeRepository.failUnfinishedJob(5L, "JOB_INTERRUPTED")).thenReturn(1);
-
-        assertThat(service.failIfInterrupted(OWNER, job("PENDING"), CREATED.plusSeconds(3600))).isTrue();
-    }
-
-    @Test
-    void jobStillWithinLimitAndGraceIsLeftRunning() {
-        assertThat(service.failIfInterrupted(OWNER, job("RUNNING"), CREATED.plusSeconds(360))).isFalse();
-
-        verify(writeRepository, never()).failUnfinishedJob(anyLong(), anyString());
-        verify(creditService, never()).refundCredit(anyLong(), anyString());
-    }
-
-    @Test
-    void finishedJobIsNeverTouched() {
-        assertThat(service.failIfInterrupted(OWNER, job("COMPLETED"), CREATED.plusSeconds(86_400))).isFalse();
-
-        verify(writeRepository, never()).failUnfinishedJob(anyLong(), anyString());
-    }
-
-    @Test
-    void secondConcurrentReaderDoesNotRefundAgain() {
-        // Lượt kia đã đổi trạng thái: UPDATE có điều kiện không đổi dòng nào
-        when(writeRepository.failUnfinishedJob(5L, "JOB_INTERRUPTED")).thenReturn(0);
-
-        assertThat(service.failIfInterrupted(OWNER, job("RUNNING"), CREATED.plusSeconds(3600))).isFalse();
-
-        verify(creditService, never()).refundCredit(anyLong(), anyString());
+    void legacyUnfinishedJobsNeverInferMissingOwnershipFromAge() {
+        for (String state : java.util.List.of("PENDING", "RUNNING", "COMPLETED")) {
+            assertThat(service.failIfInterrupted(OWNER, job(state), CREATED.plusSeconds(86400))).isFalse();
+        }
+        org.mockito.Mockito.verifyNoInteractions(writeRepository, creditService);
     }
 }

@@ -110,21 +110,26 @@ def test_hc09_correct_stop_order():
     assert result.unload_sequence == ["A", "B"]
 
 
-def test_hc09_later_stop_blocks_earlier_stop():
-    """Stop 2 nằm chắn giữa Stop 1 và cửa sau."""
-    early = make_placement("A", x=100, y=50)
-    late = make_placement("B", x=250, y=50)
+def test_hc09_later_stop_can_be_bypassed_without_rehandling():
+    """Lateral/lift motion is allowed; positive-volume swept collisions are forbidden."""
+    early=make_placement('A',x=100,y=50)
+    late=make_placement('B',x=250,y=50)
+    # Independent witness: move A to y=0 at x=100, then pull to x=400.
+    # During lateral motion x(A)=[100,150] misses x(B)=[250,300].
+    # During pull y(A)=[0,50] only touches y(B)=[50,100], so no volume intersects.
+    assert early.x+early.packed_l <= late.x
+    assert early.packed_w <= late.y
+    result=validate([early,late],{'A':1,'B':2})
+    assert result.passed is True
+    assert result.unload_sequence==['A','B']
 
-    result = validate(
-        [early, late],
-        {"A": 1, "B": 2},
-    )
 
+def test_hc09_full_cross_section_blocker_cannot_be_bypassed():
+    early=make_placement('A',x=100,y=50)
+    wall=make_placement('B',x=250,y=0,w=200,h=200)
+    result=validate([early,wall],{'A':1,'B':2})
     assert result.passed is False
-    assert (
-            result.violation_code
-            == "MULTI_DROP_LIFO_VIOLATION"
-    )
+    assert result.violation_code=='MULTI_DROP_LIFO_VIOLATION'
 
 
 def test_hc09_different_lanes():
@@ -178,20 +183,16 @@ def test_hc09_narrow_door():
     )
 
 
-def test_hc09_outside_door_alignment():
-    """
-    Kiện nhỏ hơn cửa nhưng nằm lệch sang bên.
-    Không được dịch ngang nên không qua cửa.
-    """
-    a = make_placement("A", x=100, y=0, w=50)
-
-    result = validate(
-        [a],
-        {"A": 1},
-        make_vehicle(door_w=100),
-    )
-
-    assert result.passed is False
+def test_hc09_outside_door_alignment_can_slide_to_the_opening():
+    # Door y=[50,150]; move the 50cm-wide package from y=0 to y=50, then pull.
+    a=make_placement('A',x=100,y=0,w=50)
+    vehicle=make_vehicle(door_w=100)
+    target_y=50
+    assert target_y >= (vehicle.inner_w-vehicle.door_w)/2
+    assert target_y+a.packed_w <= (vehicle.inner_w+vehicle.door_w)/2
+    result=validate([a],{'A':1},vehicle)
+    assert result.passed is True
+    assert result.unload_sequence==['A']
 
 
 def test_hc09_door_height():
@@ -318,15 +319,11 @@ def test_hc09_invalid_stop_sequence(invalid_stop):
     Stop là số nguyên nhưng không hợp lệ.
     Validator phải từ chối.
     """
-    a = make_placement("A", x=100, y=50)
+    from pydantic import ValidationError
+    with pytest.raises(ValidationError) as error:
+        make_package("A", invalid_stop)
+    assert error.value.errors()[0]['loc'] == ('stop_index',)
 
-    result = validate(
-        [a],
-        {"A": invalid_stop},
-    )
-
-    assert result.passed is False
-    assert result.violation_code == "INVALID_UNLOAD_DATA"
 
 
 def test_hc09_fractional_stop_rejected_by_dto():

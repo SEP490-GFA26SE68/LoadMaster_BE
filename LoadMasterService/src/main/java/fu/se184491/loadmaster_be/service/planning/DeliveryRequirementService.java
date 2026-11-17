@@ -24,6 +24,9 @@ public interface DeliveryRequirementService {
             Pageable pageable
     );
 
+    Page<DeliveryRequirementResponse> search(Long companyId, String search, String status, String priority,
+            LocalDateTime deadlineFrom, LocalDateTime deadlineTo, boolean deadlineToExclusive, Pageable pageable);
+
     DeliveryRequirementResponse update(
             Long companyId,
             Long id,

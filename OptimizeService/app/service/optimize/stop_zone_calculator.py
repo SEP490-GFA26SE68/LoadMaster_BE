@@ -9,11 +9,15 @@ from app.dto.optimization.engine.zone_data import (
     StopZoneCalculationResponse,
 )
 import math
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class StopZoneCalculator:
     """
-    Tính kích thước vùng (zone) trong xe cho từng delivery stop theo công thức dynamic sizing.
+    Tính vùng gợi ý cho từng delivery stop, theo cm. Mặc định vẫn dùng thể tích cho tương thích API.
+    Solver có thể dùng weight_blend để phối hợp tỷ lệ thể tích/khối lượng; zone không thay hard constraints.
     Thỏa mãn:
       - volume_ratio_i = sum_volume_stop_i / total_volume_all_stops
       - zone_length_i  = usable_length * volume_ratio_i
@@ -63,7 +67,11 @@ class StopZoneCalculator:
         vehicle: Union[VehicleData, Dict[str, Any]],
         stops: List[Union[StopZoneInput, Dict[str, Any]]],
         accessibility_buffer: Optional[float] = None,
+        *,
+        weight_blend: float = 0.0,
     ) -> StopZoneCalculationResponse:
+        if not math.isfinite(weight_blend) or not 0.0 <= weight_blend <= 1.0:
+            raise ValueError("weight_blend must be between 0 and 1")
         if not stops:
             return StopZoneCalculationResponse(zones=[])
 
@@ -97,9 +105,24 @@ class StopZoneCalculator:
         num_stops = len(stops)
         num_buffers = max(0, num_stops - 1)
         total_buffer = num_buffers * buffer
-        usable_length = max(0.0, inner_l - total_buffer)
 
-        # 3. Parse stops & calculate volume per stop
+        if not math.isfinite(inner_l) or inner_l <= 0:
+            raise ValueError(
+                "Vehicle inner_l must be positive and finite"
+            )
+
+        if total_buffer >= inner_l:
+            raise ValueError(
+                f"Insufficient vehicle length for stop zones: "
+                f"inner_l={inner_l} cm, "
+                f"total_buffer={total_buffer} cm, "
+                f"stops={num_stops}"
+            )
+
+        usable_length = inner_l - total_buffer
+
+
+# 3. Parse stops & calculate volume per stop
         parsed_stops = []
         for idx, stop in enumerate(stops):
             if isinstance(stop, dict):
@@ -141,9 +164,11 @@ class StopZoneCalculator:
                 "volume": stop_vol,
                 "weight": stop_wt,
                 "original_idx": idx,
+                "count": len(pkgs),
             })
 
         total_vol = sum(s["volume"] for s in parsed_stops)
+        total_weight = sum(s["weight"] for s in parsed_stops)
 
         # 4. Calculate volume ratio & zone length for each stop
         for s in parsed_stops:
@@ -151,7 +176,9 @@ class StopZoneCalculator:
                 s["volume_ratio"] = s["volume"] / total_vol
             else:
                 s["volume_ratio"] = 1.0 / num_stops
-            s["zone_length"] = usable_length * s["volume_ratio"]
+            weight_ratio = s["weight"] / total_weight if total_weight > 0 else s["volume_ratio"]
+            allocation_ratio = (1.0 - weight_blend) * s["volume_ratio"] + weight_blend * weight_ratio
+            s["zone_length"] = usable_length * allocation_ratio
 
         # 5. Coordinate layout:
         # Stop giao trước (sequence 1 / stop đầu tiên) -> gần cửa sau (rear door, x = inner_l)
@@ -198,6 +225,9 @@ class StopZoneCalculator:
             vol = round(actual_len * cross_section, 4)
             wt_limit = round(max_payload * s["volume_ratio"], 2)
 
+            logger.info("[ZONE] Stop=%s Sequence=%s Packages=%s Weight=%s Volume=%s X=(%s,%s) ExpectedCOG_X=%s WeightBlend=%s",
+                        s["stop_id"], s["sequence"], s["count"], s["weight"], s["volume"],
+                        s["zone_start_x"], s["zone_end_x"], (s["zone_start_x"] + s["zone_end_x"]) / 2, weight_blend)
             zones.append(
                 ZoneData(
                     stop_id=s["stop_id"],

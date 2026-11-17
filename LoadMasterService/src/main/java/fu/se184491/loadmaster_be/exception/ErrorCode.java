@@ -14,6 +14,7 @@ public enum ErrorCode {
     UNCATEGORIZED_EXCEPTION("Lỗi hệ thống chưa được phân loại", HttpStatus.INTERNAL_SERVER_ERROR),
     INTERNAL_SERVER_ERROR("Đã xảy ra lỗi hệ thống", HttpStatus.INTERNAL_SERVER_ERROR),
     INVALID_INPUT("Dữ liệu đầu vào không hợp lệ", HttpStatus.BAD_REQUEST),
+    PACKAGE_CODE_MISMATCH("Mã không khớp kiện của phiên xếp hiện hành", HttpStatus.BAD_REQUEST),
     VALIDATION_ERROR("Lỗi xác thực dữ liệu", HttpStatus.BAD_REQUEST),
     RESOURCE_NOT_FOUND("Không tìm thấy tài nguyên yêu cầu", HttpStatus.NOT_FOUND),
 
@@ -97,6 +98,11 @@ public enum ErrorCode {
     PAYROLL_INVALID_PERIOD("Kỳ lương không hợp lệ, yêu cầu định dạng yyyy-MM", HttpStatus.BAD_REQUEST),
     PAYROLL_INVALID_DRIVER_ASSIGNMENT("Danh sách tài xế nhận lương năng suất không hợp lệ", HttpStatus.BAD_REQUEST),
     PAYROLL_INVALID_AMOUNT("Khối lượng, quãng đường và đơn giá lương phải là số không âm", HttpStatus.BAD_REQUEST),
+    REQUIREMENT_PACKAGES_INCOMPLETE("Chưa đủ kiện hàng để đưa vào chuyến", HttpStatus.CONFLICT),
+    REQUIREMENT_PACKAGE_COUNT_INVALID("Số kiện dự kiến của yêu cầu chưa hợp lệ", HttpStatus.CONFLICT),
+    REQUIREMENT_PACKAGES_INELIGIBLE("Kiện liên kết chưa đủ điều kiện phân chuyến", HttpStatus.CONFLICT),
+    REQUIREMENT_PACKAGE_COMPANY_MISMATCH("Kiện không thuộc công ty của yêu cầu", HttpStatus.FORBIDDEN),
+    REQUIREMENT_PACKAGE_ALREADY_ASSIGNED("Kiện đã thuộc chuyến khác", HttpStatus.CONFLICT),
     DELIVERY_REQUIREMENT_NOT_FOUND("Không tìm thấy nhu cầu giao hàng", HttpStatus.NOT_FOUND),
     DELIVERY_REQUIREMENT_NOT_PENDING("Chỉ có thể xóa nhu cầu giao hàng đang chờ xử lý", HttpStatus.BAD_REQUEST),
     INVALID_DELIVERY_REQUIREMENT_TRANSITION("Chuyển trạng thái nhu cầu giao hàng không hợp lệ", HttpStatus.BAD_REQUEST),
@@ -134,6 +140,10 @@ public enum ErrorCode {
     // -------------------------------------------------------------------------
     // Subscription & Payment errors
     // -------------------------------------------------------------------------
+    OPTIMIZATION_ENTITLEMENT_REQUIRED("Subscription is missing, inactive, expired or not yet started", HttpStatus.FORBIDDEN),
+    OPTIMIZATION_TIER_INVALID("Subscription algorithm configuration is invalid", HttpStatus.FORBIDDEN),
+    OPTIMIZATION_IDEMPOTENCY_CONFLICT("Idempotency key was used for a different optimization action", HttpStatus.CONFLICT),
+    OPTIMIZATION_RERUN_UNAVAILABLE("Optimization engine does not implement pinned rerun; no credits charged", HttpStatus.SERVICE_UNAVAILABLE),
     SUBSCRIPTION_NOT_FOUND("Không tìm thấy thông tin gói dịch vụ", HttpStatus.NOT_FOUND),
     SUBSCRIPTION_PLAN_ALREADY_EXISTS("Mã gói dịch vụ đã tồn tại", HttpStatus.CONFLICT),
     SUBSCRIPTION_TIER_ALREADY_EXISTS("Đã có một gói dịch vụ khác đang kích hoạt cho Tier này", HttpStatus.CONFLICT),
@@ -242,6 +252,7 @@ public enum ErrorCode {
     OPTIMIZATION_JOB_ALREADY_FINISHED("Lần tối ưu đã kết thúc (quá thời gian cho phép) trước khi có kết quả; kết quả bị bỏ và credit đã hoàn", HttpStatus.CONFLICT),
     OPTIMIZATION_SERVICE_UNAVAILABLE("Dịch vụ tối ưu xếp hàng không khả dụng", HttpStatus.SERVICE_UNAVAILABLE),
     INSUFFICIENT_CREDITS("Công ty không đủ credit để chạy tối ưu xếp hàng", HttpStatus.PAYMENT_REQUIRED),
+    PACKING_PROFILE_ORIENTATION_INVALID("Packing profile orientation is invalid", HttpStatus.BAD_REQUEST),
     PINNED_SET_INVALID("Bộ kiện đã ghim không đứng vững; chưa chạy tối ưu và không trừ credit", HttpStatus.BAD_REQUEST),
     PLAN_STALE("Phương án lỗi thời: hàng, xe hoặc điểm giao của chuyến đã đổi sau khi tối ưu", HttpStatus.CONFLICT),
     MANUAL_EDIT_INVALID("Bản chỉnh tay không hợp lệ", HttpStatus.BAD_REQUEST),
@@ -371,7 +382,14 @@ public enum ErrorCode {
     PICKUP_REASON_REQUIRED("Phải ghi lý do", HttpStatus.BAD_REQUEST),
     PICKUP_PACKAGE_NOT_AT_STOP("Kiện nhận không thuộc điểm nhận hiện tại", HttpStatus.CONFLICT),
     PICKUP_PACKAGE_ALREADY_PICKED("Kiện nhận này đã lên xe", HttpStatus.CONFLICT),
-    PICKUP_STOP_INCOMPLETE("Còn kiện nhận chưa đối chiếu ở điểm nhận", HttpStatus.CONFLICT);
+    PICKUP_STOP_INCOMPLETE("Còn kiện nhận chưa đối chiếu ở điểm nhận", HttpStatus.CONFLICT),
+
+    WAREHOUSE_ASSIGNMENT_INVALID("Chỉ phân công nhân viên kho đang hoạt động vào kho đang hoạt động", HttpStatus.CONFLICT),
+    DRIVER_VEHICLE_PRESENCE_UNVERIFIED("Chưa xác minh xe tại kho xuất phát. Vui lòng nhờ nhân viên được phân công tại kho xác nhận xe thực tế trước khi xuất phát", HttpStatus.CONFLICT),
+    DRIVER_VEHICLE_DEPARTURE_BLOCKED("Chưa thể xuất phát do trạng thái xe hoặc kho chưa phù hợp. Vui lòng liên hệ nhân viên kho hoặc điều phối viên để kiểm tra", HttpStatus.CONFLICT),
+    VEHICLE_DEPARTURE_INELIGIBLE("Xe không còn đủ điều kiện tại kho xuất phát. Vui lòng chọn lại xe", HttpStatus.CONFLICT),
+    VEHICLE_WAREHOUSE_FORBIDDEN("Không có quyền xác nhận xe tại kho này", HttpStatus.FORBIDDEN),
+    VEHICLE_PRESENCE_CONFLICT("Trạng thái xe hoặc mã xác nhận bị xung đột. Vui lòng tải lại", HttpStatus.CONFLICT);
 
     private final String message;
     private final HttpStatus httpStatus;

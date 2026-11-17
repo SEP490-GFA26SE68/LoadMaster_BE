@@ -4,6 +4,7 @@ from sqlalchemy.orm import declarative_base, sessionmaker, Session
 
 from app.config.database_url import sqlalchemy_database_url
 from app.config.settings import settings
+from app.config.diagnostics import mark, failure
 
 db_url = sqlalchemy_database_url(settings.DATABASE_URL, settings.POSTGRES_USER, settings.POSTGRES_PASSWORD)
 connect_args = {"check_same_thread": False} if db_url.get_backend_name() == "sqlite" else {}
@@ -23,7 +24,13 @@ Base = declarative_base()
 
 
 def get_db() -> Generator[Session, None, None]:
-    db = SessionLocal()
+    mark("db_dependency_initialization")
+    try:
+        db = SessionLocal()
+    except Exception as exc:
+        failure(exc, event="db_dependency_initialization_failed")
+        raise
+    mark("db_dependency_ready")
     try:
         yield db
     finally:

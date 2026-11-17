@@ -21,6 +21,30 @@ class ConstraintEngine:
     EPSILON = 1e-4
 
 
+    @staticmethod
+    def obstacle_overlaps_bounds(obstacle, lower, upper):
+        """Strict positive intersection on all axes; touching a face is not penetration."""
+        return all(min(hi, start + size) - max(lo, start) > 0.0
+                   for lo, hi, start, size in zip(lower, upper,
+                       (obstacle.x, obstacle.y, obstacle.z),
+                       (obstacle.length, obstacle.width, obstacle.height)))
+
+    @classmethod
+    def check_obstacles(cls, placement, vehicle):
+        lower = (placement.x, placement.y, placement.z)
+        upper = (placement.x + placement.packed_l, placement.y + placement.packed_w,
+                 placement.z + placement.packed_h)
+        for o in vehicle.obstacles:
+            if cls.obstacle_overlaps_bounds(o, lower, upper):
+                return ConstraintResult.fail("OBSTACLE_OVERLAP",
+                    f"Package {placement.package_id} intersects fixed obstacle {o.id}")
+            xy_contact = (min(upper[0], o.x + o.length) - max(lower[0], o.x) > 0
+                          and min(upper[1], o.y + o.width) - max(lower[1], o.y) > 0)
+            if not o.load_bearing and xy_contact and abs(placement.z - o.z - o.height) <= cls.EPSILON:
+                return ConstraintResult.fail("NON_BEARING_SUPPORT",
+                    f"Package {placement.package_id} rests on non-load-bearing obstacle {o.id}")
+        return ConstraintResult.success()
+
     @classmethod
     def check_fragility(
             cls,
@@ -141,6 +165,7 @@ class ConstraintEngine:
             placement: PlacementData,
             existing_placements: List[PlacementData],
             packages: Dict[str, PackageData],
+            *, obstacles=None,
     ) -> ConstraintResult:
         """
         HC-07: Stacking Load.
@@ -262,6 +287,14 @@ class ConstraintEngine:
                 if area > cls.EPSILON:
                     supports.append((bottom_idx, area))
 
+            for obstacle in obstacles or []:
+                if not obstacle.load_bearing or abs(obstacle.z + obstacle.height - top.z) > cls.EPSILON:
+                    continue
+                dx = max(0.0, min(top.x + top.packed_l, obstacle.x + obstacle.length) - max(top.x, obstacle.x))
+                dy = max(0.0, min(top.y + top.packed_w, obstacle.y + obstacle.width) - max(top.y, obstacle.y))
+                if dx * dy > cls.EPSILON:
+                    supports.append((None, dx * dy))  # Foundation absorbs load, never a cargo package.
+
             if not supports:
                 return fail(
                     "INVALID_STACKING_DATA",
@@ -280,7 +313,8 @@ class ConstraintEngine:
                 load_share = (
                         transmitted_load * area / total_contact_area
                 )
-                received_load[bottom_idx] += load_share
+                if bottom_idx is not None:
+                    received_load[bottom_idx] += load_share
 
         # 4. Kiểm tra tải chồng trên từng kiện.
         for idx, p in enumerate(all_placements):
@@ -338,6 +372,7 @@ class ConstraintEngine:
             cls,
             placement: PlacementData,
             existing_placements: List[PlacementData],
+            *, obstacles=None,
     ) -> ConstraintResult:
         """
         HC-05: Support Area >= 70%.
@@ -377,7 +412,7 @@ class ConstraintEngine:
         # Các hình chữ nhật tiếp xúc trực tiếp với đáy kiện.
         rectangles = []
 
-        for p in existing_placements:
+        for p in [*existing_placements, *(o for o in (obstacles or []) if o.load_bearing)]:
             values = (
                 p.x, p.y, p.z,
                 p.packed_l, p.packed_w, p.packed_h,
@@ -492,6 +527,7 @@ class ConstraintEngine:
             cls,
             placement: PlacementData,
             existing_placements: List[PlacementData],
+            *, obstacles=None,
     ) -> ConstraintResult:
         """
         HC-06: Static Geometric Stability.
@@ -543,7 +579,7 @@ class ConstraintEngine:
         # Tập đỉnh của các vùng tiếp xúc bên dưới.
         contact_points = []
 
-        for p in existing_placements:
+        for p in [*existing_placements, *(o for o in (obstacles or []) if o.load_bearing)]:
             support_values = (
                 p.x, p.y, p.z,
                 p.packed_l, p.packed_w, p.packed_h,
@@ -643,61 +679,28 @@ class ConstraintEngine:
         return ConstraintResult.success()
 
 
+
     @classmethod
     def check_rotation_allowed(
-            cls,
-            package: PackageData,
-            placement: Optional[PlacementData] = None,
+        cls,
+        package: PackageData,
+        placement: Optional[PlacementData] = None,
     ) -> ConstraintResult:
-        """
-        HC-03: Orientation Constraint.
 
-        Hướng xoay của placement phải thuộc danh sách
-        allowed_rotations của kiện.
-
-        Quy ước mã orientation phải thống nhất giữa
-        Backend, Optimizer và 3D Viewer.
-        """
         if placement is None:
             return ConstraintResult.fail(
                 violation_code="ORIENTATION_NOT_ALLOWED",
-                detail="Placement is required to validate orientation",
+                detail="Placement is required",
             )
 
-        rotation_type = str(placement.rotation_type)
-
-        # Không cho phép xoay nếu kiện bị khóa xoay.
-        if package.rotation_allowed is False:
-            if rotation_type != "0":
-                return ConstraintResult.fail(
-                    violation_code="ORIENTATION_NOT_ALLOWED",
-                    detail=(
-                        f"Package {package.id} does not allow "
-                        f"rotation {rotation_type}"
-                    ),
-                )
-
-        allowed_rotations = package.allowed_rotations
-
-        # Nếu có danh sách hướng xoay cụ thể,
-        # hướng được chọn bắt buộc nằm trong danh sách.
-        if allowed_rotations:
-            allowed = {
-                str(rotation)
-                for rotation in allowed_rotations
-            }
-
-            if rotation_type not in allowed:
-                return ConstraintResult.fail(
-                    violation_code="ORIENTATION_NOT_ALLOWED",
-                    detail=(
-                        f"Package {package.id}: orientation "
-                        f"{rotation_type} is not permitted. "
-                        f"Allowed orientations: {sorted(allowed)}"
-                    ),
-                )
-
+        from app.dto.optimization.engine.rotation_contract import matches_rotation
+        if not matches_rotation(package, placement, cls.EPSILON):
+            return ConstraintResult.fail(
+                violation_code="ORIENTATION_NOT_ALLOWED",
+                detail=f"Package {package.id}: forbidden rotation or inconsistent packed dimensions",
+            )
         return ConstraintResult.success()
+
 
 
 
@@ -1409,6 +1412,11 @@ class ConstraintEngine:
                 violations.append(res_boundary)
 
 
+        if vehicle is not None:
+            res_obstacles = cls.check_obstacles(placement, vehicle)
+            if not res_obstacles.passed:
+                violations.append(res_obstacles)
+
         # HC-02: Non-overlap
         res_overlap = cls.check_non_overlap(
             placement,
@@ -1434,17 +1442,18 @@ class ConstraintEngine:
 
 
 
-        # HC-09: Multi-drop LIFO
-        # Chỉ cần kiểm tra thứ tự dỡ khi có từ hai stop.
-        if packages_map:
-            res_lifo = cls.check_multi_drop_lifo(
-                placement,
-                existing_placements,
-                packages_map,
-            )
 
-            if not res_lifo.passed:
-                violations.append(res_lifo)
+
+
+        # HC-09: Flexible Unloading
+        # Không kiểm tra chặn đường Straight-X tại đây.
+        #
+        # UnloadFeasibilityValidator sẽ kiểm tra
+        # thứ tự giao hàng và đường dỡ thực tế
+        # trên toàn bộ LoadPlan.
+
+
+
 
 
         # HC-10: Door Clearance
@@ -1465,7 +1474,7 @@ class ConstraintEngine:
                 violations.append(res_rot)
 
         # 2. Support area
-        res_supp = cls.check_support_area(placement, existing_placements)
+        res_supp = cls.check_support_area(placement, existing_placements, obstacles=vehicle.obstacles if vehicle else [])
         if not res_supp.passed:
             violations.append(res_supp)
 
@@ -1474,6 +1483,7 @@ class ConstraintEngine:
         res_stability = cls.check_stability(
             placement,
             existing_placements,
+            obstacles=vehicle.obstacles if vehicle else [],
         )
 
         if not res_stability.passed:
@@ -1486,7 +1496,7 @@ class ConstraintEngine:
             violations.append(res_frag)
 
         # 4. Stacking weight
-        res_stack = cls.check_stacking(placement, existing_placements, packages_map)
+        res_stack = cls.check_stacking(placement, existing_placements, packages_map, obstacles=vehicle.obstacles if vehicle else [])
         if not res_stack.passed:
             violations.append(res_stack)
 

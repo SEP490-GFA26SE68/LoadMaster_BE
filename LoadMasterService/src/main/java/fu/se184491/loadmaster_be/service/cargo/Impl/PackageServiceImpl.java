@@ -82,6 +82,8 @@ public class PackageServiceImpl implements PackageService {
                                         ? entity.getPackageType().getId()
                                         : null
                         )
+                        .packageTypeName(entity.getPackageType() == null ? null : entity.getPackageType().getName())
+                        .packageTypeCode(entity.getPackageType() == null ? null : entity.getPackageType().getTypeCode())
                         .packageCode(entity.getPackageCode())
                         .packageName(entity.getPackageName())
                         .trackingBarcode(entity.getTrackingBarcode())
@@ -862,6 +864,25 @@ public class PackageServiceImpl implements PackageService {
             Long packageTypeId,
             Pageable pageable
     ) {
+        return getAllPackages(companyId, orderId, packageTypeId, null, pageable);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Page<PackageResponse> getAllPackages(
+            Long companyId, Long orderId, Long packageTypeId, String packageCode, Pageable pageable
+    ) {
+        return searchPackages(companyId, orderId, packageTypeId, packageCode, null, null, null, pageable);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Page<PackageResponse> searchPackages(Long companyId, Long orderId, Long packageTypeId,
+            String packageCode, String search,
+            fu.se184491.loadmaster_be.constant.cargo.PackageStatus status,
+            fu.se184491.loadmaster_be.constant.cargo.HandlingClass handlingClass, Pageable pageable) {
+        var page = fu.se184491.loadmaster_be.service.cargo.WarehouseListQuery.pageable(
+            pageable, null, null, fu.se184491.loadmaster_be.service.cargo.WarehouseListQuery.PACKAGES);
         Specification<CargoPackage> spec =
                 (root, query, cb) -> {
 
@@ -876,6 +897,13 @@ public class PackageServiceImpl implements PackageService {
                                     companyId
                             )
                     );
+
+                    // Null is ordinary list; a supplied blank code must not broaden the query.
+                    if (packageCode != null) {
+                        String exact = packageCode.trim().toLowerCase(Locale.ROOT);
+                        predicates.add(exact.isEmpty() ? cb.disjunction()
+                                : cb.equal(cb.lower(cb.trim(root.<String>get("packageCode"))), exact));
+                    }
 
                     if (orderId != null) {
                         predicates.add(
@@ -902,7 +930,10 @@ public class PackageServiceImpl implements PackageService {
 
 
         Page<CargoPackage> packagePage =
-                packageRepository.findAll(spec, pageable);
+                packageRepository.findAll(spec.and(
+                    fu.se184491.loadmaster_be.service.cargo.WarehouseListQuery.packages(
+                        search, status, handlingClass, page.getSort())),
+                    fu.se184491.loadmaster_be.service.cargo.WarehouseListQuery.window(page));
 
         if (packagePage.isEmpty()) {
             return packagePage.map(this::mapToResponse);

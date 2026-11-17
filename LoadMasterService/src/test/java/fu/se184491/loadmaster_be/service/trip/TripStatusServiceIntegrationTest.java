@@ -55,6 +55,10 @@ class TripStatusServiceIntegrationTest {
     @Autowired
     private TripStatusService tripStatusService;
 
+    // Infrastructure outside this database scenario stays synthetic/offline.
+    @MockitoBean
+    private org.springframework.data.redis.connection.lettuce.LettuceConnectionFactory redisConnectionFactory;
+
     @MockitoBean
     private JwtDecoder jwtDecoder;
 

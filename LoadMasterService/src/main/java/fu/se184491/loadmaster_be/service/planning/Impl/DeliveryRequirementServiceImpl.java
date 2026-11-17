@@ -104,21 +104,17 @@ public class DeliveryRequirementServiceImpl implements DeliveryRequirementServic
             LocalDateTime deadlineTo,
             Pageable pageable
     ) {
-        Specification<DeliveryRequirement> filters = (root, query, builder) -> {
-            var predicates = new ArrayList<jakarta.persistence.criteria.Predicate>();
-            predicates.add(builder.equal(root.get("company").get("id"), companyId));
-            if (status != null) {
-                predicates.add(builder.equal(root.get("status"), status));
-            }
-            if (deadlineFrom != null) {
-                predicates.add(builder.greaterThanOrEqualTo(root.get("deadline"), deadlineFrom));
-            }
-            if (deadlineTo != null) {
-                predicates.add(builder.lessThanOrEqualTo(root.get("deadline"), deadlineTo));
-            }
-            return builder.and(predicates.toArray(jakarta.persistence.criteria.Predicate[]::new));
-        };
-        return deliveryRequirementRepository.findAll(filters, pageable).map(this::toResponse);
+        return search(companyId, null, status == null ? null : status.name(), null, deadlineFrom, deadlineTo, false, pageable);
+    }
+
+    @Override
+    public Page<DeliveryRequirementResponse> search(Long companyId, String search, String status, String priority,
+            LocalDateTime deadlineFrom, LocalDateTime deadlineTo, boolean exclusive, Pageable pageable) {
+        fu.se184491.loadmaster_be.service.planning.RequirementListQuery.validate(status, priority, deadlineFrom, deadlineTo, pageable);
+        var spec = fu.se184491.loadmaster_be.service.planning.RequirementListQuery.spec(
+                companyId, search, status, priority, deadlineFrom, deadlineTo, exclusive, pageable.getSort());
+        return deliveryRequirementRepository.findAll(spec,
+                org.springframework.data.domain.PageRequest.of(pageable.getPageNumber(), pageable.getPageSize())).map(this::toResponse);
     }
 
 

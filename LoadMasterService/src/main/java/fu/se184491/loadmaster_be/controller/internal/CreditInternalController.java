@@ -13,7 +13,7 @@ import org.springframework.web.bind.annotation.*;
 @RestController
 // Chỉ dịch vụ tối ưu (service account có realm role OPTIMIZATION_CREDIT) gọi được.
 @RequestMapping("/api/internal/credits")
-@PreAuthorize("hasAuthority('ROLE_OPTIMIZATION_CREDIT')")
+@PreAuthorize("@creditServiceAuthorization.isAllowed(authentication)")
 @RequiredArgsConstructor
 @Slf4j
 public class CreditInternalController {
@@ -33,7 +33,7 @@ public class CreditInternalController {
     @PostMapping("/refund")
     public ResponseEntity<ApiResponse<Void>> refundCredit(@Valid @RequestBody CreditInternalRequest request) {
         log.info("Internal request to refund credit: companyId={}, reference={}", request.getCompanyId(), request.getReference());
-        creditService.refundCredit(request.getCompanyId(), request.getReference());
+        creditService.refundCredit(request.getCompanyId(), request.getReference(), request.getExecutionGeneration());
         return ResponseEntity.ok(ApiResponse.<Void>builder()
                 .success(true)
                 .message("Credit refunded successfully")

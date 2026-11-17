@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Optional, List, Union
 from uuid import UUID
 from pydantic import BaseModel, Field
+from app.dto.optimization.engine.rotation_contract import RotationCode
 
 
 class PlacementData(BaseModel):
@@ -14,7 +15,7 @@ class PlacementData(BaseModel):
     packed_l: float
     packed_w: float
     packed_h: float
-    rotation_type: Union[int, str] = 0
+    rotation_type: RotationCode = 0
     step_sequence: int = 1
     stop_zone_id: Optional[Union[UUID, str, int]] = None
     # Kiện đã ghim: giữ nguyên vị trí và hướng của phương án trước.
