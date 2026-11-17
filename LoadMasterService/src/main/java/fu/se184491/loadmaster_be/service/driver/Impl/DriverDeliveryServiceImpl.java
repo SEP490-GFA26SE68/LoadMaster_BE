@@ -1,5 +1,6 @@
 package fu.se184491.loadmaster_be.service.driver.Impl;
 
+import fu.se184491.loadmaster_be.constant.cargo.HandlingClass;
 import fu.se184491.loadmaster_be.constant.cargo.PackageStatus;
 import fu.se184491.loadmaster_be.constant.driver.DeliveryIssueKind;
 import fu.se184491.loadmaster_be.constant.driver.ManualConfirmReason;
@@ -19,6 +20,7 @@ import fu.se184491.loadmaster_be.dto.response.driver.ManualConfirmationResponse;
 import fu.se184491.loadmaster_be.dto.response.monitoring.TripLiveStopResponse;
 import fu.se184491.loadmaster_be.entity.account.User;
 import fu.se184491.loadmaster_be.entity.cargo.CargoPackage;
+import fu.se184491.loadmaster_be.entity.cargo.PackageType;
 import fu.se184491.loadmaster_be.entity.common.AuditLog;
 import fu.se184491.loadmaster_be.entity.driver.DeliveryIssue;
 import fu.se184491.loadmaster_be.entity.driver.ManualUnloadConfirmation;
@@ -361,14 +363,29 @@ public class DriverDeliveryServiceImpl implements DriverDeliveryService {
                     totalWeight = totalWeight.add(weight);
                 }
                 totalPackages++;
+                PackageType pt = pkg.getPackageType();
+                BigDecimal lengthCm = pkg.getActualLength() != null ? pkg.getActualLength()
+                        : (pt != null && pt.getLength() != null ? BigDecimal.valueOf(pt.getLength()) : null);
+                BigDecimal widthCm = pkg.getActualWidth() != null ? pkg.getActualWidth()
+                        : (pt != null && pt.getWidth() != null ? BigDecimal.valueOf(pt.getWidth()) : null);
+                BigDecimal heightCm = pkg.getActualHeight() != null ? pkg.getActualHeight()
+                        : (pt != null && pt.getHeight() != null ? BigDecimal.valueOf(pt.getHeight()) : null);
+                boolean isFragile = pkg.getHandlingClass() == HandlingClass.FRAGILE
+                        || (pt != null && Boolean.TRUE.equals(pt.getFragile()));
                 packageDetails.add(DriverTripDetailResponse.PackageDetail.builder()
                         .packageId(pkg.getId())
                         .packageCode(pkg.getPackageCode())
                         .trackingBarcode(pkg.getTrackingBarcode())
                         .packageName(packageName(pkg))
+                        .packageTypeName(pt != null ? pt.getName() : null)
                         .weightKg(weight)
+                        .lengthCm(lengthCm)
+                        .widthCm(widthCm)
+                        .heightCm(heightCm)
                         .status(pkg.getStatus() != null ? pkg.getStatus().name() : null)
                         .handlingClass(pkg.getHandlingClass() != null ? pkg.getHandlingClass().name() : null)
+                        .fragile(isFragile)
+                        .note(pkg.getNote())
                         .build());
             }
 

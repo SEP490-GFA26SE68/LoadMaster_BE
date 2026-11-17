@@ -95,9 +95,15 @@ public class DriverTripDetailResponse {
         private String packageCode;
         private String trackingBarcode;
         private String packageName;
+        private String packageTypeName;
         private BigDecimal weightKg;
+        private BigDecimal lengthCm;
+        private BigDecimal widthCm;
+        private BigDecimal heightCm;
         private String status;
         private Integer unloadOrder;
         private String handlingClass;
+        private Boolean fragile;
+        private String note;
     }
 }
