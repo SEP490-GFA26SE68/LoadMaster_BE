@@ -959,37 +959,40 @@ class OptimizationClient:
             cog_z = round(weighted_z / total_placed_weight, 3)
 
 
-            # HC-12: Tải trục tổng = tải xe rỗng + tải hàng.
-            front_x = float(vt.front_axle_x)
-            rear_x = float(vt.rear_axle_x)
-            wheelbase = rear_x - front_x
+            # HC-12: Tải trục tổng = tải xe rỗng + tải hàng. Loại xe không khai đủ vị trí trục và tải xe rỗng
+            # (HC-12 được bỏ qua) thì không có số tải trục: để None.
+            axle_values = (vt.front_axle_x, vt.rear_axle_x, vt.empty_front_axle_load_kg, vt.empty_rear_axle_load_kg)
+            if all(v is not None for v in axle_values) and float(vt.rear_axle_x) > float(vt.front_axle_x):
+                front_x = float(vt.front_axle_x)
+                rear_x = float(vt.rear_axle_x)
+                wheelbase = rear_x - front_x
 
-            rear_cargo_load = sum(
-                float(packages_map[str(p.package_id)].weight)
-                * (
-                        float(p.x)
-                        + float(p.packed_l) / 2.0
-                        - front_x
-                )
-                / wheelbase
-                for p in placements
-            )
-
-            front_cargo_load = (
-                    total_placed_weight - rear_cargo_load
-            )
-
-            front_axle_load = round(
-                float(vt.empty_front_axle_load_kg)
-                + front_cargo_load,
-                2,
+                rear_cargo_load = sum(
+                    float(packages_map[str(p.package_id)].weight)
+                    * (
+                            float(p.x)
+                            + float(p.packed_l) / 2.0
+                            - front_x
+                    )
+                    / wheelbase
+                    for p in placements
                 )
 
-            rear_axle_load = round(
-                float(vt.empty_rear_axle_load_kg)
-                + rear_cargo_load,
-                2,
+                front_cargo_load = (
+                        total_placed_weight - rear_cargo_load
                 )
+
+                front_axle_load = round(
+                    float(vt.empty_front_axle_load_kg)
+                    + front_cargo_load,
+                    2,
+                    )
+
+                rear_axle_load = round(
+                    float(vt.empty_rear_axle_load_kg)
+                    + rear_cargo_load,
+                    2,
+                    )
 
 
         vol_util = round(total_placed_volume / vehicle_volume, 4) if vehicle_volume > 0 else 0.0
