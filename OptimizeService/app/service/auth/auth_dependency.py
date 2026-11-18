@@ -53,7 +53,8 @@ def decode_token(token: str) -> dict[str, Any]:
                     "sub",
                 ],
             },
-            leeway=30,
+            # Keycloak và Windows lệch giờ: token vừa cấp có iat ở tương lai vài chục giây.
+            leeway=120,
         )
 
         if not isinstance(payload, dict):
@@ -64,9 +65,11 @@ def decode_token(token: str) -> dict[str, Any]:
     except AppException:
         raise
     except (PyJWTError, ValueError, TypeError) as exc:
+        logger.error("authentication_failed jwt_error=%s", type(exc).__name__)
         failure(exc, event="authentication_failed")
         raise AppException(ErrorCode.UNAUTHENTICATED) from exc
     except Exception as exc:
+        logger.error("authentication_failed jwt_error=%s", type(exc).__name__)
         failure(exc, event="authentication_failed")
         raise AppException(ErrorCode.UNAUTHENTICATED) from exc
 

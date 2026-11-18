@@ -3,7 +3,7 @@ Trạng thái cuối của job là cuối: khi LoadMasterService đã đánh d�
 hoàn), kết quả đến muộn từ bộ giải bị bỏ — trạng thái giữ FAILED, không lưu phương án nào, credit chỉ hoàn một lần.
 """
 import uuid
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from sqlalchemy import create_engine, event, text
@@ -146,6 +146,39 @@ def _runner(session_factory, solve, ledger):
         session_factory=session_factory,
         credit_client=ledger,
     )
+
+
+@pytest.mark.asyncio
+async def test_background_run_releases_session_before_engine_solve():
+    order: list[str] = []
+
+    def tracking_factory():
+        session = MagicMock()
+        order.append("open")
+        session.close.side_effect = lambda: order.append("close")
+        return session
+
+    async def solve(_problem):
+        order.append("solve")
+        return _placed()
+
+    job_service = MagicMock()
+    job_service.get_job.return_value = MagicMock(trip_id=1, company_id=COMPANY)
+    client = MagicMock()
+    client.solve = solve
+    handler = MagicMock()
+    handler.handle_result.return_value = OptimizationJobStatus.COMPLETED
+    runner = AsyncOptimizationRunner(
+        job_service=job_service,
+        optimization_client=client,
+        engine_exception_handler=handler,
+        persistence_service=MagicMock(),
+        session_factory=tracking_factory,
+        credit_client=Ledger(),
+    )
+    with patch("app.service.optimize.authorized_job_dispatch.claim_for_execution", return_value=True):
+        await runner.run("job-1", problem=MagicMock())
+    assert order.index("close") < order.index("solve")
 
 
 @pytest.mark.asyncio

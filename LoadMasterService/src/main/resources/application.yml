@@ -36,6 +36,7 @@ spring:
       idle-timeout: 30000
       max-lifetime: 600000
       connection-timeout: 20000
+      leak-detection-threshold: ${DB_LEAK_DETECTION_MS:15000}
 
   data:
     redis:

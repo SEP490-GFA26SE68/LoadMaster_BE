@@ -12,6 +12,14 @@ from app.exception.error_code import ErrorCode
 from app.repository.optimization.optimization_job_repository import OptimizationJobRepository
 
 
+class JobAlreadyFinishedError(Exception):
+    """Job đã ở trạng thái cuối: không ghi đè, rollback phần kết quả đến muộn trong cùng giao dịch."""
+
+    def __init__(self, current_status: str):
+        self.current_status = current_status
+        super().__init__(f"Optimization job already finished with status {current_status}")
+
+
 class OptimizationJobService:
     def __init__(self, repository: Optional[OptimizationJobRepository] = None):
         self.repository = repository or OptimizationJobRepository()
@@ -67,7 +75,9 @@ class OptimizationJobService:
         if job.execution_generation is not None:
             raise RuntimeError("V2 status changes require ownership protocol")
         status_val = status.value if hasattr(status, "value") else str(status)
-        job.status = status_val
-        if computation_ms is not None:
-            job.computation_ms = computation_ms
-        return self.repository.update(job, db)
+        if not self.repository.transition_unfinished(str(job_uuid), status_val, computation_ms, db):
+            db.rollback()
+            raise JobAlreadyFinishedError(self.get_job(job_uuid, db).status)
+        db.commit()
+        db.refresh(job)
+        return job

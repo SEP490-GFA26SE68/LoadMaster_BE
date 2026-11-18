@@ -626,9 +626,7 @@ public class DriverServiceImpl implements DriverService {
                 .estimatedCompletionTime(estimatedCompletionTime)
                 .departureTime(trip.getDepartureTime())
                 .status(trip.getStatus() != null ? trip.getStatus().name() : null)
-                .loadingCompleted(loadingExecutionRepository
-                        .existsByLoadPlanJobTripIdAndStatus(trip.getId(), LoadingExecutionStatus.COMPLETED))
-                .completedAt(completedAtOf(trip, stops))
+//                .completedAt(completedAtOf(trip, stops))
                 .loadingCompleted(departureReadiness.canStart(trip, currentDriver(null)))
                 .completedAt(completedAtOf(trip))
                 .build();
@@ -644,20 +642,34 @@ public class DriverServiceImpl implements DriverService {
         return pkg.getPackageType() != null ? pkg.getPackageType().getWeightKg() : null;
     }
 
-    /** Giờ giao xong của chuyến đã giao; chuyến giao xong trước khi có cột completed_at thì lấy giờ đến muộn nhất của các điểm. */
-    private LocalDateTime completedAtOf(Trip trip, List<DeliveryStop> stops) {
+    private LocalDateTime completedAtOf(Trip trip) {
         if (trip.getStatus() != TripStatus.DELIVERED) {
             return null;
         }
         if (trip.getCompletedAt() != null) {
             return trip.getCompletedAt();
         }
-        return stops.stream()
+        return deliveryStopRepository.findByTripIdOrderByStopSequenceAsc(trip.getId()).stream()
                 .map(DeliveryStop::getActualArrival)
                 .filter(java.util.Objects::nonNull)
                 .max(LocalDateTime::compareTo)
                 .orElse(null);
     }
+
+    /** Giờ giao xong của chuyến đã giao; chuyến giao xong trước khi có cột completed_at thì lấy giờ đến muộn nhất của các điểm. */
+//    private LocalDateTime completedAtOf(Trip trip, List<DeliveryStop> stops) {
+//        if (trip.getStatus() != TripStatus.DELIVERED) {
+//            return null;
+//        }
+//        if (trip.getCompletedAt() != null) {
+//            return trip.getCompletedAt();
+//        }
+//        return stops.stream()
+//                .map(DeliveryStop::getActualArrival)
+//                .filter(java.util.Objects::nonNull)
+//                .max(LocalDateTime::compareTo)
+//                .orElse(null);
+//    }
 
     private static boolean isPlacementForStop(PackagePlacement placement, Long stopId, Set<Long> stopPackageIds) {
         if (placement == null) {

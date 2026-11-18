@@ -61,12 +61,14 @@ class RolePermissionMappingTest {
     }
 
     @Test
-    @DisplayName("MANAGER chỉ đọc: xe, loại xe, yêu cầu giao")
-    void manager_hasReadOnlyPermissions() {
+    @DisplayName("MANAGER lập yêu cầu giao: có DELIVERY_DEMAND_MANAGE và CUSTOMER_MANAGE")
+    void manager_managesDeliveryRequirements() {
         assertThat(rolePermissionMapping.getPermissions(UserRole.MANAGER)).containsExactlyInAnyOrder(
                 Permission.VEHICLES_READ,
                 Permission.VEHICLE_TYPES_READ,
-                Permission.DELIVERY_READ
+                Permission.DELIVERY_READ,
+                Permission.DELIVERY_DEMAND_MANAGE,
+                Permission.CUSTOMER_MANAGE
         );
     }
 

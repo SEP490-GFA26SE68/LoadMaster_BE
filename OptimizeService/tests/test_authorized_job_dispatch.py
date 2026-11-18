@@ -8,7 +8,10 @@ from app.config.database import Base
 from app.entity.optimization.optimization_job import OptimizationJob
 from app.entity.trip_model import Trip
 from app.dto.request.optimization_request import OptimizationJobRequest
+from datetime import timedelta
+from app.config.clock import vietnam_now
 from app.service.optimize.authorized_job_dispatch import claim_for_execution, require_authorized_job
+from app.service.optimize.pending_job_recovery import stale_pending_v1_uuids
 from app.service.optimize.optimization_job_service import OptimizationJobService
 from app.service.optimize.async_optimization_runner import AsyncOptimizationRunner
 from app.exception.app_exception import AppException
@@ -38,6 +41,19 @@ def db():
         db.commit()
         yield db
     engine.dispose()
+
+def test_stale_pending_recovery_skips_fresh_and_unbilled_jobs(db):
+    fresh = db.query(OptimizationJob).filter_by(job_uuid="authorized").one()
+    fresh.created_at = vietnam_now()
+    db.commit()
+    assert stale_pending_v1_uuids(db) == []
+    fresh.created_at = vietnam_now() - timedelta(seconds=20)
+    db.commit()
+    assert stale_pending_v1_uuids(db) == ["authorized"]
+    db.execute(text("DELETE FROM credit_transactions"))
+    db.commit()
+    assert stale_pending_v1_uuids(db) == []
+
 
 def test_retry_claims_existing_job_once_without_creating_another(db):
     assert claim_for_execution("authorized",7,db)

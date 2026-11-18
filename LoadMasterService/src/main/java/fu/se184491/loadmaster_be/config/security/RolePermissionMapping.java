@@ -54,14 +54,15 @@ public class RolePermissionMapping {
                 )
         );
 
-        // Quản lý công ty chỉ đọc. Kiện, chuyến, giám sát, phương án xếp hàng
-        // mở cho MANAGER bằng ROLE_MANAGER ở từng endpoint đọc.
+        // Quản lý công ty đọc xe/loại xe; lập và sửa yêu cầu giao (cùng DISPATCHER).
         map.put(
                 UserRole.MANAGER,
                 Set.of(
                         Permission.VEHICLES_READ,
                         Permission.VEHICLE_TYPES_READ,
-                        Permission.DELIVERY_READ
+                        Permission.DELIVERY_READ,
+                        Permission.DELIVERY_DEMAND_MANAGE,
+                        Permission.CUSTOMER_MANAGE
                 )
         );
 
