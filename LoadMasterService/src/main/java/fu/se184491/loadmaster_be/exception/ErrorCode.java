@@ -115,6 +115,8 @@ public enum ErrorCode {
     LICENSE_PLATE_ALREADY_EXISTS("Biển số phương tiện đã tồn tại trong hệ thống", HttpStatus.CONFLICT),
 
     VEHICLE_WIDTH_HIGH("Phải nhập cả chiều rộng và chiều cao cửa xe", HttpStatus.BAD_REQUEST),
+    VEHICLE_AXLE_CONFIG_INCOMPLETE("Phải nhập đủ sáu thông số trục (vị trí, giới hạn tải, tải xe rỗng của trục trước và trục sau) hoặc để trống cả sáu", HttpStatus.BAD_REQUEST),
+    VEHICLE_AXLE_ORDER("Vị trí trục sau phải lớn hơn vị trí trục trước", HttpStatus.BAD_REQUEST),
     VEHICLE_SIZE("Kích thước cửa xe phải lớn hơn 0", HttpStatus.BAD_REQUEST),
     WIDTH_RATIO("Chiều rộng cửa không được vượt quá chiều rộng thùng xe", HttpStatus.BAD_REQUEST),
 

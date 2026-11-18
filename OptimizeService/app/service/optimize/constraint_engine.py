@@ -831,6 +831,12 @@ class ConstraintEngine:
             "empty_rear_axle_load_kg",
         )
 
+        # 0. Loại xe không khai báo thông số trục nào (xe Van, xe công ty chưa có số liệu): không kiểm HC-12,
+        #    cùng luật với xếp tay của LoadMasterService (ManualLayoutValidator.AxleConfig.complete()).
+        #    Khai một phần vẫn là lỗi dữ liệu và bị chặn ở bước 1.
+        if all(getattr(vehicle, field_name, None) is None for field_name in required_fields):
+            return ConstraintResult.success()
+
         # 1. Kiểm tra đầy đủ cấu hình xe.
         for field_name in required_fields:
             value = getattr(vehicle, field_name, None)

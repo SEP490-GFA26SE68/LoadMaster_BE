@@ -311,3 +311,24 @@ class TestPersistAlgorithmName:
         dumped = layout.model_dump()
         assert dumped["algorithm_name"] == SA
         assert "algorithms_tried" not in dumped
+
+
+class TestVehicleWithoutAxleData:
+    """Loại xe không khai thông số trục nào vẫn xếp được hàng ở mọi gói (trước đây ra 0 kiện vì AXLE_CONFIG_MISSING)."""
+
+    @staticmethod
+    def _no_axle(problem: ProblemRequest) -> ProblemRequest:
+        vehicle = problem.vehicle.model_copy(update={
+            "front_axle_x": None, "rear_axle_x": None,
+            "front_axle_limit_kg": None, "rear_axle_limit_kg": None,
+            "empty_front_axle_load_kg": None, "empty_rear_axle_load_kg": None,
+        })
+        return problem.model_copy(update={"vehicle": vehicle})
+
+    @pytest.mark.parametrize("tier", ["BASIC", "PRO", "ULTIMATE"])
+    def test_packs_every_package_without_axle_data(self, fast_meta, tier):
+        problem = self._no_axle(_problem(algorithm_name=tier, count=10, seed=11))
+        result = OptimizationClient(engine_url=None).solve_candidates(problem)
+        assert len(result.placements) == 10
+        assert not result.unplaced
+        _assert_physically_valid(result)
