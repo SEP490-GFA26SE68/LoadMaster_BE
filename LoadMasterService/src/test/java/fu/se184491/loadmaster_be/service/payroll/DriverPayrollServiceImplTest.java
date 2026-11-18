@@ -1,5 +1,6 @@
 package fu.se184491.loadmaster_be.service.payroll;
 
+import fu.se184491.loadmaster_be.client.BrevoClient;
 import fu.se184491.loadmaster_be.constant.account.UserRole;
 import fu.se184491.loadmaster_be.constant.account.UserStatus;
 import fu.se184491.loadmaster_be.constant.payroll.PayrollPeriodStatus;
@@ -52,6 +53,9 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -71,6 +75,7 @@ class DriverPayrollServiceImplTest {
     @Mock private LoadPlanRepository loadPlanRepository;
     @Mock private PackagePlacementRepository packagePlacementRepository;
     @Mock private UserRepository userRepository;
+    @Mock private BrevoClient brevoClient;
 
     @InjectMocks private DriverPayrollServiceImpl service;
 
@@ -386,6 +391,77 @@ class DriverPayrollServiceImplTest {
         assertEquals(new BigDecimal("9000000"), response.baseSalaryVnd());
     }
 
+    private static LocalDate nextMonthStart() {
+        return YearMonth.now(ZoneId.of("Asia/Ho_Chi_Minh")).plusMonths(1).atDay(1);
+    }
+
+    private void stubSalaryRaiseContext(String companyBase, String existingRaise) {
+        LocalDate nextMonth = nextMonthStart();
+        when(userRepository.findById(21L)).thenReturn(Optional.of(driverOne));
+        when(rateRepository.findFirstByCompanyIdAndEffectiveFromLessThanEqualOrderByEffectiveFromDesc(10L, nextMonth))
+                .thenReturn(Optional.of(CompanyPayrollRate.builder().id(5L).company(company)
+                        .effectiveFrom(nextMonth.minusMonths(3)).baseSalaryVnd(new BigDecimal(companyBase)).build()));
+        when(baseSalaryOverrideRepository
+                .findFirstByDriverIdAndEffectiveFromLessThanEqualOrderByEffectiveFromDesc(21L, nextMonth))
+                .thenReturn(existingRaise == null ? Optional.empty() : Optional.of(DriverBaseSalaryOverride.builder()
+                        .company(company).driver(driverOne).effectiveFrom(nextMonth.minusMonths(2))
+                        .baseSalaryVnd(new BigDecimal(existingRaise)).build()));
+        when(baseSalaryOverrideRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+    }
+
+    @Test
+    void emailsTheDriverWithOldAndNewBaseSalaryWhenTheRaiseLiftsTheirPay() {
+        stubSalaryRaiseContext("15000000", null);
+
+        service.setDriverBaseSalary(10L, 21L, new DriverBaseSalaryRequest(nextMonthStart(), new BigDecimal("17000000")));
+
+        org.mockito.ArgumentCaptor<String> content = org.mockito.ArgumentCaptor.forClass(String.class);
+        verify(brevoClient).sendEmail(eq("21@loadmaster.vn"), anyString(), content.capture());
+        String month = String.format("%02d/%d", nextMonthStart().getMonthValue(), nextMonthStart().getYear());
+        org.junit.jupiter.api.Assertions.assertTrue(content.getValue().contains("17.000.000"), content.getValue());
+        org.junit.jupiter.api.Assertions.assertTrue(content.getValue().contains("15.000.000"), content.getValue());
+        org.junit.jupiter.api.Assertions.assertTrue(content.getValue().contains(month), content.getValue());
+    }
+
+    @Test
+    void doesNotEmailWhenTheRaiseIsStillBelowTheCompanyBaseSalary() {
+        stubSalaryRaiseContext("19000000", null);
+
+        service.setDriverBaseSalary(10L, 21L, new DriverBaseSalaryRequest(nextMonthStart(), new BigDecimal("17000000")));
+
+        verify(brevoClient, never()).sendEmail(anyString(), anyString(), anyString());
+    }
+
+    @Test
+    void doesNotEmailWhenAPreviousRaiseIsLowered() {
+        stubSalaryRaiseContext("15000000", "17000000");
+
+        service.setDriverBaseSalary(10L, 21L, new DriverBaseSalaryRequest(nextMonthStart(), new BigDecimal("16000000")));
+
+        verify(brevoClient, never()).sendEmail(anyString(), anyString(), anyString());
+    }
+
+    @Test
+    void doesNotEmailWhenTheAmountDoesNotChange() {
+        stubSalaryRaiseContext("15000000", "17000000");
+
+        service.setDriverBaseSalary(10L, 21L, new DriverBaseSalaryRequest(nextMonthStart(), new BigDecimal("17000000")));
+
+        verify(brevoClient, never()).sendEmail(anyString(), anyString(), anyString());
+    }
+
+    @Test
+    void theRaiseIsStillSavedWhenSendingTheEmailFails() {
+        stubSalaryRaiseContext("15000000", null);
+        doThrow(new RuntimeException("brevo down")).when(brevoClient).sendEmail(anyString(), anyString(), anyString());
+
+        var response = service.setDriverBaseSalary(10L, 21L,
+                new DriverBaseSalaryRequest(nextMonthStart(), new BigDecimal("17000000")));
+
+        assertEquals(new BigDecimal("17000000"), response.baseSalaryVnd());
+        verify(baseSalaryOverrideRepository).save(any());
+    }
+
     @Test
     void calculatePeriodSplitsProductivityBetweenTwoDriversAndKeepsFullBaseSalaryForEach() {
         LocalDate periodStart = LocalDate.of(2026, 11, 1);
@@ -500,6 +576,69 @@ class DriverPayrollServiceImplTest {
         assertEquals(1, response.drivers().size());
         assertEquals(new BigDecimal("12000000"), response.drivers().get(0).baseSalaryVnd());
         assertEquals(new BigDecimal("12000000"), response.drivers().get(0).totalSalaryVnd());
+    }
+
+    private PayrollPeriodResponse calculateWithBaseSalaries(String companyBase, String driverRaise) {
+        LocalDate periodStart = LocalDate.of(2026, 11, 1);
+        CompanyPayrollRate rate = CompanyPayrollRate.builder()
+                .id(5L).company(company).effectiveFrom(periodStart)
+                .baseSalaryVnd(new BigDecimal(companyBase))
+                .rateVndPerKg(new BigDecimal("100"))
+                .commissionPercent(new BigDecimal("15")).handlingFeeVndPerKg(new BigDecimal("150")).handlingDriverPercent(new BigDecimal("85"))
+                .build();
+        DriverBaseSalaryOverride raise = DriverBaseSalaryOverride.builder()
+                .driver(driverOne).effectiveFrom(LocalDate.of(2026, 6, 1)).baseSalaryVnd(new BigDecimal(driverRaise)).build();
+        when(rateRepository.findFirstByCompanyIdAndEffectiveFromLessThanEqualOrderByEffectiveFromDesc(10L, periodStart))
+                .thenReturn(Optional.of(rate));
+        when(periodRepository.findByCompanyIdAndPeriodStartForUpdate(10L, periodStart)).thenReturn(Optional.empty());
+        when(userRepository.findByCompanyIdAndUserRoleTypeAndStatus(10L, UserRole.DRIVER, UserStatus.ACTIVE))
+                .thenReturn(List.of(driverOne));
+        when(tripRepository.findByCompanyIdAndStatusAndCompletedAtGreaterThanEqualAndCompletedAtLessThan(
+                10L, TripStatus.DELIVERED, periodStart.atStartOfDay(), periodStart.plusMonths(1).atStartOfDay()))
+                .thenReturn(List.of());
+        when(baseSalaryOverrideRepository
+                .findFirstByDriverIdAndEffectiveFromLessThanEqualOrderByEffectiveFromDesc(21L, periodStart))
+                .thenReturn(Optional.of(raise));
+        return service.calculatePeriod(10L, "2026-11");
+    }
+
+    @Test
+    void driverRaiseIsLiftedWhenCompanyBaseSalaryLaterGoesHigherThanIt() {
+        var response = calculateWithBaseSalaries("19000000", "17000000");
+
+        assertEquals(new BigDecimal("19000000"), response.drivers().get(0).baseSalaryVnd());
+    }
+
+    @Test
+    void driverRaiseStillWinsWhileCompanyBaseSalaryIsLowerThanIt() {
+        var response = calculateWithBaseSalaries("15000000", "17000000");
+
+        assertEquals(new BigDecimal("17000000"), response.drivers().get(0).baseSalaryVnd());
+    }
+
+    @Test
+    void driverRaiseIsNotCutWhenCompanyLowersBaseSalaryBelowIt() {
+        var response = calculateWithBaseSalaries("16000000", "17000000");
+
+        assertEquals(new BigDecimal("17000000"), response.drivers().get(0).baseSalaryVnd());
+    }
+
+    @Test
+    void driverSeesTheHigherOfTheirRaiseAndTheCompanySalaryBeforeFinalizing() {
+        LocalDate periodStart = LocalDate.of(2026, 11, 1);
+        CompanyPayrollRate rate = CompanyPayrollRate.builder()
+                .id(5L).company(company).effectiveFrom(periodStart).baseSalaryVnd(new BigDecimal("19000000")).build();
+        DriverBaseSalaryOverride raise = DriverBaseSalaryOverride.builder()
+                .driver(driverOne).effectiveFrom(LocalDate.of(2026, 6, 1)).baseSalaryVnd(new BigDecimal("17000000")).build();
+        when(userRepository.findById(21L)).thenReturn(Optional.of(driverOne));
+        when(periodRepository.findByCompanyIdAndPeriodStart(10L, periodStart)).thenReturn(Optional.empty());
+        when(rateRepository.findFirstByCompanyIdAndEffectiveFromLessThanEqualOrderByEffectiveFromDesc(10L, periodStart))
+                .thenReturn(Optional.of(rate));
+        when(baseSalaryOverrideRepository
+                .findFirstByDriverIdAndEffectiveFromLessThanEqualOrderByEffectiveFromDesc(21L, periodStart))
+                .thenReturn(Optional.of(raise));
+
+        assertEquals(new BigDecimal("19000000"), service.getDriverStatement(10L, 21L, "2026-11").baseSalaryVnd());
     }
 
     @Test
