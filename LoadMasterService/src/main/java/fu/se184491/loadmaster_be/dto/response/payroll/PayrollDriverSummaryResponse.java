@@ -8,8 +8,7 @@ public record PayrollDriverSummaryResponse(
         BigDecimal baseSalaryVnd,
         BigDecimal totalKg,
         BigDecimal kgAmountVnd,
-        BigDecimal totalKm,
-        BigDecimal kmAmountVnd,
+        BigDecimal handlingAmountVnd,
         BigDecimal totalSalaryVnd
 ) {
 }

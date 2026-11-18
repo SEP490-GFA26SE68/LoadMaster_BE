@@ -42,8 +42,16 @@ public class CompanyPayrollRate {
     @Column(name = "rate_vnd_per_kg", nullable = false, precision = 15, scale = 2)
     private BigDecimal rateVndPerKg;
 
-    @Column(name = "rate_vnd_per_km", nullable = false, precision = 15, scale = 2)
-    private BigDecimal rateVndPerKm;
+    /** Phần trăm cước theo kg mà tài xế được hưởng (công ty giữ phần còn lại). */
+    @Column(name = "commission_percent", nullable = false, precision = 5, scale = 2)
+    private BigDecimal commissionPercent;
+
+    @Column(name = "handling_fee_vnd_per_kg", nullable = false, precision = 15, scale = 2)
+    private BigDecimal handlingFeeVndPerKg;
+
+    /** Phần trăm phí bốc dỡ mà tài xế được hưởng (công ty giữ phần còn lại). */
+    @Column(name = "handling_driver_percent", nullable = false, precision = 5, scale = 2)
+    private BigDecimal handlingDriverPercent;
 
     @Convert(converter = SupportTicket.LocalDateTimeSecondsConverter.class)
     @Column(name = "created_at", nullable = false, updatable = false, length = 19, columnDefinition = "varchar(19)")

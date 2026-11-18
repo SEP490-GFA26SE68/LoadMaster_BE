@@ -40,11 +40,8 @@ public class DriverPayroll {
     @Column(name = "kg_amount_vnd", nullable = false, precision = 15, scale = 0)
     private BigDecimal kgAmountVnd;
 
-    @Column(name = "total_km", nullable = false, precision = 15, scale = 3)
-    private BigDecimal totalKm;
-
-    @Column(name = "km_amount_vnd", nullable = false, precision = 15, scale = 0)
-    private BigDecimal kmAmountVnd;
+    @Column(name = "handling_amount_vnd", nullable = false, precision = 15, scale = 0)
+    private BigDecimal handlingAmountVnd;
 
     @Column(name = "total_salary_vnd", nullable = false, precision = 15, scale = 0)
     private BigDecimal totalSalaryVnd;

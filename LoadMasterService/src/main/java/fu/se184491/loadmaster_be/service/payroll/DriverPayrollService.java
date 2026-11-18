@@ -27,6 +27,8 @@ public interface DriverPayrollService {
 
     PayrollPeriodResponse getPeriod(Long companyId, String period);
 
+    void deleteDraftPeriod(Long companyId, String period);
+
     PayrollStatementResponse getCompanyDriverStatement(Long companyId, Long driverId, String period);
 
     PayrollStatementResponse getDriverStatement(Long companyId, Long driverId, String period);

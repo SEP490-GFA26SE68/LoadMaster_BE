@@ -1,3 +1,6 @@
+# Không bật profile nào mặc định: Spring Boot tự đọc biến SPRING_PROFILES_ACTIVE. Máy dev đặt SPRING_PROFILES_ACTIVE=dev
+# để tạo admin, công ty và dữ liệu mẫu (DevAdminInitializer, DevCompanyInitializer, DevOptimizationMockInitializer);
+# chạy không đặt biến đó thì không ghi dữ liệu mẫu nào vào DB.
 spring:
   servlet:
     multipart:
@@ -49,7 +52,7 @@ spring:
     enabled: false
     locations: classpath:db/migration
     baseline-on-migrate: true
-    baseline-version: 0
+    baseline-version: 41
 
   jpa:
     # Giữ bật có chủ ý: còn service không có @Transactional mà vẫn đi qua quan hệ lazy (ví dụ xuất nhãn PDF đọc
@@ -69,6 +72,8 @@ vnpay:
   hash-secret: ${VNPAY_HASH_SECRET}
   vnp-url: ${VNPAY_URL:https://sandbox.vnpayment.vn/paymentv2/vpcpay.html}
   return-url: ${VNPAY_RETURN_URL:http://localhost:8080/webhook/vnpay-return}
+  # true: bỏ kiểm chữ ký VNPay và mở /api/payment/mock-checkout (công ty đăng nhập tự đánh dấu giao dịch của mình đã trả).
+  # Mặc định tắt; chỉ profile dev bật sẵn (application-dev.yml).
   mock: ${VNPAY_MOCK:false}
 
 

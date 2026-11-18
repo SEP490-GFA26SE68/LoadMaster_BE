@@ -8,6 +8,8 @@ public record CompanyPayrollRateResponse(
         LocalDate effectiveFrom,
         BigDecimal baseSalaryVnd,
         BigDecimal rateVndPerKg,
-        BigDecimal rateVndPerKm
+        BigDecimal commissionPercent,
+        BigDecimal handlingFeeVndPerKg,
+        BigDecimal handlingDriverPercent
 ) {
 }

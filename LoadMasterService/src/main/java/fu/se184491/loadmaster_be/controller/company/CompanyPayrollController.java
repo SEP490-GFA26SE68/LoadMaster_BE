@@ -68,6 +68,12 @@ public class CompanyPayrollController {
         return ApiResponse.success(payrollService.getPeriod(currentUserService.getCurrentCompanyId(), period));
     }
 
+    @DeleteMapping("/periods/{period}")
+    public ApiResponse<Void> deleteDraftPeriod(@PathVariable String period) {
+        payrollService.deleteDraftPeriod(currentUserService.getCurrentCompanyId(), period);
+        return ApiResponse.success("Đã xóa bảng lương nháp");
+    }
+
     @GetMapping("/periods/{period}/drivers/{driverId}")
     public ApiResponse<PayrollStatementResponse> getDriverStatement(
             @PathVariable String period,
