@@ -1,5 +1,6 @@
 package fu.se184491.loadmaster_be.service.payroll.impl;
 
+import fu.se184491.loadmaster_be.client.BrevoClient;
 import fu.se184491.loadmaster_be.constant.account.UserRole;
 import fu.se184491.loadmaster_be.constant.account.UserStatus;
 import fu.se184491.loadmaster_be.constant.payroll.PayrollPeriodStatus;
@@ -28,6 +29,7 @@ import fu.se184491.loadmaster_be.entity.trip.DeliveryStop;
 import fu.se184491.loadmaster_be.entity.trip.Trip;
 import fu.se184491.loadmaster_be.exception.AppException;
 import fu.se184491.loadmaster_be.exception.ErrorCode;
+import fu.se184491.loadmaster_be.helpers.AfterCommit;
 import fu.se184491.loadmaster_be.repository.account.UserRepository;
 import fu.se184491.loadmaster_be.repository.company.CompanyRepository;
 import fu.se184491.loadmaster_be.repository.optimization.LoadPlanRepository;
@@ -42,11 +44,14 @@ import fu.se184491.loadmaster_be.repository.trip.TripRepository;
 import fu.se184491.loadmaster_be.service.payroll.DriverPayrollService;
 import fu.se184491.loadmaster_be.service.payroll.PayrollMath;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.util.HtmlUtils;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.text.NumberFormat;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.YearMonth;
@@ -57,6 +62,7 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
@@ -64,6 +70,7 @@ import java.util.Set;
 import java.util.stream.Collectors;
 
 @Service
+@Slf4j
 @RequiredArgsConstructor
 @Transactional
 public class DriverPayrollServiceImpl implements DriverPayrollService {
@@ -82,6 +89,7 @@ public class DriverPayrollServiceImpl implements DriverPayrollService {
     private final LoadPlanRepository loadPlanRepository;
     private final PackagePlacementRepository packagePlacementRepository;
     private final UserRepository userRepository;
+    private final BrevoClient brevoClient;
 
     @Override
     @Transactional(readOnly = true)
@@ -151,8 +159,17 @@ public class DriverPayrollServiceImpl implements DriverPayrollService {
                 .filter(u -> isCompanyDriver(u, companyId))
                 .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
 
-        DriverBaseSalaryOverride override = baseSalaryOverrideRepository
-                .findFirstByDriverIdAndEffectiveFromLessThanEqualOrderByEffectiveFromDesc(driverId, request.effectiveFrom())
+        Optional<DriverBaseSalaryOverride> current = baseSalaryOverrideRepository
+                .findFirstByDriverIdAndEffectiveFromLessThanEqualOrderByEffectiveFromDesc(driverId, request.effectiveFrom());
+        BigDecimal companyBase = rateRepository
+                .findFirstByCompanyIdAndEffectiveFromLessThanEqualOrderByEffectiveFromDesc(companyId, request.effectiveFrom())
+                .map(CompanyPayrollRate::getBaseSalaryVnd)
+                .orElse(BigDecimal.ZERO);
+        // Lương cứng thực nhận của tháng đó trước khi lưu: số lớn hơn giữa mức riêng đang có và mức chung của công ty.
+        BigDecimal before = current.map(DriverBaseSalaryOverride::getBaseSalaryVnd)
+                .map(raise -> raise.max(companyBase)).orElse(companyBase).setScale(0, RoundingMode.HALF_UP);
+
+        DriverBaseSalaryOverride override = current
                 .filter(o -> o.getEffectiveFrom().equals(request.effectiveFrom()))
                 .orElseGet(() -> DriverBaseSalaryOverride.builder()
                         .company(companyReference(companyId))
@@ -163,8 +180,42 @@ public class DriverPayrollServiceImpl implements DriverPayrollService {
         override.setBaseSalaryVnd(request.baseSalaryVnd());
         override = baseSalaryOverrideRepository.save(override);
 
+        BigDecimal after = override.getBaseSalaryVnd().max(companyBase).setScale(0, RoundingMode.HALF_UP);
+        if (after.compareTo(before) > 0) {
+            notifyBaseSalaryRaised(driver, request.effectiveFrom(), before, after);
+        }
+
         return new DriverBaseSalaryResponse(override.getId(), driver.getId(),
                 driver.getFullName(), override.getEffectiveFrom(), override.getBaseSalaryVnd());
+    }
+
+    /**
+     * Báo cho tài xế biết lương cứng thực nhận của họ vừa tăng. Gửi sau khi lưu xong; gửi mail lỗi chỉ ghi log,
+     * không làm hỏng việc lưu mức lương.
+     */
+    private void notifyBaseSalaryRaised(User driver, LocalDate effectiveFrom, BigDecimal before, BigDecimal after) {
+        if (brevoClient == null || driver.getEmail() == null || driver.getEmail().isBlank()) return;
+        String recipient = driver.getEmail();
+        String month = String.format("%02d/%d", effectiveFrom.getMonthValue(), effectiveFrom.getYear());
+        NumberFormat money = NumberFormat.getIntegerInstance(Locale.forLanguageTag("vi-VN"));
+        String name = HtmlUtils.htmlEscape(driver.getFullName() != null ? driver.getFullName() : recipient);
+        String companyName = driver.getCompany() != null && driver.getCompany().getCompanyName() != null
+                ? HtmlUtils.htmlEscape(driver.getCompany().getCompanyName()) : "";
+        String previous = before.signum() > 0 ? " (trước đây " + money.format(before) + " đ)" : "";
+        String subject = "LoadMaster - Lương cứng của bạn được điều chỉnh từ tháng " + month;
+        String content = "Xin chào <strong>" + name + "</strong>,\n\n"
+                + (companyName.isEmpty() ? "Công ty" : "Công ty <strong>" + companyName + "</strong>")
+                + " vừa điều chỉnh lương cứng của bạn.\n\n"
+                + "Từ tháng " + month + ", lương cứng của bạn là <strong>" + money.format(after) + " đ</strong>" + previous + ".\n\n"
+                + "Bạn có thể xem chi tiết trong mục Bảng lương trên ứng dụng của công ty.\n\n"
+                + "Trân trọng,\nĐội ngũ LoadMaster";
+        AfterCommit.run("email tăng lương cứng riêng", () -> {
+            try {
+                brevoClient.sendEmail(recipient, subject, content);
+            } catch (RuntimeException ex) {
+                log.warn("Không gửi được email tăng lương cứng cho tài xế {}: {}", driver.getId(), ex.getMessage());
+            }
+        });
     }
 
     @Override
@@ -306,11 +357,7 @@ public class DriverPayrollServiceImpl implements DriverPayrollService {
         PayrollPeriodStatus status = payrollPeriod == null ? null : payrollPeriod.getStatus();
         BigDecimal baseSalary = rateRepository
                 .findFirstByCompanyIdAndEffectiveFromLessThanEqualOrderByEffectiveFromDesc(companyId, periodStart)
-                .map(rate -> baseSalaryOverrideRepository
-                        .findFirstByDriverIdAndEffectiveFromLessThanEqualOrderByEffectiveFromDesc(driver.getId(), periodStart)
-                        .map(DriverBaseSalaryOverride::getBaseSalaryVnd)
-                        .orElse(rate.getBaseSalaryVnd())
-                        .setScale(0, RoundingMode.HALF_UP))
+                .map(rate -> driverBaseSalary(driver.getId(), periodStart, rate))
                 .orElse(null);
         return new PayrollStatementResponse(false, month.toString(), status, driver.getId(), driver.getFullName(),
                 baseSalary, null, null, null, null, null, null, null, null, List.of());
@@ -433,15 +480,24 @@ public class DriverPayrollServiceImpl implements DriverPayrollService {
         return newDriverPayroll(period, driver, rate, true);
     }
 
+    /**
+     * Lương cứng của tài xế trong tháng: số lớn hơn giữa mức riêng đã đặt cho tài xế (gần nhất tới tháng này) và mức chung của công ty.
+     * Công ty nâng mức chung vượt mức riêng thì tài xế cũng lên; mức riêng cao hơn thì giữ nguyên.
+     */
+    private BigDecimal driverBaseSalary(Long driverId, LocalDate periodStart, CompanyPayrollRate rate) {
+        BigDecimal companyBase = rate.getBaseSalaryVnd();
+        BigDecimal base = baseSalaryOverrideRepository
+                .findFirstByDriverIdAndEffectiveFromLessThanEqualOrderByEffectiveFromDesc(driverId, periodStart)
+                .map(DriverBaseSalaryOverride::getBaseSalaryVnd)
+                .map(raise -> raise.max(companyBase))
+                .orElse(companyBase);
+        return base.setScale(0, RoundingMode.HALF_UP);
+    }
+
     private DriverPayroll newDriverPayroll(PayrollPeriod period, User driver, CompanyPayrollRate rate, boolean includeBaseSalary) {
         BigDecimal baseSalary = BigDecimal.ZERO;
         if (includeBaseSalary) {
-            BigDecimal overrideOrCompany = baseSalaryOverrideRepository
-                    .findFirstByDriverIdAndEffectiveFromLessThanEqualOrderByEffectiveFromDesc(
-                            driver.getId(), period.getPeriodStart())
-                    .map(DriverBaseSalaryOverride::getBaseSalaryVnd)
-                    .orElse(rate.getBaseSalaryVnd());
-            baseSalary = overrideOrCompany.setScale(0, RoundingMode.HALF_UP);
+            baseSalary = driverBaseSalary(driver.getId(), period.getPeriodStart(), rate);
         }
         return DriverPayroll.builder()
                 .payrollPeriod(period)
