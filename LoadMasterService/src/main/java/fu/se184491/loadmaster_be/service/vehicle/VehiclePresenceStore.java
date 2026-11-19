@@ -32,7 +32,7 @@ public class VehiclePresenceStore {
         return !sql.queryForList("SELECT id FROM company_warehouses WHERE id=? AND company_id=? AND is_active FOR SHARE",warehouse,company).isEmpty();
     }
     public boolean hasReferences(long vehicle,long company) {
-        return Boolean.TRUE.equals(sql.queryForObject("SELECT EXISTS(SELECT 1 FROM vehicle_current_presence WHERE vehicle_id=? AND company_id=?) OR EXISTS(SELECT 1 FROM vehicle_presence_events WHERE vehicle_id=? AND company_id=?) OR EXISTS(SELECT 1 FROM vehicle_presence_checkin_requests WHERE vehicle_id=? AND company_id=?)",Boolean.class,vehicle,company,vehicle,company,vehicle,company));
+        return Boolean.TRUE.equals(sql.queryForObject("SELECT EXISTS(SELECT 1 FROM vehicle_warehouse_transfers WHERE vehicle_id=? AND company_id=?) OR EXISTS(SELECT 1 FROM vehicle_current_presence WHERE vehicle_id=? AND company_id=?) OR EXISTS(SELECT 1 FROM vehicle_presence_events WHERE vehicle_id=? AND company_id=?) OR EXISTS(SELECT 1 FROM vehicle_presence_checkin_requests WHERE vehicle_id=? AND company_id=?)",Boolean.class,vehicle,company,vehicle,company,vehicle,company,vehicle,company));
     }
     public boolean assigned(long actor,long company,long warehouse) {
         return Boolean.TRUE.equals(sql.queryForObject("SELECT EXISTS(SELECT 1 FROM warehouse_staff_assignments a JOIN users u ON u.id=a.user_id AND u.company_id=a.company_id WHERE a.user_id=? AND a.company_id=? AND a.warehouse_id=? AND a.active AND u.user_role_type='WAREHOUSE_WORKER' AND u.status='ACTIVE')",Boolean.class,actor,company,warehouse));
@@ -53,6 +53,12 @@ public class VehiclePresenceStore {
         return Boolean.TRUE.equals(sql.queryForObject("SELECT EXISTS(SELECT 1 FROM vehicles WHERE id=? AND company_id=?)",Boolean.class,vehicle,company));
     }
     public boolean busy(long vehicle,Long excludingTrip) {
+        return activeTransfer(vehicle) || tripBusy(vehicle,excludingTrip);
+    }
+    public boolean activeTransfer(long vehicle) {
+        return Boolean.TRUE.equals(sql.queryForObject("SELECT EXISTS(SELECT 1 FROM vehicle_warehouse_transfers WHERE vehicle_id=? AND status IN ('REQUESTED','IN_TRANSIT'))",Boolean.class,vehicle));
+    }
+    public boolean tripBusy(long vehicle,Long excludingTrip) {
         return Boolean.TRUE.equals(sql.queryForObject("SELECT EXISTS(SELECT 1 FROM trips WHERE vehicle_id=? AND status IN ('LOADING','IN_TRANSIT') AND (?::bigint IS NULL OR id<>?))",Boolean.class,vehicle,excludingTrip,excludingTrip));
     }
     public Presence presence(long vehicle,long company) {
@@ -84,17 +90,18 @@ public class VehiclePresenceStore {
         return rows;
     }
     /** Read-only, company-scoped catalogue; presence and operational availability remain independent. */
-    public org.springframework.data.domain.Page<Map<String,Object>> catalog(long company,long warehouse,String search,int page,int size) {
+    public org.springframework.data.domain.Page<Map<String,Object>> catalog(long company,long warehouse,String search,int page,int size) {return catalog(company,warehouse,search,page,size,false);}
+    public org.springframework.data.domain.Page<Map<String,Object>> catalog(long company,long warehouse,String search,int page,int size,boolean atWarehouse) {
         String like="%"+search.replace("\\","\\\\").replace("%","\\%").replace("_","\\_")+"%";
-        long count=sql.queryForObject("SELECT count(*) FROM vehicles v WHERE v.company_id=? AND (v.license_plate ILIKE ? OR v.name ILIKE ?)",Long.class,company,like,like);
-        var rows=sql.queryForList("SELECT v.id,v.name,v.license_plate,lt.id AS loading_trip_id,lt.trip_code AS loading_trip_code,CASE WHEN v.status IN ('MAINTENANCE','RETIRED') THEN v.status WHEN EXISTS(SELECT 1 FROM trips t WHERE t.vehicle_id=v.id AND t.status IN ('LOADING','IN_TRANSIT')) THEN 'IN_TRIP' ELSE v.status END AS status,COALESCE(p.status,'UNKNOWN') AS presence_status,p.current_warehouse_id,w.warehouse_name AS current_warehouse_name,p.observed_at,u.full_name AS actor_name FROM vehicles v LEFT JOIN vehicle_current_presence p ON p.vehicle_id=v.id AND p.company_id=v.company_id LEFT JOIN company_warehouses w ON w.id=p.current_warehouse_id AND w.company_id=v.company_id LEFT JOIN users u ON u.id=p.actor_user_id AND u.company_id=v.company_id LEFT JOIN LATERAL (SELECT t.id,t.trip_code FROM trips t WHERE t.vehicle_id=v.id AND t.company_id=v.company_id AND t.status='LOADING' AND t.origin_warehouse_id=? AND NOT EXISTS(SELECT 1 FROM trips other WHERE other.vehicle_id=v.id AND other.status IN ('LOADING','IN_TRANSIT') AND other.id<>t.id) ORDER BY t.id LIMIT 1) lt ON true WHERE v.company_id=? AND (v.license_plate ILIKE ? OR v.name ILIKE ?) ORDER BY v.id LIMIT ? OFFSET ?",warehouse,company,like,like,size,(long)page*size);
+        long count=sql.queryForObject("SELECT count(*) FROM vehicles v LEFT JOIN vehicle_current_presence p ON p.vehicle_id=v.id AND p.company_id=v.company_id WHERE v.company_id=? AND (v.license_plate ILIKE ? OR v.name ILIKE ?) AND (?=false OR (p.status='AT_WAREHOUSE' AND p.current_warehouse_id=?))",Long.class,company,like,like,atWarehouse,warehouse);
+        var rows=sql.queryForList("SELECT v.id,v.name,v.license_plate,(SELECT tf.status FROM vehicle_warehouse_transfers tf WHERE tf.vehicle_id=v.id AND tf.status IN ('REQUESTED','IN_TRANSIT')) AS active_transfer_status,lt.id AS loading_trip_id,lt.trip_code AS loading_trip_code,CASE WHEN v.status IN ('MAINTENANCE','RETIRED') THEN v.status WHEN EXISTS(SELECT 1 FROM trips t WHERE t.vehicle_id=v.id AND t.status IN ('LOADING','IN_TRANSIT')) THEN 'IN_TRIP' ELSE v.status END AS status,COALESCE(p.status,'UNKNOWN') AS presence_status,p.current_warehouse_id,w.warehouse_name AS current_warehouse_name,p.observed_at,u.full_name AS actor_name FROM vehicles v LEFT JOIN vehicle_current_presence p ON p.vehicle_id=v.id AND p.company_id=v.company_id LEFT JOIN company_warehouses w ON w.id=p.current_warehouse_id AND w.company_id=v.company_id LEFT JOIN users u ON u.id=p.actor_user_id AND u.company_id=v.company_id LEFT JOIN LATERAL (SELECT t.id,t.trip_code FROM trips t WHERE t.vehicle_id=v.id AND t.company_id=v.company_id AND t.status='LOADING' AND t.origin_warehouse_id=? AND NOT EXISTS(SELECT 1 FROM trips other WHERE other.vehicle_id=v.id AND other.status IN ('LOADING','IN_TRANSIT') AND other.id<>t.id) ORDER BY t.id LIMIT 1) lt ON true WHERE v.company_id=? AND (v.license_plate ILIKE ? OR v.name ILIKE ?) AND (?=false OR (p.status='AT_WAREHOUSE' AND p.current_warehouse_id=?)) ORDER BY v.id LIMIT ? OFFSET ?",warehouse,company,like,like,atWarehouse,warehouse,size,(long)page*size);
         rows.forEach(row -> { if(row.get("observed_at") instanceof java.sql.Timestamp stamp) row.put("observed_at",stamp.toInstant().toString()); });
         return new org.springframework.data.domain.PageImpl<>(rows,org.springframework.data.domain.PageRequest.of(page,size),count);
     }
     public List<Long> eligibleIds(long company,long warehouse,Long trip,int page,int size) {
-        return sql.queryForList("SELECT v.id FROM vehicles v JOIN vehicle_current_presence p ON p.vehicle_id=v.id AND p.company_id=v.company_id WHERE v.company_id=? AND v.status='AVAILABLE' AND p.status='AT_WAREHOUSE' AND p.current_warehouse_id=? AND NOT EXISTS(SELECT 1 FROM trips t WHERE t.vehicle_id=v.id AND t.status IN ('LOADING','IN_TRANSIT') AND (?::bigint IS NULL OR t.id<>?)) ORDER BY v.id LIMIT ? OFFSET ?",Long.class,company,warehouse,trip,trip,size,(long)page*size);
+        return sql.queryForList("SELECT v.id FROM vehicles v JOIN vehicle_current_presence p ON p.vehicle_id=v.id AND p.company_id=v.company_id WHERE v.company_id=? AND NOT EXISTS(SELECT 1 FROM vehicle_warehouse_transfers tf WHERE tf.vehicle_id=v.id AND tf.status IN ('REQUESTED','IN_TRANSIT')) AND v.status='AVAILABLE' AND p.status='AT_WAREHOUSE' AND p.current_warehouse_id=? AND NOT EXISTS(SELECT 1 FROM trips t WHERE t.vehicle_id=v.id AND t.status IN ('LOADING','IN_TRANSIT') AND (?::bigint IS NULL OR t.id<>?)) ORDER BY v.id LIMIT ? OFFSET ?",Long.class,company,warehouse,trip,trip,size,(long)page*size);
     }
     public long eligibleCount(long company,long warehouse,Long trip) {
-        return sql.queryForObject("SELECT count(*) FROM vehicles v JOIN vehicle_current_presence p ON p.vehicle_id=v.id AND p.company_id=v.company_id WHERE v.company_id=? AND v.status='AVAILABLE' AND p.status='AT_WAREHOUSE' AND p.current_warehouse_id=? AND NOT EXISTS(SELECT 1 FROM trips t WHERE t.vehicle_id=v.id AND t.status IN ('LOADING','IN_TRANSIT') AND (?::bigint IS NULL OR t.id<>?))",Long.class,company,warehouse,trip,trip);
+        return sql.queryForObject("SELECT count(*) FROM vehicles v JOIN vehicle_current_presence p ON p.vehicle_id=v.id AND p.company_id=v.company_id WHERE v.company_id=? AND NOT EXISTS(SELECT 1 FROM vehicle_warehouse_transfers tf WHERE tf.vehicle_id=v.id AND tf.status IN ('REQUESTED','IN_TRANSIT')) AND v.status='AVAILABLE' AND p.status='AT_WAREHOUSE' AND p.current_warehouse_id=? AND NOT EXISTS(SELECT 1 FROM trips t WHERE t.vehicle_id=v.id AND t.status IN ('LOADING','IN_TRANSIT') AND (?::bigint IS NULL OR t.id<>?))",Long.class,company,warehouse,trip,trip);
     }
 }

@@ -379,6 +379,7 @@ public enum ErrorCode {
     DRIVER_VEHICLE_DEPARTURE_BLOCKED("Chưa thể xuất phát do trạng thái xe hoặc kho chưa phù hợp. Vui lòng liên hệ nhân viên kho hoặc điều phối viên để kiểm tra", HttpStatus.CONFLICT),
     VEHICLE_DEPARTURE_INELIGIBLE("Xe không còn đủ điều kiện tại kho xuất phát. Vui lòng chọn lại xe", HttpStatus.CONFLICT),
     VEHICLE_WAREHOUSE_FORBIDDEN("Không có quyền xác nhận xe tại kho này", HttpStatus.FORBIDDEN),
+    VEHICLE_TRANSFER_CONFLICT("Vehicle transfer conflicts with current state. Refresh and retry the same action", HttpStatus.CONFLICT),
     VEHICLE_PRESENCE_CONFLICT("Trạng thái xe hoặc mã xác nhận bị xung đột. Vui lòng tải lại", HttpStatus.CONFLICT);
 
     private final String message;
