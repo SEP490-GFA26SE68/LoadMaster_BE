@@ -2200,7 +2200,7 @@
     "strictTransportSecurity": "max-age=31536000; includeSubDomains"
   },
   "smtpServer": {},
-  "loginTheme": "loadmaster",
+  "loginTheme": "keycloak.v2",
   "accountTheme": "",
   "adminTheme": "",
   "emailTheme": "",

@@ -70,3 +70,8 @@ venv.bak/
 .DS_Store
 Thumbs.db
 issues 2/
+
+# Generated local merge-repair evidence; retain offline_pytest.py as test source.
+/docs/reports/merge-repair/*.log
+/docs/reports/merge-repair/*.xml
+/docs/reports/merge-repair/python-comparison.json
