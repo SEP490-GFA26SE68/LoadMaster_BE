@@ -30,6 +30,8 @@ import java.util.Optional;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -208,5 +210,32 @@ class ContractServiceTest {
         contractService.createOrActivateContract(req);
 
         assertEquals(10000, creditAccount.getBalance());
+    }
+
+    @Test
+    @DisplayName("Gán gói không ghi credit tháng vẫn tạo tài khoản credit cho công ty")
+    void createOrActivateContract_planWithoutMonthlyCredits_stillCreatesCreditAccount() {
+        SubscriptionPlan unlimited = SubscriptionPlan.builder()
+                .id(4L)
+                .planCode("ULTIMATE_UNLIMITED")
+                .name("Ultimate")
+                .tier(SubscriptionTier.ULTIMATE)
+                .price(new BigDecimal("7900000"))
+                .monthlyCredits(null)
+                .billingCycle(BillingCycle.MONTHLY)
+                .active(true)
+                .build();
+        when(companySubscriptionRepository.findByCompanyId(1L)).thenReturn(Optional.empty());
+        when(subscriptionPlanRepository.findById(4L)).thenReturn(Optional.of(unlimited));
+
+        CreateContractRequest req = new CreateContractRequest();
+        req.setCompanyId(1L);
+        req.setPlanId(4L);
+        req.setAutoRenew(true);
+
+        contractService.createOrActivateContract(req);
+
+        verify(creditAccountRepository).insertIfMissing(1L);
+        verify(creditAccountRepository, never()).save(any(CreditAccount.class));
     }
 }

@@ -311,3 +311,40 @@ class TestPersistAlgorithmName:
         dumped = layout.model_dump()
         assert dumped["algorithm_name"] == SA
         assert "algorithms_tried" not in dumped
+
+
+class TestVehicleWithoutAxleData:
+    """Approved HC-12 policy: missing axle configuration fails closed in every tier."""
+
+    @staticmethod
+    def _no_axle(problem: ProblemRequest) -> ProblemRequest:
+        vehicle = problem.vehicle.model_copy(update={
+            "front_axle_x": None, "rear_axle_x": None,
+            "front_axle_limit_kg": None, "rear_axle_limit_kg": None,
+            "empty_front_axle_load_kg": None, "empty_rear_axle_load_kg": None,
+        })
+        return problem.model_copy(update={"vehicle": vehicle})
+
+    @pytest.mark.parametrize("tier", ["BASIC", "PRO", "ULTIMATE"])
+    @pytest.mark.parametrize("missing", ["all", "partial"])
+    def test_rejects_missing_axle_configuration(self, fast_meta, tier, missing):
+        # Keep the original all-null input. Partial-null must not gain an exemption either.
+        problem = _problem(algorithm_name=tier, count=10, seed=11)
+        if missing == "all":
+            problem = self._no_axle(problem)
+        else:
+            problem = problem.model_copy(update={
+                "vehicle": problem.vehicle.model_copy(update={"rear_axle_x": None}),
+            })
+        result = OptimizationClient(engine_url=None).solve_candidates(problem)
+        expected_ids = sorted(str(p.id) for p in problem.packages)
+        # Check the actual response contract, including every candidate that could be persisted.
+        # Zero placements alone would also pass on unrelated packing failures.
+        assert result.candidates
+        for layout in [result, *(candidate.result for candidate in result.candidates)]:
+            assert not layout.placements
+            assert layout.metrics.packed_count == 0
+            assert sorted(str(p.package_id) for p in layout.unplaced) == expected_ids
+            for item in layout.unplaced:
+                assert item.reason == "CONSTRAINT_VIOLATED"
+                assert "AXLE_CONFIG_MISSING" in item.violated_constraints

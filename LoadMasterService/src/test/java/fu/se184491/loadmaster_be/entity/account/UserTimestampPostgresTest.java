@@ -129,9 +129,8 @@ class UserTimestampPostgresTest {
                 try (var factory = metadata.buildSessionFactory(); var session = factory.openSession()) {
                     session.beginTransaction();
                     var repository = new JpaRepositoryFactory(session).getRepository(UserRepository.class);
-                    // Preserve the original query success assertion. An Instant cutoff is still the production
-                    // repository/purge contract, while the mapped field is LocalDateTime: report a real failure.
-                    assertTrue(repository.findByStatusAndUpdatedAtBefore(UserStatus.ACTIVE, Instant.now().plusSeconds(10))
+                    // Query cutoff follows the current LocalDateTime/VARCHAR entity contract.
+                    assertTrue(repository.findByStatusAndUpdatedAtBefore(UserStatus.ACTIVE, LocalDateTime.now().plusSeconds(10))
                             .stream().anyMatch(found -> Long.valueOf(1).equals(found.getId())));
                     session.getTransaction().rollback();
                 }

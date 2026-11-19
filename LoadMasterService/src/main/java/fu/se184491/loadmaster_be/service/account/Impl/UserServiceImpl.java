@@ -2,11 +2,16 @@ package fu.se184491.loadmaster_be.service.account.Impl;
 
 import fu.se184491.loadmaster_be.client.BrevoClient;
 import fu.se184491.loadmaster_be.client.KeycloakAdminClient;
+import fu.se184491.loadmaster_be.config.FrontendUrls;
 import fu.se184491.loadmaster_be.constant.account.UserRole;
 import fu.se184491.loadmaster_be.constant.account.UserStatus;
+import fu.se184491.loadmaster_be.constant.account.UserType;
+import fu.se184491.loadmaster_be.constant.billing.SubscriptionStatus;
 import fu.se184491.loadmaster_be.constant.company.AgreementStatus;
 import fu.se184491.loadmaster_be.dto.PageResponse;
+import fu.se184491.loadmaster_be.dto.request.account.ChangeMyPasswordRequest;
 import fu.se184491.loadmaster_be.dto.request.account.CreateUserRequest;
+import fu.se184491.loadmaster_be.dto.request.account.UpdateMyProfileRequest;
 import fu.se184491.loadmaster_be.dto.request.account.UpdateUserRequest;
 import fu.se184491.loadmaster_be.dto.request.account.UpdateUserStatusRequest;
 import fu.se184491.loadmaster_be.dto.response.account.CreateUserResponse;
@@ -15,6 +20,8 @@ import fu.se184491.loadmaster_be.dto.response.account.UserListItemResponse;
 import fu.se184491.loadmaster_be.dto.response.account.UserProfileResponse;
 import fu.se184491.loadmaster_be.dto.response.account.UserStatsResponse;
 import fu.se184491.loadmaster_be.entity.account.User;
+import fu.se184491.loadmaster_be.entity.billing.CompanySubscription;
+import fu.se184491.loadmaster_be.entity.common.AuditLog;
 import fu.se184491.loadmaster_be.entity.company.Company;
 import fu.se184491.loadmaster_be.entity.company.CompanyAgreement;
 import fu.se184491.loadmaster_be.exception.AppException;
@@ -23,27 +30,34 @@ import fu.se184491.loadmaster_be.helpers.CurrentUserService;
 import fu.se184491.loadmaster_be.helpers.AfterCommit;
 import fu.se184491.loadmaster_be.helpers.KeycloakAccounts;
 import fu.se184491.loadmaster_be.helpers.TemporaryPasswordGenerator;
-import fu.se184491.loadmaster_be.entity.common.AuditLog;
 import fu.se184491.loadmaster_be.repository.account.UserRepository;
+import fu.se184491.loadmaster_be.repository.billing.CompanySubscriptionRepository;
+import fu.se184491.loadmaster_be.repository.billing.CreditAccountRepository;
 import fu.se184491.loadmaster_be.repository.common.AuditLogRepository;
-import fu.se184491.loadmaster_be.service.audit.AuditCompany;
 import fu.se184491.loadmaster_be.repository.company.CompanyAgreementRepository;
 import fu.se184491.loadmaster_be.repository.company.CompanyRepository;
 import fu.se184491.loadmaster_be.service.account.UserService;
+import fu.se184491.loadmaster_be.service.audit.AuditCompany;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.domain.Specification;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.client.HttpClientErrorException;
 
 import java.time.Instant;
+import java.time.LocalDateTime;
+import java.time.temporal.ChronoUnit;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
@@ -60,12 +74,13 @@ public class UserServiceImpl implements UserService {
     private final CompanyAgreementRepository companyAgreementRepository;
     private final BrevoClient brevoClient;
     private final AuditLogRepository auditLogRepository;
+    private final CompanySubscriptionRepository companySubscriptionRepository;
 
-    @org.springframework.beans.factory.annotation.Autowired(required = false)
-    private fu.se184491.loadmaster_be.repository.billing.CompanySubscriptionRepository companySubscriptionRepository;
+    @Autowired(required = false)
+    private CreditAccountRepository creditAccountRepository;
 
-    @org.springframework.beans.factory.annotation.Autowired(required = false)
-    private fu.se184491.loadmaster_be.repository.billing.CreditAccountRepository creditAccountRepository;
+    @Value(FrontendUrls.URL)
+    private String frontendUrl;
 
     public UserProfileResponse getUserProfile(Jwt jwt) {
 
@@ -75,6 +90,34 @@ public class UserServiceImpl implements UserService {
                 .orElseThrow(() ->
                         new AppException(ErrorCode.USER_NOT_FOUND)
                 );
+
+        Boolean subscriptionExpired = false;
+        String companyName = null;
+        String companyCode = null;
+        String companyTaxCode = null;
+        String companyBillingEmail = null;
+        fu.se184491.loadmaster_be.constant.company.CompanyStatus companyStatus = null;
+
+        if (user.getCompany() != null) {
+            Company company = user.getCompany();
+            companyName = company.getCompanyName();
+            companyCode = company.getCompanyCode();
+            companyTaxCode = company.getTaxCode();
+            companyBillingEmail = company.getBillingEmail();
+            companyStatus = company.getStatus();
+
+            subscriptionExpired = true;
+            if (companySubscriptionRepository != null) {
+                Optional<CompanySubscription> subOpt =
+                        companySubscriptionRepository.findByCompanyId(user.getCompany().getId());
+                if (subOpt.isPresent()) {
+                    CompanySubscription sub = subOpt.get();
+                    boolean expired = sub.getStatus() == SubscriptionStatus.EXPIRED
+                            || (sub.getExpiresAt() != null && sub.getExpiresAt().isBefore(LocalDateTime.now()));
+                    subscriptionExpired = expired;
+                }
+            }
+        }
 
         return UserProfileResponse.builder()
                 .id(user.getId())
@@ -88,10 +131,53 @@ public class UserServiceImpl implements UserService {
                                 ? user.getCompany().getId()
                                 : null
                 )
+                .companyName(companyName)
+                .companyCode(companyCode)
+                .companyTaxCode(companyTaxCode)
+                .companyBillingEmail(companyBillingEmail)
+                .companyStatus(companyStatus)
                 .userRoleType(user.getUserRoleType())
-                .userType(user.getUserType() != null ? user.getUserType() : fu.se184491.loadmaster_be.constant.account.UserType.OFFICIAL)
+                .userType(user.getUserType() != null ? user.getUserType() : UserType.OFFICIAL)
                 .status(user.getStatus())
+                .subscriptionExpired(subscriptionExpired)
                 .build();
+    }
+
+    @Override
+    @Transactional
+    public UserProfileResponse updateMyProfile(Jwt jwt, UpdateMyProfileRequest request) {
+        String keycloakId = jwt.getSubject();
+        User user = userRepository.findByKeycloakId(keycloakId)
+                .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
+
+        user.setFullName(request.fullName().trim());
+        if (request.phoneNumber() != null) {
+            user.setPhoneNumber(request.phoneNumber().trim());
+        }
+        userRepository.save(user);
+
+        try {
+            keycloakAdminClient.updateUserProfile(keycloakId, request.fullName().trim());
+        } catch (Exception ex) {
+            log.warn("Failed to sync updated profile to Keycloak: {}", ex.getMessage());
+        }
+
+        return getUserProfile(jwt);
+    }
+
+    @Override
+    @Transactional
+    public void changeMyPassword(Jwt jwt, ChangeMyPasswordRequest request) {
+        String keycloakId = jwt.getSubject();
+        User user = userRepository.findByKeycloakId(keycloakId)
+                .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
+
+        try {
+            keycloakAdminClient.setPassword(keycloakId, request.newPassword(), false);
+        } catch (Exception ex) {
+            log.error("Failed to update password in Keycloak: {}", ex.getMessage(), ex);
+            throw new AppException(ErrorCode.INTERNAL_SERVER_ERROR, "Không thể cập nhật mật khẩu, vui lòng thử lại sau.");
+        }
     }
 
     @Transactional(readOnly = true)
@@ -321,6 +407,7 @@ public class UserServiceImpl implements UserService {
                 .fullName(targetFullName)
                 .phoneNumber(targetPhone)
                 .userRoleType(request.role())
+                .userType(currentUser.getUserType() != null ? currentUser.getUserType() : UserType.OFFICIAL)
                 .status(UserStatus.ACTIVE)
                 .build();
         user.prePersist();
@@ -335,6 +422,16 @@ public class UserServiceImpl implements UserService {
             String htmlContent = buildCompanyAdminProvisionEmailHtml(company, user, temporaryPassword);
             String recipient = user.getEmail();
             AfterCommit.run("email tài khoản quản trị công ty",
+                    () -> brevoClient.sendEmail(recipient, subject, htmlContent));
+        }
+
+        if (currentUser.getUserRoleType() == UserRole.ADMIN
+                && company != null
+                && brevoClient != null) {
+            String subject = "LoadMaster - Thông tin tài khoản nhân viên " + company.getCompanyName();
+            String htmlContent = buildEmployeeProvisionEmailHtml(company, user, temporaryPassword);
+            String recipient = user.getEmail();
+            AfterCommit.run("email tài khoản nhân viên",
                     () -> brevoClient.sendEmail(recipient, subject, htmlContent));
         }
 
@@ -365,6 +462,107 @@ public class UserServiceImpl implements UserService {
                 adminUser.getEmail(),
                 temporaryPassword
         );
+    }
+
+    private String buildEmployeeProvisionEmailHtml(Company company, User employee, String temporaryPassword) {
+        String roleDisplayName = formatRoleDisplayName(employee.getUserRoleType());
+        String webLoginUrl = FrontendUrls.join(frontendUrl, "/login");
+        String companyName = company.getCompanyName() != null ? company.getCompanyName() : "";
+        String employeeName = employee.getFullName() != null ? employee.getFullName() : employee.getEmail();
+
+        return """
+                <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #1e293b; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 8px;">
+                    <h2 style="color: #0f172a; margin-top: 0;">Chào mừng bạn đến với LoadMaster!</h2>
+                    <p>Xin chào <strong>%s</strong>,</p>
+                    <p>Quản trị viên công ty <strong>%s</strong> đã khởi tạo tài khoản nhân viên cho bạn trên hệ thống LoadMaster với thông tin đăng nhập như sau:</p>
+
+                    <div style="background-color: #f8fafc; padding: 15px; border-radius: 6px; margin: 15px 0;">
+                        <ul style="list-style-type: none; padding-left: 0; margin: 0;">
+                            <li style="margin-bottom: 8px;"><strong>🏢 Doanh nghiệp:</strong> %s</li>
+                            <li style="margin-bottom: 8px;"><strong>👤 Họ và tên:</strong> %s</li>
+                            <li style="margin-bottom: 8px;"><strong>💼 Vai trò:</strong> %s</li>
+                            <li style="margin-bottom: 8px;"><strong>📧 Email đăng nhập:</strong> %s</li>
+                            <li style="margin-bottom: 8px;"><strong>🔑 Mật khẩu tạm thời:</strong> <code style="background-color: #e2e8f0; padding: 2px 6px; border-radius: 4px; font-weight: bold; color: #0284c7;">%s</code></li>
+                        </ul>
+                    </div>
+
+                    <div style="background-color: #fffbeb; border-left: 4px solid #f59e0b; padding: 12px; margin: 15px 0; border-radius: 4px;">
+                        <p style="margin: 0; color: #92400e; font-size: 14px;">
+                            <strong>⚠️ Lưu ý quan trọng:</strong> Đây là mật khẩu tạm thời. Khi đăng nhập lần đầu tiên vào hệ thống, bạn sẽ được yêu cầu đổi sang mật khẩu cá nhân mới để đảm bảo tính bảo mật.
+                        </p>
+                    </div>
+
+                    <p style="margin-top: 25px;">
+                        <a href="%s" style="background-color: #0284c7; color: white; padding: 10px 20px; text-decoration: none; border-radius: 6px; font-weight: bold; display: inline-block;">
+                            Đăng nhập vào hệ thống
+                        </a>
+                    </p>
+                    <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 25px 0;" />
+                    <p style="color: #64748b; font-size: 13px; margin-bottom: 0;">Trân trọng,<br />Đội ngũ LoadMaster</p>
+                </div>
+                """.formatted(
+                employeeName,
+                companyName,
+                companyName,
+                employeeName,
+                roleDisplayName,
+                employee.getEmail(),
+                temporaryPassword,
+                webLoginUrl
+        );
+    }
+
+    private String buildEmployeePasswordResetEmailHtml(Company company, User employee, String temporaryPassword) {
+        String webLoginUrl = FrontendUrls.join(frontendUrl, "/login");
+        String companyName = company.getCompanyName() != null ? company.getCompanyName() : "";
+        String employeeName = employee.getFullName() != null ? employee.getFullName() : employee.getEmail();
+
+        return """
+                <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #1e293b; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 8px;">
+                    <h2 style="color: #0f172a; margin-top: 0;">Thông báo Cấp lại Mật khẩu Tạm thời</h2>
+                    <p>Xin chào <strong>%s</strong>,</p>
+                    <p>Mật khẩu tài khoản của bạn tại <strong>%s</strong> trên hệ thống LoadMaster vừa được đặt lại:</p>
+
+                    <div style="background-color: #f8fafc; padding: 15px; border-radius: 6px; margin: 15px 0;">
+                        <ul style="list-style-type: none; padding-left: 0; margin: 0;">
+                            <li style="margin-bottom: 8px;"><strong>📧 Email đăng nhập:</strong> %s</li>
+                            <li style="margin-bottom: 8px;"><strong>🔑 Mật khẩu tạm thời mới:</strong> <code style="background-color: #e2e8f0; padding: 2px 6px; border-radius: 4px; font-weight: bold; color: #0284c7;">%s</code></li>
+                        </ul>
+                    </div>
+
+                    <div style="background-color: #fffbeb; border-left: 4px solid #f59e0b; padding: 12px; margin: 15px 0; border-radius: 4px;">
+                        <p style="margin: 0; color: #92400e; font-size: 14px;">
+                            <strong>⚠️ Lưu ý:</strong> Bạn cần đổi sang mật khẩu mới ngay khi đăng nhập vào hệ thống.
+                        </p>
+                    </div>
+
+                    <p style="margin-top: 25px;">
+                        <a href="%s" style="background-color: #0284c7; color: white; padding: 10px 20px; text-decoration: none; border-radius: 6px; font-weight: bold; display: inline-block;">
+                            Đăng nhập vào hệ thống
+                        </a>
+                    </p>
+                    <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 25px 0;" />
+                    <p style="color: #64748b; font-size: 13px; margin-bottom: 0;">Trân trọng,<br />Đội ngũ LoadMaster</p>
+                </div>
+                """.formatted(
+                employeeName,
+                companyName,
+                employee.getEmail(),
+                temporaryPassword,
+                webLoginUrl
+        );
+    }
+
+    private static String formatRoleDisplayName(UserRole role) {
+        if (role == null) return "";
+        return switch (role) {
+            case MANAGER -> "Quản lý công ty (Manager)";
+            case DISPATCHER -> "Điều phối viên (Dispatcher)";
+            case DRIVER -> "Tài xế (Driver)";
+            case WAREHOUSE_WORKER -> "Nhân viên kho (Warehouse Worker)";
+            case ADMIN -> "Quản trị viên Doanh nghiệp (Company Admin)";
+            default -> role.name();
+        };
     }
 
     private Long resolveAndValidateTargetCompanyId(User currentUser, CreateUserRequest request) {
@@ -532,7 +730,7 @@ public class UserServiceImpl implements UserService {
                         "Chỉ tài khoản quản trị hệ thống mới được phép thay đổi công ty của người dùng"
                 );
             }
-            fu.se184491.loadmaster_be.entity.company.Company targetCompany = companyRepository.findById(request.companyId())
+            Company targetCompany = companyRepository.findById(request.companyId())
                     .orElseThrow(() -> new AppException(ErrorCode.COMPANY_NOT_FOUND));
             targetUser.setCompany(targetCompany);
         }
@@ -630,13 +828,13 @@ public class UserServiceImpl implements UserService {
 
     @Override
     @Transactional
+    @Scheduled(cron = "0 0 * * * *")
     public void purgeInactiveUsersAfterThreeMonths() {
-        java.time.Instant cutoff = java.time.OffsetDateTime.now(java.time.ZoneOffset.UTC)
+        LocalDateTime cutoff = LocalDateTime.now()
                 .minusMonths(3)
-                .toInstant()
-                .truncatedTo(java.time.temporal.ChronoUnit.SECONDS);
+                .truncatedTo(ChronoUnit.SECONDS);
 
-        java.util.List<User> expiredUsers =
+        List<User> expiredUsers =
                 userRepository.findByStatusAndUpdatedAtBefore(UserStatus.INACTIVE, cutoff);
 
         for (User expiredUser : expiredUsers) {
@@ -661,6 +859,14 @@ public class UserServiceImpl implements UserService {
         keycloakAdminClient.setPassword(targetUser.getKeycloakId(), temporaryPassword, true);
         // Không ghi mật khẩu vào nhật ký.
         logAccount(ACTION_USER_PASSWORD_RESET, currentUser, targetUser, null, null);
+
+        if (targetUser.getCompany() != null && brevoClient != null) {
+            String subject = "LoadMaster - Cấp lại mật khẩu tạm thời";
+            String htmlContent = buildEmployeePasswordResetEmailHtml(targetUser.getCompany(), targetUser, temporaryPassword);
+            String recipient = targetUser.getEmail();
+            AfterCommit.run("email đặt lại mật khẩu nhân viên",
+                    () -> brevoClient.sendEmail(recipient, subject, htmlContent));
+        }
 
         return new ResetPasswordResponse(
                 targetUser.getId(),
@@ -773,7 +979,7 @@ public class UserServiceImpl implements UserService {
         String planTier = null;
         String planCode = null;
         String subscriptionStatus = null;
-        java.time.LocalDateTime subscriptionExpiresAt = null;
+        LocalDateTime subscriptionExpiresAt = null;
         Integer creditBalance = null;
 
         if (user.getCompany() != null) {
@@ -812,7 +1018,7 @@ public class UserServiceImpl implements UserService {
                 user.getFullName(),
                 user.getPhoneNumber(),
                 user.getUserRoleType(),
-                user.getUserType() != null ? user.getUserType() : fu.se184491.loadmaster_be.constant.account.UserType.OFFICIAL,
+                user.getUserType() != null ? user.getUserType() : UserType.OFFICIAL,
                 user.getStatus(),
                 user.getCompany() != null
                         ? user.getCompany().getId()

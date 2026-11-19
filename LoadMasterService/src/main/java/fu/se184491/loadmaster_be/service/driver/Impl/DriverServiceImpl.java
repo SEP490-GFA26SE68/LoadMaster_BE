@@ -1,6 +1,7 @@
 package fu.se184491.loadmaster_be.service.driver.Impl;
 
 import fu.se184491.loadmaster_be.service.audit.AuditCompany;
+import fu.se184491.loadmaster_be.constant.cargo.HandlingClass;
 import fu.se184491.loadmaster_be.constant.cargo.LabelMethod;
 import fu.se184491.loadmaster_be.constant.cargo.PackageStatus;
 import fu.se184491.loadmaster_be.constant.optimization.LoadingExecutionStatus;
@@ -15,6 +16,7 @@ import fu.se184491.loadmaster_be.dto.response.driver.DriverTripResponse;
 import fu.se184491.loadmaster_be.dto.response.driver.StopPackageResponse;
 import fu.se184491.loadmaster_be.entity.account.User;
 import fu.se184491.loadmaster_be.entity.cargo.CargoPackage;
+import fu.se184491.loadmaster_be.entity.cargo.PackageType;
 import fu.se184491.loadmaster_be.entity.common.AuditLog;
 import fu.se184491.loadmaster_be.constant.driver.ManualConfirmStatus;
 import fu.se184491.loadmaster_be.entity.driver.DeliveryIssue;
@@ -23,6 +25,7 @@ import fu.se184491.loadmaster_be.entity.driver.UnloadConfirmation;
 import fu.se184491.loadmaster_be.entity.optimization.LoadPlan;
 import fu.se184491.loadmaster_be.entity.optimization.PackagePlacement;
 import fu.se184491.loadmaster_be.entity.planning.DeliveryRequirement;
+import fu.se184491.loadmaster_be.entity.route.RoutePlan;
 import fu.se184491.loadmaster_be.entity.trip.DeliveryStop;
 import fu.se184491.loadmaster_be.entity.trip.Trip;
 import fu.se184491.loadmaster_be.exception.AppException;
@@ -39,6 +42,7 @@ import fu.se184491.loadmaster_be.repository.driver.UnloadConfirmationRepository;
 import fu.se184491.loadmaster_be.repository.optimization.LoadPlanRepository;
 import fu.se184491.loadmaster_be.repository.optimization.PackagePlacementRepository;
 import fu.se184491.loadmaster_be.repository.planning.DeliveryRequirementRepository;
+import fu.se184491.loadmaster_be.repository.route.RoutePlanRepository;
 import fu.se184491.loadmaster_be.repository.trip.DeliveryStopRepository;
 import fu.se184491.loadmaster_be.repository.trip.TripRepository;
 import fu.se184491.loadmaster_be.repository.warehouse.LoadingExecutionRepository;
@@ -52,6 +56,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -91,6 +96,7 @@ public class DriverServiceImpl implements DriverService {
     private final DeliveryIssueRepository deliveryIssueRepository;
     private final ManualUnloadConfirmationRepository manualConfirmationRepository;
     private final PickupDriverService pickupDriverService;
+    private final RoutePlanRepository routePlanRepository;
 
     @Override
     @Transactional(readOnly = true)
@@ -231,6 +237,17 @@ public class DriverServiceImpl implements DriverService {
                 && (unloadedAtById.containsKey(id) || pkg.getStatus() == PackageStatus.DELIVERED);
         DeliveryIssue issue = id != null ? state.issueById().get(id) : null;
         ManualUnloadConfirmation manual = id != null ? state.manualById().get(id) : null;
+        PackageType pt = pkg != null ? pkg.getPackageType() : null;
+        BigDecimal weight = pkg != null && pkg.getActualWeightKg() != null ? pkg.getActualWeightKg()
+                : (pt != null ? pt.getWeightKg() : null);
+        BigDecimal lengthCm = pkg != null && pkg.getActualLength() != null ? pkg.getActualLength()
+                : (pt != null && pt.getLength() != null ? BigDecimal.valueOf(pt.getLength()) : null);
+        BigDecimal widthCm = pkg != null && pkg.getActualWidth() != null ? pkg.getActualWidth()
+                : (pt != null && pt.getWidth() != null ? BigDecimal.valueOf(pt.getWidth()) : null);
+        BigDecimal heightCm = pkg != null && pkg.getActualHeight() != null ? pkg.getActualHeight()
+                : (pt != null && pt.getHeight() != null ? BigDecimal.valueOf(pt.getHeight()) : null);
+        boolean isFragile = (pkg != null && pkg.getHandlingClass() == HandlingClass.FRAGILE)
+                || (pt != null && Boolean.TRUE.equals(pt.getFragile()));
         return StopPackageResponse.builder()
                 .issueKind(issue != null && issue.getKind() != null ? issue.getKind().name() : null)
                 .issueNote(issue != null ? issue.getNote() : null)
@@ -240,10 +257,17 @@ public class DriverServiceImpl implements DriverService {
                         ? manual.getDecisionNote() : null)
                 .packageId(id)
                 .packageName(getPackageDisplayName(pkg))
+                .packageTypeName(pt != null ? pt.getName() : null)
                 .trackingBarcode(pkg != null ? pkg.getTrackingBarcode() : null)
                 .packageCode(pkg != null ? pkg.getPackageCode() : null)
                 .qrToken(pkg != null ? pkg.getQrToken() : null)
-                .weight(pkg != null ? pkg.getActualWeightKg() : null)
+                .weight(weight)
+                .lengthCm(lengthCm)
+                .widthCm(widthCm)
+                .heightCm(heightCm)
+                .handlingClass(pkg != null && pkg.getHandlingClass() != null ? pkg.getHandlingClass().name() : null)
+                .fragile(isFragile)
+                .note(pkg != null ? pkg.getNote() : null)
                 .stepSequence(stepSequence)
                 .unloadOrder(unloadOrder)
                 .unloaded(unloaded)
@@ -552,27 +576,80 @@ public class DriverServiceImpl implements DriverService {
     }
 
     private DriverTripResponse toTripResponse(Trip trip) {
+        List<DeliveryStop> stops = deliveryStopRepository.findByTripIdOrderByStopSequenceAsc(trip.getId());
+        int stopCount = !stops.isEmpty() ? stops.size() : (int) deliveryStopRepository.countByTripId(trip.getId());
+
+        int totalPackages = 0;
+        BigDecimal totalWeight = BigDecimal.ZERO;
+        LocalDateTime latestPlannedArrival = null;
+        for (DeliveryStop stop : stops) {
+            if (stop.getPlannedArrival() != null
+                    && (latestPlannedArrival == null || stop.getPlannedArrival().isAfter(latestPlannedArrival))) {
+                latestPlannedArrival = stop.getPlannedArrival();
+            }
+            List<CargoPackage> stopPackages = tripPackageResolver.packagesOfStop(stop.getId());
+            if (stopPackages != null) {
+                for (CargoPackage pkg : stopPackages) {
+                    totalPackages++;
+                    BigDecimal weight = weightOf(pkg);
+                    if (weight != null) {
+                        totalWeight = totalWeight.add(weight);
+                    }
+                }
+            }
+        }
+
+        Integer totalDistanceMeters = null;
+        Integer totalDurationSeconds = null;
+        if (routePlanRepository != null) {
+            Optional<RoutePlan> activeRoutePlan = routePlanRepository.findByTripIdAndIsActiveTrue(trip.getId());
+            if (activeRoutePlan != null && activeRoutePlan.isPresent()) {
+                totalDistanceMeters = activeRoutePlan.get().getTotalDistanceMeters();
+                totalDurationSeconds = activeRoutePlan.get().getTotalDurationSeconds();
+            }
+        }
+
+        LocalDateTime estimatedCompletionTime = latestPlannedArrival;
+        if (estimatedCompletionTime == null && trip.getDepartureTime() != null && totalDurationSeconds != null) {
+            estimatedCompletionTime = trip.getDepartureTime().plusSeconds(totalDurationSeconds);
+        }
+
         return DriverTripResponse.builder()
                 .tripId(trip.getId())
                 .tripCode(trip.getTripCode())
                 .vehicleLicensePlate(trip.getVehicle() != null ? trip.getVehicle().getLicensePlate() : null)
-                .stopCount((int) deliveryStopRepository.countByTripId(trip.getId()))
+                .stopCount(stopCount)
+                .totalPackages(totalPackages)
+                .totalWeightKg(totalWeight)
+                .totalDistanceMeters(totalDistanceMeters)
+                .totalDurationSeconds(totalDurationSeconds)
+                .estimatedCompletionTime(estimatedCompletionTime)
                 .departureTime(trip.getDepartureTime())
                 .status(trip.getStatus() != null ? trip.getStatus().name() : null)
                 .loadingCompleted(departureReadiness.canStart(trip, currentDriver(null)))
-                .completedAt(completedAtOf(trip))
+                .completedAt(completedAtOf(trip, stops))
                 .build();
     }
 
+    private static BigDecimal weightOf(CargoPackage pkg) {
+        if (pkg == null) {
+            return null;
+        }
+        if (pkg.getActualWeightKg() != null) {
+            return pkg.getActualWeightKg();
+        }
+        return pkg.getPackageType() != null ? pkg.getPackageType().getWeightKg() : null;
+    }
+
     /** Giờ giao xong của chuyến đã giao; chuyến giao xong trước khi có cột completed_at thì lấy giờ đến muộn nhất của các điểm. */
-    private LocalDateTime completedAtOf(Trip trip) {
+    private LocalDateTime completedAtOf(Trip trip, List<DeliveryStop> stops) {
         if (trip.getStatus() != TripStatus.DELIVERED) {
             return null;
         }
         if (trip.getCompletedAt() != null) {
             return trip.getCompletedAt();
         }
-        return deliveryStopRepository.findByTripIdOrderByStopSequenceAsc(trip.getId()).stream()
+        return stops.stream()
                 .map(DeliveryStop::getActualArrival)
                 .filter(java.util.Objects::nonNull)
                 .max(LocalDateTime::compareTo)
@@ -595,6 +672,9 @@ public class DriverServiceImpl implements DriverService {
     private String getPackageDisplayName(CargoPackage cargoPackage) {
         if (cargoPackage == null) {
             return "Kiện hàng";
+        }
+        if (cargoPackage.getPackageName() != null && !cargoPackage.getPackageName().isBlank()) {
+            return cargoPackage.getPackageName();
         }
         if (cargoPackage.getPackageType() != null && cargoPackage.getPackageType().getName() != null) {
             return cargoPackage.getPackageType().getName();

@@ -4,7 +4,6 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
-import jwt
 from fastapi.testclient import TestClient
 
 from app.main import app
@@ -12,7 +11,7 @@ from app.config.database import Base, get_db
 from app.entity.optimization.load_plan import LoadPlan
 from app.entity.optimization.package_placement import PackagePlacement
 from app.entity.optimization.optimization_job import OptimizationJob
-from app.entity.trip_model import Trip, Vehicle, VehicleType, DeliveryStop, DeliveryRequirement
+from app.entity.trip_model import AppUser, Trip, Vehicle, VehicleType, DeliveryStop, DeliveryRequirement
 from app.service.optimize.load_plan_service import LoadPlanService
 from app.dto.response.load_plan_response import LoadPlanResponse
 from app.dto.response.package_placement_response import PackagePlacementResponse
@@ -20,6 +19,9 @@ from app.dto.response.load_plan_comparison_response import LoadPlanComparisonRes
 
 
 from tests.optimization_fixtures import token,install_jwks
+from tests.keycloak_tokens import user_headers
+COMPANY_ID = 1
+DISPATCHER_SUB = "99"
 from app.entity.trip_model import AppUser
 
 @pytest.fixture(autouse=True)
@@ -230,25 +232,37 @@ class TestLoadPlanApiUpgrade:
         res = client.get("/api/v1/load-plans/compare?planId1=101&planId2=102")
         assert res.status_code == 401
 
-    @pytest.mark.integration  # cần token RS256 do Keycloak thật ký (JWKS)
+    @pytest.mark.usefixtures("keycloak_jwks")
     def test_compare_plans_api_unauthorized_role_returns_403(self, test_db):
         app.dependency_overrides[get_db] = lambda: test_db
         client = TestClient(app)
-        token = make_jwt_token(["DRIVER"])
         res = client.get(
             "/api/v1/load-plans/compare?planId1=101&planId2=102",
-            headers={"Authorization": f"Bearer {token}"},
+            headers=user_headers("DRIVER", sub=DISPATCHER_SUB),
         )
         assert res.status_code == 403
 
-    @pytest.mark.integration  # cần token RS256 do Keycloak thật ký (JWKS)
+    @pytest.mark.usefixtures("keycloak_jwks")
+    def test_compare_plans_api_dispatcher_of_another_company_returns_404(self, test_db):
+        """Phương án của công ty khác đọc như không tồn tại."""
+        test_db.add(AppUser(id=457, keycloak_id="kc-other-company", company_id=COMPANY_ID + 1))
+        test_db.commit()
+        app.dependency_overrides[get_db] = lambda: test_db
+        client = TestClient(app)
+        res = client.get(
+            "/api/v1/load-plans/compare?planId1=101&planId2=102",
+            headers=user_headers("DISPATCHER", sub="kc-other-company"),
+        )
+        assert res.status_code == 404
+        app.dependency_overrides.clear()
+
+    @pytest.mark.usefixtures("keycloak_jwks")
     def test_compare_plans_api_dispatcher_returns_200_and_comparison_data(self, test_db):
         app.dependency_overrides[get_db] = lambda: test_db
         client = TestClient(app)
-        token = make_jwt_token(["DISPATCHER"])
         res = client.get(
             "/api/v1/load-plans/compare?planId1=101&planId2=102",
-            headers={"Authorization": f"Bearer {token}"},
+            headers=user_headers("DISPATCHER", sub=DISPATCHER_SUB),
         )
         assert res.status_code == 200
         body = res.json()

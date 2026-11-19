@@ -11,6 +11,7 @@ from app.exception.app_exception import AppException
 from app.exception.error_code import ErrorCode
 from app.service.auth.auth_dependency import (
     company_of_caller,
+    user_id_of_caller,
     is_backend_service,
     require_plan_approver,
     require_role,
@@ -93,7 +94,8 @@ def approve_plan(
             raise AppException(ErrorCode.VALIDATION_ERROR)
     else:
         _ensure_caller_company(caller, [id], service, db)
-        user_id = caller.get("user_id") or caller.get("id") or caller.get("sub")
+        # Người duyệt là tài khoản ứng với sub của token (approved_by là users.id, không phải UUID của Keycloak)
+        user_id = user_id_of_caller(caller, db)
     plan = service.approve_plan(plan_id=id, current_user_id=user_id, db=db)
     response_dto = service.to_response(plan, db)
 

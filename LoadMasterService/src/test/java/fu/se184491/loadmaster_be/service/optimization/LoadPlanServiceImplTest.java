@@ -60,6 +60,7 @@ class LoadPlanServiceImplTest {
     @Mock private CurrentUserService currentUserService;
     @Mock private fu.se184491.loadmaster_be.repository.billing.CompanySubscriptionRepository companySubscriptionRepository;
     @Mock private org.springframework.transaction.PlatformTransactionManager transactionManager;
+    @Mock private fu.se184491.loadmaster_be.repository.optimization.LoadPlanWriteRepository loadPlanWriteRepository;
 
     @InjectMocks
     private LoadPlanServiceImpl service;
@@ -75,6 +76,9 @@ class LoadPlanServiceImplTest {
         plan = LoadPlan.builder().id(50L).job(job).version(1).build();
         when(loadPlanRepository.findById(50L)).thenReturn(Optional.of(plan));
         when(currentUserService.getCurrentCompanyId()).thenReturn(1L);
+        // Job của lần chạy lại còn RUNNING: UPDATE có điều kiện đổi được đúng một dòng
+        org.mockito.Mockito.lenient().when(loadPlanWriteRepository.finishUnfinishedJob(any(), any(), any()))
+                .thenReturn(1);
     }
 
     @Test
@@ -144,5 +148,16 @@ class LoadPlanServiceImplTest {
                 transactionManager,companySubscriptionRepository);
         verify(loadPlanRepository,never()).save(any());
         verify(auditLogRepository,never()).save(any());
+    }
+
+    @Test
+    void lateRerunCannotBeDispatchedThroughUnavailablePublicOperation() {
+        var error=assertThrows(AppException.class,()->service.rerunOptimization(50L,new RerunOptimizationRequest()));
+        assertEquals(ErrorCode.OPTIMIZATION_RERUN_UNAVAILABLE,error.getErrorCode());
+        assertEquals(org.springframework.http.HttpStatus.SERVICE_UNAVAILABLE,error.getErrorCode().getHttpStatus());
+        org.mockito.Mockito.verifyNoInteractions(creditService,optimizationEngineClient,optimizationJobRepository,
+                loadPlanWriteRepository,transactionManager);
+        verify(loadPlanRepository,never()).save(any());
+        verify(packagePlacementRepository,never()).save(any());
     }
 }

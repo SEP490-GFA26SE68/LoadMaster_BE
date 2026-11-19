@@ -22,11 +22,32 @@ public class StopPackageResponse {
     @Schema(description = "Tên loại kiện hàng hoặc mô tả")
     private String packageName;
 
+    @Schema(description = "Tên loại thùng / quy cách đóng gói")
+    private String packageTypeName;
+
     @Schema(description = "Mã barcode theo dõi")
     private String trackingBarcode;
 
     @Schema(description = "Khối lượng thực tế (kg)")
     private BigDecimal weight;
+
+    @Schema(description = "Chiều dài (cm)")
+    private BigDecimal lengthCm;
+
+    @Schema(description = "Chiều rộng (cm)")
+    private BigDecimal widthCm;
+
+    @Schema(description = "Chiều cao (cm)")
+    private BigDecimal heightCm;
+
+    @Schema(description = "Phân loại hàng hóa: STANDARD, FRAGILE, REFRIGERATED, HAZARDOUS, HIGH_VALUE")
+    private String handlingClass;
+
+    @Schema(description = "Cờ hàng dễ vỡ")
+    private Boolean fragile;
+
+    @Schema(description = "Ghi chú kiện hàng")
+    private String note;
 
     @Schema(description = "Thứ tự đã xếp lên xe (bốc xếp)")
     private Integer stepSequence;

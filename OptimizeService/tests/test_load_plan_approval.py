@@ -13,7 +13,6 @@ Seams under test:
 """
 import uuid
 import pytest
-import jwt
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
@@ -33,6 +32,14 @@ from app.service.optimize.load_plan_service import LoadPlanService
 
 
 from tests.optimization_fixtures import token, install_jwks
+from tests.keycloak_tokens import user_headers, service_headers
+DISPATCHER_SUB = "kc-dispatcher-approve"
+
+def _dispatcher_of_the_trip(db_session, user_id=456, company_id=3):
+    db_session.query(Trip).first().company_id = company_id
+    db_session.add(AppUser(id=user_id, keycloak_id=DISPATCHER_SUB, company_id=company_id))
+    db_session.commit()
+
 
 @pytest.fixture(autouse=True)
 def test_jwks(monkeypatch):
@@ -194,31 +201,28 @@ class TestLoadPlanApproveApi:
         response = client.post(f"/api/v1/load-plans/{plan_with_placements.id}/approve")
         assert response.status_code == 401
 
-    @pytest.mark.integration  # cần token RS256 do Keycloak thật ký (JWKS)
+    @pytest.mark.usefixtures("keycloak_jwks")
     def test_approve_plan_unauthorized_role_returns_403(self, db_session, plan_with_placements):
         """Role DRIVER không được phép duyệt plan -> 403 Forbidden"""
         app.dependency_overrides[get_db] = lambda: db_session
         client = TestClient(app)
-        driver_token = make_jwt_token(["DRIVER"])
 
         response = client.post(
             f"/api/v1/load-plans/{plan_with_placements.id}/approve",
-            headers={"Authorization": f"Bearer {driver_token}"},
+            headers=user_headers("DRIVER"),
         )
         assert response.status_code == 403
 
-    @pytest.mark.integration  # cần token RS256 do Keycloak thật ký (JWKS)
+    @pytest.mark.usefixtures("keycloak_jwks")
     def test_approve_plan_dispatcher_role_returns_200_and_approved_plan(self, db_session, plan_with_placements):
         """Role DISPATCHER duyệt plan hợp lệ -> 200 OK + LoadPlanResponse với approved=True"""
+        _dispatcher_of_the_trip(db_session, user_id=456)
         app.dependency_overrides[get_db] = lambda: db_session
         client = TestClient(app)
-        trip=db_session.get(Trip,1);trip.company_id=1
-        db_session.add(AppUser(id=456,keycloak_id='456',company_id=1));db_session.commit()
-        dispatcher_token = make_jwt_token(["DISPATCHER"], user_id=456)
 
         response = client.post(
             f"/api/v1/load-plans/{plan_with_placements.id}/approve",
-            headers={"Authorization": f"Bearer {dispatcher_token}"},
+            headers=user_headers("DISPATCHER", sub=DISPATCHER_SUB),
         )
         assert response.status_code == 200
         data = response.json()
@@ -242,6 +246,40 @@ class TestApprovalTenantIsolation:
         assert response.status_code==404
         db_session.refresh(plan_with_placements)
         assert plan_with_placements.approved is False
+
+
+    @pytest.mark.usefixtures("keycloak_jwks")
+    def test_approve_plan_of_another_company_returns_404(self, db_session, plan_with_placements):
+        """Điều phối viên công ty khác không thấy phương án -> 404, phương án vẫn chưa duyệt."""
+        _dispatcher_of_the_trip(db_session, company_id=3)
+        db_session.query(Trip).first().company_id = 4
+        db_session.commit()
+        app.dependency_overrides[get_db] = lambda: db_session
+        client = TestClient(app)
+
+        response = client.post(
+            f"/api/v1/load-plans/{plan_with_placements.id}/approve",
+            headers=user_headers("DISPATCHER", sub=DISPATCHER_SUB),
+        )
+        assert response.status_code == 404
+        db_session.refresh(plan_with_placements)
+        assert plan_with_placements.approved is False
+        app.dependency_overrides.clear()
+
+    @pytest.mark.usefixtures("keycloak_jwks")
+    def test_approve_plan_with_service_token_uses_the_approver_in_the_body(self, db_session, plan_with_placements):
+        """Service token của LoadMasterService: người duyệt lấy từ thân (Java đã kiểm vai trò và công ty)."""
+        app.dependency_overrides[get_db] = lambda: db_session
+        client = TestClient(app)
+
+        response = client.post(
+            f"/api/v1/load-plans/{plan_with_placements.id}/approve",
+            json={"approved_by_user_id": 789},
+            headers=service_headers(),
+        )
+        assert response.status_code == 200
+        assert response.json()["data"]["approved_by_id"] == 789
+        app.dependency_overrides.clear()
 
 
 class TestApprovalAuditCompany:

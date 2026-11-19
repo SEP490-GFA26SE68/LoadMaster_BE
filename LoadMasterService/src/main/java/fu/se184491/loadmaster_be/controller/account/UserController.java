@@ -4,7 +4,9 @@ import fu.se184491.loadmaster_be.constant.account.UserRole;
 import fu.se184491.loadmaster_be.constant.account.UserStatus;
 import fu.se184491.loadmaster_be.dto.ApiResponse;
 import fu.se184491.loadmaster_be.dto.PageResponse;
+import fu.se184491.loadmaster_be.dto.request.account.ChangeMyPasswordRequest;
 import fu.se184491.loadmaster_be.dto.request.account.CreateUserRequest;
+import fu.se184491.loadmaster_be.dto.request.account.UpdateMyProfileRequest;
 import fu.se184491.loadmaster_be.dto.request.account.UpdateUserRequest;
 import fu.se184491.loadmaster_be.dto.request.account.UpdateUserStatusRequest;
 import fu.se184491.loadmaster_be.dto.response.account.CreateUserResponse;
@@ -35,6 +37,26 @@ public class UserController {
         return ApiResponse.success(
                 userService.getUserProfile(jwt)
         );
+    }
+
+    @PutMapping("/me")
+    public ApiResponse<UserProfileResponse> updateMyProfile(
+            @AuthenticationPrincipal Jwt jwt,
+            @Valid @RequestBody UpdateMyProfileRequest request
+    ) {
+        return ApiResponse.success(
+                "Cập nhật thông tin cá nhân thành công",
+                userService.updateMyProfile(jwt, request)
+        );
+    }
+
+    @PostMapping("/me/change-password")
+    public ApiResponse<Void> changeMyPassword(
+            @AuthenticationPrincipal Jwt jwt,
+            @Valid @RequestBody ChangeMyPasswordRequest request
+    ) {
+        userService.changeMyPassword(jwt, request);
+        return ApiResponse.success("Đổi mật khẩu thành công", null);
     }
 
     @PostMapping

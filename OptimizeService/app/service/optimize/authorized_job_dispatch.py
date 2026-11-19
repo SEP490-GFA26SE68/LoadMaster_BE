@@ -48,7 +48,8 @@ def claim_for_execution(job_uuid: str, trip_id: int, db: Session) -> bool:
         raise RuntimeError("V1 cannot execute a V2 job")
     # PostgreSQL rechecks the predicate after waiting for a concurrent updater.
     changed = db.execute(update(OptimizationJob).where(
-        OptimizationJob.job_uuid == job_uuid, OptimizationJob.status == "PENDING"
+        OptimizationJob.job_uuid == job_uuid, OptimizationJob.status == "PENDING",
+        OptimizationJob.execution_generation.is_(None)
     ).values(status="RUNNING")).rowcount
     db.commit()
     return changed == 1

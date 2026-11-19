@@ -11,9 +11,11 @@ import fu.se184491.loadmaster_be.dto.request.driver.ManualUnloadRequest;
 import fu.se184491.loadmaster_be.dto.request.driver.RejectManualConfirmRequest;
 import fu.se184491.loadmaster_be.dto.request.driver.ReportDeliveryIssueRequest;
 import fu.se184491.loadmaster_be.dto.response.driver.DriverLoadPlanResponse;
+import fu.se184491.loadmaster_be.dto.response.driver.DriverTripDetailResponse;
 import fu.se184491.loadmaster_be.dto.response.driver.DriverTripStopsResponse;
 import fu.se184491.loadmaster_be.dto.response.driver.ManualConfirmationResponse;
 import fu.se184491.loadmaster_be.dto.response.monitoring.TripLiveStopResponse;
+import fu.se184491.loadmaster_be.entity.Customer;
 import fu.se184491.loadmaster_be.entity.account.User;
 import fu.se184491.loadmaster_be.entity.cargo.CargoPackage;
 import fu.se184491.loadmaster_be.entity.common.AuditLog;
@@ -44,6 +46,8 @@ import fu.se184491.loadmaster_be.repository.driver.UnloadConfirmationRepository;
 import fu.se184491.loadmaster_be.repository.monitoring.GpsTrackingRepository;
 import fu.se184491.loadmaster_be.repository.optimization.PackagePlacementRepository;
 import fu.se184491.loadmaster_be.repository.trip.DeliveryStopRepository;
+import fu.se184491.loadmaster_be.entity.route.RoutePlan;
+import fu.se184491.loadmaster_be.repository.route.RoutePlanRepository;
 import fu.se184491.loadmaster_be.repository.warehouse.DeviationRepository;
 import fu.se184491.loadmaster_be.repository.warehouse.LoadingExecutionRepository;
 import fu.se184491.loadmaster_be.repository.warehouse.PlacementConfirmationRepository;
@@ -102,6 +106,7 @@ class DriverDeliveryServiceImplTest {
     @Mock private GpsTrackingRepository gpsTrackingRepository;
     @Mock private EtaCalculationService etaCalculationService;
     @Mock private AuditLogRepository auditLogRepository;
+    @Mock private RoutePlanRepository routePlanRepository;
 
     @InjectMocks
     private DriverDeliveryServiceImpl service;
@@ -502,5 +507,51 @@ class DriverDeliveryServiceImplTest {
 
         assertTrue(service.listPendingManualConfirmations("10").isEmpty());
         verify(manualConfirmationRepository, never()).findByTripIdAndStatusOrderByRequestedAtAsc(any(), any());
+    }
+
+    @Test
+    void getTripDetailReturnsFullInformationForAssignedDriver() {
+        VehicleType type = VehicleType.builder().id(1L).name("Xe tải 2 tấn").maxPayloadKg(BigDecimal.valueOf(2000)).build();
+        Vehicle vehicle = Vehicle.builder().id(5L).name("Hino 2T").licensePlate("29C-12345").vehicleType(type).build();
+        trip.setVehicle(vehicle);
+        trip.setOriginName("Kho Tổng");
+        trip.setOriginAddress("Hà Nội");
+
+        Customer customer = Customer.builder().id(100L).name("Nguyễn Văn A").contactPhone("0912345678").build();
+        DeliveryRequirement req = DeliveryRequirement.builder().id(20L).customer(customer).deadline(LocalDateTime.now().plusHours(4)).build();
+        DeliveryStop stop = DeliveryStop.builder().id(50L).stopSequence(1).stopName("Điểm 1").address("Cầu Giấy").deliveryRequirement(req).build();
+
+        CargoPackage pkg = CargoPackage.builder().id(70L).packageCode("PKG-001").trackingBarcode("BAR-001").actualWeightKg(BigDecimal.valueOf(25)).build();
+
+        User dispatcher = User.builder().id(99L).fullName("Điều Phối Viên").phoneNumber("0988888888").build();
+        trip.setCreatedByDispatcher(dispatcher);
+        RoutePlan routePlan = RoutePlan.builder().id(7L).totalDistanceMeters(45200).totalDurationSeconds(3600).isActive(true).build();
+
+        when(driverService.requireOwnTrip("10")).thenReturn(trip);
+        when(deliveryStopRepository.findByTripIdOrderByStopSequenceAsc(trip.getId())).thenReturn(List.of(stop));
+        when(loadingExecutionRepository.existsByLoadPlanJobTripIdAndStatus(trip.getId(), LoadingExecutionStatus.COMPLETED)).thenReturn(true);
+        when(tripPackageResolver.packagesOfStop(stop.getId())).thenReturn(List.of(pkg));
+        when(routePlanRepository.findByTripIdAndIsActiveTrue(trip.getId())).thenReturn(Optional.of(routePlan));
+
+        DriverTripDetailResponse detail = service.getTripDetail("10");
+
+        assertEquals(trip.getId(), detail.getTripId());
+        assertEquals("29C-12345", detail.getLicensePlate());
+        assertEquals("Kho Tổng", detail.getDepotName());
+        assertEquals("Điều Phối Viên", detail.getDispatcherName());
+        assertEquals("0988888888", detail.getDispatcherPhone());
+        assertEquals(45200, detail.getTotalDistanceMeters());
+        assertEquals(3600, detail.getTotalDurationSeconds());
+        assertTrue(detail.getLoadingCompleted());
+        assertEquals(1, detail.getTotalStops());
+        assertEquals(1, detail.getTotalPackages());
+        assertEquals(BigDecimal.valueOf(25), detail.getTotalWeightKg());
+
+        assertEquals(1, detail.getStops().size());
+        DriverTripDetailResponse.StopDetail stopDetail = detail.getStops().get(0);
+        assertEquals("Nguyễn Văn A", stopDetail.getContactName());
+        assertEquals("0912345678", stopDetail.getContactPhone());
+        assertEquals(1, stopDetail.getPackages().size());
+        assertEquals("PKG-001", stopDetail.getPackages().get(0).getPackageCode());
     }
 }

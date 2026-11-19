@@ -48,7 +48,7 @@ spring:
     enabled: false
     locations: classpath:db/migration
     baseline-on-migrate: true
-    baseline-version: 0
+    baseline-version: 41
 
   jpa:
     # Giữ bật có chủ ý: còn service không có @Transactional mà vẫn đi qua quan hệ lazy (ví dụ xuất nhãn PDF đọc

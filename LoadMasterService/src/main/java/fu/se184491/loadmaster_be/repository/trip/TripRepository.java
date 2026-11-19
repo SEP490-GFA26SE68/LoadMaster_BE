@@ -29,6 +29,15 @@ public interface TripRepository extends
 
     List<Trip> findByCompanyIdAndStatus(Long companyId, TripStatus status);
 
+    List<Trip> findByCompanyIdAndStatusAndCompletedAtGreaterThanEqualAndCompletedAtLessThan(
+            Long companyId,
+            TripStatus status,
+            java.time.LocalDateTime start,
+            java.time.LocalDateTime end
+    );
+
+    List<Trip> findByCompanyIdAndStatusAndCompletedAtIsNull(Long companyId, TripStatus status);
+
     List<Trip> findByDriver_IdOrderByDepartureTimeDesc(Long driverId);
 
     List<Trip> findByDriver_IdAndCompany_IdOrderByDepartureTimeDesc(Long driverId, Long companyId);

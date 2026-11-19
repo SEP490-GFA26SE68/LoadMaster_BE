@@ -13,6 +13,7 @@ import fu.se184491.loadmaster_be.entity.account.User;
 import fu.se184491.loadmaster_be.entity.cargo.CargoPackage;
 import fu.se184491.loadmaster_be.entity.cargo.PackageType;
 import fu.se184491.loadmaster_be.entity.company.Company;
+import fu.se184491.loadmaster_be.helpers.TestSubscriptions;
 import fu.se184491.loadmaster_be.entity.order.TransportOrder;
 import fu.se184491.loadmaster_be.entity.planning.DeliveryRequirement;
 import jakarta.persistence.EntityManager;
@@ -93,6 +94,7 @@ class DeliveryRequirementApiIntegrationTest {
                 .createdAt(Instant.now())
                 .build();
         entityManager.persist(company);
+        TestSubscriptions.activate(entityManager, company);
 
         manager = User.builder()
                 .keycloakId("manager-subject")

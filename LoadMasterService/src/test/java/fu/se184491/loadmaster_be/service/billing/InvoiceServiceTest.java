@@ -145,4 +145,83 @@ class InvoiceServiceTest {
 
         assertEquals(ErrorCode.INVOICE_NOT_FOUND, ex.getErrorCode());
     }
+
+    private fu.se184491.loadmaster_be.entity.billing.PaymentTransaction payment(long id, String orderType, Long targetId,
+                                                                                String amount) {
+        return fu.se184491.loadmaster_be.entity.billing.PaymentTransaction.builder()
+                .id(id)
+                .company(company)
+                .gateway(fu.se184491.loadmaster_be.constant.billing.PaymentGateway.MOCK)
+                .gatewayTransactionId("MOCK_" + id)
+                .amountVnd(new BigDecimal(amount))
+                .orderType(orderType)
+                .targetId(targetId)
+                .status(fu.se184491.loadmaster_be.constant.billing.PaymentStatus.SUCCESS)
+                .build();
+    }
+
+    @Test
+    @DisplayName("recordPaymentInvoice - thanh toán gói: hoá đơn PAID theo số tiền, gói và kỳ của thanh toán")
+    void recordPaymentInvoice_subscription() {
+        var paid = payment(77L, "SUBSCRIPTION_RENEWAL", 1L, "1490000");
+        when(invoiceRepository.findByPaymentTransactionId(77L)).thenReturn(Optional.empty());
+        when(invoiceRepository.save(any(Invoice.class))).thenAnswer(i -> i.getArgument(0));
+
+        Invoice created = invoiceService.recordPaymentInvoice(paid, new InvoiceService.SubscriptionPeriod(
+                subscription, plan, LocalDateTime.of(2026, 12, 1, 8, 0), LocalDateTime.of(2027, 1, 1, 8, 0)));
+
+        assertEquals("INV-10-P77", created.getInvoiceNumber());
+        assertEquals(InvoiceStatus.PAID, created.getStatus());
+        assertEquals(new BigDecimal("1490000"), created.getTotalAmount());
+        assertEquals(new BigDecimal("1490000"), created.getSubtotalAmount());
+        assertEquals(BigDecimal.ZERO, created.getTaxAmount());
+        assertEquals("2026-12-01/2027-01-01", created.getBillingPeriod());
+        assertSame(plan, created.getPlan());
+        assertSame(subscription, created.getCompanySubscription());
+        assertSame(paid, created.getPaymentTransaction());
+        assertEquals("SUBSCRIPTION_RENEWAL", created.getItemType());
+        assertNull(created.getCreditQuantity());
+    }
+
+    @Test
+    @DisplayName("recordPaymentInvoice - nạp credit: số credit lấy từ thanh toán, không gói, không kỳ")
+    void recordPaymentInvoice_creditTopup() {
+        var paid = payment(78L, "CREDIT_TOPUP", 500L, "500000");
+        when(invoiceRepository.findByPaymentTransactionId(78L)).thenReturn(Optional.empty());
+        when(invoiceRepository.save(any(Invoice.class))).thenAnswer(i -> i.getArgument(0));
+
+        Invoice created = invoiceService.recordPaymentInvoice(paid, null);
+
+        assertEquals(500, created.getCreditQuantity());
+        assertEquals(new BigDecimal("500000"), created.getTotalAmount());
+        assertNull(created.getPlan());
+        assertNull(created.getCompanySubscription());
+        assertNull(created.getBillingPeriod());
+
+        when(invoiceRepository.findById(5L)).thenReturn(Optional.of(created));
+        InvoiceResponse response = invoiceService.getInvoiceById(5L, 10L, false);
+        assertEquals("CREDIT_TOPUP", response.getItemType());
+        assertEquals(500, response.getCreditQuantity());
+        assertEquals("MOCK_78", response.getPaymentReference());
+    }
+
+    @Test
+    @DisplayName("recordPaymentInvoice - thanh toán đã có hoá đơn: trả hoá đơn cũ, không tạo thêm")
+    void recordPaymentInvoice_isIdempotent() {
+        var paid = payment(79L, "CREDIT_TOPUP", 50L, "50000");
+        when(invoiceRepository.findByPaymentTransactionId(79L)).thenReturn(Optional.of(invoice));
+
+        assertSame(invoice, invoiceService.recordPaymentInvoice(paid, null));
+        verify(invoiceRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("recordPaymentInvoice - thanh toán chưa thành công: không ghi hoá đơn")
+    void recordPaymentInvoice_rejectsUnsettledPayment() {
+        var pending = payment(80L, "SUBSCRIPTION", 1L, "1000");
+        pending.setStatus(fu.se184491.loadmaster_be.constant.billing.PaymentStatus.FAILED);
+
+        assertThrows(IllegalStateException.class, () -> invoiceService.recordPaymentInvoice(pending, null));
+        verifyNoInteractions(invoiceRepository);
+    }
 }

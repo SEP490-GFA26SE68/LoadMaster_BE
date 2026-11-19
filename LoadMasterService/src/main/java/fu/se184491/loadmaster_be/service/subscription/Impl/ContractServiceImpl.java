@@ -119,16 +119,13 @@ public class ContractServiceImpl implements ContractService {
                 .build();
         invoiceRepository.save(invoice);
 
-        // 2. Khi đổi/kích hoạt gói: reset số dư credit về 0 rồi cộng đúng số credit định mức của gói mới
+        // 2. Công ty có gói thì có tài khoản credit, kể cả gói không giới hạn / không ghi credit tháng.
+        creditAccountRepository.insertIfMissing(company.getId());
+
+        // 3. Khi đổi/kích hoạt gói: reset số dư credit về 0 rồi cộng đúng số credit định mức của gói mới
         if (plan.getMonthlyCredits() != null && plan.getMonthlyCredits() > 0) {
             CreditAccount creditAccount = creditAccountRepository.findByCompanyId(company.getId())
-                    .orElseGet(() -> {
-                        CreditAccount newAcc = CreditAccount.builder()
-                                .company(company)
-                                .balance(0)
-                                .build();
-                        return creditAccountRepository.save(newAcc);
-                    });
+                    .orElseThrow(() -> new AppException(ErrorCode.COMPANY_NOT_FOUND));
 
             int newPlanCredits = plan.getMonthlyCredits();
             creditAccount.setBalance(newPlanCredits);
@@ -165,6 +162,9 @@ public class ContractServiceImpl implements ContractService {
         }
 
         CompanySubscription updated = companySubscriptionRepository.save(subscription);
+        if (updated.getStatus() == SubscriptionStatus.ACTIVE && updated.getCompany() != null) {
+            creditAccountRepository.insertIfMissing(updated.getCompany().getId());
+        }
         return mapToResponse(updated);
     }
 

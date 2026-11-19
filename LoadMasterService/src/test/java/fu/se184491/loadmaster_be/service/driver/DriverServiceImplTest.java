@@ -20,6 +20,7 @@ import fu.se184491.loadmaster_be.entity.driver.DeliveryIssue;
 import fu.se184491.loadmaster_be.entity.driver.ManualUnloadConfirmation;
 import fu.se184491.loadmaster_be.entity.driver.UnloadConfirmation;
 import fu.se184491.loadmaster_be.entity.planning.DeliveryRequirement;
+import fu.se184491.loadmaster_be.entity.route.RoutePlan;
 import fu.se184491.loadmaster_be.entity.trip.DeliveryStop;
 import fu.se184491.loadmaster_be.entity.trip.Trip;
 import fu.se184491.loadmaster_be.exception.AppException;
@@ -33,6 +34,7 @@ import fu.se184491.loadmaster_be.repository.driver.UnloadConfirmationRepository;
 import fu.se184491.loadmaster_be.repository.optimization.LoadPlanRepository;
 import fu.se184491.loadmaster_be.repository.optimization.PackagePlacementRepository;
 import fu.se184491.loadmaster_be.repository.planning.DeliveryRequirementRepository;
+import fu.se184491.loadmaster_be.repository.route.RoutePlanRepository;
 import fu.se184491.loadmaster_be.repository.trip.DeliveryStopRepository;
 import fu.se184491.loadmaster_be.repository.trip.TripRepository;
 import fu.se184491.loadmaster_be.repository.warehouse.LoadingExecutionRepository;
@@ -49,6 +51,7 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
@@ -85,6 +88,7 @@ class DriverServiceImplTest {
     @Mock private DeliveryIssueRepository deliveryIssueRepository;
     @Mock private ManualUnloadConfirmationRepository manualConfirmationRepository;
     @Mock private PickupDriverService pickupDriverService;
+    @Mock private RoutePlanRepository routePlanRepository;
 
     @InjectMocks
     private DriverServiceImpl service;
@@ -285,6 +289,8 @@ class DriverServiceImplTest {
         Trip done = Trip.builder().id(12L).company(trip.getCompany()).driver(driver).status(TripStatus.DELIVERED).completedAt(recorded).build();
         Trip older = Trip.builder().id(13L).company(trip.getCompany()).driver(driver).status(TripStatus.DELIVERED).build();
         when(tripRepository.findByDriver_IdAndCompany_IdOrderByDepartureTimeDesc(8L, 1L)).thenReturn(List.of(trip, done, older));
+        when(deliveryStopRepository.findByTripIdOrderByStopSequenceAsc(10L)).thenReturn(List.of());
+        when(deliveryStopRepository.findByTripIdOrderByStopSequenceAsc(12L)).thenReturn(List.of());
         when(deliveryStopRepository.findByTripIdOrderByStopSequenceAsc(13L)).thenReturn(List.of(
                 DeliveryStop.builder().id(40L).trip(older).stopSequence(1).actualArrival(lastArrival.minusHours(2)).build(),
                 DeliveryStop.builder().id(41L).trip(older).stopSequence(2).actualArrival(lastArrival).build()));
@@ -330,6 +336,35 @@ class DriverServiceImplTest {
         assertEquals("LOADING", trips.get(0).getStatus());
         assertTrue(trips.get(0).getLoadingCompleted());
         assertFalse(trips.get(1).getLoadingCompleted());
+    }
+
+    @Test
+    void listTripsIncludesPackageWeightDistanceAndEstimatedCompletion() {
+        LocalDateTime departure = LocalDateTime.of(2026, 11, 5, 8, 0);
+        LocalDateTime lastPlanned = LocalDateTime.of(2026, 11, 5, 10, 30);
+        trip.setDepartureTime(departure);
+        DeliveryStop stop1 = DeliveryStop.builder().id(30L).trip(trip).stopSequence(1).plannedArrival(LocalDateTime.of(2026, 11, 5, 9, 15)).build();
+        DeliveryStop stop2 = DeliveryStop.builder().id(31L).trip(trip).stopSequence(2).plannedArrival(lastPlanned).build();
+        CargoPackage p1 = CargoPackage.builder().id(1L).actualWeightKg(new BigDecimal("12.5")).build();
+        CargoPackage p2 = CargoPackage.builder().id(2L).actualWeightKg(new BigDecimal("17.5")).build();
+        RoutePlan plan = RoutePlan.builder().id(5L).trip(trip).isActive(true).totalDistanceMeters(18500).totalDurationSeconds(5400).build();
+
+        when(tripRepository.findByDriver_IdAndCompany_IdOrderByDepartureTimeDesc(8L, 1L)).thenReturn(List.of(trip));
+        when(deliveryStopRepository.findByTripIdOrderByStopSequenceAsc(10L)).thenReturn(List.of(stop1, stop2));
+        when(tripPackageResolver.packagesOfStop(30L)).thenReturn(List.of(p1));
+        when(tripPackageResolver.packagesOfStop(31L)).thenReturn(List.of(p2));
+        when(routePlanRepository.findByTripIdAndIsActiveTrue(10L)).thenReturn(Optional.of(plan));
+
+        List<DriverTripResponse> trips = service.listTrips(null);
+
+        assertEquals(1, trips.size());
+        DriverTripResponse row = trips.get(0);
+        assertEquals(2, row.getStopCount());
+        assertEquals(2, row.getTotalPackages());
+        assertEquals(0, new BigDecimal("30.0").compareTo(row.getTotalWeightKg()));
+        assertEquals(18500, row.getTotalDistanceMeters());
+        assertEquals(5400, row.getTotalDurationSeconds());
+        assertEquals(lastPlanned, row.getEstimatedCompletionTime());
     }
 
     @Test

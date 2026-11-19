@@ -68,6 +68,8 @@ class GuestRegistrationServiceTest {
     private TemporaryPasswordGenerator temporaryPasswordGenerator;
     @Mock
     private GuestRegistrationSessionExpiry sessionExpiry;
+    @Mock
+    private fu.se184491.loadmaster_be.service.billing.InvoiceService invoiceService;
 
     private GuestRegistrationServiceImpl service;
 
@@ -87,7 +89,8 @@ class GuestRegistrationServiceTest {
                 brevoClient,
                 otpHasher,
                 temporaryPasswordGenerator,
-                sessionExpiry
+                sessionExpiry,
+                invoiceService
         );
     }
 

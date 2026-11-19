@@ -7,7 +7,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.stereotype.Repository;
 
-import java.time.Instant;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 
@@ -30,7 +30,7 @@ public interface UserRepository extends
 
     List<User> findByCompanyIdAndUserRoleTypeAndStatus(Long companyId, UserRole userRole, UserStatus userStatus);
 
-    List<User> findByStatusAndUpdatedAtBefore(UserStatus status, Instant updatedAtCutoff);
+    List<User> findByStatusAndUpdatedAtBefore(UserStatus status, LocalDateTime updatedAtCutoff);
 
     List<User> findByUserRoleTypeInAndStatusOrderByFullNameAsc(java.util.Collection<UserRole> roles, UserStatus status);
 }

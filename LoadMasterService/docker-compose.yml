@@ -75,12 +75,16 @@ services:
       KC_BOOTSTRAP_ADMIN_USERNAME: ${KEYCLOAK_ADMIN}
       KC_BOOTSTRAP_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD}
 
+      # Origin của web production, file import của realm đọc qua ${LOADMASTER_WEB_URL:...}. Vắng thì chỉ localhost.
+      LOADMASTER_WEB_URL: ${LOADMASTER_WEB_URL:-http://localhost:5173}
+
     ports:
       - "8180:8080"
 
     volumes:
       - ../keycloak/import:/opt/keycloak/data/import:ro
       - ../keycloak/themes:/opt/keycloak/themes:ro
+      - ../keycloak/scripts:/opt/keycloak/scripts:ro
 
     depends_on:
       keycloak-postgres:

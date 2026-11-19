@@ -848,4 +848,26 @@ public class SubscriptionServiceTest {
     void renewalWindowIsSevenDays() {
         assertEquals(7, SubscriptionServiceImpl.RENEWAL_WINDOW_DAYS);
     }
+
+    @Test
+    @DisplayName("activateSubscription - Gói không ghi credit tháng vẫn có tài khoản credit, không cấp credit")
+    void testActivatePlanWithoutMonthlyCreditsStillEnsuresCreditAccount() {
+        SubscriptionPlan unlimited = SubscriptionPlan.builder()
+                .id(4L)
+                .name("Ultimate không giới hạn")
+                .tier(SubscriptionTier.ULTIMATE)
+                .price(new BigDecimal("7900000"))
+                .monthlyCredits(null)
+                .algorithmTier(AlgorithmTier.EP_DBLF_GA_AI)
+                .active(true)
+                .build();
+        when(companyRepository.findById(1L)).thenReturn(Optional.of(company));
+        when(subscriptionPlanRepository.findById(4L)).thenReturn(Optional.of(unlimited));
+        when(companySubscriptionRepository.findByCompanyId(1L)).thenReturn(Optional.empty());
+
+        subscriptionService.activateSubscription(1L, 4L);
+
+        verify(creditService).ensureAccount(1L);
+        verify(creditService, never()).grantMonthlyCredits(anyLong(), anyInt());
+    }
 }

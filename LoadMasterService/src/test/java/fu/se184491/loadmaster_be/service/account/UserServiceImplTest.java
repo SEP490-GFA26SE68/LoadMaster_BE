@@ -4,6 +4,7 @@ import fu.se184491.loadmaster_be.client.BrevoClient;
 import fu.se184491.loadmaster_be.client.KeycloakAdminClient;
 import fu.se184491.loadmaster_be.constant.account.UserRole;
 import fu.se184491.loadmaster_be.constant.account.UserStatus;
+import fu.se184491.loadmaster_be.constant.billing.SubscriptionStatus;
 import fu.se184491.loadmaster_be.constant.company.AgreementStatus;
 import fu.se184491.loadmaster_be.dto.PageResponse;
 import fu.se184491.loadmaster_be.dto.request.account.CreateUserRequest;
@@ -12,7 +13,9 @@ import fu.se184491.loadmaster_be.dto.request.account.UpdateUserStatusRequest;
 import fu.se184491.loadmaster_be.dto.response.account.CreateUserResponse;
 import fu.se184491.loadmaster_be.dto.response.account.ResetPasswordResponse;
 import fu.se184491.loadmaster_be.dto.response.account.UserListItemResponse;
+import fu.se184491.loadmaster_be.dto.response.account.UserProfileResponse;
 import fu.se184491.loadmaster_be.entity.account.User;
+import fu.se184491.loadmaster_be.entity.billing.CompanySubscription;
 import fu.se184491.loadmaster_be.entity.company.Company;
 import fu.se184491.loadmaster_be.entity.company.CompanyAgreement;
 import fu.se184491.loadmaster_be.exception.AppException;
@@ -21,6 +24,7 @@ import fu.se184491.loadmaster_be.helpers.CurrentUserService;
 import fu.se184491.loadmaster_be.helpers.TemporaryPasswordGenerator;
 import fu.se184491.loadmaster_be.entity.common.AuditLog;
 import fu.se184491.loadmaster_be.repository.account.UserRepository;
+import fu.se184491.loadmaster_be.repository.billing.CompanySubscriptionRepository;
 import fu.se184491.loadmaster_be.repository.common.AuditLogRepository;
 import fu.se184491.loadmaster_be.repository.company.CompanyAgreementRepository;
 import fu.se184491.loadmaster_be.repository.company.CompanyRepository;
@@ -36,12 +40,14 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
+import org.springframework.security.oauth2.jwt.Jwt;
 
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -82,6 +88,9 @@ class UserServiceImplTest {
 
     @Mock
     private AuditLogRepository auditLogRepository;
+
+    @Mock
+    private CompanySubscriptionRepository companySubscriptionRepository;
 
     @InjectMocks
     private UserServiceImpl userService;
@@ -344,6 +353,12 @@ class UserServiceImplTest {
         assertNotNull(response);
         assertEquals(UserRole.DISPATCHER, response.user().userRoleType());
         assertEquals(10L, response.user().companyId());
+
+        verify(brevoClient).sendEmail(
+                eq("dispatcher@acme.vn"),
+                contains("Acme Logistics"),
+                contains("Tmp#654321")
+        );
     }
 
     @Test
@@ -596,7 +611,7 @@ class UserServiceImplTest {
                 .updatedAt(LocalDateTime.now().minusMonths(3).minusDays(1))
                 .build();
 
-        when(userRepository.findByStatusAndUpdatedAtBefore(eq(UserStatus.INACTIVE), any(Instant.class)))
+        when(userRepository.findByStatusAndUpdatedAtBefore(eq(UserStatus.INACTIVE), any(LocalDateTime.class)))
                 .thenReturn(List.of(expiredInactiveUser));
 
         userService.purgeInactiveUsersAfterThreeMonths();
@@ -617,6 +632,12 @@ class UserServiceImplTest {
         assertEquals(100L, response.userId());
         assertEquals("NewTmp#999", response.temporaryPassword());
         verify(keycloakAdminClient).setPassword("kc-100", "NewTmp#999", true);
+
+        verify(brevoClient).sendEmail(
+                eq(targetEmployeeInCompany10.getEmail()),
+                contains("LoadMaster"),
+                contains("NewTmp#999")
+        );
     }
 
     private AuditLog savedAuditLog() {
@@ -688,8 +709,8 @@ class UserServiceImplTest {
         AuditLog log = savedAuditLog();
         assertEquals("USER_UPDATED", log.getActionType());
         assertEquals(10L, log.getCompanyId());
-        assertEquals(java.util.Map.of("phoneNumber", "0901111111"), log.getOldValues());
-        assertEquals(java.util.Map.of("phoneNumber", "0909999999"), log.getNewValues());
+        assertEquals(Map.of("phoneNumber", "0901111111"), log.getOldValues());
+        assertEquals(Map.of("phoneNumber", "0909999999"), log.getNewValues());
 
         userService.updateUser(100L, new UpdateUserRequest("Old Driver", "0909999999", null, null));
         verify(auditLogRepository).save(any(AuditLog.class));
@@ -730,5 +751,141 @@ class UserServiceImplTest {
         assertEquals("USER_DELETED", deleted.getActionType());
         assertEquals(10L, deleted.getCompanyId());
         assertEquals("INACTIVE", deleted.getNewValues().get("status"));
+    }
+
+    @Test
+    @DisplayName("getUserProfile: Trả về subscriptionExpired = true khi công ty hết hạn gói cước")
+    void getUserProfile_shouldReturnSubscriptionExpiredTrue_whenCompanySubscriptionIsExpired() {
+        Jwt jwt = new Jwt(
+                "token",
+                Instant.now(),
+                Instant.now().plusSeconds(3600),
+                Map.of("alg", "none"),
+                Map.of("sub", "kc-expired-1", "preferred_username", "admin@expired.vn")
+        );
+
+        Company company = Company.builder().id(10L).companyCode("GAMMA-TRIAL").build();
+        User user = User.builder()
+                .id(1L)
+                .keycloakId("kc-expired-1")
+                .email("admin@expired.vn")
+                .fullName("Admin Expired")
+                .company(company)
+                .userRoleType(UserRole.ADMIN)
+                .status(UserStatus.ACTIVE)
+                .build();
+        when(userRepository.findByKeycloakId("kc-expired-1")).thenReturn(Optional.of(user));
+
+        CompanySubscription sub =
+                CompanySubscription.builder()
+                        .id(5L)
+                        .company(company)
+                        .status(SubscriptionStatus.EXPIRED)
+                        .expiresAt(LocalDateTime.now().minusDays(1))
+                        .build();
+        when(companySubscriptionRepository.findByCompanyId(10L)).thenReturn(Optional.of(sub));
+
+        UserProfileResponse profile = userService.getUserProfile(jwt);
+
+        assertNotNull(profile);
+        assertTrue(profile.subscriptionExpired());
+    }
+
+    @Test
+    @DisplayName("getUserProfile: Trả về subscriptionExpired = false khi công ty đang có gói cước ACTIVE còn hạn")
+    void getUserProfile_shouldReturnSubscriptionExpiredFalse_whenCompanySubscriptionIsActive() {
+        Jwt jwt = new Jwt(
+                "token",
+                Instant.now(),
+                Instant.now().plusSeconds(3600),
+                Map.of("alg", "none"),
+                Map.of("sub", "kc-active-1", "preferred_username", "admin@active.vn")
+        );
+
+        Company company = Company.builder().id(20L).companyCode("BETA-ACTIVE").build();
+        User user = User.builder()
+                .id(2L)
+                .keycloakId("kc-active-1")
+                .email("admin@active.vn")
+                .fullName("Admin Active")
+                .company(company)
+                .userRoleType(UserRole.ADMIN)
+                .status(UserStatus.ACTIVE)
+                .build();
+        when(userRepository.findByKeycloakId("kc-active-1")).thenReturn(Optional.of(user));
+
+        CompanySubscription sub =
+                CompanySubscription.builder()
+                        .id(6L)
+                        .company(company)
+                        .status(SubscriptionStatus.ACTIVE)
+                        .expiresAt(LocalDateTime.now().plusDays(10))
+                        .build();
+        when(companySubscriptionRepository.findByCompanyId(20L)).thenReturn(Optional.of(sub));
+
+        UserProfileResponse profile = userService.getUserProfile(jwt);
+
+        assertNotNull(profile);
+        assertFalse(profile.subscriptionExpired());
+    }
+
+    @Test
+    @DisplayName("getUserProfile: Trả về subscriptionExpired = false khi user không thuộc công ty nào (Platform Role)")
+    void getUserProfile_shouldReturnSubscriptionExpiredFalse_whenUserHasNoCompany() {
+        Jwt jwt = new Jwt(
+                "token",
+                Instant.now(),
+                Instant.now().plusSeconds(3600),
+                Map.of("alg", "none"),
+                Map.of("sub", "kc-sysadmin", "preferred_username", "sysadmin@loadmaster.vn")
+        );
+
+        User user = User.builder()
+                .id(99L)
+                .keycloakId("kc-sysadmin")
+                .email("sysadmin@loadmaster.vn")
+                .fullName("System Admin")
+                .company(null)
+                .userRoleType(UserRole.SYSTEM_ADMIN)
+                .status(UserStatus.ACTIVE)
+                .build();
+        when(userRepository.findByKeycloakId("kc-sysadmin")).thenReturn(Optional.of(user));
+
+        UserProfileResponse profile = userService.getUserProfile(jwt);
+
+        assertNotNull(profile);
+        assertFalse(profile.subscriptionExpired());
+    }
+
+    @Test
+    @DisplayName("updateMyProfile: Cho phép cập nhật họ tên và số điện thoại của chính mình")
+    void updateMyProfile_shouldUpdateFullNameAndPhone() {
+        Jwt jwt = new Jwt(
+                "token",
+                Instant.now(),
+                Instant.now().plusSeconds(3600),
+                Map.of("alg", "none"),
+                Map.of("sub", "kc-driver-1", "preferred_username", "driver@test.vn")
+        );
+
+        User user = User.builder()
+                .id(88L)
+                .keycloakId("kc-driver-1")
+                .email("driver@test.vn")
+                .fullName("Tên cũ")
+                .phoneNumber("0900000000")
+                .userRoleType(UserRole.DRIVER)
+                .status(UserStatus.ACTIVE)
+                .build();
+        when(userRepository.findByKeycloakId("kc-driver-1")).thenReturn(Optional.of(user));
+
+        fu.se184491.loadmaster_be.dto.request.account.UpdateMyProfileRequest request =
+                new fu.se184491.loadmaster_be.dto.request.account.UpdateMyProfileRequest("Tên Mới", "0911222333");
+        UserProfileResponse response = userService.updateMyProfile(jwt, request);
+
+        assertEquals("Tên Mới", user.getFullName());
+        assertEquals("0911222333", user.getPhoneNumber());
+        verify(userRepository).save(user);
+        verify(keycloakAdminClient).updateUserProfile("kc-driver-1", "Tên Mới");
     }
 }

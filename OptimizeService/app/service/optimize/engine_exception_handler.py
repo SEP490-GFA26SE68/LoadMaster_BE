@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 from app.constant.optimization.job_status import OptimizationJobStatus
 from app.dto.optimization.engine.engine_response import EngineOptimizationResponse
 from app.exception.app_exception import ServiceAuthenticationException
-from app.service.optimize.optimization_job_service import OptimizationJobService
+from app.service.optimize.optimization_job_service import JobAlreadyFinishedError, OptimizationJobService
 
 logger = logging.getLogger(__name__)
 
@@ -112,6 +112,12 @@ class EngineExceptionHandler:
                 computation_ms=computation_ms,
                 db=db,
             )
+        except JobAlreadyFinishedError as finished:
+            # Job đã kết thúc ở nơi khác (LoadMasterService: JOB_INTERRUPTED, đã hoàn credit): không ghi đè,
+            # không báo trạng thái mới, không hoàn credit thêm.
+            logger.warning("Optimization job %s already %s; error %s not recorded",
+                           job_uuid_str, finished.current_status, status.value)
+            return _status_of(finished.current_status, status)
         except Exception as db_exc:
             logger.error(f"Failed to update job status in DB for {job_uuid_str}: {db_exc}")
 
@@ -183,6 +189,9 @@ class EngineExceptionHandler:
                 computation_ms=comp_ms,
                 db=db,
             )
+        except JobAlreadyFinishedError:
+            # Kết quả đến muộn: update_status đã rollback phương án vừa ghi; nơi gọi quyết phần credit.
+            raise
         except Exception as db_exc:
             logger.error(f"Failed to update job status in DB for {job_uuid_str}: {db_exc}")
 
@@ -204,3 +213,10 @@ class EngineExceptionHandler:
                 )
             except Exception as notify_exc:
                 logger.warning(f"Failed to send status notification for {job_uuid}: {notify_exc}")
+
+
+def _status_of(value: Optional[str], fallback: OptimizationJobStatus) -> OptimizationJobStatus:
+    try:
+        return OptimizationJobStatus(value)
+    except ValueError:
+        return fallback

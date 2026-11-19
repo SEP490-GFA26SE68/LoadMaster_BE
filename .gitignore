@@ -19,6 +19,8 @@ prd.md
 
 .env
 .env.*
+!.env.example
+!.env.prod.example
 issues/
 
 # JVM crash logs
