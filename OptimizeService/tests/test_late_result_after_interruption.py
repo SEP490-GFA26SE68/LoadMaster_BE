@@ -16,6 +16,11 @@ from app.dto.optimization.engine.engine_response import (
     PlacementData,
 )
 from app.entity.optimization.load_plan import LoadPlan
+from app.dto.optimization.engine.problem_request import PackageData
+from types import SimpleNamespace
+
+def _problem_fixture():
+    return SimpleNamespace(packages=[PackageData(id="1", l=10,w=10,h=10,weight=1,allowed_rotations=[0])])
 from app.entity.optimization.optimization_job import OptimizationJob
 from app.entity.trip_model import Base, Trip
 from app.service.optimize.async_optimization_runner import AsyncOptimizationRunner
@@ -48,14 +53,21 @@ def session_factory(tmp_path):
     Base.metadata.create_all(engine)
     factory = sessionmaker(bind=engine)
     with factory() as s:
-        s.add(Trip(id=1, status="PLANNED"))
+        s.add(Trip(id=1, status="PLANNED", company_id=int(COMPANY)))
+        # This owned tmp_path database models Spring's committed authoritative ledger.
+        s.execute(text("CREATE TABLE credit_accounts(id INTEGER PRIMARY KEY,company_id INTEGER,balance INTEGER)"))
+        s.execute(text("CREATE TABLE credit_transactions(id INTEGER PRIMARY KEY,credit_account_id INTEGER,type TEXT,amount INTEGER,reference TEXT,refunded BOOLEAN)"))
+        s.execute(text("INSERT INTO credit_accounts VALUES(7,7,100)"))
         s.commit()
     return factory
 
 
 def _job(session, status=OptimizationJobStatus.RUNNING.value) -> str:
     job_uuid = str(uuid.uuid4())
-    session.add(OptimizationJob(job_uuid=job_uuid, trip_id=1, status=status, company_id=COMPANY))
+    session.add(OptimizationJob(job_uuid=job_uuid, trip_id=1, status=status, company_id=COMPANY,
+                                subscription_tier="BASIC", algorithm_tier="BASIC", algorithm_name="EP_DBLF"))
+    session.execute(text("INSERT INTO credit_transactions(credit_account_id,type,amount,reference,refunded) VALUES(7,'USAGE',-2,:uuid,false)"), {"uuid":job_uuid})
+    session.execute(text("UPDATE credit_accounts SET balance=balance-2 WHERE id=7"))
     session.commit()
     return job_uuid
 
@@ -76,7 +88,7 @@ def _interrupt(session_factory, job_uuid):
 
 def _placed():
     return EngineOptimizationResponse(
-        placements=[PlacementData(package_id="1", x=0, y=0, z=0, packed_l=10, packed_w=10, packed_h=10)],
+        placements=[PlacementData(package_id="1", x=0, y=0, z=0, packed_l=10, packed_w=10, packed_h=10, rotation_type=0)],
         unplaced=[],
         metrics=MetricsData(packed_count=1, computation_ms=42),
     )
@@ -85,15 +97,13 @@ def _placed():
 class Ledger:
     """Credit như LoadMasterService giữ: trừ theo mã job, hoàn mỗi mã job đúng một lần."""
 
-    def __init__(self, balance=10):
-        self.balance = balance
-        self.used: dict[str, int] = {}
+    def __init__(self, job_uuid, balance=10):
+        self.balance = balance - 2  # Already reserved by Spring before dispatch.
+        self.used: dict[str, int] = {job_uuid: 2}
         self.refunded: set[str] = set()
 
     async def deduct_credit(self, company_id, reference):
-        self.balance -= 2
-        self.used[reference] = 2
-        return True
+        raise AssertionError("Python must never deduct a Spring-reserved job")
 
     async def refund_credit(self, company_id, reference):
         self.refund(reference)
@@ -185,7 +195,7 @@ async def test_background_run_releases_session_before_engine_solve():
 async def test_late_result_after_interruption_is_discarded(session_factory):
     with session_factory() as db:
         job_uuid = _job(db, status=OptimizationJobStatus.PENDING.value)
-    ledger = Ledger()
+    ledger = Ledger(job_uuid)
 
     async def solve_slowly(problem):
         # Trong lúc bộ giải còn chạy, LoadMasterService thấy job quá hạn: FAILED và hoàn credit đã trừ.
@@ -194,7 +204,7 @@ async def test_late_result_after_interruption_is_discarded(session_factory):
         return _placed()
 
     runner = _runner(session_factory, AsyncMock(side_effect=solve_slowly), ledger)
-    await runner.run(job_uuid, problem=MagicMock())
+    await runner.run(job_uuid, problem=_problem_fixture())
 
     with session_factory() as db:
         job = db.query(OptimizationJob).filter_by(job_uuid=job_uuid).one()
@@ -211,10 +221,11 @@ async def test_job_interrupted_before_it_starts_does_not_run(session_factory):
     with session_factory() as db:
         job_uuid = _job(db, status=OptimizationJobStatus.PENDING.value)
     _interrupt(session_factory, job_uuid)
-    ledger = Ledger()
+    ledger = Ledger(job_uuid)
+    ledger.refund(job_uuid)  # Spring has already settled the interrupted pre-start job.
     solve = AsyncMock(return_value=_placed())
 
-    await _runner(session_factory, solve, ledger).run(job_uuid, problem=MagicMock())
+    await _runner(session_factory, solve, ledger).run(job_uuid, problem=_problem_fixture())
 
     solve.assert_not_awaited()
     with session_factory() as db:
@@ -227,9 +238,9 @@ async def test_job_interrupted_before_it_starts_does_not_run(session_factory):
 async def test_result_in_time_is_saved_with_its_plans(session_factory):
     with session_factory() as db:
         job_uuid = _job(db, status=OptimizationJobStatus.PENDING.value)
-    ledger = Ledger()
+    ledger = Ledger(job_uuid)
 
-    await _runner(session_factory, AsyncMock(return_value=_placed()), ledger).run(job_uuid, problem=MagicMock())
+    await _runner(session_factory, AsyncMock(return_value=_placed()), ledger).run(job_uuid, problem=_problem_fixture())
 
     with session_factory() as db:
         job = db.query(OptimizationJob).filter_by(job_uuid=job_uuid).one()

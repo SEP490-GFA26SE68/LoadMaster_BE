@@ -475,7 +475,7 @@ public class UserServiceImpl implements UserService {
                     <h2 style="color: #0f172a; margin-top: 0;">Chào mừng bạn đến với LoadMaster!</h2>
                     <p>Xin chào <strong>%s</strong>,</p>
                     <p>Quản trị viên công ty <strong>%s</strong> đã khởi tạo tài khoản nhân viên cho bạn trên hệ thống LoadMaster với thông tin đăng nhập như sau:</p>
-                    
+
                     <div style="background-color: #f8fafc; padding: 15px; border-radius: 6px; margin: 15px 0;">
                         <ul style="list-style-type: none; padding-left: 0; margin: 0;">
                             <li style="margin-bottom: 8px;"><strong>🏢 Doanh nghiệp:</strong> %s</li>
@@ -522,7 +522,7 @@ public class UserServiceImpl implements UserService {
                     <h2 style="color: #0f172a; margin-top: 0;">Thông báo Cấp lại Mật khẩu Tạm thời</h2>
                     <p>Xin chào <strong>%s</strong>,</p>
                     <p>Mật khẩu tài khoản của bạn tại <strong>%s</strong> trên hệ thống LoadMaster vừa được đặt lại:</p>
-                    
+
                     <div style="background-color: #f8fafc; padding: 15px; border-radius: 6px; margin: 15px 0;">
                         <ul style="list-style-type: none; padding-left: 0; margin: 0;">
                             <li style="margin-bottom: 8px;"><strong>📧 Email đăng nhập:</strong> %s</li>

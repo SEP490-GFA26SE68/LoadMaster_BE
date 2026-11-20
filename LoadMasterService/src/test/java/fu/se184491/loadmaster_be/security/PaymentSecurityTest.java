@@ -32,6 +32,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
          PaymentCallbackHandler.class, VnPayClient.class, fu.se184491.loadmaster_be.service.payment.MockCheckoutAccess.class})
 @ActiveProfiles("prod")
 class PaymentSecurityTest {
+    @MockitoBean fu.se184491.loadmaster_be.service.billing.InvoiceService invoices;
     @TestConfiguration(proxyBeanMethods=false)
     static class Config {
         @Bean VnPayConfig vnPayConfig() {

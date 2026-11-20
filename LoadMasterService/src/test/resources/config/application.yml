@@ -13,6 +13,10 @@ KEYCLOAK_AUTH_URL: http://127.0.0.1:1
 spring:
   profiles:
     active: test
+  data:
+    redis:
+      # Never inherit a developer/shared Redis endpoint; no Redis operations in these DB tests.
+      url: redis://127.0.0.1:1
   datasource:
     url: jdbc:h2:mem:loadmaster-test;MODE=PostgreSQL;DB_CLOSE_DELAY=-1;DATABASE_TO_LOWER=TRUE
     driver-class-name: org.h2.Driver

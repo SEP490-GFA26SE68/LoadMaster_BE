@@ -24,7 +24,7 @@ public class VehiclePresenceController {
     @GetMapping("/api/warehouse/vehicle-presence/{warehouseId}/search") @PreAuthorize("hasRole('WAREHOUSE_WORKER')")
     public ApiResponse<List<Map<String,Object>>> search(@PathVariable long warehouseId,@RequestParam String query) {return ApiResponse.success(presence.search(warehouseId,query));}
     @GetMapping("/api/warehouse/vehicle-presence/{warehouseId}/vehicles") @PreAuthorize("hasRole('WAREHOUSE_WORKER')")
-    public PageResponse<Map<String,Object>> vehicles(@PathVariable long warehouseId,@RequestParam(defaultValue="") String query,@RequestParam(defaultValue="0") int page,@RequestParam(defaultValue="20") int size) {return PageResponse.of(presence.vehicles(warehouseId,query,page,size));}
+    public PageResponse<Map<String,Object>> vehicles(@PathVariable long warehouseId,@RequestParam(defaultValue="") String query,@RequestParam(defaultValue="0") int page,@RequestParam(defaultValue="20") int size,@RequestParam(defaultValue="false") boolean atWarehouse) {return PageResponse.of(presence.vehicles(warehouseId,query,page,size,atWarehouse));}
     @PostMapping("/api/warehouse/vehicle-presence/{warehouseId}/check-in") @PreAuthorize("hasRole('WAREHOUSE_WORKER')")
     public ApiResponse<VehiclePresenceStore.Presence> checkIn(@PathVariable long warehouseId,@RequestHeader("Idempotency-Key") UUID key,@Valid @RequestBody CheckIn body) {return ApiResponse.success(presence.checkIn(warehouseId,body.vehicleId(),key));}
     @PostMapping("/api/warehouse/vehicle-presence/{warehouseId}/loading-trips/{tripId}/confirm-presence") @PreAuthorize("hasRole('WAREHOUSE_WORKER')")

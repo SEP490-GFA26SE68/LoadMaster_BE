@@ -34,6 +34,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @WebMvcTest(LoadPlanController.class)
 @Import({TestJwtSupport.class, LoadPlanServiceImpl.class, fu.se184491.loadmaster_be.service.optimization.Impl.LoadPlanQueryServiceImpl.class, CurrentUserService.class})
 class LoadPlanSecurityTest {
+    @MockitoBean fu.se184491.loadmaster_be.repository.optimization.LoadPlanWriteRepository writer;
     @Autowired MockMvc mvc;
     @MockitoBean fu.se184491.loadmaster_be.repository.optimization.LoadPlanReadRepository read;
     @MockitoBean fu.se184491.loadmaster_be.repository.trip.TripRepository trips;
@@ -55,6 +56,11 @@ class LoadPlanSecurityTest {
     @MockitoBean fu.se184491.loadmaster_be.service.optimization.OptimizationEntitlementService entitlements;
 
     @BeforeEach void setup() {
+        when(subscriptions.findByCompanyId(anyLong())).thenReturn(Optional.of(
+                fu.se184491.loadmaster_be.entity.billing.CompanySubscription.builder()
+                    .status(fu.se184491.loadmaster_be.constant.billing.SubscriptionStatus.ACTIVE)
+                    .expiresAt(java.time.LocalDateTime.now().plusDays(1)).build()));
+
         when(read.findPlan(47L)).thenReturn(Optional.of(new fu.se184491.loadmaster_be.repository.optimization.LoadPlanReadRepository.PlanWithCompany(fu.se184491.loadmaster_be.dto.response.optimization.LoadPlanDetailResponse.builder().id(47L).tripId(7L).build(),1L)));
         when(read.findPlan(48L)).thenReturn(Optional.of(new fu.se184491.loadmaster_be.repository.optimization.LoadPlanReadRepository.PlanWithCompany(fu.se184491.loadmaster_be.dto.response.optimization.LoadPlanDetailResponse.builder().id(48L).tripId(8L).build(),2L)));
         Company company = Company.builder().id(1L).build();

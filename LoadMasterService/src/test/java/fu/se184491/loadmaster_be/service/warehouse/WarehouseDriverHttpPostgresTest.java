@@ -80,8 +80,13 @@ class WarehouseDriverHttpPostgresTest {
       WarehouseStagingServiceImpl.class, WarehouseIncidentServiceImpl.class, StagingRecorder.class,
       DriverServiceImpl.class, DriverDeliveryServiceImpl.class, TripDepartureReadiness.class, TripStatusService.class,
       TripLookupHelper.class, TripPackageResolver.class, LoadPlanQueryServiceImpl.class, LoadPlanReadRepository.class,
-      StopZoneResolver.class})
+      StopZoneResolver.class,fu.se184491.loadmaster_be.service.vehicle.VehiclePresenceStore.class,
+      fu.se184491.loadmaster_be.service.vehicle.VehiclePresenceService.class,
+      fu.se184491.loadmaster_be.service.vehicle.VehicleDepartureEligibility.class})
     static class Config {
+        @Bean com.fasterxml.jackson.databind.ObjectMapper filterMapper(){return new com.fasterxml.jackson.databind.ObjectMapper().findAndRegisterModules();}
+        @Bean JdbcTemplate presenceJdbc(DataSource ds){return new JdbcTemplate(ds);}
+        @Bean fu.se184491.loadmaster_be.repository.vehicle.VehicleRepository presenceVehicles(EntityManagerFactory emf){return new org.springframework.data.jpa.repository.support.JpaRepositoryFactory(org.springframework.orm.jpa.SharedEntityManagerCreator.createSharedEntityManager(emf)).getRepository(fu.se184491.loadmaster_be.repository.vehicle.VehicleRepository.class);}
         @Bean tools.jackson.databind.json.JsonMapper jsonMapper(){return tools.jackson.databind.json.JsonMapper.builder().findAndAddModules().build();}
         @Bean DataSource dataSource() {
             var uri=URI.create(postgres.getJdbcUrl().substring(5));
@@ -116,6 +121,7 @@ class WarehouseDriverHttpPostgresTest {
         @Bean fu.se184491.loadmaster_be.repository.route.RoutePlanRepository routes(){return mock(fu.se184491.loadmaster_be.repository.route.RoutePlanRepository.class);}
         @Bean LoadingReplanService replan(){return mock(LoadingReplanService.class);}
         @Bean OptimizationAccess optimizationAccess(){return mock(OptimizationAccess.class);}
+        @Bean fu.se184491.loadmaster_be.service.optimization.Impl.InterruptedOptimizationJobService unusedLegacyRecovery(){return mock(fu.se184491.loadmaster_be.service.optimization.Impl.InterruptedOptimizationJobService.class);}
         @Bean LoadPlanService unusedPlanMutations(){return mock(LoadPlanService.class);}
         @Bean OptimizationClient optimizationClient() {
             var tokens=mock(fu.se184491.loadmaster_be.service.security.ServiceTokenProvider.class);
@@ -158,6 +164,12 @@ class WarehouseDriverHttpPostgresTest {
         context.getEnvironment().getPropertySources().remove("systemProperties");
         context.setServletContext(web.getServletContext()); context.register(Config.class); context.refresh();
         sql=new JdbcTemplate(context.getBean(DataSource.class));
+        for(String resource:List.of("/sql/vehicle-current-presence-proposal.sql","/sql/vehicle-warehouse-transfers.sql")) {
+            try(var input=WarehouseDriverHttpPostgresTest.class.getResourceAsStream(resource)) {
+                assertNotNull(input);
+                sql.execute(new String(input.readAllBytes(),java.nio.charset.StandardCharsets.UTF_8));
+            }
+        }
         Tomcat.addServlet(web,"dispatcher",new DispatcherServlet(context)).setLoadOnStartup(1);
         web.addServletMappingDecoded("/","dispatcher");
         FilterDef security=new FilterDef(); security.setFilterName("security");
@@ -192,8 +204,13 @@ class WarehouseDriverHttpPostgresTest {
             v.path("inner_l").asInt(),v.path("inner_w").asInt(),v.path("inner_h").asInt(),v.path("max_payload_kg").asInt(),v.path("max_cog_offset_ratio").asDouble(),200,200,100,300,2000,2000,1000,1000);
         sql.update("INSERT INTO vehicle_types(id,company_id,name,inner_length,inner_width,inner_height,max_payload_kg,max_cog_offset_ratio,hazardous_capable) VALUES(2,2,'Fixture B',400,200,200,2000,0.15,false)");
         sql.update("INSERT INTO vehicles(id,company_id,vehicle_type_id,name,license_plate,status) VALUES(1,1,1,'Fixture A','STEP6-A','AVAILABLE'),(2,2,2,'Fixture B','STEP6-B','AVAILABLE')");
+        // Synthetic observed presence, not inferred from AVAILABLE/loading. No shared data is touched.
+        sql.update("INSERT INTO company_warehouses(id,company_id,warehouse_name,address,is_default,is_active,created_at) VALUES(101,1,'Fixture origin A','Fixture',false,true,clock_timestamp()),(201,2,'Fixture origin B','Fixture',false,true,clock_timestamp())");
+        sql.update("INSERT INTO warehouse_staff_assignments(user_id,company_id,warehouse_id,active) VALUES(9,1,101,true),(19,2,201,true)");
+        sql.update("INSERT INTO vehicle_current_presence(vehicle_id,company_id,current_warehouse_id,status,actor_user_id,observed_at) VALUES(1,1,101,'AT_WAREHOUSE',9,clock_timestamp()),(2,2,201,'AT_WAREHOUSE',19,clock_timestamp())");
         sql.update("INSERT INTO vehicle_type_obstacles(vehicle_type_id,name,type,x,y,z,length,width,height,load_bearing) VALUES(1,'Fixture wheel well','WHEEL_ARCH',300,0,0,40,20,30,false)");
         sql.update("INSERT INTO trips(id,company_id,driver_user_id,created_by_dispatcher_id,vehicle_id,status,trip_code) VALUES(10,1,8,7,1,'PLANNED','STEP6-A'),(20,2,18,17,2,'PLANNED','STEP6-B')");
+        sql.update("UPDATE trips SET origin_warehouse_id=CASE company_id WHEN 1 THEN 101 ELSE 201 END");
         sql.update("INSERT INTO optimization_jobs(id,trip_id,job_uuid,status,algorithm_name) VALUES(40,10,'60000000-0000-0000-0000-000000000040','COMPLETED','EP_DBLF'),(42,20,'60000000-0000-0000-0000-000000000042','COMPLETED','EP_DBLF')");
         sql.update("INSERT INTO load_plans(id,job_id,is_approved,is_stale,version,packed_items_count,cog_x,cog_y,cog_z) VALUES(50,40,false,false,1,2,200,100,10),(52,42,true,false,1,1,200,100,10)");
         sql.update("INSERT INTO delivery_requirements(id,company_id,trip_id,destination,deadline,priority,status,created_at) VALUES(70,1,10,'Fixture A',localtimestamp+'1 day'::interval,'NORMAL','ASSIGNED',localtimestamp),(80,2,20,'Fixture B',localtimestamp+'1 day'::interval,'NORMAL','ASSIGNED',localtimestamp)");

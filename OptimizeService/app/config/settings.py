@@ -6,7 +6,6 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
     # Cùng biến và cùng mặc định với LoadMasterService: DATABASE_URL dạng JDBC (jdbc:postgresql://...) hoặc
-    # SQLAlchemy (postgresql://user:pass@...); tài khoản không ghi trong URL thì lấy POSTGRES_USER / POSTGRES_PASSWORD.
     DATABASE_URL: str = "jdbc:postgresql://localhost:5432/loadmaster"
     POSTGRES_USER: Optional[str] = None
     POSTGRES_PASSWORD: Optional[str] = None

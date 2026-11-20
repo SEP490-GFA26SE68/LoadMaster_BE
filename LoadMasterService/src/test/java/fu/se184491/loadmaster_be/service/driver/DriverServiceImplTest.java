@@ -288,9 +288,9 @@ class DriverServiceImplTest {
         LocalDateTime lastArrival = LocalDateTime.of(2026, 11, 5, 16, 10);
         Trip done = Trip.builder().id(12L).company(trip.getCompany()).driver(driver).status(TripStatus.DELIVERED).completedAt(recorded).build();
         Trip older = Trip.builder().id(13L).company(trip.getCompany()).driver(driver).status(TripStatus.DELIVERED).build();
-        when(tripRepository.findByDriver_IdOrderByDepartureTimeDesc(8L)).thenReturn(List.of(trip, done, older));
-        lenient().when(deliveryStopRepository.findByTripIdOrderByStopSequenceAsc(13L)).thenReturn(List.of(
         when(tripRepository.findByDriver_IdAndCompany_IdOrderByDepartureTimeDesc(8L, 1L)).thenReturn(List.of(trip, done, older));
+        when(deliveryStopRepository.findByTripIdOrderByStopSequenceAsc(10L)).thenReturn(List.of());
+        when(deliveryStopRepository.findByTripIdOrderByStopSequenceAsc(12L)).thenReturn(List.of());
         when(deliveryStopRepository.findByTripIdOrderByStopSequenceAsc(13L)).thenReturn(List.of(
                 DeliveryStop.builder().id(40L).trip(older).stopSequence(1).actualArrival(lastArrival.minusHours(2)).build(),
                 DeliveryStop.builder().id(41L).trip(older).stopSequence(2).actualArrival(lastArrival).build()));
@@ -349,7 +349,7 @@ class DriverServiceImplTest {
         CargoPackage p2 = CargoPackage.builder().id(2L).actualWeightKg(new BigDecimal("17.5")).build();
         RoutePlan plan = RoutePlan.builder().id(5L).trip(trip).isActive(true).totalDistanceMeters(18500).totalDurationSeconds(5400).build();
 
-        when(tripRepository.findByDriver_IdOrderByDepartureTimeDesc(8L)).thenReturn(List.of(trip));
+        when(tripRepository.findByDriver_IdAndCompany_IdOrderByDepartureTimeDesc(8L, 1L)).thenReturn(List.of(trip));
         when(deliveryStopRepository.findByTripIdOrderByStopSequenceAsc(10L)).thenReturn(List.of(stop1, stop2));
         when(tripPackageResolver.packagesOfStop(30L)).thenReturn(List.of(p1));
         when(tripPackageResolver.packagesOfStop(31L)).thenReturn(List.of(p2));

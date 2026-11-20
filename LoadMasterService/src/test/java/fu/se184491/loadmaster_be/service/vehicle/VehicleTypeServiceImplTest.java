@@ -63,7 +63,57 @@ class VehicleTypeServiceImplTest {
 
     private static CreateVehicleTypeRequest request(String name, int length, String payload) {
         return new CreateVehicleTypeRequest(name, length, 235, 240, 230, 230, new BigDecimal(payload),
-                null, null, null, null, null);
+                null, null, null, null, null, null, null, null, null);
+    }
+
+    /** Sáu thông số trục theo thứ tự: giới hạn trước, giới hạn sau, vị trí trước, vị trí sau, tải rỗng trước, tải rỗng sau. */
+    private static CreateVehicleTypeRequest withAxles(String frontLimit, String rearLimit, String frontX, String rearX,
+                                                      String emptyFront, String emptyRear) {
+        return new CreateVehicleTypeRequest("Thùng 6 m", 600, 235, 240, 230, 230, new BigDecimal("5000"),
+                dec(frontLimit), dec(rearLimit), dec(frontX), dec(rearX), dec(emptyFront), dec(emptyRear),
+                null, null, null);
+    }
+
+    private static BigDecimal dec(String value) {
+        return value == null ? null : new BigDecimal(value);
+    }
+
+    @Test
+    void allSixAxleNumbersAreStoredAndReturned() {
+        var response = service.updateVehicleType(3L, withAxles("3500", "6500", "-80", "420", "1800", "1400"));
+
+        assertEquals(new BigDecimal("-80"), type.getFrontAxleX());
+        assertEquals(new BigDecimal("420"), type.getRearAxleX());
+        assertEquals(new BigDecimal("1800"), type.getEmptyFrontAxleLoadKg());
+        assertEquals(new BigDecimal("1400"), type.getEmptyRearAxleLoadKg());
+        assertEquals(new BigDecimal("420"), response.rearAxleX());
+        assertEquals(new BigDecimal("1400"), response.emptyRearAxleLoadKg());
+        verify(loadPlanRepository).markStaleByTripId(40L);
+    }
+
+    @Test
+    void noAxleNumbersAtAllIsAccepted() {
+        service.updateVehicleType(3L, withAxles(null, null, null, null, null, null));
+
+        assertEquals(null, type.getFrontAxleX());
+        assertEquals(null, type.getRearAxleLimitKg());
+    }
+
+    @Test
+    void onlyTheTwoAxleLimitsIsRejected() {
+        AppException error = assertThrows(AppException.class,
+                () -> service.updateVehicleType(3L, withAxles("3500", "6500", null, null, null, null)));
+
+        assertEquals(ErrorCode.VEHICLE_AXLE_CONFIG_INCOMPLETE, error.getErrorCode());
+        verify(vehicleTypeRepository, never()).save(any());
+    }
+
+    @Test
+    void rearAxleMustBeBehindTheFrontAxle() {
+        AppException error = assertThrows(AppException.class,
+                () -> service.updateVehicleType(3L, withAxles("3500", "6500", "420", "420", "1800", "1400")));
+
+        assertEquals(ErrorCode.VEHICLE_AXLE_ORDER, error.getErrorCode());
     }
 
     @Test

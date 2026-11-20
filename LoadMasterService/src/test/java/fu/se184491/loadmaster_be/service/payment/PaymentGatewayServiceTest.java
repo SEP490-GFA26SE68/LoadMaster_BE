@@ -26,6 +26,7 @@ import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
 class PaymentGatewayServiceTest {
+    @Mock private MockPaymentPolicy mockPolicy;
 
     @Mock
     private PaymentTransactionRepository paymentTransactionRepository;
@@ -41,19 +42,19 @@ class PaymentGatewayServiceTest {
     @Test
     @DisplayName("createPayment - MOCK gateway is refused when vnpay.mock is off, nothing is saved")
     void createPayment_mockGatewayRefusedWhenMockConfigOff() {
-        when(vnPayClient.isMock()).thenReturn(false);
+        org.mockito.Mockito.doThrow(new org.springframework.security.access.AccessDeniedException("Mock payments disabled")).when(mockPolicy).requireEnabled();
 
-        AppException ex = assertThrows(AppException.class, () -> paymentGatewayService.createPayment(
+        org.springframework.security.access.AccessDeniedException ex = assertThrows(org.springframework.security.access.AccessDeniedException.class, () -> paymentGatewayService.createPayment(
                 company, PaymentGateway.MOCK, "CREDIT_TOPUP", 50L, new BigDecimal("250000"), "Nạp 50 credits", "127.0.0.1"));
 
-        assertEquals(ErrorCode.INVALID_INPUT, ex.getErrorCode());
+        assertEquals("Mock payments disabled", ex.getMessage());
         verifyNoInteractions(paymentTransactionRepository);
     }
 
     @Test
     @DisplayName("createPayment - MOCK gateway returns the mock-checkout link when vnpay.mock is on")
     void createPayment_mockGatewayAllowedWhenMockConfigOn() {
-        when(vnPayClient.isMock()).thenReturn(true);
+        org.mockito.Mockito.doNothing().when(mockPolicy).requireEnabled();
         when(paymentTransactionRepository.save(any(PaymentTransaction.class))).thenAnswer(inv -> {
             PaymentTransaction txn = inv.getArgument(0);
             txn.setId(7L);

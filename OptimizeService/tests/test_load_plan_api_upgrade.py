@@ -20,6 +20,9 @@ from app.dto.response.load_plan_comparison_response import LoadPlanComparisonRes
 
 
 from tests.optimization_fixtures import token,install_jwks
+from tests.keycloak_tokens import user_headers
+COMPANY_ID = 1
+DISPATCHER_SUB = "99"
 from app.entity.trip_model import AppUser
 
 @pytest.fixture(autouse=True)

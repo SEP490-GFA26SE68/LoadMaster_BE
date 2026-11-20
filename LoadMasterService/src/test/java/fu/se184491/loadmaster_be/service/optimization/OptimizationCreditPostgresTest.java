@@ -306,6 +306,19 @@ class OptimizationCreditPostgresTest {
         } finally {release.countDown();pool.shutdownNow();}
     }
 
+    @Test void concurrentEnsureAccountCreatesOneZeroBalanceAccountWithoutLedgerMutation() throws Exception {
+        // Explicit-ID fixture inserts must advance the disposable database's identity sequence.
+        sql.queryForObject("SELECT setval(pg_get_serial_sequence('credit_accounts','id'),(SELECT max(id) FROM credit_accounts),true)",Long.class);
+        concurrently(()->{credits.ensureAccount(2L);return null;},()->{credits.ensureAccount(2L);return null;});
+        assertEquals(1,sql.queryForObject("SELECT count(*) FROM credit_accounts WHERE company_id=2",Integer.class));
+        assertEquals(0,sql.queryForObject("SELECT balance FROM credit_accounts WHERE company_id=2",Integer.class));
+        assertEquals(0L,sql.queryForObject("SELECT version FROM credit_accounts WHERE company_id=2",Long.class));
+        assertEquals(10,balance());
+        assertEquals(0,usages());
+        assertEquals(0,jobs());
+        assertEquals(0,sql.queryForObject("SELECT count(*) FROM credit_transactions",Integer.class));
+    }
+
     static void concurrently(Callable<?> first,Callable<?> second) throws Exception {
         var barrier=new CyclicBarrier(2);var pool=Executors.newFixedThreadPool(2);
         try {

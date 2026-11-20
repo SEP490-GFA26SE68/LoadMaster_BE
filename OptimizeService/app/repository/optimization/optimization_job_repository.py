@@ -60,6 +60,7 @@ class OptimizationJobRepository:
             update(OptimizationJob)
             .where(
                 OptimizationJob.job_uuid == str(job_uuid),
+                OptimizationJob.execution_generation.is_(None),
                 OptimizationJob.status.in_(UNFINISHED_JOB_STATUSES),
             )
             .values(**values)

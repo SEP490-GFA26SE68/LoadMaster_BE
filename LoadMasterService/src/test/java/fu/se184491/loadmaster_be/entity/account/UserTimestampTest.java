@@ -78,6 +78,7 @@ class UserTimestampTest {
                 assertEquals(LocalDateTime.class, property.getType().getReturnedClass());
                 assertEquals(SqlTypes.VARCHAR, column.getSqlTypeCode(metadata));
                 assertEquals(19L, column.getLength());
+                assertEquals(19L, column.getColumnSize(metadata.getDatabase().getDialect(), metadata).getLength());
                 assertEquals("varchar(19)", column.getSqlType(metadata));
                 assertFalse(column.getCheckConstraints().isEmpty(), "Current local-string contract requires a format check");
                 assertFalse(column.isNullable());

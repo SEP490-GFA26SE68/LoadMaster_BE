@@ -48,6 +48,17 @@ class UserTimestampPostgresTest {
             try {
                 var metadata = new MetadataSources(registry)
                         .addAnnotatedClass(User.class).addAnnotatedClass(Company.class).buildMetadata();
+                for (String name : new String[]{"created_at", "updated_at"}) {
+                    var column = metadata.getEntityBinding(User.class.getName()).getTable()
+                            .getColumn(new org.hibernate.mapping.Column(name));
+                    assertEquals(19L, column.getLength());
+                    assertEquals(19L, column.getColumnSize(metadata.getDatabase().getDialect(), metadata).getLength());
+                    assertEquals(java.sql.Types.VARCHAR, column.getSqlTypeCode(metadata));
+                }
+                // The scoped string descriptor must not affect genuine SQL temporal mappings.
+                var companyCreated = metadata.getEntityBinding(Company.class.getName())
+                        .getProperty("createdAt").getType();
+                assertTrue(((org.hibernate.type.BasicType<?>) companyCreated).getExpressibleJavaType().isTemporalType());
                 StringWriter ddl = new StringWriter();
                 TargetDescriptor scriptOnly = new TargetDescriptor() {
                     public EnumSet<TargetType> getTargetTypes() { return EnumSet.of(TargetType.SCRIPT); }
@@ -129,9 +140,8 @@ class UserTimestampPostgresTest {
                 try (var factory = metadata.buildSessionFactory(); var session = factory.openSession()) {
                     session.beginTransaction();
                     var repository = new JpaRepositoryFactory(session).getRepository(UserRepository.class);
-                    // Preserve the original query success assertion. An Instant cutoff is still the production
-                    // repository/purge contract, while the mapped field is LocalDateTime: report a real failure.
-                    assertTrue(repository.findByStatusAndUpdatedAtBefore(UserStatus.ACTIVE, Instant.now().plusSeconds(10))
+                    // Query cutoff follows the current LocalDateTime/VARCHAR entity contract.
+                    assertTrue(repository.findByStatusAndUpdatedAtBefore(UserStatus.ACTIVE, LocalDateTime.now().plusSeconds(10))
                             .stream().anyMatch(found -> Long.valueOf(1).equals(found.getId())));
                     session.getTransaction().rollback();
                 }
