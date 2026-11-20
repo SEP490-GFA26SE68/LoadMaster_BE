@@ -373,7 +373,15 @@ public enum ErrorCode {
     PICKUP_REASON_REQUIRED("Phải ghi lý do", HttpStatus.BAD_REQUEST),
     PICKUP_PACKAGE_NOT_AT_STOP("Kiện nhận không thuộc điểm nhận hiện tại", HttpStatus.CONFLICT),
     PICKUP_PACKAGE_ALREADY_PICKED("Kiện nhận này đã lên xe", HttpStatus.CONFLICT),
-    PICKUP_STOP_INCOMPLETE("Còn kiện nhận chưa đối chiếu ở điểm nhận", HttpStatus.CONFLICT);
+    PICKUP_STOP_INCOMPLETE("Còn kiện nhận chưa đối chiếu ở điểm nhận", HttpStatus.CONFLICT),
+
+    // -------------------------------------------------------------------------
+    // Trợ lý AI
+    // -------------------------------------------------------------------------
+    ASSISTANT_RATE_LIMITED("Bạn đã hỏi trợ lý quá nhiều lần trong một giờ. Vui lòng thử lại sau", HttpStatus.TOO_MANY_REQUESTS),
+    ASSISTANT_BUDGET_EXCEEDED("Trợ lý đã dùng hết hạn mức hôm nay. Vui lòng thử lại vào ngày mai", HttpStatus.SERVICE_UNAVAILABLE),
+    ASSISTANT_UNAVAILABLE("Trợ lý AI tạm thời không khả dụng", HttpStatus.SERVICE_UNAVAILABLE),
+    ASSISTANT_MESSAGE_TOO_LONG("Câu hỏi quá dài", HttpStatus.BAD_REQUEST);
 
     private final String message;
     private final HttpStatus httpStatus;

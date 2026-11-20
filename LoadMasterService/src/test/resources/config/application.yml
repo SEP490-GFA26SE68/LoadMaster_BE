@@ -20,6 +20,10 @@ spring:
       ddl-auto: create-drop
   flyway:
     enabled: false
+  # Test không bao giờ gọi mô hình thật dù máy có đặt ANTHROPIC_API_KEY; test cần mô hình thì dùng mô hình giả.
+  ai:
+    anthropic:
+      api-key: ""
   security:
     oauth2:
       client:
@@ -28,6 +32,9 @@ spring:
             client-secret: test-only-client-secret
           keycloak-admin-client:
             client-secret: test-only-client-secret
+
+assistant:
+  enabled: false
 
 vnpay:
   tmn-code: TESTTMN1
