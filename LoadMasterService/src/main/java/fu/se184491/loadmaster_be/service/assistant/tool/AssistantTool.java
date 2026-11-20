@@ -19,4 +19,9 @@ public interface AssistantTool {
     default boolean guest() {
         return false;
     }
+
+    /** Chỉ có trong lượt hỏi từ khung 3D ({@link ToolScope#viewer()}): công cụ điều khiển phương án đang xem. */
+    default boolean needsViewer() {
+        return false;
+    }
 }

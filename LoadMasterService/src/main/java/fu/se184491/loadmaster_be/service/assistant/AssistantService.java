@@ -20,6 +20,9 @@ import fu.se184491.loadmaster_be.service.assistant.model.AssistantAskCommand;
 import fu.se184491.loadmaster_be.service.assistant.model.AssistantCaller;
 import fu.se184491.loadmaster_be.service.assistant.model.AssistantReply;
 import fu.se184491.loadmaster_be.service.assistant.model.Handoff;
+import fu.se184491.loadmaster_be.service.assistant.model.UiAction;
+import fu.se184491.loadmaster_be.service.assistant.model.ViewerContext;
+import fu.se184491.loadmaster_be.service.assistant.output.UiActionValidator;
 import fu.se184491.loadmaster_be.service.assistant.prompt.AssistantPromptBuilder;
 import fu.se184491.loadmaster_be.service.assistant.tool.AssistantToolRegistry;
 import fu.se184491.loadmaster_be.service.assistant.tool.AssistantTurn;
@@ -59,6 +62,7 @@ import java.util.regex.Pattern;
 public class AssistantService {
 
     private static final Pattern CONVERSATION_ID = Pattern.compile("^c_[A-Za-z0-9_-]{8,38}$");
+    private static final Pattern PLAN_ID = Pattern.compile("^[0-9]{1,19}$");
 
     private final ObjectProvider<ChatModel> chatModels;
     private final AssistantProperties properties;
@@ -129,7 +133,7 @@ public class AssistantService {
         Instant askedAt = clock.instant();
         List<AssistantMessage> latest = latestMessages(conversation);
         Prompt prompt = new Prompt(promptMessages(command, latest, question, locale, askedAt));
-        AssistantTurn turn = turnOf(caller, conversation, latest, question, locale);
+        AssistantTurn turn = turnOf(caller, conversation, latest, question, locale, command.viewer());
 
         // Token của mọi lần gọi mô hình tính vào hạn mức, kể cả khi lượt hỏng ở vòng sau
         ToolCallLog toolLog = new ToolCallLog();
@@ -149,9 +153,11 @@ public class AssistantService {
         }
 
         String modelName = StringUtils.hasText(result.model()) ? result.model() : properties.getModel();
+        // Lọc lần cuối theo whitelist trên đúng phương án công cụ đã đọc; không đọc được phương án thì không có lệnh nào
+        List<UiAction> uiActions = UiActionValidator.filter(turn.uiActions(), turn.loadedViewerPlan().orElse(null));
         AssistantConversation saved = transactions.execute(status ->
-                save(command, conversation, question, result, modelName, askedAt, toolLog, turn));
-        return new AssistantReply(Objects.requireNonNull(saved).getPublicId(), result.text(), List.of(), turn.links(),
+                save(command, conversation, question, result, modelName, askedAt, toolLog, turn, uiActions));
+        return new AssistantReply(Objects.requireNonNull(saved).getPublicId(), result.text(), uiActions, turn.links(),
                 new Handoff(turn.handoffOffered(), turn.reportedTicketCode()), result.usage());
     }
 
@@ -227,7 +233,8 @@ public class AssistantService {
      * {@code handoff_offered}; các tin gần nhất cộng câu hỏi này đi vào mô tả của yêu cầu hỗ trợ.
      */
     private static AssistantTurn turnOf(AssistantCaller caller, AssistantConversation conversation,
-                                        List<AssistantMessage> latest, String question, String locale) {
+                                        List<AssistantMessage> latest, String question, String locale,
+                                        ViewerContext viewer) {
         AssistantMessage previous = latest.isEmpty() ? null : latest.getLast();
         boolean invited = previous != null && previous.getRole() == AssistantMessageRole.ASSISTANT
                 && previous.isHandoffOffered();
@@ -236,8 +243,22 @@ public class AssistantService {
             recent.add(new AssistantTurn.Line(message.getRole() == AssistantMessageRole.USER, message.getContent()));
         }
         recent.add(new AssistantTurn.Line(true, question));
-        return new AssistantTurn(scopeOf(caller), locale, conversation == null ? null : conversation.getId(), invited,
-                conversation == null ? null : conversation.getHandoffTicketCode(), recent);
+        Long viewerPlanId = caller == null ? null : viewerPlanId(viewer);
+        ToolScope scope = viewerPlanId == null ? scopeOf(caller) : scopeOf(caller).withViewer();
+        return new AssistantTurn(scope, locale, conversation == null ? null : conversation.getId(), invited,
+                conversation == null ? null : conversation.getHandoffTicketCode(), recent, viewerPlanId);
+    }
+
+    /** Mã phương án khung 3D gửi kèm (chuỗi số); sai dạng thì như không có. */
+    private static Long viewerPlanId(ViewerContext viewer) {
+        if (viewer == null || viewer.loadPlanId() == null || !PLAN_ID.matcher(viewer.loadPlanId()).matches()) {
+            return null;
+        }
+        try {
+            return Long.valueOf(viewer.loadPlanId());
+        } catch (NumberFormatException e) {
+            return null;
+        }
     }
 
     /** Các tin gần nhất cho mô hình, chỉ chữ. Lượt đầu phải là của người dùng nên bỏ tin trợ lý đứng đầu. */
@@ -257,7 +278,7 @@ public class AssistantService {
 
     private AssistantConversation save(AssistantAskCommand command, AssistantConversation existing, String question,
                                        LoopResult result, String modelName, Instant askedAt,
-                                       ToolCallLog toolLog, AssistantTurn turn) {
+                                       ToolCallLog toolLog, AssistantTurn turn, List<UiAction> uiActions) {
         Instant answeredAt = clock.instant();
         AssistantConversation conversation = existing != null ? existing : newConversation(command, askedAt);
         conversation.setUpdatedAt(answeredAt);
@@ -268,7 +289,8 @@ public class AssistantService {
         AssistantMessage answer = messages.save(AssistantMessage.builder()
                 .conversationId(conversation.getId()).role(AssistantMessageRole.ASSISTANT).content(result.text())
                 .inputTokens(result.usage().inputTokens()).outputTokens(result.usage().outputTokens())
-                .handoffOffered(turn.handoffOffered()).model(modelName).createdAt(answeredAt).build());
+                .handoffOffered(turn.handoffOffered()).uiActions(UiActionValidator.toMaps(uiActions))
+                .model(modelName).createdAt(answeredAt).build());
         tools.save(toolLog, answer.getId());
         return conversation;
     }
