@@ -15,6 +15,10 @@ import java.util.Optional;
 public interface CompanyRepository extends JpaRepository<Company, Long>, JpaSpecificationExecutor<Company> {
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select company from Company company where company.id = :companyId")
+    Optional<Company> findByIdForUpdate(@Param("companyId") Long companyId);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select company from Company company where company.id = :companyId")
     Optional<Company> findByIdForPayrollUpdate(@Param("companyId") Long companyId);
 
     boolean existsByCompanyCode(String companyCode);
