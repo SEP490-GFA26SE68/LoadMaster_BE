@@ -22,6 +22,13 @@ public final class FakeChatModel implements ChatModel {
 
     private final Deque<Supplier<ChatResponse>> replies = new ArrayDeque<>();
     private final List<Prompt> prompts = new ArrayList<>();
+    private Supplier<ChatResponse> fallback;
+
+    /** Hết câu đã xếp thì trả câu này mãi (test gọi qua HTTP nhiều lượt). */
+    public FakeChatModel answerAlways(String text, int inputTokens, int outputTokens) {
+        fallback = () -> response(text, "end_turn", inputTokens, outputTokens);
+        return this;
+    }
 
     public FakeChatModel reply(String text, int inputTokens, int outputTokens) {
         return reply(text, "end_turn", inputTokens, outputTokens);
@@ -42,10 +49,13 @@ public final class FakeChatModel implements ChatModel {
     @Override
     public ChatResponse call(Prompt prompt) {
         prompts.add(prompt);
-        if (replies.isEmpty()) {
-            throw new IllegalStateException("FakeChatModel: chưa xếp câu trả lời nào");
+        if (!replies.isEmpty()) {
+            return replies.removeFirst().get();
         }
-        return replies.removeFirst().get();
+        if (fallback != null) {
+            return fallback.get();
+        }
+        throw new IllegalStateException("FakeChatModel: chưa xếp câu trả lời nào");
     }
 
     public List<Prompt> prompts() {

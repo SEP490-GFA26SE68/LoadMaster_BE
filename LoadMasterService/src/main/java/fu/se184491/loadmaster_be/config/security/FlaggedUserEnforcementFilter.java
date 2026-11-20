@@ -232,6 +232,11 @@ public class FlaggedUserEnforcementFilter extends OncePerRequestFilter {
                 && path.startsWith("/api/subscription/plans")) {
             return true;
         }
-        return HttpMethod.POST.matches(method) && path.equals("/api/contact-guests");
+        if (!HttpMethod.POST.matches(method)) {
+            return false;
+        }
+        // Trợ lý của trang công khai không đọc dữ liệu công ty nên người bị khoá gói vẫn hỏi được;
+        // /api/assistant/messages (trong ứng dụng) vẫn bị kiểm như mọi API nghiệp vụ.
+        return path.equals("/api/contact-guests") || path.startsWith("/api/assistant/public/");
     }
 }

@@ -2,7 +2,9 @@ package fu.se184491.loadmaster_be.service.assistant;
 
 import fu.se184491.loadmaster_be.config.assistant.AssistantModelConfig;
 import fu.se184491.loadmaster_be.config.assistant.AssistantProperties;
+import fu.se184491.loadmaster_be.constant.assistant.AssistantChannel;
 import fu.se184491.loadmaster_be.constant.assistant.AssistantMessageRole;
+import fu.se184491.loadmaster_be.dto.response.assistant.AssistantConversationResponse;
 import fu.se184491.loadmaster_be.entity.assistant.AssistantConversation;
 import fu.se184491.loadmaster_be.entity.assistant.AssistantMessage;
 import fu.se184491.loadmaster_be.exception.AppException;
@@ -38,6 +40,7 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.List;
+import java.util.Locale;
 import java.util.Objects;
 import java.util.regex.Pattern;
 
@@ -128,6 +131,24 @@ public class AssistantService {
                 save(command, conversation, question, result, modelName, askedAt));
         return new AssistantReply(Objects.requireNonNull(saved).getPublicId(), result.text(), List.of(), List.of(),
                 Handoff.none(), result.usage());
+    }
+
+    /** Đọc lại một hội thoại trong ứng dụng của chính người gọi; của người khác, của khách hay mã sai dạng thì như không có. */
+    public AssistantConversationResponse conversation(String publicId, AssistantCaller caller) {
+        if (publicId == null || !CONVERSATION_ID.matcher(publicId).matches()) {
+            throw new AppException(ErrorCode.RESOURCE_NOT_FOUND);
+        }
+        AssistantConversation conversation = conversations.findByPublicId(publicId)
+                .filter(found -> found.getChannel() == AssistantChannel.APP
+                        && Objects.equals(found.getUserId(), caller.userId()))
+                .orElseThrow(() -> new AppException(ErrorCode.RESOURCE_NOT_FOUND));
+        List<AssistantConversationResponse.Item> items = messages
+                .findByConversationIdOrderByIdAsc(conversation.getId()).stream()
+                .map(message -> new AssistantConversationResponse.Item(
+                        message.getRole().name().toLowerCase(Locale.ROOT), message.getContent(),
+                        message.getCreatedAt()))
+                .toList();
+        return new AssistantConversationResponse(conversation.getPublicId(), items);
     }
 
     /** Hội thoại cũ của đúng người hỏi, hoặc {@code null} khi mở hội thoại mới. Của người khác thì như không có. */
