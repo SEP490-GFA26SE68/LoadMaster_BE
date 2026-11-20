@@ -70,7 +70,8 @@ public class HandoffTool implements AssistantTool {
 
     @Tool(name = "request_human_support", description = """
             Chuyển câu hỏi cho nhân viên hỗ trợ của LoadMaster bằng một yêu cầu hỗ trợ. Gọi trước khi viết câu trả lời \
-            mỗi khi câu hỏi về LoadMaster mà bạn không trả lời được, hoặc người dùng muốn gặp nhân viên — kể cả khi \
+            mỗi khi câu hỏi về LoadMaster mà bạn không trả lời được trọn vẹn (kể cả kế hoạch, thời điểm ra tính năng \
+            hay phiên bản mới), hoặc người dùng muốn gặp nhân viên — kể cả khi \
             định hỏi họ có muốn chuyển không: nút chuyển chỉ hiện khi công cụ này được gọi. Lần gọi đầu không tạo gì. \
             NEED_CONFIRMATION: chưa chuyển; hỏi người dùng có muốn chuyển cho nhân viên hỗ trợ không, chỉ khi họ đồng \
             ý ở tin tiếp theo mới gọi lại. CREATED: đã tạo yêu cầu, báo \

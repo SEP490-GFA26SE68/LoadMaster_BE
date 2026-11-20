@@ -177,13 +177,19 @@ class AssistantEvalTest {
         return group != null && group.startsWith("C-");
     }
 
+    /** {@code ASSISTANT_EVAL_ONLY=A-U3,S1}: nhóm A và C chỉ chạy các ca có mã trong danh sách, để đo lại một ca. */
+    private static boolean onlyListed(JsonNode testCase) {
+        String only = System.getenv("ASSISTANT_EVAL_ONLY");
+        return only == null || only.isBlank() || List.of(only.trim().split("\\s*,\\s*")).contains(text(testCase, "id"));
+    }
+
     private void runGroup(String title, Path report, Predicate<JsonNode> selected) throws IOException {
         assertThat(System.getenv("ANTHROPIC_API_KEY")).as("cần ANTHROPIC_API_KEY").isNotBlank();
         seedOnce();
 
         List<Outcome> outcomes = new ArrayList<>();
         for (JsonNode testCase : cases()) {
-            if (!selected.test(testCase)) {
+            if (!selected.test(testCase) || !onlyListed(testCase)) {
                 continue;
             }
             Outcome outcome = run(testCase);
