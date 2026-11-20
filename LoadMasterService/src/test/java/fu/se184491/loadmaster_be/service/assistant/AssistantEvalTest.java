@@ -7,6 +7,7 @@ import fu.se184491.loadmaster_be.constant.assistant.AssistantMessageRole;
 import fu.se184491.loadmaster_be.constant.company.CompanyStatus;
 import fu.se184491.loadmaster_be.constant.trip.DeliveryStopStatus;
 import fu.se184491.loadmaster_be.constant.trip.TripStatus;
+import fu.se184491.loadmaster_be.dto.response.assistant.AssistantBriefingResponse;
 import fu.se184491.loadmaster_be.entity.account.User;
 import fu.se184491.loadmaster_be.entity.assistant.AssistantMessage;
 import fu.se184491.loadmaster_be.entity.assistant.AssistantToolCall;
@@ -15,10 +16,14 @@ import fu.se184491.loadmaster_be.entity.trip.DeliveryStop;
 import fu.se184491.loadmaster_be.entity.trip.Trip;
 import fu.se184491.loadmaster_be.entity.vehicle.Vehicle;
 import fu.se184491.loadmaster_be.entity.vehicle.VehicleType;
+import fu.se184491.loadmaster_be.exception.AppException;
 import fu.se184491.loadmaster_be.repository.assistant.AssistantConversationRepository;
 import fu.se184491.loadmaster_be.repository.assistant.AssistantMessageRepository;
 import fu.se184491.loadmaster_be.repository.assistant.AssistantToolCallRepository;
 import fu.se184491.loadmaster_be.repository.support.SupportTicketRepository;
+import fu.se184491.loadmaster_be.service.assistant.briefing.BriefingFactsCollector;
+import fu.se184491.loadmaster_be.service.assistant.briefing.BriefingService;
+import fu.se184491.loadmaster_be.service.assistant.gate.AssistantBudget;
 import fu.se184491.loadmaster_be.service.assistant.model.AssistantAskCommand;
 import fu.se184491.loadmaster_be.service.assistant.model.AssistantCaller;
 import fu.se184491.loadmaster_be.service.assistant.model.AssistantLink;
@@ -59,11 +64,17 @@ import java.util.Map;
 import java.util.function.Supplier;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.when;
 
 /**
  * Bộ kiểm thử hành vi với mô hình thật (đặc tả mục 14). Không chạy trong CI: cần {@code ASSISTANT_EVAL=true} và
  * {@code ANTHROPIC_API_KEY}. Dữ liệu là fixture riêng trên H2; mỗi ca là một hội thoại mới. Báo cáo đầy đủ ở
  * {@code target/assistant-eval-report.md}.
+ *
+ * <p>Nhóm D ({@code "group": "D"}) kiểm bản tin {@code GET /api/assistant/briefing}: gọi thẳng {@link BriefingService}
+ * với bộ đếm giả trả đúng {@code facts} của ca (cách đếm trên DB đã có test riêng), mỗi ca tối đa một lần gọi mô hình;
+ * báo cáo ở {@code target/assistant-eval-report-d.md}.
  */
 @EnabledIfEnvironmentVariable(named = "ASSISTANT_EVAL", matches = "true")
 @SpringBootTest(properties = {
@@ -75,6 +86,8 @@ class AssistantEvalTest {
 
     private static final JsonMapper JSON = JsonMapper.builder().build();
     private static final Path REPORT = Path.of("target", "assistant-eval-report.md");
+    private static final Path REPORT_D = Path.of("target", "assistant-eval-report-d.md");
+    private static final String GROUP_D = "D";
     private static final Map<String, String> SIGN_IN = Map.of(
             "DISPATCHER", "ev-dispatcher",
             "MANAGER", "ev-manager",
@@ -82,6 +95,8 @@ class AssistantEvalTest {
             "WAREHOUSE_WORKER", "ev-warehouse");
 
     @Autowired private AssistantService service;
+    @Autowired private BriefingService briefings;
+    @Autowired private AssistantBudget budget;
     @Autowired private AssistantCallerResolver callers;
     @Autowired private AssistantConversationRepository conversations;
     @Autowired private AssistantMessageRepository messages;
@@ -93,6 +108,7 @@ class AssistantEvalTest {
     @Autowired private EntityManager entityManager;
 
     @MockitoBean private JwtDecoder jwtDecoder;
+    @MockitoBean private BriefingFactsCollector briefingFacts;
 
     record Outcome(JsonNode testCase, String reply, List<String> tools, List<AssistantLink> links, boolean offered,
                    int inputTokens, int outputTokens, List<String> failures) {
@@ -104,14 +120,13 @@ class AssistantEvalTest {
     @Test
     void groupA() throws IOException {
         assertThat(System.getenv("ANTHROPIC_API_KEY")).as("cần ANTHROPIC_API_KEY").isNotBlank();
-        new TransactionTemplate(transactionManager).executeWithoutResult(status -> seed());
-        JsonNode cases;
-        try (InputStream in = new ClassPathResource("assistant/evals.json").getInputStream()) {
-            cases = JSON.readTree(in).get("cases");
-        }
+        new TransactionTemplate(transactionManager).executeWithoutResult(status -> seedOnce());
 
         List<Outcome> outcomes = new ArrayList<>();
-        for (JsonNode testCase : cases) {
+        for (JsonNode testCase : cases()) {
+            if (GROUP_D.equals(text(testCase, "group"))) {
+                continue;
+            }
             Outcome outcome = run(testCase);
             outcomes.add(outcome);
             System.out.printf("[eval] %s %s (%d/%d token)%s%n", outcome.passed() ? "ĐẠT  " : "KHÔNG", text(testCase, "id"),
@@ -127,6 +142,62 @@ class AssistantEvalTest {
 
         assertThat(outcomes.stream().filter(o -> !o.passed()).map(o -> text(o.testCase(), "id")).toList())
                 .as(summary).isEmpty();
+    }
+
+    @Test
+    void groupD() throws IOException {
+        assertThat(System.getenv("ANTHROPIC_API_KEY")).as("cần ANTHROPIC_API_KEY").isNotBlank();
+        new TransactionTemplate(transactionManager).executeWithoutResult(status -> seedOnce());
+
+        List<BriefingEval.Outcome> outcomes = new ArrayList<>();
+        for (JsonNode testCase : cases()) {
+            if (!GROUP_D.equals(text(testCase, "group"))) {
+                continue;
+            }
+            BriefingEval.Outcome outcome = brief(testCase);
+            outcomes.add(outcome);
+            System.out.printf("[eval-d] %s %s (%d token)%s%n", outcome.passed() ? "ĐẠT  " : "KHÔNG",
+                    text(testCase, "id"), outcome.tokens(),
+                    outcome.passed() ? "" : " — " + String.join("; ", outcome.failures()));
+        }
+        long passed = outcomes.stream().filter(BriefingEval.Outcome::passed).count();
+        long tokens = outcomes.stream().mapToLong(BriefingEval.Outcome::tokens).sum();
+        String summary = "Đạt %d / %d · token %d".formatted(passed, outcomes.size(), tokens);
+        BriefingEval.writeReport(REPORT_D, outcomes, summary);
+        System.out.println("[eval-d] " + summary + " · báo cáo: " + REPORT_D.toAbsolutePath());
+
+        assertThat(outcomes).as("chưa có ca nhóm D").isNotEmpty();
+        assertThat(outcomes.stream().filter(o -> !o.passed()).map(o -> text(o.testCase(), "id")).toList())
+                .as(summary).isEmpty();
+    }
+
+    /** Một bản tin: người đọc thật từ fixture, sự kiện của ca; token đo bằng ngân sách ngày trước và sau. */
+    private BriefingEval.Outcome brief(JsonNode testCase) {
+        List<String> failures = new ArrayList<>();
+        try {
+            SecurityContextHolder.clearContext();
+            String keycloakId = text(testCase, "signIn");
+            signIn(keycloakId != null ? keycloakId : SIGN_IN.get(text(testCase, "role")));
+            AssistantCaller caller = withEntityManager(callers::current);
+            when(briefingFacts.collect(any(), any(), any())).thenReturn(BriefingEval.factsOf(testCase.get("facts")));
+            long before = budget.remaining();
+            AssistantBriefingResponse briefing = briefings.briefing(caller, text(testCase, "locale"));
+            long tokens = Math.max(0, before - budget.remaining());
+            BriefingEval.check(testCase, briefing, tokens, failures);
+            return new BriefingEval.Outcome(testCase, briefing, tokens, failures);
+        } catch (RuntimeException e) {
+            String code = e instanceof AppException app ? app.getErrorCode().name() : e.getClass().getSimpleName();
+            failures.add("lỗi: " + code);
+            return new BriefingEval.Outcome(testCase, null, 0, failures);
+        } finally {
+            SecurityContextHolder.clearContext();
+        }
+    }
+
+    private static JsonNode cases() throws IOException {
+        try (InputStream in = new ClassPathResource("assistant/evals.json").getInputStream()) {
+            return JSON.readTree(in).get("cases");
+        }
     }
 
     private Outcome run(JsonNode testCase) {
@@ -276,6 +347,15 @@ class AssistantEvalTest {
     }
 
     // ---- dữ liệu ----
+
+    /** Các nhóm dùng chung một ngữ cảnh và một DB H2: chạy cả lớp thì chỉ dựng fixture một lần. */
+    private void seedOnce() {
+        Long seeded = entityManager.createQuery("SELECT COUNT(u) FROM User u WHERE u.keycloakId = :id", Long.class)
+                .setParameter("id", "ev-dispatcher").getSingleResult();
+        if (seeded == 0) {
+            seed();
+        }
+    }
 
     /** Long Bình: ba chuyến (một của Khoa, hai của Tuấn — một mang câu lệnh giả trong tên). Phương Nam: một chuyến. */
     private void seed() {
