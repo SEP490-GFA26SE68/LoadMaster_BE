@@ -35,20 +35,25 @@ class QrCodeServiceTest {
     }
 
     @Test
-    void aesQrTokenServiceImpl_whenSecretBlank_throwsAppExceptionWithQrEncryptionFailedErrorCode() {
-        AppException ex = assertThrows(
-                AppException.class,
+    void aesQrTokenServiceImpl_whenSecretBlank_failsFastAtConstruction() {
+        IllegalStateException ex = assertThrows(
+                IllegalStateException.class,
                 () -> new AesQrTokenServiceImpl("   ")
         );
-        assertEquals(ErrorCode.QR_ENCRYPTION_FAILED, ex.getErrorCode());
+        assertEquals("QR_AES_SECRET environment variable is required", ex.getMessage());
     }
 
     @Test
-    void cargoPackageQrTokenField_usesAesQrTokenServiceImplConverter() throws NoSuchFieldException {
+    void cargoPackageQrTokenField_usesInjectedQrTokenAttributeConverter() throws NoSuchFieldException {
         Field qrTokenField = CargoPackage.class.getDeclaredField("qrToken");
         Convert convertAnnotation = qrTokenField.getAnnotation(Convert.class);
 
-        assertNotNull(convertAnnotation, "CargoPackage.qrToken must have @Convert(converter = AesQrTokenServiceImpl.class)");
-        assertEquals(AesQrTokenServiceImpl.class, convertAnnotation.converter());
+        assertNotNull(convertAnnotation, "CargoPackage.qrToken must use the injected QR attribute converter");
+        assertEquals(fu.se184491.loadmaster_be.converter.QrTokenAttributeConverter.class, convertAnnotation.converter());
+        AesQrTokenServiceImpl aes = new AesQrTokenServiceImpl("test-secret-for-converter");
+        var converter = new fu.se184491.loadmaster_be.converter.QrTokenAttributeConverter(aes);
+        String encrypted = converter.convertToDatabaseColumn("synthetic-qr");
+        assertNotEquals("synthetic-qr", encrypted);
+        assertEquals("synthetic-qr", converter.convertToEntityAttribute(encrypted));
     }
 }

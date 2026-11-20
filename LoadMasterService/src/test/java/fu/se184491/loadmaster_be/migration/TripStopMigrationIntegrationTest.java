@@ -33,6 +33,7 @@ class TripStopMigrationIntegrationTest {
             createLegacySchema(postgres);
 
             Flyway.configure()
+                    .locations(fu.se184491.loadmaster_be.support.SingleMigration.location("V1__trip_status_stop_coordinates.sql"))
                     .dataSource(postgres.getJdbcUrl(), postgres.getUsername(), postgres.getPassword())
                     .baselineOnMigrate(true)
                     .baselineVersion(MigrationVersion.fromVersion("0"))

@@ -47,7 +47,13 @@ class OrientationIntegrationPostgresTest {
         var root=Path.of("../OptimizeService").toAbsolutePath().normalize();
         cfg.put("python_root",root.toString());cfg.put("ready_file",temp.resolve("ready.json").toString());
         Files.writeString(temp.resolve("config.json"),JSON.writeValueAsString(cfg));
-        python=new ProcessBuilder(root.resolve(".venv/Scripts/python.exe").toString(),
+        String executable = System.getProperty("loadmaster.test.python", System.getenv("LOADMASTER_TEST_PYTHON"));
+        if (executable == null || executable.isBlank()) {
+            boolean windows = System.getProperty("os.name").toLowerCase(Locale.ROOT).contains("win");
+            Path local = root.resolve(windows ? ".venv/Scripts/python.exe" : ".venv/bin/python");
+            executable = Files.isRegularFile(local) ? local.toString() : (windows ? "python" : "python3");
+        }
+        python=new ProcessBuilder(executable,
             Path.of("src/test/resources/orientation-integration/isolated_python_server.py").toAbsolutePath().toString(),temp.resolve("config.json").toString())
             .directory(root.toFile()).redirectErrorStream(true).redirectOutput(EVIDENCE.resolve("python-http.log").toFile()).start();
         long deadline=System.nanoTime()+Duration.ofSeconds(45).toNanos();

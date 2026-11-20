@@ -106,6 +106,9 @@ class DeliveryRequirementApiIntegrationTest {
                 .build();
         entityManager.persist(manager);
 
+        entityManager.persist(User.builder().keycloakId("dispatcher-subject").company(company)
+                .email("dispatcher-api@example.test").fullName("Fixture Dispatcher")
+                .userRoleType(UserRole.DISPATCHER).status(UserStatus.ACTIVE).build());
         customer = persistCustomer(company, "Da Nang Retail");
 
         packageType = PackageType.builder()
@@ -298,7 +301,37 @@ class DeliveryRequirementApiIntegrationTest {
     }
 
     @Test
-    void managerCanUpdateDeadlineAndPriority() throws Exception {
+    void dispatcherCanUpdateDeadlineAndPriority() throws Exception {
+        DeliveryRequirement requirement = persistRequirement(
+                company,
+                manager,
+                "Original destination",
+                LocalDateTime.now().plusDays(2).withNano(0),
+                DeliveryRequirementStatus.PENDING);
+        entityManager.flush();
+        String newDeadline = LocalDateTime.now().plusDays(5).withNano(0).format(JSON_DATE_TIME);
+
+        String request = """
+                {
+                  "deadline": "%s",
+                  "priority": "URGENT"
+                }
+                """.formatted(newDeadline);
+
+        mockMvc.perform(patch("/api/delivery-requirements/{id}", requirement.getId())
+                        .with(asDispatcher())
+                        .contentType("application/json")
+                        .content(request))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.deadline").value(newDeadline))
+                .andExpect(jsonPath("$.data.priority").value("URGENT"))
+                .andExpect(jsonPath("$.data.destination").value("Original destination"))
+                .andExpect(jsonPath("$.data.status").value("PENDING"));
+    }
+
+
+    @Test
+    void managerCannotPatchDeadlineAndPriority() throws Exception {
         DeliveryRequirement requirement = persistRequirement(
                 company,
                 manager,
@@ -319,11 +352,10 @@ class DeliveryRequirementApiIntegrationTest {
                         .with(asManager())
                         .contentType("application/json")
                         .content(request))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.deadline").value(newDeadline))
-                .andExpect(jsonPath("$.data.priority").value("URGENT"))
-                .andExpect(jsonPath("$.data.destination").value("Original destination"))
-                .andExpect(jsonPath("$.data.status").value("PENDING"));
+                .andExpect(status().isForbidden());
+        entityManager.refresh(requirement);
+        org.junit.jupiter.api.Assertions.assertEquals(DeliveryRequirementPriority.NORMAL, requirement.getPriority());
+        org.junit.jupiter.api.Assertions.assertNotEquals(newDeadline, requirement.getDeadline().format(JSON_DATE_TIME));
     }
 
     @Test
@@ -499,7 +531,7 @@ class DeliveryRequirementApiIntegrationTest {
         entityManager.flush();
 
         mockMvc.perform(patch("/api/delivery-requirements/{id}", requirement.getId())
-                        .with(asManager())
+                        .with(asDispatcher())
                         .contentType("application/json")
                         .content("{\"packageIds\": [%d]}".formatted(packageId)))
                 .andExpect(status().isOk())
@@ -507,7 +539,7 @@ class DeliveryRequirementApiIntegrationTest {
 
         // Danh sách rỗng bỏ mọi kiện: kiện quay về kho kiện.
         mockMvc.perform(patch("/api/delivery-requirements/{id}", requirement.getId())
-                        .with(asManager())
+                        .with(asDispatcher())
                         .contentType("application/json")
                         .content("{\"packageIds\": []}"))
                 .andExpect(status().isOk())
@@ -531,6 +563,11 @@ class DeliveryRequirementApiIntegrationTest {
     private static JwtRequestPostProcessor asManager() {
         return jwt().jwt(token -> token.subject("manager-subject"))
                 .authorities(() -> "DELIVERY_DEMAND_MANAGE", () -> "DELIVERY_READ");
+    }
+
+    private static JwtRequestPostProcessor asDispatcher() {
+        return jwt().jwt(token -> token.subject("dispatcher-subject"))
+                .authorities(() -> "ROLE_DISPATCHER", () -> "DELIVERY_DEMAND_MANAGE", () -> "DELIVERY_READ");
     }
 
     private Customer persistCustomer(Company owner, String name) {
