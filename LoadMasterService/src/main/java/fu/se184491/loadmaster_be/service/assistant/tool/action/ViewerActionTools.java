@@ -55,8 +55,10 @@ public class ViewerActionTools implements AssistantTool {
     }
 
     @Tool(name = "select_package", description = """
-            Chọn (làm nổi) một kiện đã xếp trên khung 3D người dùng đang mở. Chỉ kiện có trong phương án đang xem \
-            (INVALID PACKAGE_NOT_IN_PLAN nếu không có hoặc kiện chưa xếp). Không dời, xoay, ghim hay duyệt.""")
+            Chọn (làm nổi) một kiện đã xếp trên khung 3D người dùng đang mở. Gọi mỗi khi người dùng hỏi về chỗ nằm \
+            hay lý do chỗ nằm của một kiện đã xếp (ở đâu, vì sao nằm đây, vì sao sát cửa…), để họ thấy kiện đó trên \
+            khung. Chỉ kiện có trong phương án đang xem (INVALID PACKAGE_NOT_IN_PLAN nếu không có hoặc kiện chưa \
+            xếp). Không dời, xoay, ghim hay duyệt.""")
     public Result selectPackage(@ToolParam(description = "Mã kiện như trên nhãn, lấy từ công cụ hoặc ngữ cảnh lượt")
                                 String packageCode, ToolContext context) {
         return add(context, new UiAction(UiActionValidator.SELECT_PACKAGE, packageCode, null, null, null, null));
@@ -87,8 +89,8 @@ public class ViewerActionTools implements AssistantTool {
     }
 
     @Tool(name = "open_tab", description = """
-            Mở một tab của danh sách kiện cạnh khung 3D: unplaced (kiện chưa xếp), pinned (kiện đã ghim), placed \
-            (kiện đã xếp).""")
+            Mở danh sách kiện của khung 3D ở một khối: unplaced (kiện chưa xếp), pinned (kiện đã ghim), placed \
+            (kiện đã xếp). Gọi khi người dùng bảo mở, xem hay hiện danh sách đó; liên kết không mở được danh sách này.""")
     public Result openTab(@ToolParam(description = "unplaced, pinned hoặc placed") String tab, ToolContext context) {
         return add(context, new UiAction(UiActionValidator.OPEN_TAB, null, null, null, null, tab));
     }
