@@ -21,11 +21,15 @@ import fu.se184491.loadmaster_be.service.assistant.model.AssistantCaller;
 import fu.se184491.loadmaster_be.service.assistant.model.AssistantReply;
 import fu.se184491.loadmaster_be.service.assistant.model.Handoff;
 import fu.se184491.loadmaster_be.service.assistant.prompt.AssistantPromptBuilder;
+import fu.se184491.loadmaster_be.service.assistant.tool.AssistantToolRegistry;
+import fu.se184491.loadmaster_be.service.assistant.tool.ToolCallLog;
+import fu.se184491.loadmaster_be.service.assistant.tool.ToolScope;
 import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.messages.SystemMessage;
 import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.chat.prompt.Prompt;
+import org.springframework.ai.tool.ToolCallback;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -60,6 +64,7 @@ public class AssistantService {
     private final AssistantBudget budget;
     private final AssistantPromptBuilder promptBuilder;
     private final AssistantLoop loop;
+    private final AssistantToolRegistry tools;
     private final AssistantConversationRepository conversations;
     private final AssistantMessageRepository messages;
     private final TransactionTemplate transactions;
@@ -69,16 +74,16 @@ public class AssistantService {
     @Autowired
     public AssistantService(@Qualifier(AssistantModelConfig.MODEL_BEAN) ObjectProvider<ChatModel> chatModels,
                             AssistantProperties properties, AssistantRateLimiter rateLimiter, AssistantBudget budget,
-                            AssistantPromptBuilder promptBuilder, AssistantLoop loop,
+                            AssistantPromptBuilder promptBuilder, AssistantLoop loop, AssistantToolRegistry tools,
                             AssistantConversationRepository conversations, AssistantMessageRepository messages,
                             PlatformTransactionManager transactionManager) {
-        this(chatModels, properties, rateLimiter, budget, promptBuilder, loop, conversations, messages,
+        this(chatModels, properties, rateLimiter, budget, promptBuilder, loop, tools, conversations, messages,
                 transactionManager, Clock.systemUTC());
     }
 
     AssistantService(ObjectProvider<ChatModel> chatModels, AssistantProperties properties,
                      AssistantRateLimiter rateLimiter, AssistantBudget budget, AssistantPromptBuilder promptBuilder,
-                     AssistantLoop loop, AssistantConversationRepository conversations,
+                     AssistantLoop loop, AssistantToolRegistry tools, AssistantConversationRepository conversations,
                      AssistantMessageRepository messages, PlatformTransactionManager transactionManager, Clock clock) {
         this.chatModels = chatModels;
         this.properties = properties;
@@ -86,6 +91,7 @@ public class AssistantService {
         this.budget = budget;
         this.promptBuilder = promptBuilder;
         this.loop = loop;
+        this.tools = tools;
         this.conversations = conversations;
         this.messages = messages;
         this.transactions = new TransactionTemplate(transactionManager);
@@ -122,10 +128,12 @@ public class AssistantService {
         Prompt prompt = new Prompt(promptMessages(command, conversation, question, locale, askedAt));
 
         // Token của mọi lần gọi mô hình tính vào hạn mức, kể cả khi lượt hỏng ở vòng sau
+        ToolCallLog toolLog = new ToolCallLog();
+        List<ToolCallback> callbacks = tools.toolsFor(scopeOf(caller), toolLog);
         TokenMeter meter = new TokenMeter();
         LoopResult result;
         try {
-            result = loop.run(model, prompt, List.of(), locale, meter);
+            result = loop.run(model, prompt, callbacks, locale, meter);
         } finally {
             long spent = meter.total().total();
             if (spent > 0) {
@@ -138,7 +146,7 @@ public class AssistantService {
 
         String modelName = StringUtils.hasText(result.model()) ? result.model() : properties.getModel();
         AssistantConversation saved = transactions.execute(status ->
-                save(command, conversation, question, result, modelName, askedAt));
+                save(command, conversation, question, result, modelName, askedAt, toolLog));
         return new AssistantReply(Objects.requireNonNull(saved).getPublicId(), result.text(), List.of(), List.of(),
                 Handoff.none(), result.usage());
     }
@@ -219,7 +227,8 @@ public class AssistantService {
     }
 
     private AssistantConversation save(AssistantAskCommand command, AssistantConversation existing, String question,
-                                       LoopResult result, String modelName, Instant askedAt) {
+                                       LoopResult result, String modelName, Instant askedAt,
+                                       ToolCallLog toolLog) {
         Instant answeredAt = clock.instant();
         AssistantConversation conversation = existing != null ? existing : newConversation(command, askedAt);
         conversation.setUpdatedAt(answeredAt);
@@ -227,11 +236,16 @@ public class AssistantService {
         messages.save(AssistantMessage.builder()
                 .conversationId(conversation.getId()).role(AssistantMessageRole.USER).content(question)
                 .createdAt(askedAt).build());
-        messages.save(AssistantMessage.builder()
+        AssistantMessage answer = messages.save(AssistantMessage.builder()
                 .conversationId(conversation.getId()).role(AssistantMessageRole.ASSISTANT).content(result.text())
                 .inputTokens(result.usage().inputTokens()).outputTokens(result.usage().outputTokens())
                 .model(modelName).createdAt(answeredAt).build());
+        tools.save(toolLog, answer.getId());
         return conversation;
+    }
+
+    private static ToolScope scopeOf(AssistantCaller caller) {
+        return caller == null || caller.role() == null ? ToolScope.ofGuest() : ToolScope.of(caller.role());
     }
 
     private AssistantConversation newConversation(AssistantAskCommand command, Instant now) {

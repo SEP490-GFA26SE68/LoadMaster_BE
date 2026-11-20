@@ -10,6 +10,8 @@ import fu.se184491.loadmaster_be.exception.AppException;
 import fu.se184491.loadmaster_be.exception.ErrorCode;
 import fu.se184491.loadmaster_be.repository.assistant.AssistantConversationRepository;
 import fu.se184491.loadmaster_be.repository.assistant.AssistantMessageRepository;
+import fu.se184491.loadmaster_be.repository.assistant.AssistantToolCallRepository;
+import fu.se184491.loadmaster_be.entity.assistant.AssistantToolCall;
 import fu.se184491.loadmaster_be.service.assistant.gate.AssistantBudget;
 import fu.se184491.loadmaster_be.service.assistant.gate.AssistantRateLimiter;
 import fu.se184491.loadmaster_be.service.assistant.loop.AssistantLoop;
@@ -20,11 +22,17 @@ import fu.se184491.loadmaster_be.service.assistant.model.PageContext;
 import fu.se184491.loadmaster_be.service.assistant.prompt.AssistantPromptBuilder;
 import fu.se184491.loadmaster_be.service.assistant.support.FakeChatModel;
 import fu.se184491.loadmaster_be.service.assistant.support.MutableClock;
+import fu.se184491.loadmaster_be.service.assistant.tool.AssistantTool;
+import fu.se184491.loadmaster_be.service.assistant.tool.AssistantToolRegistry;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.messages.MessageType;
 import org.springframework.ai.chat.model.ChatModel;
+import org.springframework.ai.chat.prompt.Prompt;
+import org.springframework.ai.model.tool.ToolCallingChatOptions;
+import org.springframework.ai.tool.annotation.Tool;
+import org.springframework.ai.tool.annotation.ToolParam;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.support.StaticListableBeanFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -38,6 +46,7 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -57,6 +66,7 @@ class AssistantServiceTest {
     @Autowired private PlatformTransactionManager transactionManager;
     @Autowired private AssistantPromptBuilder promptBuilder;
     @Autowired private AssistantLoop loop;
+    @Autowired private AssistantToolCallRepository toolCalls;
 
     @MockitoBean private JwtDecoder jwtDecoder;
 
@@ -65,6 +75,7 @@ class AssistantServiceTest {
     private final RecordingBudget budget = new RecordingBudget();
     private final List<String> rateKeys = new ArrayList<>();
     private final MutableClock clock = new MutableClock(T0);
+    private final TripTools tripTools = new TripTools();
 
     @BeforeEach
     void enable() {
@@ -76,8 +87,9 @@ class AssistantServiceTest {
                 chatModel == null ? Map.<String, Object>of() : Map.<String, Object>of("assistantChatModel", chatModel));
         ObjectProvider<ChatModel> provider = beans.getBeanProvider(ChatModel.class);
         AssistantRateLimiter limiter = (key, limit) -> rateKeys.add(key + "@" + limit);
-        return new AssistantService(provider, properties, limiter, budget, promptBuilder, loop, conversations,
-                messages, transactionManager, clock);
+        AssistantToolRegistry tools = new AssistantToolRegistry(List.of(tripTools), toolCalls, clock);
+        return new AssistantService(provider, properties, limiter, budget, promptBuilder, loop, tools,
+                conversations, messages, transactionManager, clock);
     }
 
     private static AssistantAskCommand guest(String conversationId, String message, String guestKey) {
@@ -309,6 +321,62 @@ class AssistantServiceTest {
                 .extracting(AssistantMessage::getContent).containsExactly("Câu một", "Một.", "Câu hai", "Hai.");
         assertThat(model.prompts().get(1).getInstructions()).extracting(Message::getText)
                 .contains("Câu một", "Một.");
+    }
+
+    @Test
+    void dispatcherToolCallRunsAndIsSavedWithTheAnswer() {
+        model.toolCall("get_trip", "{\"tripCode\":\"TRIP-1\"}", 900, 20).reply("TRIP-1 đã lập kế hoạch.", 1000, 15);
+
+        AssistantReply reply = service(model).ask(user(DISPATCHER, null, "TRIP-1 thế nào?"));
+
+        assertThat(reply.reply()).isEqualTo("TRIP-1 đã lập kế hoạch.");
+        assertThat(tripTools.asked).containsExactly("TRIP-1");
+        assertThat(offeredTools(model.prompts().getFirst())).containsExactly("get_trip");
+        assertThat(budget.recorded).containsExactly(1935L);
+        AssistantConversation conversation = conversations.findByPublicId(reply.conversationId()).orElseThrow();
+        AssistantMessage answer = messages.findByConversationIdOrderByIdAsc(conversation.getId()).get(1);
+        assertThat(answer.getInputTokens()).isEqualTo(1900);
+        assertThat(answer.getOutputTokens()).isEqualTo(35);
+        assertThat(toolCalls.findByMessageIdOrderByIdAsc(answer.getId())).singleElement().satisfies(row -> {
+            assertThat(row.getToolName()).isEqualTo("get_trip");
+            assertThat(row.getArguments()).isEqualTo(Map.of("tripCode", "TRIP-1"));
+            assertThat(row.isOk()).isTrue();
+            assertThat(row.getDurationMs()).isNotNegative();
+            assertThat(row.getCreatedAt()).isEqualTo(T0);
+        });
+    }
+
+    @Test
+    void guestIsNotOfferedADispatcherTool() {
+        model.reply("Mình chưa xem được chuyến khi bạn chưa đăng nhập.", 10, 2);
+
+        service(model).ask(guest(null, "TRIP-1 thế nào?", GUEST_KEY));
+
+        assertThat(offeredTools(model.prompts().getFirst())).isEmpty();
+        assertThat(tripTools.asked).isEmpty();
+        assertThat(toolCalls.count()).isZero();
+    }
+
+    private static List<String> offeredTools(Prompt prompt) {
+        return prompt.getOptions() instanceof ToolCallingChatOptions options
+                ? options.getToolCallbacks().stream().map(tool -> tool.getToolDefinition().name()).toList()
+                : List.of();
+    }
+
+    /** Công cụ giả của điều phối viên: ghi lại mã chuyến được hỏi. */
+    public static final class TripTools implements AssistantTool {
+        private final List<String> asked = new ArrayList<>();
+
+        @Override
+        public Set<UserRole> roles() {
+            return Set.of(UserRole.DISPATCHER);
+        }
+
+        @Tool(name = "get_trip", description = "Một chuyến của công ty")
+        public Map<String, Object> getTrip(@ToolParam(description = "Mã chuyến") String tripCode) {
+            asked.add(tripCode);
+            return Map.of("tripCode", tripCode, "status", "PLANNED");
+        }
     }
 
     private AssistantConversation existingConversation(Long userId, String guestKey, AssistantChannel channel) {

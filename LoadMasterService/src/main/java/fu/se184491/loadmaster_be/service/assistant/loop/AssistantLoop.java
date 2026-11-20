@@ -6,6 +6,7 @@ import fu.se184491.loadmaster_be.config.assistant.AssistantProperties;
 import fu.se184491.loadmaster_be.exception.AppException;
 import fu.se184491.loadmaster_be.exception.ErrorCode;
 import fu.se184491.loadmaster_be.service.assistant.model.TokenUsage;
+import fu.se184491.loadmaster_be.service.assistant.tool.ToolResults;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.anthropic.AnthropicChatOptions;
 import org.springframework.ai.chat.messages.AssistantMessage;
@@ -45,7 +46,7 @@ public class AssistantLoop {
 
     static final String REFUSAL = "refusal";
     static final String TOOL_USE = "tool_use";
-    static final String TOOL_FAILED = "TOOL_FAILED";
+    static final String TOOL_FAILED = ToolResults.TOOL_FAILED;
     static final String REFUSAL_VI = "Mình không thể giúp với yêu cầu này. Bạn có thể hỏi mình về cách dùng LoadMaster.";
     static final String REFUSAL_EN = "I can't help with that request. You can ask me about using LoadMaster.";
     private static final int MAX_CAUSE_DEPTH = 8;
@@ -186,7 +187,7 @@ public class AssistantLoop {
     }
 
     private static String error(String code) {
-        return "{\"error\":\"" + code + "\"}";
+        return ToolResults.error(code);
     }
 
     /** {@code getPromptTokens()} của Spring AI đã gồm token đọc và ghi bộ đệm. */
