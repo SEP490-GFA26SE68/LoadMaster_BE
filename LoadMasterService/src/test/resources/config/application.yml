@@ -7,9 +7,16 @@
 #   trong test, nên test không gọi Keycloak và không cần biến DEV_ADMIN_*.
 # - Datasource mặc định là H2 trong bộ nhớ: test không bao giờ nối tới DB thật (Supabase dùng chung) dù máy có đặt
 #   DATABASE_URL. Test nào cần DB riêng vẫn tự đặt spring.datasource.url của nó.
+# Synthetic identity provider: never resolve developer/shared Keycloak during tests.
+KEYCLOAK_AUTH_URL: http://127.0.0.1:1
+
 spring:
   profiles:
     active: test
+  data:
+    redis:
+      # Never inherit a developer/shared Redis endpoint; no Redis operations in these DB tests.
+      url: redis://127.0.0.1:1
   datasource:
     url: jdbc:h2:mem:loadmaster-test;MODE=PostgreSQL;DB_CLOSE_DELAY=-1;DATABASE_TO_LOWER=TRUE
     driver-class-name: org.h2.Driver
@@ -22,6 +29,10 @@ spring:
     enabled: false
   security:
     oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: http://127.0.0.1:1/realms/loadmaster-test
+          jwk-set-uri: http://127.0.0.1:1/realms/loadmaster-test/certs
       client:
         registration:
           optimization-client:

@@ -78,11 +78,19 @@ class TripPlanningControllerIntegrationTest {
     @Autowired
     private EntityManager entityManager;
 
+    // Redis is unrelated to these database scenarios; never initialize a shared/dev connection factory.
+    @MockitoBean
+    private org.springframework.data.redis.connection.lettuce.LettuceConnectionFactory redisConnectionFactory;
+
     @MockitoBean
     private JwtDecoder jwtDecoder;
 
     @MockitoBean
     private GoongMapsClient goongMapsClient;
+
+    // This HTTP/H2 fixture isolates the PostgreSQL-specific store; real eligibility stays enabled.
+    @MockitoBean
+    private fu.se184491.loadmaster_be.service.vehicle.VehiclePresenceStore presenceStore;
 
     private Company company;
     private User dispatcher;
@@ -130,6 +138,28 @@ class TripPlanningControllerIntegrationTest {
                 .build();
         entityManager.persist(vehicle);
         entityManager.flush();
+        when(presenceStore.warehouse(warehouse.getId(), company.getId())).thenReturn(true);
+        when(presenceStore.lockWarehouse(warehouse.getId(), company.getId())).thenReturn(true);
+        when(presenceStore.lockVehicle(vehicle.getId(), company.getId()))
+                .thenReturn(Map.of("id", vehicle.getId(), "status", "AVAILABLE"));
+        // Explicit independent physical observation; AVAILABLE alone must never imply presence.
+        when(presenceStore.presence(vehicle.getId(), company.getId())).thenReturn(
+                new fu.se184491.loadmaster_be.service.vehicle.VehiclePresenceStore.Presence(
+                        vehicle.getId(), company.getId(), warehouse.getId(), "AT_WAREHOUSE", Instant.now(),
+                        dispatcher.getId(), "Synthetic observation", 1));
+    }
+
+    @Test
+    void dispatcherCannotCreateTripWithoutObservedPresence() throws Exception {
+        when(presenceStore.presence(vehicle.getId(), company.getId())).thenReturn(
+                new fu.se184491.loadmaster_be.service.vehicle.VehiclePresenceStore.Presence(
+                        vehicle.getId(), company.getId(), null, "UNKNOWN", null, null, null, 0));
+        mockMvc.perform(post("/api/trips").with(asDispatcher())
+                        .contentType(MediaType.APPLICATION_JSON).content(createTripRequest()))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("VEHICLE_DEPARTURE_INELIGIBLE"));
+        org.junit.jupiter.api.Assertions.assertEquals(0L,
+                entityManager.createQuery("select count(t) from Trip t", Long.class).getSingleResult());
     }
 
     @Test
@@ -372,6 +402,7 @@ class TripPlanningControllerIntegrationTest {
                 .priority(DeliveryRequirementPriority.NORMAL)
                 .status(DeliveryRequirementStatus.PENDING)
                 .createdBy(dispatcher)
+                .expectedPackageCount(1)
                 .packages(new LinkedHashSet<>(java.util.List.of(cargoPackage)))
                 .build();
         entityManager.persist(requirement);

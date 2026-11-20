@@ -4,6 +4,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from app.config.database import Base
+from tests.optimization_legacy_fixtures import spring_reserved_job, make_offline_runner, billing_snapshot
 from app.constant.optimization.job_status import OptimizationJobStatus
 from app.dto.request.optimization_request import OptimizationJobRequest
 from app.dto.optimization.engine.problem_request import ProblemRequest, VehicleData, PackageData
@@ -114,17 +115,20 @@ class TestAsyncRunnerCreditIntegration:
         session.add_all([vt, v, t, stop, order, pkg])
         session.commit()
 
-        yield session
-        session.close()
+        try:
+            yield session
+        finally:
+            session.close()
+            engine.dispose()
 
-    async def test_credit_deducted_before_solving(self, test_db):
+    async def test_spring_billed_snapshot_is_consumed_without_second_deduction(self, test_db):
         job_service = OptimizationJobService()
         req = OptimizationJobRequest(
             trip_id=100,
             company_id="comp-1",
             subscription_tier="PRO",
         )
-        job = job_service.create_job(100, req, test_db)
+        job = spring_reserved_job(test_db, test_db.get(Trip, 100), tier=req.subscription_tier)
 
         mock_credit_client = AsyncMock()
         mock_credit_client.deduct_credit.return_value = True
@@ -136,46 +140,56 @@ class TestAsyncRunnerCreditIntegration:
             metrics=MetricsData(volume_utilization=0.5, weight_utilization=0.5, computation_ms=10),
         )
 
-        runner = AsyncOptimizationRunner(
+        runner = make_offline_runner(
             job_service=job_service,
             optimization_client=mock_opt_client,
             session_factory=lambda: test_db,
         )
         runner.credit_client = mock_credit_client
 
-        await runner.run(job.job_uuid, db=test_db)
+        problem = ProblemRequest(vehicle=VehicleData(inner_l=10,inner_w=10,inner_h=10,max_payload_kg=1000),
+                                 packages=[PackageData(id='1',l=1,w=1,h=1,weight=100)])
+        await runner.run(job.job_uuid, problem=problem, db=test_db)
 
         # 1. Credit deduct must be called
-        mock_credit_client.deduct_credit.assert_called_once_with("comp-1", job.job_uuid)
+        mock_credit_client.deduct_credit.assert_not_called()
+        mock_opt_client.solve.assert_awaited_once()
+        assert len(billing_snapshot(test_db)[1]) == 1
         # 2. Algorithm tier must be stored
         updated_job = job_service.get_job(job.job_uuid, test_db)
         assert updated_job.algorithm_tier == "PRO"
         assert updated_job.algorithm_name == "EP_DBLF_GA"
         assert updated_job.status == OptimizationJobStatus.COMPLETED.value
 
-    async def test_insufficient_credit_blocks_engine_and_fails_job(self, test_db):
+    async def test_missing_usage_blocks_engine_and_fails_job(self, test_db):
         job_service = OptimizationJobService()
         req = OptimizationJobRequest(
             trip_id=100,
             company_id="comp-empty",
             subscription_tier="BASIC",
         )
-        job = job_service.create_job(100, req, test_db)
+        job = spring_reserved_job(test_db, test_db.get(Trip, 100), tier=req.subscription_tier)
 
         mock_credit_client = AsyncMock()
-        mock_credit_client.deduct_credit.side_effect = AppException(ErrorCode.INSUFFICIENT_CREDITS)
+        from sqlalchemy import text
+        test_db.execute(text('DELETE FROM credit_transactions WHERE reference=:uuid'), {'uuid':job.job_uuid})
+        test_db.commit()  # SQLite fixture only: invalid unbilled snapshot.
 
         mock_opt_client = AsyncMock()
 
-        runner = AsyncOptimizationRunner(
+        runner = make_offline_runner(
             job_service=job_service,
             optimization_client=mock_opt_client,
             session_factory=lambda: test_db,
         )
         runner.credit_client = mock_credit_client
 
-        await runner.run(job.job_uuid, db=test_db)
+        problem = ProblemRequest(vehicle=VehicleData(inner_l=10,inner_w=10,inner_h=10,max_payload_kg=1000),
+                                 packages=[PackageData(id='1',l=1,w=1,h=1,weight=100)])
+        await runner.run(job.job_uuid, problem=problem, db=test_db)
 
+        mock_credit_client.deduct_credit.assert_not_called()
+        mock_credit_client.refund_credit.assert_not_called()
         # Engine must NOT be called
         mock_opt_client.solve.assert_not_called()
         # Job must be FAILED
@@ -189,7 +203,7 @@ class TestAsyncRunnerCreditIntegration:
             company_id="comp-1",
             subscription_tier="BASIC",
         )
-        job = job_service.create_job(100, req, test_db)
+        job = spring_reserved_job(test_db, test_db.get(Trip, 100), tier=req.subscription_tier)
 
         mock_credit_client = AsyncMock()
         mock_credit_client.deduct_credit.return_value = True
@@ -198,16 +212,18 @@ class TestAsyncRunnerCreditIntegration:
         mock_opt_client = AsyncMock()
         mock_opt_client.solve.side_effect = Exception("Optimization engine crashed")
 
-        runner = AsyncOptimizationRunner(
+        runner = make_offline_runner(
             job_service=job_service,
             optimization_client=mock_opt_client,
             session_factory=lambda: test_db,
         )
         runner.credit_client = mock_credit_client
 
-        await runner.run(job.job_uuid, db=test_db)
+        problem = ProblemRequest(vehicle=VehicleData(inner_l=10,inner_w=10,inner_h=10,max_payload_kg=1000),
+                                 packages=[PackageData(id='1',l=1,w=1,h=1,weight=100)])
+        await runner.run(job.job_uuid, problem=problem, db=test_db)
 
         # Refund must be called because job failed
-        mock_credit_client.refund_credit.assert_called_once_with("comp-1", job.job_uuid)
+        mock_credit_client.refund_credit.assert_awaited_once_with("1", job.job_uuid)
         updated_job = job_service.get_job(job.job_uuid, test_db)
         assert updated_job.status == OptimizationJobStatus.FAILED.value

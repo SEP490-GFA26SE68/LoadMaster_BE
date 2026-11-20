@@ -1,6 +1,3 @@
-# Không bật profile nào mặc định: Spring Boot tự đọc biến SPRING_PROFILES_ACTIVE. Máy dev đặt SPRING_PROFILES_ACTIVE=dev
-# để tạo admin, công ty và dữ liệu mẫu (DevAdminInitializer, DevCompanyInitializer, DevOptimizationMockInitializer);
-# chạy không đặt biến đó thì không ghi dữ liệu mẫu nào vào DB.
 spring:
   servlet:
     multipart:
@@ -10,7 +7,7 @@ spring:
     oauth2:
       resourceserver:
         jwt:
-          issuer-uri: ${KEYCLOAK_AUTH_URL:http://localhost:8180}/realms/loadmaster
+          issuer-uri: ${KEYCLOAK_AUTH_URL}/realms/loadmaster
       client:
         registration:
           optimization-client:
@@ -27,9 +24,9 @@ spring:
             authorization-grant-type: client_credentials
         provider:
           keycloak:
-            token-uri: ${KEYCLOAK_AUTH_URL:http://localhost:8180}/realms/loadmaster/protocol/openid-connect/token
+            token-uri: ${KEYCLOAK_AUTH_URL}/realms/loadmaster/protocol/openid-connect/token
   datasource:
-    url: ${DATABASE_URL:jdbc:postgresql://localhost:5432/loadmaster}
+    url: ${DATABASE_URL}
     username: ${POSTGRES_USER}
     password: ${POSTGRES_PASSWORD}
     # Pooler Supabase dùng chung cả nhóm chỉ có khoảng 15 kết nối: giữ pool nhỏ, máy nào cần hơn thì đặt biến.
@@ -45,9 +42,11 @@ spring:
       host: ${REDIS_HOST:localhost}
       port: ${REDIS_PORT:6379}
       password: ${REDIS_PASSWORD:}
+      url: ${REDIS_URL}
 
   flyway:
-    # DB dùng chung đã baseline ở V41 (schema trước đó do Hibernate tạo); từ V42 trở đi do Flyway chạy khi khởi động.
+    enabled: false
+    locations: classpath:db/migration
     baseline-on-migrate: true
     baseline-version: 41
 
@@ -57,7 +56,8 @@ spring:
     # Ghi rõ để Spring không cảnh báo lúc khởi động.
     open-in-view: true
     hibernate:
-      ddl-auto: update
+      # Shared databases: schema changes require a separately reviewed migration.
+      ddl-auto: validate
     properties:
       hibernate:
         format_sql: true
@@ -68,8 +68,6 @@ vnpay:
   hash-secret: ${VNPAY_HASH_SECRET}
   vnp-url: ${VNPAY_URL:https://sandbox.vnpayment.vn/paymentv2/vpcpay.html}
   return-url: ${VNPAY_RETURN_URL:http://localhost:8080/webhook/vnpay-return}
-  # true: bỏ kiểm chữ ký VNPay và mở /api/payment/mock-checkout (công ty đăng nhập tự đánh dấu giao dịch của mình đã trả).
-  # Mặc định tắt; chỉ profile dev bật sẵn (application-dev.yml).
   mock: ${VNPAY_MOCK:false}
 
 
@@ -106,6 +104,8 @@ springdoc:
 app:
   security:
     qr-aes-secret: ${QR_AES_SECRET}
+    qr-migration:
+      enabled: ${QR_MIGRATION_ENABLED:false}
   # Tài khoản dùng thử không ký thoả thuận: luôn gắn cờ; xoá cứng sau 30 ngày chỉ khi bật cờ này (mặc định tắt).
   trial:
     hard-delete-enabled: ${TRIAL_HARD_DELETE_ENABLED:false}

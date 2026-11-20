@@ -88,10 +88,11 @@ public class FlaggedUserEnforcementFilter extends OncePerRequestFilter {
     private final ObjectMapper objectMapper;
     private final CompanySubscriptionRepository companySubscriptionRepository;
 
+    @org.springframework.beans.factory.annotation.Autowired
     public FlaggedUserEnforcementFilter(
             CurrentUserService currentUserService,
             ObjectMapper objectMapper,
-            CompanySubscriptionRepository companySubscriptionRepository
+            @org.springframework.lang.Nullable CompanySubscriptionRepository companySubscriptionRepository
     ) {
         this.currentUserService = Objects.requireNonNull(currentUserService, "currentUserService");
         this.objectMapper = objectMapper != null ? objectMapper : new ObjectMapper();

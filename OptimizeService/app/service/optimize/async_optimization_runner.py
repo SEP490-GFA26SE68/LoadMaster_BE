@@ -5,17 +5,20 @@ from types import SimpleNamespace
 from typing import Optional, Union, Any, Callable
 from uuid import UUID
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import SQLAlchemyError
 
 from app.config.database import SessionLocal
 from app.constant.optimization.job_status import OptimizationJobStatus
 from app.dto.optimization.engine.problem_request import (
     ProblemRequest,
     VehicleData,
+    ObstacleData,
     PackageData,
     StopData,
 )
 from app.exception.app_exception import AppException
 from app.exception.error_code import ErrorCode
+from app.dto.optimization.engine.packing_profile_orientation import parse_profile_orientation
 from app.service.optimize.engine_exception_handler import EngineExceptionHandler
 from app.service.optimize.optimization_client import OptimizationClient
 from app.service.optimize.optimization_job_service import JobAlreadyFinishedError, OptimizationJobService
@@ -49,6 +52,46 @@ class AsyncOptimizationRunner:
         else:
             from app.client.loadmaster_credit_client import LoadMasterCreditClient
             self.credit_client = LoadMasterCreditClient()
+
+    @staticmethod
+    def load_vehicle_obstacles(vehicle_type):
+        """Always load the mapped relation; missing/unreadable geometry must fail closed."""
+        try:
+            rows = vehicle_type.obstacles
+            if rows is None:
+                raise ValueError("Obstacle relation returned no collection")
+            return [ObstacleData(id=o.id, name=o.name, type=o.type, x=o.x, y=o.y, z=o.z,
+                                 length=o.length, width=o.width, height=o.height,
+                                 load_bearing=o.load_bearing) for o in rows]
+        except (SQLAlchemyError, AttributeError, TypeError, ValueError) as exc:
+            raise ValueError(f"Unable to load valid fixed obstacles for vehicle type {vehicle_type.id}") from exc
+
+    @staticmethod
+    def restrict_profile_rotations(allowed, profile):
+        if profile is None:
+            return allowed
+        profile_codes = parse_profile_orientation(profile.orientation)
+        return [code for code in allowed
+                if (profile_codes is None or code in profile_codes)
+                and (profile.upright_only is not True or code in (0, 1))]
+
+    @staticmethod
+    def validate_trip_profile_orientations(trip_id, db):
+        """Read-only syntax preflight after job authorization, before scheduling/ACK.
+
+        Build also validates defensively if profiles change after the ACK.
+        No geometry, billing, status, stackability or load-bearing policy is changed.
+        """
+        from app.entity.trip_model import (CargoPackagePackingProfile,
+            DeliveryRequirement, DeliveryRequirementPackage)
+        profiles = (db.query(CargoPackagePackingProfile)
+                    .join(DeliveryRequirementPackage,
+                          DeliveryRequirementPackage.package_id == CargoPackagePackingProfile.package_id)
+                    .join(DeliveryRequirement,
+                          DeliveryRequirement.id == DeliveryRequirementPackage.delivery_requirement_id)
+                    .filter(DeliveryRequirement.trip_id == trip_id).distinct().all())
+        for profile in profiles:
+            parse_profile_orientation(profile.orientation)
 
     def build_problem_request(self, job_uuid: Union[str, UUID], db: Session) -> ProblemRequest:
         """
@@ -98,8 +141,7 @@ class AsyncOptimizationRunner:
             raise AppException(ErrorCode.VEHICLE_NOT_FOUND)
 
         vt = trip.vehicle.vehicle_type
-        # Quy đổi đơn vị mm sang m nếu lớn hơn 50mm
-        # Tất cả kích thước sử dụng cm
+        # Database dimensions and fixed obstacles use cm; do not guess unit conversions.
         inner_l = float(vt.inner_length or 0)
         inner_w = float(vt.inner_width or 0)
         inner_h = float(vt.inner_height or 0)
@@ -108,6 +150,7 @@ class AsyncOptimizationRunner:
 
 
         vehicle_data = VehicleData(
+            obstacles=self.load_vehicle_obstacles(vt),
             inner_l=inner_l,
             inner_w=inner_w,
             inner_h=inner_h,
@@ -375,6 +418,8 @@ class AsyncOptimizationRunner:
                 max_stack = None
 
 
+            allowed_rotations = self.restrict_profile_rotations(allowed_rotations, pkg.packing_profile)
+
             package_items.append(
                 PackageData(
                     id=str(pkg.id),
@@ -440,29 +485,21 @@ class AsyncOptimizationRunner:
             logger.info(f"Starting async optimization job: {job_uuid_str}")
             job = self.job_service.get_job(job_uuid_str, session)
 
-            # Đảm bảo algorithm_tier và algorithm_name được thiết lập
-            if job.subscription_tier and not job.algorithm_tier:
-                from app.service.optimize.algorithm_tier_service import AlgorithmTierService
-                job.algorithm_tier = AlgorithmTierService.get_algorithm_tier(job.subscription_tier)
-                job.algorithm_name = AlgorithmTierService.resolve_algorithm(job.algorithm_tier, job.algorithm_name)
-                session.commit()
-
-            # Trừ credit trước khi chạy (S5b-05)
-            if job.company_id and self.credit_client is not None:
-                try:
-                    await self.credit_client.deduct_credit(job.company_id, job_uuid_str)
-                    is_credit_deducted = True
-                except Exception as credit_err:
-                    logger.error(f"Credit deduction failed for job {job_uuid_str}: {credit_err}")
-                    self.job_service.update_status(job_uuid_str, OptimizationJobStatus.FAILED, db=session)
-                    return
-
-            self.job_service.update_status(job_uuid_str, OptimizationJobStatus.RUNNING, db=session)
+            from app.service.optimize.authorized_job_dispatch import claim_for_execution
+            if not claim_for_execution(job_uuid_str, job.trip_id, session):
+                logger.info("Job %s is already running or terminal; skipping duplicate task", job_uuid_str)
+                return
+            # Spring committed the job and USAGE atomically before dispatch. No second deduction.
+            # Preserve the existing exception/refund path for authorized billed jobs.
+            is_credit_deducted = True
 
             if problem is None:
                 problem = self.build_problem_request(job_uuid_str, session)
 
             result = await self.optimization_client.solve(problem)
+            from app.dto.optimization.engine.rotation_contract import validate_result_rotations
+            validate_result_rotations(problem, result)
+
 
             if self.persistence_service is not None and hasattr(self.persistence_service, "save"):
                 self.persistence_service.save(job_uuid_str, result, session)
@@ -501,6 +538,66 @@ class AsyncOptimizationRunner:
         finally:
             if should_close and session is not None:
                 session.close()
+
+    async def run_owned(self, job_uuid, generation, problem_json):
+        import asyncio
+        import threading
+        import httpx
+        from app.config.settings import settings
+        from app.service.optimize.job_execution_protocol import JobExecutionProtocol, OwnershipLost
+        protocol = JobExecutionProtocol(self.session_factory, settings.OPTIMIZATION_LEASE_SECONDS,
+            settings.OPTIMIZATION_HEARTBEAT_SECONDS, settings.OPTIMIZATION_EXECUTION_GRACE_SECONDS)
+        # The complete worker runs outside the HTTP event loop. Heartbeats use a separate
+        # thread and fresh Sessions, including when synchronous solve() blocks its loop.
+        await asyncio.to_thread(self._execute_owned, protocol, str(job_uuid), generation, problem_json)
+
+    def _execute_owned(self, protocol, uuid, generation, problem_json):
+        import asyncio
+        import threading
+        import httpx
+        from app.service.optimize.job_execution_protocol import OwnershipLost
+        from app.dto.optimization.engine.rotation_contract import validate_result_rotations
+        stop = threading.Event()
+        lost = threading.Event()
+        try:
+            if not protocol.begin(uuid, generation):
+                return
+        except OwnershipLost:
+            return
+        def pulse():
+            while not stop.wait(protocol.heartbeat_seconds):
+                try:
+                    protocol.heartbeat(uuid, generation)
+                except Exception:
+                    lost.set()
+                    return  # DB uncertainty is fail-closed; never publish without a final DB check.
+        thread = threading.Thread(target=pulse, name="optimization-lease", daemon=True)
+        thread.start()
+        try:
+            problem = ProblemRequest.model_validate_json(problem_json)
+            result = asyncio.run(self.optimization_client.solve(problem))
+            validate_result_rotations(problem, result)
+            if lost.is_set():
+                return
+            status = _status_value(self.engine_exception_handler.classify_result(result))
+            ms = result.metrics.computation_ms if result.metrics else None
+            protocol.finalize(uuid, generation, status,
+                write_result=lambda db: self.persistence_service.save(uuid, result, db), computation_ms=ms)
+        except OwnershipLost:
+            logger.warning("optimization_execution job_uuid=%s stage=ownership_lost", uuid)
+        except Exception as exc:
+            logger.error("optimization_execution job_uuid=%s stage=execution_failed exception_type=%s", uuid, type(exc).__name__)
+            if not lost.is_set():
+                try:
+                    protocol.finalize(uuid, generation,
+                        "TIMEOUT" if isinstance(exc, httpx.TimeoutException) else "FAILED",
+                        failure_code="ENGINE_EXECUTION_FAILED")
+                except Exception:
+                    logger.warning("optimization_execution job_uuid=%s stage=terminal_not_committed", uuid)
+        finally:
+            stop.set()
+            thread.join(timeout=1)
+            # Spring reconciles the durable terminal ledger. Never refund here.
 
     async def _refund(self, company_id, job_uuid_str: str) -> None:
         """Hoàn credit đã giữ của job (Java bỏ qua lượt hoàn thứ hai cùng mã job)."""

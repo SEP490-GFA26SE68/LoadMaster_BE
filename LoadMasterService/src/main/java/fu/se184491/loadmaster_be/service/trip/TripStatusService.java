@@ -48,7 +48,11 @@ import java.util.Map;
 @RequiredArgsConstructor
 public class TripStatusService {
 
+    private final fu.se184491.loadmaster_be.helpers.CurrentUserService currentUserService;
+    private final TripDepartureReadiness departureReadiness;
     private final TripRepository tripRepository;
+    private final fu.se184491.loadmaster_be.service.vehicle.VehicleDepartureEligibility vehicleEligibility;
+    private final fu.se184491.loadmaster_be.service.vehicle.VehiclePresenceService vehiclePresence;
     private final UserRepository userRepository;
     private final AuditLogRepository auditLogRepository;
     private final LoadingExecutionRepository loadingExecutionRepository;
@@ -83,7 +87,15 @@ public class TripStatusService {
      */
     @Transactional
     public Trip transitionTo(Long tripId, TripStatus newStatus, Long userId) {
-        Trip trip = lockedTrip(tripId);
+        Trip trip;
+        if (newStatus == TripStatus.IN_TRANSIT) {
+            User driver = currentUserService.getCurrentUser();
+            if (userId == null || !java.util.Objects.equals(userId, driver.getId())) throw new AppException(ErrorCode.UNAUTHORIZED);
+            trip = departureReadiness.lockAssignedTrip(tripId, driver);
+            if (!departureReadiness.canStartLocked(trip, driver)) throw new InvalidTripStatusTransitionException(trip.getStatus(), newStatus);
+        } else {
+            trip = lockedTrip(tripId);
+        }
         TripStatus currentStatus = trip.getStatus();
         if (!isValidTransition(trip, currentStatus, newStatus)) {
             throw new InvalidTripStatusTransitionException(currentStatus, newStatus);
@@ -93,6 +105,10 @@ public class TripStatusService {
                 : userRepository.findById(userId)
                 .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
 
+        if (newStatus == TripStatus.LOADING) {
+            vehicleEligibility.requireLocked(trip.getCompany().getId(), trip.getOriginWarehouse() == null ? null : trip.getOriginWarehouse().getId(), trip.getVehicle().getId(), trip.getId());
+        }
+        if (newStatus == TripStatus.IN_TRANSIT) vehiclePresence.departure(trip, userId);
         trip.setStatus(newStatus);
         Trip savedTrip = tripRepository.save(trip);
         Map<String, Object> newValues = new java.util.HashMap<>();
@@ -151,8 +167,7 @@ public class TripStatusService {
                     tripId, LoadingExecutionStatus.IN_PROGRESS);
         }
         if (currentStatus == TripStatus.LOADING && newStatus == TripStatus.IN_TRANSIT) {
-            return loadingExecutionRepository.existsByLoadPlanJobTripIdAndStatus(
-                    tripId, LoadingExecutionStatus.COMPLETED);
+            return true; // The exact current plan was checked under lock in transitionTo.
         }
         if (currentStatus == TripStatus.LOADING && newStatus == TripStatus.PLANNED) {
             return !loadingExecutionRepository.existsByLoadPlanJobTripIdAndStatus(tripId, LoadingExecutionStatus.IN_PROGRESS)

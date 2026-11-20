@@ -47,7 +47,7 @@ def make_problem(
                 h=60,
                 weight=package_weight,
                 allowed_rotations=[0],
-                stop_index=0,
+                stop_index=1,
             )
         ],
         stops=[],
@@ -64,6 +64,7 @@ def run_solver(monkeypatch, problem, zone_x):
 
     fake_zone = SimpleNamespace(
         stop_id="default-stop",
+        sequence=1,
         zone_start_x=float(zone_x),
         zone_end_x=600.0,
     )
@@ -131,41 +132,23 @@ def test_solver_accepts_valid_hc11_hc12(monkeypatch):
     assert result.metrics.rear_axle_load == 2750
 
 
-def test_solver_rejects_hc11_violation(monkeypatch):
-    """
-    Xếp kiện sát đầu thùng:
-    COG_X = 50 cm.
+def test_solver_repairs_hc11_but_final_validation_rejects_the_original_layout(monkeypatch):
+    """Disabling the old translation seam cannot disable the newer validated balance search."""
+    import time
+    from app.dto.optimization.engine.engine_response import PlacementData
+    from app.service.optimize.load_balance_search import validate_plan
+    problem=make_problem()
+    packages={str(p.id):p for p in problem.packages}
+    bad=PlacementData(package_id='P1',x=500,y=0,z=0,packed_l=100,packed_w=240,packed_h=60,rotation_type=0)
+    assert 'CENTER_OF_GRAVITY_OUT_OF_RANGE' in validate_plan([bad],problem.vehicle,packages,time.monotonic()+5)
+    monkeypatch.setattr(OptimizationClient,'_rebalance_along_x',staticmethod(lambda *args,**kwargs:None))
+    result=run_solver(monkeypatch,problem,zone_x=500)
+    monkeypatch.undo()  # Validate the repaired geometry with every real hard constraint.
+    assert len(result.placements)==1
+    assert len(result.unplaced)==0
+    assert result.metrics.cog_x==300
+    assert validate_plan(result.placements,problem.vehicle,packages,time.monotonic()+5)==[]
 
-    Tâm thùng X = 300 cm.
-    Độ lệch = 250 / 600 > 15%.
-
-    Solver phải từ chối phương án.
-    """
-
-    # Bước dời hàng theo X (_rebalance_along_x) sẽ đưa một kiện về giữa thùng;
-    # ở đây giả định không dời được để kiểm đúng lối từ chối của HC-11.
-    monkeypatch.setattr(
-        OptimizationClient,
-        "_rebalance_along_x",
-        staticmethod(lambda *args, **kwargs: None),
-    )
-    problem = make_problem()
-
-    result = run_solver(
-        monkeypatch,
-        problem,
-        zone_x=500,
-    )
-
-    assert len(result.placements) == 0
-    assert len(result.unplaced) == 1
-
-    assert (
-            "CENTER_OF_GRAVITY_OUT_OF_RANGE"
-            in result.unplaced[0].violated_constraints
-    )
-
-    assert result.metrics.packed_count == 0
 
 def test_solver_moves_cargo_to_fix_hc11(monkeypatch):
     """Kiện bị dồn sát cửa (COG_X = 525): dời theo X về giữa thùng thì HC-11 đạt, phương án được nhận."""
@@ -192,9 +175,14 @@ def test_solver_rejects_hc12_violation(monkeypatch):
     Solver phải từ chối phương án.
     """
 
-    problem = make_problem(
-        rear_limit=2500,
-    )
+    # No redistribution can fit: 2200+2500 < 4000 empty +1000 cargo.
+    problem = make_problem(front_limit=2200, rear_limit=2500)
+    import time
+    from app.dto.optimization.engine.engine_response import PlacementData
+    from app.service.optimize.load_balance_search import validate_plan
+    center=PlacementData(package_id='P1',x=250,y=0,z=0,packed_l=100,packed_w=240,packed_h=60,rotation_type=0)
+    assert 'AXLE_LOAD_EXCEEDED' in validate_plan([center],problem.vehicle,{str(p.id):p for p in problem.packages},time.monotonic()+5)
+
 
     result = run_solver(
         monkeypatch,

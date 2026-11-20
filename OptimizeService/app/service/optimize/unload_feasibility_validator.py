@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import math
+import time
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Tuple
 
@@ -28,7 +29,7 @@ class UnloadFeasibilityValidator:
     - X = 0: đầu sâu trong xe.
     - X = inner_l: cửa sau.
     - Dỡ kiện theo chiều +X.
-    - Không xoay, nâng hay dịch ngang khi rút kiện.
+    - Không xoay; có thể nâng/dịch ngang rồi kéo ra nếu đường đi không bị chặn.
     - stop_index nhỏ hơn được giao trước.
     - Kiểm tra toàn bộ trình tự dỡ hàng.
 
@@ -47,6 +48,8 @@ class UnloadFeasibilityValidator:
             placements: List[PlacementData],
             packages_map: Dict[str, PackageData],
             vehicle: VehicleData,
+            *,
+            deadline: Optional[float] = None,
     ) -> UnloadValidationResult:
 
         def fail(code: str, detail: str) -> UnloadValidationResult:
@@ -55,6 +58,15 @@ class UnloadFeasibilityValidator:
                 violation_code=code,
                 detail=detail,
             )
+
+        def expired() -> bool:
+            return deadline is not None and time.monotonic() >= deadline
+
+        def timeout() -> UnloadValidationResult:
+            return fail("UNLOAD_TIME_LIMIT_REACHED", "Unload validation exceeded the optimization deadline")
+
+        if expired():
+            return timeout()
 
         # 1. Kiểm tra hình học xe và cửa.
         vehicle_values = (
@@ -108,6 +120,8 @@ class UnloadFeasibilityValidator:
         seen_ids = set()
 
         for p in placements:
+            if expired():
+                return timeout()
             package_id = str(p.package_id)
 
             if package_id in seen_ids:
@@ -180,11 +194,17 @@ class UnloadFeasibilityValidator:
         from app.service.optimize.constraint_engine import ConstraintEngine
 
         for i, p in enumerate(placements):
+            if expired():
+                return timeout()
             others = [
                 other
                 for j, other in enumerate(placements)
                 if j != i
             ]
+
+            obstacle_result = ConstraintEngine.check_obstacles(p, vehicle)
+            if not obstacle_result.passed:
+                return fail(obstacle_result.violation_code, obstacle_result.detail)
 
             if not ConstraintEngine.check_non_overlap(
                     p, others
@@ -200,6 +220,8 @@ class UnloadFeasibilityValidator:
             thỏa HC-05 và HC-06.
             """
             for i in indices:
+                if expired():
+                    return False
                 p = placements[i]
                 others = [
                     placements[j]
@@ -208,12 +230,12 @@ class UnloadFeasibilityValidator:
                 ]
 
                 if not ConstraintEngine.check_support_area(
-                        p, others
+                        p, others, obstacles=vehicle.obstacles
                 ).passed:
                     return False
 
                 if not ConstraintEngine.check_stability(
-                        p, others
+                        p, others, obstacles=vehicle.obstacles
                 ).passed:
                     return False
 
@@ -222,83 +244,173 @@ class UnloadFeasibilityValidator:
         initial_state = frozenset(range(len(placements)))
 
         if not stable_remaining(initial_state):
+            if expired():
+                return timeout()
             return fail(
                 "INVALID_UNLOAD_DATA",
                 "Initial load plan has unsupported or unstable packages",
             )
 
+
         def can_extract(
                 index: int,
                 remaining: frozenset[int],
         ) -> bool:
-            """
-            Kiểm tra một kiện có thể trượt thẳng
-            theo trục +X để ra khỏi cửa xe hay không.
-            """
             p = placements[index]
 
             x = float(p.x)
             y = float(p.y)
             z = float(p.z)
+
+            l = float(p.packed_l)
             w = float(p.packed_w)
             h = float(p.packed_h)
 
-            # Kiện phải nằm trong đúng khẩu độ cửa.
-            # Chỉ kiểm tra kích thước là chưa đủ:
-            # vị trí Y cũng phải phù hợp vì không
-            # được phép dịch ngang khi dỡ.
-            if (
-                    y < door_y_min - cls.EPSILON
-                    or y + w > door_y_max + cls.EPSILON
-                    or z < -cls.EPSILON
-                    or z + h > door_h + cls.EPSILON
-            ):
+            # Kiện ở hướng xếp hiện tại phải lọt cửa.
+            # Xoay khi dỡ sẽ bổ sung ở bước sau.
+            if w > door_w + cls.EPSILON:
+                return False
+            if h > door_h + cls.EPSILON:
                 return False
 
-            # Swept volume từ vị trí hiện tại tới cửa:
-            # [x, inner_l] x [y, y+w] x [z, z+h].
-            #
-            # Nếu bất kỳ kiện còn lại giao thể tích
-            # này, kiện đang xét không thể kéo ra.
-            for j in remaining:
-                if j == index:
+            # Kiểm tra va chạm trên cả đoạn di chuyển.
+            def path_clear(start, end) -> bool:
+                x1, y1, z1 = start
+                x2, y2, z2 = end
+
+                # Bao hình học quét của một hộp
+                # tịnh tiến theo một trục.
+                min_x = min(x1, x2)
+                max_x = max(x1, x2) + l
+
+                min_y = min(y1, y2)
+                max_y = max(y1, y2) + w
+
+                min_z = min(z1, z2)
+                max_z = max(z1, z2) + h
+
+                # Fixed obstacles persist in every DFS state and block every movement segment.
+                for obstacle in vehicle.obstacles:
+                    if expired():
+                        return False
+                    if ConstraintEngine.obstacle_overlaps_bounds(obstacle,
+                            (min_x, min_y, min_z), (max_x, max_y, max_z)):
+                        return False
+
+                for j in remaining:
+                    if expired():
+                        return False
+                    if j == index:
+                        continue
+
+                    other = placements[j]
+
+                    overlap_x = (
+                            min(
+                                max_x,
+                                float(other.x + other.packed_l),
+                            )
+                            - max(min_x, float(other.x))
+                    )
+
+                    overlap_y = (
+                            min(
+                                max_y,
+                                float(other.y + other.packed_w),
+                            )
+                            - max(min_y, float(other.y))
+                    )
+
+                    overlap_z = (
+                            min(
+                                max_z,
+                                float(other.z + other.packed_h),
+                            )
+                            - max(min_z, float(other.z))
+                    )
+
+                    if (
+                            overlap_x > cls.EPSILON
+                            and overlap_y > cls.EPSILON
+                            and overlap_z > cls.EPSILON
+                    ):
+                        return False
+
+                return True
+
+            # Các vị trí Y phù hợp với cửa giữa xe.
+            min_door_y = door_y_min
+            max_door_y = door_y_max - w
+
+            if max_door_y < min_door_y - cls.EPSILON:
+                return False
+
+            target_y_candidates = {
+                min_door_y,
+                max_door_y,
+                (min_door_y + max_door_y) / 2.0,
+                min(max(y, min_door_y), max_door_y),
+                }
+
+            # Chỉ cho phép giữ độ cao hoặc nâng lên.
+            # Chưa hỗ trợ hạ kiện bằng thiết bị.
+            max_target_z = min(
+                door_h - h,
+                inner_h - h,
+                )
+
+            if max_target_z < z - cls.EPSILON:
+                return False
+
+            target_z_candidates = {
+                z,
+                max_target_z,
+            }
+
+            start = (x, y, z)
+
+            for target_y in sorted(target_y_candidates):
+                if (
+                        target_y < -cls.EPSILON
+                        or target_y + w > inner_w + cls.EPSILON
+                ):
                     continue
 
-                other = placements[j]
+                for target_z in sorted(target_z_candidates):
+                    if (
+                            target_z < z - cls.EPSILON
+                            or target_z + h > inner_h + cls.EPSILON
+                    ):
+                        continue
 
-                overlap_x = (
-                        min(
-                            inner_l,
-                            float(other.x + other.packed_l),
-                        )
-                        - max(x, float(other.x))
-                )
+                    aligned = (x, target_y, target_z)
+                    exit_position = (
+                        inner_l,
+                        target_y,
+                        target_z,
+                    )
 
-                overlap_y = (
-                        min(
-                            y + w,
-                            float(other.y + other.packed_w),
-                            )
-                        - max(y, float(other.y))
-                )
+                    # Phương án A: dịch ngang -> nâng -> kéo ra
+                    via_y = (x, target_y, z)
 
-                overlap_z = (
-                        min(
-                            z + h,
-                            float(other.z + other.packed_h),
-                            )
-                        - max(z, float(other.z))
-                )
+                    if (
+                            path_clear(start, via_y)
+                            and path_clear(via_y, aligned)
+                            and path_clear(aligned, exit_position)
+                    ):
+                        return True
 
-                if (
-                        overlap_x > cls.EPSILON
-                        and overlap_y > cls.EPSILON
-                        and overlap_z > cls.EPSILON
-                ):
-                    return False
+                    # Phương án B: nâng -> dịch ngang -> kéo ra
+                    via_z = (x, y, target_z)
 
-            return True
+                    if (
+                            path_clear(start, via_z)
+                            and path_clear(via_z, aligned)
+                            and path_clear(aligned, exit_position)
+                    ):
+                        return True
 
+            return False
         # 4. Tìm một trình tự dỡ hàng hợp lệ.
         #
         # Dùng DFS + memoization:
@@ -315,6 +427,9 @@ class UnloadFeasibilityValidator:
                 remaining: frozenset[int],
         ) -> Optional[Tuple[int, ...]]:
             nonlocal explored_states, search_limit_reached
+
+            if expired():
+                return None
 
             if not remaining:
                 return ()
@@ -358,7 +473,7 @@ class UnloadFeasibilityValidator:
                 if suffix is not None:
                     return (i,) + suffix
 
-                if search_limit_reached:
+                if search_limit_reached or expired():
                     return None
 
             impossible_states.add(remaining)
@@ -366,7 +481,12 @@ class UnloadFeasibilityValidator:
 
         sequence = search(initial_state)
 
+        if expired():
+            return timeout()
+
         if sequence is None:
+            if expired():
+                return timeout()
             if search_limit_reached:
                 return fail(
                     "UNLOAD_SEARCH_LIMIT_REACHED",

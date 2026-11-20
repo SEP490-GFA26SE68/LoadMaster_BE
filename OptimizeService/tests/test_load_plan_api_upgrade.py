@@ -18,10 +18,24 @@ from app.dto.response.package_placement_response import PackagePlacementResponse
 from app.dto.response.load_plan_comparison_response import LoadPlanComparisonResponse
 
 
+from tests.optimization_fixtures import token,install_jwks
 from tests.keycloak_tokens import user_headers
+COMPANY_ID = 1
+DISPATCHER_SUB = "99"
+from app.entity.trip_model import AppUser
 
-COMPANY_ID = 5
-DISPATCHER_SUB = "kc-dispatcher-cmp"
+@pytest.fixture(autouse=True)
+def isolated_auth_and_overrides(monkeypatch):
+    install_jwks(monkeypatch)
+    original=dict(app.dependency_overrides)
+    try:
+        yield
+    finally:
+        app.dependency_overrides.clear()
+        app.dependency_overrides.update(original)
+
+def make_jwt_token(roles,user_id=99):
+    return token(roles,user_id)
 
 
 NOW = datetime(2026, 9, 14, 8, 0)
@@ -40,12 +54,11 @@ class TestLoadPlanApiUpgrade:
         session_factory = sessionmaker(autocommit=False, autoflush=False, bind=engine)
         session = session_factory()
 
+        session.add(AppUser(id=99,keycloak_id='99',company_id=1))
         # Seed data
         vt = VehicleType(max_cog_offset_ratio=0.15, id=1, name="Truck 5T", inner_length=6000, inner_width=2400, inner_height=2400, max_payload_kg=5000)
         v = Vehicle(id=1, vehicle_type_id=1, license_plate="29C-11111")
-        trip = Trip(id=200, vehicle_id=1, company_id=COMPANY_ID)
-        # Người gọi bằng token của mình: công ty tra theo users.keycloak_id = sub
-        session.add(AppUser(id=456, keycloak_id=DISPATCHER_SUB, company_id=COMPANY_ID))
+        trip = Trip(id=200, vehicle_id=1,company_id=1)
 
         now = NOW
         # Hạn của điểm giao lấy từ yêu cầu giao của điểm (delivery_stops không có cột hạn)
@@ -72,7 +85,7 @@ class TestLoadPlanApiUpgrade:
             planned_arrival=now + timedelta(hours=6),
         )
 
-        job = OptimizationJob(id=1, trip_id=200, job_uuid="job-cmp-1", status="COMPLETED")
+        job = OptimizationJob(id=1, trip_id=200, job_uuid="job-cmp-1", status="COMPLETED",company_id="1")
 
         # Plan 1: Basic
         plan1 = LoadPlan(
@@ -218,7 +231,6 @@ class TestLoadPlanApiUpgrade:
         client = TestClient(app)
         res = client.get("/api/v1/load-plans/compare?planId1=101&planId2=102")
         assert res.status_code == 401
-        app.dependency_overrides.clear()
 
     @pytest.mark.usefixtures("keycloak_jwks")
     def test_compare_plans_api_unauthorized_role_returns_403(self, test_db):
@@ -229,7 +241,6 @@ class TestLoadPlanApiUpgrade:
             headers=user_headers("DRIVER", sub=DISPATCHER_SUB),
         )
         assert res.status_code == 403
-        app.dependency_overrides.clear()
 
     @pytest.mark.usefixtures("keycloak_jwks")
     def test_compare_plans_api_dispatcher_of_another_company_returns_404(self, test_db):
@@ -268,4 +279,11 @@ class TestLoadPlanApiUpgrade:
         assert data["deadlineFeasibility"]["isFeasible"] is False
         assert len(data["deadlineFeasibility"]["stops"]) == 3
 
-        app.dependency_overrides.clear()
+
+    def test_valid_dispatcher_from_other_company_cannot_compare(self,test_db):
+        user=test_db.get(AppUser,99);user.company_id=2;test_db.commit()
+        app.dependency_overrides[get_db]=lambda:test_db
+        with TestClient(app) as client:
+            response=client.get('/api/v1/load-plans/compare?planId1=101&planId2=102',
+                headers={'Authorization':'Bearer '+make_jwt_token(['DISPATCHER'])})
+        assert response.status_code==404

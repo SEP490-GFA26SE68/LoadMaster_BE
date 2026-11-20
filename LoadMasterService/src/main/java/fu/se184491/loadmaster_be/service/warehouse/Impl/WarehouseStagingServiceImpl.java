@@ -77,6 +77,8 @@ public class WarehouseStagingServiceImpl implements WarehouseStagingService {
         }
         Session session = lookup.activeSession(tripId);
         PackagePlacement placement = lookup.placementOfPackage(session, packageId);
+        fu.se184491.loadmaster_be.service.warehouse.WarehouseLabelVerifier.requireMatch(
+                placement.getCargoPackage(), method, request != null ? request.getCode() : null);
         if (stagingConfirmationRepository.findByTripIdAndCargoPackageId(tripId, packageId).isPresent()) {
             return response(session, packageId, method, true);
         }

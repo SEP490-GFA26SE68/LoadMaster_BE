@@ -12,6 +12,8 @@ import fu.se184491.loadmaster_be.helpers.CurrentUserService;
 import fu.se184491.loadmaster_be.service.import_.PackageImportService;
 import fu.se184491.loadmaster_be.service.qr.QrCodeService;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -21,6 +23,7 @@ import org.springframework.web.multipart.MultipartFile;
 @RestController
 @RequestMapping("/api/packages")
 @RequiredArgsConstructor
+@Slf4j
 public class PackageImportController {
 
     private final PackageImportService packageImportService;
@@ -65,15 +68,22 @@ public class PackageImportController {
     @GetMapping("/import/template")
     @PreAuthorize("hasAnyAuthority('PACKAGE_MANAGE', 'ROLE_DISPATCHER')")
     public ResponseEntity<byte[]> downloadTemplate() {
-        byte[] template = buildTemplateBytes();
-        return ResponseEntity.ok()
-                .contentType(MediaType.parseMediaType(
-                        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"))
-                .header(
-                        "Content-Disposition",
-                        "attachment; filename=\"mau-nhap-kien-chung.xlsx\""
-                )
-                .body(template);
+        try {
+            byte[] template = buildTemplateBytes();
+
+            return ResponseEntity.ok()
+                    .contentType(MediaType.parseMediaType(
+                            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"))
+                    .header(
+                            HttpHeaders.CONTENT_DISPOSITION,
+                            "attachment; filename=\"mau-nhap-kien-chung.xlsx\""
+                    )
+                    .body(template);
+
+        } catch (Exception e) {
+            log.error("Failed to generate package import template", e);
+            throw e;
+        }
     }
 
     // -------------------------------------------------------------------------

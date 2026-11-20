@@ -314,7 +314,7 @@ class TestPersistAlgorithmName:
 
 
 class TestVehicleWithoutAxleData:
-    """Loại xe không khai thông số trục nào vẫn xếp được hàng ở mọi gói (trước đây ra 0 kiện vì AXLE_CONFIG_MISSING)."""
+    """Approved HC-12 policy: missing axle configuration fails closed in every tier."""
 
     @staticmethod
     def _no_axle(problem: ProblemRequest) -> ProblemRequest:
@@ -326,9 +326,25 @@ class TestVehicleWithoutAxleData:
         return problem.model_copy(update={"vehicle": vehicle})
 
     @pytest.mark.parametrize("tier", ["BASIC", "PRO", "ULTIMATE"])
-    def test_packs_every_package_without_axle_data(self, fast_meta, tier):
-        problem = self._no_axle(_problem(algorithm_name=tier, count=10, seed=11))
+    @pytest.mark.parametrize("missing", ["all", "partial"])
+    def test_rejects_missing_axle_configuration(self, fast_meta, tier, missing):
+        # Keep the original all-null input. Partial-null must not gain an exemption either.
+        problem = _problem(algorithm_name=tier, count=10, seed=11)
+        if missing == "all":
+            problem = self._no_axle(problem)
+        else:
+            problem = problem.model_copy(update={
+                "vehicle": problem.vehicle.model_copy(update={"rear_axle_x": None}),
+            })
         result = OptimizationClient(engine_url=None).solve_candidates(problem)
-        assert len(result.placements) == 10
-        assert not result.unplaced
-        _assert_physically_valid(result)
+        expected_ids = sorted(str(p.id) for p in problem.packages)
+        # Check the actual response contract, including every candidate that could be persisted.
+        # Zero placements alone would also pass on unrelated packing failures.
+        assert result.candidates
+        for layout in [result, *(candidate.result for candidate in result.candidates)]:
+            assert not layout.placements
+            assert layout.metrics.packed_count == 0
+            assert sorted(str(p.package_id) for p in layout.unplaced) == expected_ids
+            for item in layout.unplaced:
+                assert item.reason == "CONSTRAINT_VIOLATED"
+                assert "AXLE_CONFIG_MISSING" in item.violated_constraints

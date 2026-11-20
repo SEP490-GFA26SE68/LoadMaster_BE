@@ -26,11 +26,6 @@ public class VehicleController {
 
     private final VehicleService vehicleService;
 
-    // TODO: Extract companyId from Security Context
-    private Long getCurrentCompanyId() {
-        return 1L; 
-    }
-
     @PostMapping
     @PreAuthorize("hasAuthority('VEHICLES_CREATE')")
     public ResponseEntity<ApiResponse<VehicleResponse>> createVehicle(
@@ -63,14 +58,12 @@ public class VehicleController {
             String search,
 
             @RequestParam(required = false)
-            Long vehicleTypeId
+            Long vehicleTypeId,
+            @RequestParam(required = false) fu.se184491.loadmaster_be.constant.vehicle.VehicleStatus status,
+            @RequestParam(required = false) String sortBy,
+            @RequestParam(required = false) String sortDir
     ) {
-        return vehicleService.getVehicles(
-                page,
-                size,
-                search,
-                vehicleTypeId
-        );
+        return vehicleService.searchVehicles(page, size, search, vehicleTypeId, status, sortBy, sortDir);
     }
 
     @GetMapping("/{id}")

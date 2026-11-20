@@ -301,10 +301,7 @@ public class VehicleTypeServiceImpl implements VehicleTypeService {
         Pageable pageable = PageRequest.of(
                 page,
                 size,
-                Sort.by(
-                        Sort.Direction.ASC,
-                        "name"
-                )
+                Sort.by(Sort.Order.asc("name"), Sort.Order.asc("id"))
         );
 
         Page<VehicleType> result;

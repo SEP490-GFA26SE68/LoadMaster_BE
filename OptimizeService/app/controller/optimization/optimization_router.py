@@ -1,8 +1,9 @@
 from typing import List, Any
-from fastapi import APIRouter, Depends, BackgroundTasks, status
+from fastapi import APIRouter, Depends, BackgroundTasks, status, HTTPException
 from sqlalchemy.orm import Session
 
 from app.config.database import get_db
+from app.config.diagnostics import mark
 from app.dto.api_response import ApiResponse
 from app.dto.optimization.engine.problem_request import PinnedData
 from app.dto.request.optimization_request import OptimizationJobRequest
@@ -10,6 +11,8 @@ from app.exception.app_exception import AppException
 from app.exception.error_code import ErrorCode
 from app.dto.response.load_plan_response import LoadPlanResponse
 from app.dto.response.optimization_job_response import OptimizationJobResponse
+from app.dto.response.optimization_dispatch_response import OptimizationDispatchResponse
+from app.service.optimize.authorized_job_dispatch import require_authorized_job
 from app.service.auth.auth_dependency import require_optimization_service
 from app.service.optimize.async_optimization_runner import AsyncOptimizationRunner
 from app.service.optimize.load_plan_service import LoadPlanService
@@ -28,7 +31,10 @@ def get_load_plan_service() -> LoadPlanService:
 
 
 def get_async_runner() -> AsyncOptimizationRunner:
-    return AsyncOptimizationRunner()
+    mark("runner_dependency_initialization")
+    runner = AsyncOptimizationRunner()
+    mark("runner_dependency_ready")
+    return runner
 
 
 @router.post(
@@ -48,45 +54,31 @@ async def submit_job(
     Tạo và khởi chạy tác vụ tối ưu xếp hàng (bất đồng bộ).
     Trả về 202 Accepted kèm job_id.
     """
-    problem = None
+    if not request.job_uuid:
+        raise HTTPException(status_code=422, detail="Spring-reserved job_uuid is required")
+    mark("authorization_started", job_uuid=request.job_uuid, trip_id=request.trip_id)
+    job = require_authorized_job(request.job_uuid, request.trip_id, db)
+    mark("authorization_completed")
+    if getattr(job, "execution_generation", None) is not None:
+        raise HTTPException(status_code=409, detail="V2 job requires the V2 dispatch protocol")
     if request.pinned_placements:
-        # Giữ kiện đã ghim: kiểm bộ ghim trước khi tạo job, hỏng thì không chạy và không trừ credit
-        objective = request.objective.value if hasattr(request.objective, "value") else str(request.objective)
-        problem = runner.build_problem_request_for_trip(request.trip_id, objective, request.time_limit_sec, db)
-        problem.pinned = [
-            PinnedData(
-                package_id=str(pin.package_id),
-                pos_x=pin.pos_x,
-                pos_y=pin.pos_y,
-                pos_z=pin.pos_z,
-                rotation_type=pin.rotation_type,
-                packed_l=pin.packed_length,
-                packed_w=pin.packed_width,
-                packed_h=pin.packed_height,
-            )
-            for pin in request.pinned_placements
-        ]
-        issues = pinned_set_issues(problem)
-        if issues:
-            raise AppException(
-                ErrorCode.PINNED_SET_INVALID,
-                errors=[issue.as_dict() for issue in issues],
-            )
-
-    job = job_service.create_job(trip_id=request.trip_id, config=request, db=db)
-    if problem is not None:
-        # Bài có kiện ghim dựng trước khi có job: gắn mã thuật toán theo gói như job.
-        problem.algorithm_name = getattr(job, "algorithm_name", None)
-
-    if problem is None:
+        # RERUN is not admitted/billed by Spring yet. Never turn INITIAL into an unreserved rerun.
+        raise AppException(ErrorCode.UNAUTHORIZED)
+    if job.status == "PENDING":
+        mark("packing_profile_validation_started")
+        runner.validate_trip_profile_orientations(request.trip_id, db)
+        mark("packing_profile_validation_completed")
         background_tasks.add_task(runner.run, job.job_uuid)
+        mark("background_task_scheduled")
+        dispatch_state = "ACCEPTED"
+    elif job.status == "RUNNING":
+        dispatch_state = "ALREADY_RUNNING"
     else:
-        background_tasks.add_task(runner.run, job.job_uuid, problem)
-
-    return ApiResponse.ok(
-        data={"job_id": job.job_uuid},
-        message="Tác vụ tối ưu đã được khởi tạo",
-    )
+        dispatch_state = "ALREADY_TERMINAL"
+    mark("ack_202_prepared")
+    return ApiResponse.ok(data=OptimizationDispatchResponse(
+        job_id=job.job_uuid, status=job.status, dispatch_state=dispatch_state),
+        message="Reserved optimization job acknowledged")
 
 
 @router.get(

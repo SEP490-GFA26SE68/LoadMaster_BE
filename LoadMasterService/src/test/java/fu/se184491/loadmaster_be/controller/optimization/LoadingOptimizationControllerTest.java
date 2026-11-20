@@ -28,9 +28,25 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @WebMvcTest(LoadingOptimizationController.class)
-@Import(WebSecurityConfig.class)
+@Import({WebSecurityConfig.class, fu.se184491.loadmaster_be.service.optimization.OptimizationAccess.class})
 @AutoConfigureMockMvc(addFilters = false)
 class LoadingOptimizationControllerTest {
+
+    @MockitoBean private fu.se184491.loadmaster_be.service.optimization.OptimizationSubmissionService submission;
+    @MockitoBean private fu.se184491.loadmaster_be.helpers.CurrentUserService principal;
+    @MockitoBean private fu.se184491.loadmaster_be.repository.optimization.OptimizationJobRepository jobs;
+    @MockitoBean private fu.se184491.loadmaster_be.repository.trip.TripRepository trips;
+    @MockitoBean private fu.se184491.loadmaster_be.repository.optimization.PackagePlacementRepository placements;
+    @MockitoBean private fu.se184491.loadmaster_be.repository.account.UserRepository users;
+
+    @org.junit.jupiter.api.BeforeEach
+    void tenantFixture() {
+        var company = new fu.se184491.loadmaster_be.entity.company.Company(); company.setId(10L);
+        var trip = new fu.se184491.loadmaster_be.entity.trip.Trip(); trip.setId(10L); trip.setCompany(company);
+        var job = new fu.se184491.loadmaster_be.entity.optimization.OptimizationJob(); job.setTrip(trip); job.setJobUuid(JOB);
+        when(principal.getCurrentCompanyId()).thenReturn(10L);
+        when(jobs.findByJobUuid(JOB)).thenReturn(java.util.Optional.of(job));
+    }
 
     private static final String JOB = "0f8c2b9e-1111-4222-8333-944455556666";
 

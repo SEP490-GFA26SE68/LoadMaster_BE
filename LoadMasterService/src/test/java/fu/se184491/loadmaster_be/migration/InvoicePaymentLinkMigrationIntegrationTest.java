@@ -44,6 +44,7 @@ class InvoicePaymentLinkMigrationIntegrationTest {
             }
 
             Flyway.configure()
+                    .locations(fu.se184491.loadmaster_be.support.SingleMigration.location("V38__invoices_payment_link.sql"))
                     .dataSource(postgres.getJdbcUrl(), postgres.getUsername(), postgres.getPassword())
                     .schemas("billing")
                     .baselineOnMigrate(true)

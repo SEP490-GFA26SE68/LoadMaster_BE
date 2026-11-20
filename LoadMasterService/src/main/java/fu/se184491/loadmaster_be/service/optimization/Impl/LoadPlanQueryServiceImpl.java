@@ -81,18 +81,8 @@ public class LoadPlanQueryServiceImpl implements LoadPlanQueryService {
         JobOwner owner = requireOwnedJob(jobUuid);
         OptimizationJobStatusResponse status = readRepository.findJobStatus(owner.jobId())
                 .orElseThrow(() -> new AppException(ErrorCode.OPTIMIZATION_JOB_NOT_FOUND));
-        boolean interrupted;
-        try {
-            interrupted = interruptedJobs.failIfInterrupted(owner, status, Instant.now());
-        } catch (RuntimeException e) {
-            // Hoàn credit lỗi: giao dịch đã rollback, job giữ trạng thái cũ và lượt đọc sau thử lại.
-            log.warn("Could not close interrupted optimization job {}: {}", jobUuid, e.getMessage());
-            return status;
-        }
-        if (!interrupted) {
-            return status;
-        }
-        return readRepository.findJobStatus(owner.jobId()).orElse(status);
+        // Read-only: expiry and settlement are independent fenced background transactions.
+        return status;
     }
 
     @Override

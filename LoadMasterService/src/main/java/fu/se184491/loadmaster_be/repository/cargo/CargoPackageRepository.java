@@ -17,6 +17,14 @@ public interface CargoPackageRepository extends JpaRepository<CargoPackage, Long
 
     Optional<CargoPackage> findByIdAndCompany_Id(Long id, Long companyId);
 
+    // Scalar IDs keep package entities unloaded until the locking query acquires the rows.
+    @Query("select p.id from DeliveryRequirement r join r.packages p where r.id = :requirementId order by p.id")
+    List<Long> findIdsByRequirementId(@Param("requirementId") Long requirementId);
+
+    @org.springframework.data.jpa.repository.Lock(jakarta.persistence.LockModeType.PESSIMISTIC_WRITE)
+    @Query("select p from CargoPackage p where p.id in :ids order by p.id")
+    List<CargoPackage> findAllByIdForUpdate(@Param("ids") List<Long> ids);
+
     Optional<CargoPackage> findByQrToken(String qrToken);
 
     boolean existsByQrToken(String qrToken);

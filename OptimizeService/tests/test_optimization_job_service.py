@@ -10,12 +10,11 @@ Seams under test:
   - OptimizationJobRepository queries
 
 Acceptance criteria (FR-OPT-02):
-  1. create_job(trip_id, config) -> INSERT optimization_jobs (PENDING), gen UUID
+  1. Python create_job is retired: reject UNAUTHORIZED, never reserve or bill
   2. Status flow: PENDING -> RUNNING -> COMPLETED / FAILED / TIMEOUT / NO_SOLUTION
   3. get_job(job_id) -> trả status + metadata
   4. SQLAlchemy queries: find_by_trip_id(), find_by_status()
 """
-import uuid
 import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
@@ -31,6 +30,7 @@ from app.exception.app_exception import AppException
 from app.exception.error_code import ErrorCode
 from app.repository.optimization.optimization_job_repository import OptimizationJobRepository
 from app.service.optimize.optimization_job_service import OptimizationJobService
+from tests.optimization_legacy_fixtures import spring_reserved_job, seed_admission_catalog, billing_snapshot
 
 
 @pytest.fixture
@@ -48,6 +48,7 @@ def db_session():
         yield session
     finally:
         session.close()
+        engine.dispose()
 
 
 @pytest.fixture
@@ -58,51 +59,52 @@ def service():
 @pytest.fixture
 def existing_trip(db_session):
     trip_id = 101
-    trip = Trip(id=trip_id, trip_code="TRIP-TEST", status="PLANNED")
+    trip = Trip(id=trip_id, trip_code="TRIP-TEST", company_id=1, status="PLANNED")
     db_session.add(trip)
     db_session.commit()
     return trip
 
 
 class TestCreateJob:
-    def test_create_job_success_sets_pending_and_generates_uuid(self, service, db_session, existing_trip):
-        """Tạo job thành công: status=PENDING, có job_uuid hợp lệ, lưu vào DB"""
+    def test_create_job_existing_trip_is_unauthorized_without_reserve_or_debit(self, service, db_session, existing_trip):
+        """Valid trip still cannot authorize Python to reserve or bill a new job."""
         req = OptimizationJobRequest(
             trip_id=existing_trip.id,
             objective=OptimizationObjective.MAX_VOLUME,
             time_limit_sec=60,
         )
 
-        job = service.create_job(trip_id=existing_trip.id, config=req, db=db_session)
+        seed_admission_catalog(db_session, existing_trip)
+        before = billing_snapshot(db_session)
+        with pytest.raises(AppException) as exc_info:
+            service.create_job(trip_id=existing_trip.id, config=req, db=db_session)
+        assert exc_info.value.error_code == ErrorCode.UNAUTHORIZED
+        assert db_session.query(OptimizationJob).count() == 0
+        assert billing_snapshot(db_session) == before
 
-        assert job.id is not None
-        assert job.trip_id == existing_trip.id
-        assert job.status == OptimizationJobStatus.PENDING
-        assert job.job_uuid is not None
-        # job_uuid phải parse được thành UUID
-        uuid.UUID(job.job_uuid)
-        assert job.objective == OptimizationObjective.MAX_VOLUME
-        assert job.time_limit_sec == 60
-
-    def test_create_job_with_non_existent_trip_raises_error(self, service, db_session):
-        """Tạo job với trip không tồn tại -> raise AppException(TRIP_NOT_FOUND)"""
+    def test_create_job_with_non_existent_trip_raises_error(self, service, db_session, existing_trip):
+        """The retired factory rejects before attempting a trip lookup."""
         non_existent_trip_id = 999_999
         req = OptimizationJobRequest(
             trip_id=non_existent_trip_id,
             objective=OptimizationObjective.MAX_VOLUME,
         )
 
+        seed_admission_catalog(db_session, existing_trip)
+        before = billing_snapshot(db_session)
         with pytest.raises(AppException) as exc_info:
             service.create_job(trip_id=non_existent_trip_id, config=req, db=db_session)
 
-        assert exc_info.value.error_code == ErrorCode.TRIP_NOT_FOUND
+        assert exc_info.value.error_code == ErrorCode.UNAUTHORIZED
+        assert db_session.query(OptimizationJob).count() == 0
+        assert billing_snapshot(db_session) == before
 
 
 class TestGetJob:
     def test_get_job_by_uuid_returns_job_and_metadata(self, service, db_session, existing_trip):
         """get_job(job_uuid) trả về thông tin job đúng"""
         req = OptimizationJobRequest(trip_id=existing_trip.id, objective=OptimizationObjective.AXLE_BALANCE)
-        created = service.create_job(trip_id=existing_trip.id, config=req, db=db_session)
+        created = spring_reserved_job(db_session, existing_trip, objective=req.objective)
 
         found = service.get_job(job_uuid=created.job_uuid, db=db_session)
 
@@ -134,7 +136,7 @@ class TestStatusFlow:
     ):
         """Kiểm tra status flow: PENDING -> RUNNING -> COMPLETED / FAILED / TIMEOUT / NO_SOLUTION"""
         req = OptimizationJobRequest(trip_id=existing_trip.id, objective=OptimizationObjective.MAX_VOLUME)
-        job = service.create_job(trip_id=existing_trip.id, config=req, db=db_session)
+        job = spring_reserved_job(db_session, existing_trip, objective=req.objective)
         assert job.status == OptimizationJobStatus.PENDING
 
         # Chuyển sang RUNNING
@@ -162,8 +164,8 @@ class TestQueries:
         req1 = OptimizationJobRequest(trip_id=existing_trip.id, objective=OptimizationObjective.MAX_VOLUME)
         req2 = OptimizationJobRequest(trip_id=existing_trip.id, objective=OptimizationObjective.AXLE_BALANCE)
 
-        service.create_job(trip_id=existing_trip.id, config=req1, db=db_session)
-        service.create_job(trip_id=existing_trip.id, config=req2, db=db_session)
+        spring_reserved_job(db_session, existing_trip, objective=req1.objective)
+        spring_reserved_job(db_session, existing_trip, objective=req2.objective)
 
         jobs = service.find_by_trip_id(trip_id=existing_trip.id, db=db_session)
         assert len(jobs) == 2
@@ -172,8 +174,8 @@ class TestQueries:
     def test_find_by_status(self, service, db_session, existing_trip):
         """Query danh sách jobs theo status"""
         req = OptimizationJobRequest(trip_id=existing_trip.id, objective=OptimizationObjective.MAX_VOLUME)
-        job1 = service.create_job(trip_id=existing_trip.id, config=req, db=db_session)
-        job2 = service.create_job(trip_id=existing_trip.id, config=req, db=db_session)
+        job1 = spring_reserved_job(db_session, existing_trip, objective=req.objective)
+        job2 = spring_reserved_job(db_session, existing_trip, objective=req.objective)
 
         service.update_status(job_uuid=job1.job_uuid, status=OptimizationJobStatus.RUNNING, db=db_session)
 

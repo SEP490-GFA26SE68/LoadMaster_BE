@@ -19,6 +19,9 @@ public interface CreditService {
         deductCredit(companyId, reference);
     }
     void refundCredit(Long companyId, String reference);
+    default void refundCredit(Long companyId, String reference, Long generation) {
+        refundCredit(companyId, reference);
+    }
     void grantMonthlyCredits(Long companyId, int amount);
     /** Cấp credit tháng một lần cho mỗi mã; mã đã ghi thì bỏ qua. */
     default void grantMonthlyCredits(Long companyId, int amount, String reference) {

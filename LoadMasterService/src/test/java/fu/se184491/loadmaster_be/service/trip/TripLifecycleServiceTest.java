@@ -72,6 +72,8 @@ class TripLifecycleServiceTest {
     @Mock private fu.se184491.loadmaster_be.repository.pickup.PickupRequestRepository pickupRequestRepository;
     @Mock private fu.se184491.loadmaster_be.repository.cargo.CargoPackageRepository cargoPackageRepository;
 
+    @Mock private fu.se184491.loadmaster_be.service.vehicle.VehicleDepartureEligibility vehicleEligibility;
+
     @InjectMocks
     private TripLifecycleService service;
 
@@ -79,6 +81,10 @@ class TripLifecycleServiceTest {
 
     @BeforeEach
     void setUp() {
+        org.mockito.Mockito.lenient().when(vehicleEligibility.requireLocked(org.mockito.ArgumentMatchers.anyLong(), org.mockito.ArgumentMatchers.<Long>any(), org.mockito.ArgumentMatchers.anyLong(), org.mockito.ArgumentMatchers.<Long>any())).thenAnswer(i -> {
+            Long id=i.getArgument(2);
+            return vehicleRepository.findById(id).orElseGet(() -> trip.getVehicle());
+        });
         Company company = Company.builder().id(1L).build();
         User dispatcher = User.builder().id(7L).company(company).build();
         trip = Trip.builder()

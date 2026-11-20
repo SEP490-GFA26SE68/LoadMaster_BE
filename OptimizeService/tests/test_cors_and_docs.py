@@ -1,7 +1,8 @@
 """CORS chỉ cho origin đã khai; tài liệu API chỉ bật ở môi trường dev hoặc khi bật bằng biến môi trường."""
+from fastapi.middleware.cors import CORSMiddleware
 from starlette.testclient import TestClient
 
-from app.config.settings import Settings
+from app.config.settings import Settings, settings
 from app.main import app
 
 
@@ -27,16 +28,39 @@ class TestCorsOrigins:
             "/health",
             headers={"Origin": "https://evil.example", "Access-Control-Request-Method": "GET"},
         )
+        assert response.status_code == 400
         assert "access-control-allow-origin" not in response.headers
+        assert "access-control-allow-credentials" not in response.headers
 
     def test_configured_origin_is_allowed_without_credentials(self):
-        origin = app.user_middleware[0].kwargs["allow_origins"][0]
-        response = TestClient(app).options(
-            "/health",
-            headers={"Origin": origin, "Access-Control-Request-Method": "GET"},
-        )
-        assert response.headers["access-control-allow-origin"] == origin
-        assert "access-control-allow-credentials" not in response.headers
+        cors = [middleware for middleware in app.user_middleware if middleware.cls is CORSMiddleware]
+        assert len(cors) == 1
+        options = cors[0].kwargs
+        assert options["allow_origins"] == settings.cors_origins()
+        assert options["allow_origins"]
+        assert "*" not in options["allow_origins"]
+        assert options["allow_credentials"] is False
+        assert options["allow_methods"] == ["GET", "POST", "OPTIONS"]
+        assert options["allow_headers"] == ["Authorization", "Content-Type"]
+        with TestClient(app) as client:
+            for origin in options["allow_origins"]:
+                response = client.options(
+                    "/health",
+                    headers={
+                        "Origin": origin,
+                        "Access-Control-Request-Method": "GET",
+                        "Access-Control-Request-Headers": "Authorization, Content-Type",
+                    },
+                )
+                assert response.status_code == 200
+                assert response.headers["access-control-allow-origin"] == origin
+                assert "access-control-allow-credentials" not in response.headers
+                assert set(response.headers["access-control-allow-methods"].split(", ")) == {
+                    "GET", "POST", "OPTIONS"
+                }
+                allowed_headers = response.headers["access-control-allow-headers"].lower()
+                assert "authorization" in allowed_headers
+                assert "content-type" in allowed_headers
 
 
 class TestApiDocs:

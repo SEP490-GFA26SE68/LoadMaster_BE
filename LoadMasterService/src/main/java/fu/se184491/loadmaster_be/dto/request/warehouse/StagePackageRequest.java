@@ -7,7 +7,7 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
-/** Kho đối chiếu một kiện vào khu chờ bằng nhãn: {@code QR} (quét) hoặc {@code CODE} (gõ mã); vắng là {@code QR}. */
+/** QR checks a printed QR/barcode; CODE checks Package Code. The entered code is required in both modes. */
 @Getter
 @Setter
 @NoArgsConstructor
@@ -16,4 +16,5 @@ import lombok.Setter;
 public class StagePackageRequest {
 
     private StagingMethod method;
+    private String code;
 }

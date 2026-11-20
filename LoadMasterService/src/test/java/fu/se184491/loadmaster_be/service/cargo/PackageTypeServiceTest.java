@@ -214,6 +214,6 @@ public class PackageTypeServiceTest {
         );
 
         assertEquals(ErrorCode.PACKAGE_TYPE_NOT_FOUND, ex.getErrorCode());
-        verify(packageTypeRepository, never()).delete(any());
+        verify(packageTypeRepository, never()).delete(any(PackageType.class));
     }
 }

@@ -137,6 +137,17 @@ public class PackageTypeServiceImpl implements PackageTypeService {
 
     @Override
     @Transactional(readOnly = true)
+    public Page<PackageTypeResponse> searchPackageTypes(Long companyId, String search, Pageable pageable) {
+        Long currentCompanyId = getCurrentCompanyId();
+        var page = fu.se184491.loadmaster_be.service.cargo.WarehouseListQuery.pageable(
+            pageable, null, null, fu.se184491.loadmaster_be.service.cargo.WarehouseListQuery.TYPES);
+        return packageTypeRepository.findAll(
+            fu.se184491.loadmaster_be.service.cargo.WarehouseListQuery.types(currentCompanyId, search, page.getSort()),
+            fu.se184491.loadmaster_be.service.cargo.WarehouseListQuery.window(page)).map(this::toResponse);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
     public List<PackageTypeResponse> getAllPackageTypes(Long companyId) {
         Long currentCompanyId = getCurrentCompanyId();
 

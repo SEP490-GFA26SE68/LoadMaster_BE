@@ -46,6 +46,9 @@ import java.util.Optional;
 @Slf4j
 public class CreditServiceImpl implements CreditService {
 
+    @jakarta.persistence.PersistenceContext
+    private jakarta.persistence.EntityManager entityManager;
+
     /** Mỗi lần tối ưu 3D (ba phương án ứng viên) xài 2 credit; chạy lại tốn 1 credit. */
     public static final int INITIAL_OPTIMIZATION_CREDIT_COST = 2;
     public static final int RERUN_OPTIMIZATION_CREDIT_COST = 1;
@@ -59,6 +62,7 @@ public class CreditServiceImpl implements CreditService {
     /** Số credit nhỏ nhất một lần nạp (như {@code CreditTopupRequest}); không có trần. */
     public static final int MIN_TOPUP_CREDITS = 1;
 
+    private final fu.se184491.loadmaster_be.repository.optimization.OptimizationJobRepository optimizationJobRepository;
     private final CreditAccountRepository creditAccountRepository;
     private final CreditTransactionRepository creditTransactionRepository;
     private final CompanySubscriptionRepository companySubscriptionRepository;
@@ -177,7 +181,7 @@ public class CreditServiceImpl implements CreditService {
     @Override
     @Transactional
     public void deductCredit(Long companyId, String reference) {
-        deductCredit(companyId, reference, INITIAL_OPTIMIZATION_CREDIT_COST);
+        deductCredit(companyId, reference, reservedCost(companyId, reference));
     }
 
     @Override
@@ -190,7 +194,10 @@ public class CreditServiceImpl implements CreditService {
             );
         }
 
-        int creditsToDeduct = amount > 0 ? amount : INITIAL_OPTIMIZATION_CREDIT_COST;
+        int creditsToDeduct = reservedCost(companyId, reference);
+        if (amount != creditsToDeduct) {
+            throw new IllegalArgumentException("Credit amount must match the server-reserved action");
+        }
 
         // Khoá tài khoản trước rồi mới kiểm mã: hai lượt trừ cùng mã không lọt qua nhau.
         CreditAccount account = lockAccount(companyId);
@@ -237,6 +244,19 @@ public class CreditServiceImpl implements CreditService {
         auditLowBalance(companyId, before, account.getBalance(), lowBalanceThreshold(subOpt));
     }
 
+    /** Resolve identity and INITIAL/RERUN price before locking or creating an account. */
+    private int reservedCost(Long companyId, String reference) {
+        if (reference == null || reference.isBlank()) throw new IllegalArgumentException("Credit reference is required");
+        var job = optimizationJobRepository.findByJobUuid(reference)
+                .orElseThrow(() -> new org.springframework.security.access.AccessDeniedException("A reserved optimization job is required"));
+        if (companyId == null || !companyId.toString().equals(job.getCompanyId())
+                || job.getTrip() == null || job.getTrip().getCompany() == null
+                || !companyId.equals(job.getTrip().getCompany().getId())) {
+            throw new org.springframework.security.access.AccessDeniedException("Job belongs to another company");
+        }
+        return job.getParentPlanId() == null ? INITIAL_OPTIMIZATION_CREDIT_COST : RERUN_OPTIMIZATION_CREDIT_COST;
+    }
+
     /** Sự kiện của hệ thống (không người làm), thuộc công ty: nguồn của thông báo "Sắp hết credit". */
     private void auditLowBalance(Long companyId, int before, Integer balance, Integer threshold) {
         // Chỉ báo lúc số dư vừa đi xuống qua ngưỡng, không báo lại ở mỗi lượt trừ sau đó.
@@ -258,6 +278,19 @@ public class CreditServiceImpl implements CreditService {
 
     @Override
     @Transactional
+    public void refundCredit(Long companyId, String reference, Long generation) {
+        var job = optimizationJobRepository.findByJobUuidForUpdate(reference).orElse(null);
+        if (job != null) {
+            entityManager.refresh(job);
+            if (job.getExecutionGeneration() != null && !java.util.Objects.equals(generation, job.getExecutionGeneration())) {
+                throw new org.springframework.security.access.AccessDeniedException("Missing or stale execution generation");
+            }
+        }
+        refundCredit(companyId, reference);
+    }
+
+    @Override
+    @Transactional
     public void refundCredit(Long companyId, String reference) {
 
         // 1. Kiểm tra reference.
@@ -265,6 +298,15 @@ public class CreditServiceImpl implements CreditService {
             throw new IllegalArgumentException(
                     "Credit refund reference must not be blank"
             );
+        }
+
+        var canonical = optimizationJobRepository.findByJobUuidForUpdate(reference).orElse(null);
+        if (canonical != null) {
+            entityManager.refresh(canonical);
+            if (canonical.getExecutionGeneration() != null
+                    && !fu.se184491.loadmaster_be.service.optimization.OptimizationLifecyclePolicy.refundable(canonical)) {
+                throw new org.springframework.security.access.AccessDeniedException("Job is not eligible for settlement");
+            }
         }
 
         // 2. Tìm giao dịch trừ credit ban đầu.
@@ -297,6 +339,11 @@ public class CreditServiceImpl implements CreditService {
                 .getCompany()
                 .getId();
 
+        if (canonical != null && canonical.getExecutionGeneration() != null
+                && !String.valueOf(originalCompanyId).equals(canonical.getCompanyId())) {
+            throw new org.springframework.security.access.AccessDeniedException("Job and USAGE tenant mismatch");
+        }
+
         if (companyId != null && !companyId.equals(originalCompanyId)) {
             throw new IllegalArgumentException(
                     "Refund company does not match original credit transaction"
@@ -304,6 +351,10 @@ public class CreditServiceImpl implements CreditService {
         }
 
         // 4. Khóa tài khoản trước khi kiểm tra và thay đổi số dư.
+        // USAGE may have initialized Account before the lock. Refresh while acquiring the lock so
+        // a concurrent callback cannot leave an old Account version in this persistence context.
+        entityManager.flush(); // Preserve pending changes if refund joins an existing transaction.
+        entityManager.refresh(originalUsage.getCreditAccount(), jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
         CreditAccount account = creditAccountRepository
                 .findByCompanyIdForUpdate(originalCompanyId)
                 .orElseThrow(() -> new IllegalStateException(
@@ -319,6 +370,9 @@ public class CreditServiceImpl implements CreditService {
                 .orElseThrow(() -> new IllegalStateException(
                         "Original credit transaction disappeared"
                 ));
+        // A repeat query may return the same managed USAGE instance. Re-read the flag
+        // under the Account lock instead of trusting the pre-lock first-level cache.
+        entityManager.refresh(originalUsage);
 
         if (Boolean.TRUE.equals(originalUsage.getRefunded())) {
             log.info(

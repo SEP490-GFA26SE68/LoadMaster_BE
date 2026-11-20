@@ -79,6 +79,10 @@ class RouteOptimizationServiceIntegrationTest {
     @Autowired
     private RouteOptimizationService routeOptimizationService;
 
+    // Infrastructure outside this database scenario stays synthetic/offline.
+    @MockitoBean
+    private org.springframework.data.redis.connection.lettuce.LettuceConnectionFactory redisConnectionFactory;
+
     @MockitoBean
     private GoongMapsClient goongMapsClient;
 

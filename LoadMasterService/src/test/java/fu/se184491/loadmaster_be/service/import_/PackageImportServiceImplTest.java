@@ -411,17 +411,35 @@ class PackageImportServiceImplTest {
 
     @Test
     @DisplayName("Template .xlsx (templates/mau-nhap-kien-chung.xlsx) uses English field headers and parses cleanly with zero errors")
-    void templateXlsx_hasEnglishFieldHeadersAndParsesCleanly() throws Exception {
+    void templateXlsx_hasLocalizedFieldHeadersAndParsesCleanly() throws Exception {
         byte[] templateBytes;
         try (var is = new org.springframework.core.io.ClassPathResource("templates/mau-nhap-kien-chung.xlsx").getInputStream()) {
             templateBytes = is.readAllBytes();
         }
 
+        // The shipped template is localized; parser aliases preserve the same canonical fields.
         List<String> expectedHeaders = List.of(
-                "packageCode", "packageName", "lengthCm", "widthCm", "heightCm",
-                "weightKg", "quantity", "destination", "orientation", "uprightOnly",
-                "fragilityLevel", "stackable", "maxTopLoadKg", "maxLayers", "minSupportRatio",
-                "priority", "mustLoad", "group", "note", "handlingClass", "packageTypeCode"
+                "M\u00e3 ki\u1ec7n",
+                "T\u00ean ki\u1ec7n",
+                "D\u00e0i (cm)",
+                "R\u1ed9ng (cm)",
+                "Cao (cm)",
+                "Kh\u1ed1i l\u01b0\u1ee3ng (kg)",
+                "S\u1ed1 l\u01b0\u1ee3ng",
+                "\u0110i\u1ec3m giao",
+                "H\u01b0\u1edbng \u0111\u1eb7t",
+                "Gi\u1eef th\u1eb3ng \u0111\u1ee9ng",
+                "M\u1ee9c d\u1ec5 v\u1ee1",
+                "Cho x\u1ebfp ch\u1ed3ng",
+                "T\u1ea3i tr\u00ean t\u1ed1i \u0111a (kg)",
+                "S\u1ed1 t\u1ea7ng t\u1ed1i \u0111a",
+                "T\u1ef7 l\u1ec7 \u0111\u1ee1 \u0111\u00e1y",
+                "\u0110\u1ed9 \u01b0u ti\u00ean",
+                "B\u1eaft bu\u1ed9c x\u1ebfp",
+                "Nh\u00f3m",
+                "Ghi ch\u00fa",
+                "Lo\u1ea1i h\u00e0ng",
+                "M\u00e3 lo\u1ea1i ki\u1ec7n"
         );
 
         try (Workbook wb = new XSSFWorkbook(new java.io.ByteArrayInputStream(templateBytes))) {

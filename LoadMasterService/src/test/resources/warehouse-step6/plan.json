@@ -1,0 +1,87 @@
+{
+  "vehicle": {
+    "inner_l": 400,
+    "inner_w": 200,
+    "inner_h": 200,
+    "max_payload_kg": 2000,
+    "door_w": 200,
+    "door_h": 200,
+    "front_axle_x": 100,
+    "rear_axle_x": 300,
+    "front_axle_limit_kg": 2000,
+    "rear_axle_limit_kg": 2000,
+    "empty_front_axle_load_kg": 1000,
+    "empty_rear_axle_load_kg": 1000,
+    "max_cog_offset_ratio": 0.15,
+    "obstacles": [
+      {
+        "id": 1,
+        "name": "Fixture wheel well",
+        "type": "WHEEL_ARCH",
+        "x": 300,
+        "y": 0,
+        "z": 0,
+        "length": 40,
+        "width": 20,
+        "height": 30,
+        "load_bearing": false
+      }
+    ]
+  },
+  "packages": [
+    {
+      "id": "1",
+      "l": 20,
+      "w": 20,
+      "h": 20,
+      "weight": 100,
+      "allowed_rotations": [
+        0
+      ],
+      "rotation_allowed": true,
+      "stop_index": 1,
+      "max_stack_weight_kg": 500,
+      "fragile": false
+    },
+    {
+      "id": "2",
+      "l": 20,
+      "w": 20,
+      "h": 20,
+      "weight": 100,
+      "allowed_rotations": [
+        0
+      ],
+      "rotation_allowed": true,
+      "stop_index": 1,
+      "max_stack_weight_kg": 500,
+      "fragile": false
+    }
+  ],
+  "placements": [
+    {
+      "package_id": "1",
+      "x": 180,
+      "y": 90,
+      "z": 0,
+      "packed_l": 20,
+      "packed_w": 20,
+      "packed_h": 20,
+      "rotation_type": 0,
+      "step_sequence": 1,
+      "stop_zone_id": 30
+    },
+    {
+      "package_id": "2",
+      "x": 200,
+      "y": 90,
+      "z": 0,
+      "packed_l": 20,
+      "packed_w": 20,
+      "packed_h": 20,
+      "rotation_type": 0,
+      "step_sequence": 2,
+      "stop_zone_id": 30
+    }
+  ]
+}
