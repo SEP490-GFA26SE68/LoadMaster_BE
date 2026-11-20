@@ -38,7 +38,7 @@ import java.util.function.Supplier;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /** Hai công ty thật trên H2, không giả repository: công cụ chỉ thấy dữ liệu của công ty và của người đang hỏi. */
-@SpringBootTest(properties = "spring.datasource.url=jdbc:h2:mem:assistant-trips;MODE=PostgreSQL;DB_CLOSE_DELAY=-1;DATABASE_TO_LOWER=TRUE")
+@SpringBootTest(properties = "spring.datasource.url=jdbc:h2:mem:assistant-tools;MODE=PostgreSQL;DB_CLOSE_DELAY=-1;DATABASE_TO_LOWER=TRUE")
 @Transactional
 class TripsToolTest {
 
