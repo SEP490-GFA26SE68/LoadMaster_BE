@@ -7,6 +7,7 @@ import fu.se184491.loadmaster_be.constant.assistant.AssistantMessageRole;
 import fu.se184491.loadmaster_be.constant.company.CompanyStatus;
 import fu.se184491.loadmaster_be.constant.trip.DeliveryStopStatus;
 import fu.se184491.loadmaster_be.constant.trip.TripStatus;
+import fu.se184491.loadmaster_be.dto.response.assistant.TryExtractResponse;
 import fu.se184491.loadmaster_be.entity.account.User;
 import fu.se184491.loadmaster_be.entity.assistant.AssistantMessage;
 import fu.se184491.loadmaster_be.entity.assistant.AssistantToolCall;
@@ -15,10 +16,13 @@ import fu.se184491.loadmaster_be.entity.trip.DeliveryStop;
 import fu.se184491.loadmaster_be.entity.trip.Trip;
 import fu.se184491.loadmaster_be.entity.vehicle.Vehicle;
 import fu.se184491.loadmaster_be.entity.vehicle.VehicleType;
+import fu.se184491.loadmaster_be.exception.AppException;
 import fu.se184491.loadmaster_be.repository.assistant.AssistantConversationRepository;
 import fu.se184491.loadmaster_be.repository.assistant.AssistantMessageRepository;
 import fu.se184491.loadmaster_be.repository.assistant.AssistantToolCallRepository;
 import fu.se184491.loadmaster_be.repository.support.SupportTicketRepository;
+import fu.se184491.loadmaster_be.service.assistant.extract.TryExtractResult;
+import fu.se184491.loadmaster_be.service.assistant.extract.TryExtractService;
 import fu.se184491.loadmaster_be.service.assistant.model.AssistantAskCommand;
 import fu.se184491.loadmaster_be.service.assistant.model.AssistantCaller;
 import fu.se184491.loadmaster_be.service.assistant.model.AssistantLink;
@@ -64,6 +68,9 @@ import static org.assertj.core.api.Assertions.assertThat;
  * Bộ kiểm thử hành vi với mô hình thật (đặc tả mục 14). Không chạy trong CI: cần {@code ASSISTANT_EVAL=true} và
  * {@code ANTHROPIC_API_KEY}. Dữ liệu là fixture riêng trên H2; mỗi ca là một hội thoại mới. Báo cáo đầy đủ ở
  * {@code target/assistant-eval-report.md}.
+ *
+ * <p>Nhóm B ({@code "group": "B"}) kiểm {@code POST /api/assistant/public/try-extract}: gọi thẳng
+ * {@link TryExtractService}, mỗi ca một lần gọi mô hình; báo cáo ở {@code target/assistant-eval-report-b.md}.
  */
 @EnabledIfEnvironmentVariable(named = "ASSISTANT_EVAL", matches = "true")
 @SpringBootTest(properties = {
@@ -75,6 +82,10 @@ class AssistantEvalTest {
 
     private static final JsonMapper JSON = JsonMapper.builder().build();
     private static final Path REPORT = Path.of("target", "assistant-eval-report.md");
+    private static final Path REPORT_B = Path.of("target", "assistant-eval-report-b.md");
+    private static final String GROUP_B = "B";
+    private static final String[] TRUCK_FIELDS = {"lengthCm", "widthCm", "heightCm", "payloadKg"};
+    private static final String[] CARTON_FIELDS = {"lengthCm", "widthCm", "heightCm", "weightKg", "quantity", "stop"};
     private static final Map<String, String> SIGN_IN = Map.of(
             "DISPATCHER", "ev-dispatcher",
             "MANAGER", "ev-manager",
@@ -82,6 +93,7 @@ class AssistantEvalTest {
             "WAREHOUSE_WORKER", "ev-warehouse");
 
     @Autowired private AssistantService service;
+    @Autowired private TryExtractService tryExtract;
     @Autowired private AssistantCallerResolver callers;
     @Autowired private AssistantConversationRepository conversations;
     @Autowired private AssistantMessageRepository messages;
@@ -105,13 +117,12 @@ class AssistantEvalTest {
     void groupA() throws IOException {
         assertThat(System.getenv("ANTHROPIC_API_KEY")).as("cần ANTHROPIC_API_KEY").isNotBlank();
         new TransactionTemplate(transactionManager).executeWithoutResult(status -> seed());
-        JsonNode cases;
-        try (InputStream in = new ClassPathResource("assistant/evals.json").getInputStream()) {
-            cases = JSON.readTree(in).get("cases");
-        }
 
         List<Outcome> outcomes = new ArrayList<>();
-        for (JsonNode testCase : cases) {
+        for (JsonNode testCase : cases()) {
+            if (GROUP_B.equals(text(testCase, "group"))) {
+                continue;
+            }
             Outcome outcome = run(testCase);
             outcomes.add(outcome);
             System.out.printf("[eval] %s %s (%d/%d token)%s%n", outcome.passed() ? "ĐẠT  " : "KHÔNG", text(testCase, "id"),
@@ -127,6 +138,146 @@ class AssistantEvalTest {
 
         assertThat(outcomes.stream().filter(o -> !o.passed()).map(o -> text(o.testCase(), "id")).toList())
                 .as(summary).isEmpty();
+    }
+
+    record ExtractOutcome(JsonNode testCase, TryExtractResponse data, int inputTokens, int outputTokens,
+                          List<String> failures) {
+        boolean passed() {
+            return failures.isEmpty();
+        }
+    }
+
+    @Test
+    void groupB() throws IOException {
+        assertThat(System.getenv("ANTHROPIC_API_KEY")).as("cần ANTHROPIC_API_KEY").isNotBlank();
+
+        List<ExtractOutcome> outcomes = new ArrayList<>();
+        for (JsonNode testCase : cases()) {
+            if (!GROUP_B.equals(text(testCase, "group"))) {
+                continue;
+            }
+            ExtractOutcome outcome = extract(testCase);
+            outcomes.add(outcome);
+            System.out.printf("[eval-b] %s %s (%d/%d token)%s%n", outcome.passed() ? "ĐẠT  " : "KHÔNG",
+                    text(testCase, "id"), outcome.inputTokens(), outcome.outputTokens(),
+                    outcome.passed() ? "" : " — " + String.join("; ", outcome.failures()));
+        }
+        long passed = outcomes.stream().filter(ExtractOutcome::passed).count();
+        long in = outcomes.stream().mapToLong(ExtractOutcome::inputTokens).sum();
+        long out = outcomes.stream().mapToLong(ExtractOutcome::outputTokens).sum();
+        String summary = "Đạt %d / %d · token vào %d, ra %d".formatted(passed, outcomes.size(), in, out);
+        writeReportB(outcomes, summary);
+        System.out.println("[eval-b] " + summary + " · báo cáo: " + REPORT_B.toAbsolutePath());
+
+        assertThat(outcomes).as("chưa có ca nhóm B").isNotEmpty();
+        assertThat(outcomes.stream().filter(o -> !o.passed()).map(o -> text(o.testCase(), "id")).toList())
+                .as(summary).isEmpty();
+    }
+
+    private ExtractOutcome extract(JsonNode testCase) {
+        List<String> failures = new ArrayList<>();
+        try {
+            TryExtractResult result = tryExtract.extract(text(testCase, "text"), text(testCase, "locale"),
+                    "203.0.113.10");
+            checkExtract(testCase, result.data(), failures);
+            return new ExtractOutcome(testCase, result.data(), result.inputTokens(), result.outputTokens(), failures);
+        } catch (RuntimeException e) {
+            String code = e instanceof AppException app ? app.getErrorCode().name() : e.getClass().getSimpleName();
+            failures.add("lỗi: " + code);
+            return new ExtractOutcome(testCase, null, 0, 0, failures);
+        }
+    }
+
+    private static void checkExtract(JsonNode testCase, TryExtractResponse data, List<String> failures) {
+        JsonNode truck = testCase.get("expectTruck");
+        if (truck != null) {
+            if (truck.isNull() != (data.truck() == null)) {
+                failures.add("truck = " + data.truck());
+            } else if (!truck.isNull()) {
+                TryExtractResponse.Truck actual = data.truck();
+                Number[] values = {actual.lengthCm(), actual.widthCm(), actual.heightCm(), actual.payloadKg()};
+                compareFields("truck", truck, TRUCK_FIELDS, values, failures);
+            }
+        }
+        JsonNode cartons = testCase.get("expectCartons");
+        if (cartons != null) {
+            if (cartons.size() != data.cartons().size()) {
+                failures.add("có " + data.cartons().size() + " loại kiện, cần " + cartons.size());
+            } else {
+                for (int i = 0; i < cartons.size(); i++) {
+                    TryExtractResponse.Carton actual = data.cartons().get(i);
+                    Number[] values = {actual.lengthCm(), actual.widthCm(), actual.heightCm(), actual.weightKg(),
+                            actual.quantity(), actual.stop()};
+                    compareFields("cartons[" + i + "]", cartons.get(i), CARTON_FIELDS, values, failures);
+                }
+            }
+        }
+        JsonNode exactMissing = testCase.get("expectMissing");
+        if (exactMissing != null && !list(testCase, "expectMissing").equals(data.missing())) {
+            failures.add("missing = " + data.missing());
+        }
+        for (String path : list(testCase, "missingIncludes")) {
+            if (!data.missing().contains(path)) {
+                failures.add("missing thiếu " + path + " (" + data.missing() + ")");
+            }
+        }
+        String assumptions = fold(String.join(" | ", data.assumptions()));
+        for (String piece : list(testCase, "assumptionsMustNotContain")) {
+            if (assumptions.contains(fold(piece))) {
+                failures.add("assumptions có \"" + piece + "\"");
+            }
+        }
+        JsonNode english = testCase.get("assumptionsInEnglish");
+        if (english != null && english.asBoolean() && hasVietnameseMarks(assumptions)) {
+            failures.add("assumptions không viết bằng tiếng Anh");
+        }
+    }
+
+    /** So từng trường với sai số 0,01; {@code null} mong đợi thì giá trị thật phải là {@code null}. */
+    private static void compareFields(String prefix, JsonNode expected, String[] fields, Number[] actual,
+                                      List<String> failures) {
+        for (int i = 0; i < fields.length; i++) {
+            JsonNode want = expected.get(fields[i]);
+            Number got = actual[i];
+            boolean same = want == null || want.isNull()
+                    ? got == null
+                    : got != null && Math.abs(want.asDouble() - got.doubleValue()) <= 0.01;
+            if (!same) {
+                failures.add(prefix + "." + fields[i] + " = " + got + ", cần " + (want == null ? "null" : want));
+            }
+        }
+    }
+
+    private static boolean hasVietnameseMarks(String value) {
+        String decomposed = Normalizer.normalize(value, Normalizer.Form.NFD);
+        return decomposed.chars().anyMatch(c -> (c >= 0x0300 && c <= 0x036F) || c == 'đ' || c == 'Đ');
+    }
+
+    private void writeReportB(List<ExtractOutcome> outcomes, String summary) throws IOException {
+        StringBuilder out = new StringBuilder("# Bộ kiểm thử hành vi Lumo — nhóm B (try-extract)\n\n")
+                .append(summary).append("\n");
+        for (ExtractOutcome outcome : outcomes) {
+            JsonNode testCase = outcome.testCase();
+            out.append("\n## ").append(outcome.passed() ? "ĐẠT" : "KHÔNG ĐẠT").append(" · ").append(text(testCase, "id"))
+                    .append(" · ").append(text(testCase, "locale"))
+                    .append(" · token: ").append(outcome.inputTokens()).append('/').append(outcome.outputTokens())
+                    .append('\n')
+                    .append("\nMô tả: ").append(text(testCase, "text")).append('\n');
+            if (!outcome.passed()) {
+                out.append("\nLý do: ").append(String.join("; ", outcome.failures())).append('\n');
+            }
+            if (outcome.data() != null) {
+                out.append("\n```json\n").append(JSON.writeValueAsString(outcome.data())).append("\n```\n");
+            }
+        }
+        Files.createDirectories(REPORT_B.getParent());
+        Files.writeString(REPORT_B, out, StandardCharsets.UTF_8);
+    }
+
+    private static JsonNode cases() throws IOException {
+        try (InputStream in = new ClassPathResource("assistant/evals.json").getInputStream()) {
+            return JSON.readTree(in).get("cases");
+        }
     }
 
     private Outcome run(JsonNode testCase) {

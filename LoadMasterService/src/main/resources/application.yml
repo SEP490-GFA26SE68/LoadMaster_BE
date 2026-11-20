@@ -74,6 +74,7 @@ assistant:
   enabled: ${ASSISTANT_ENABLED:false}
   model: ${ASSISTANT_MODEL:claude-haiku-5-5}
   max-output-tokens: 800
+  extract-max-output-tokens: 1200
   max-tool-rounds: 5
   history-messages: 12
   guest-per-hour: 20

@@ -1,0 +1,41 @@
+{
+  "type": "object",
+  "properties": {
+    "truck": {
+      "anyOf": [
+        {
+          "type": "object",
+          "properties": {
+            "lengthCm": {"anyOf": [{"type": "number"}, {"type": "null"}], "description": "Chiều dài lòng thùng, cm"},
+            "widthCm": {"anyOf": [{"type": "number"}, {"type": "null"}], "description": "Chiều rộng lòng thùng, cm"},
+            "heightCm": {"anyOf": [{"type": "number"}, {"type": "null"}], "description": "Chiều cao lòng thùng, cm"},
+            "payloadKg": {"anyOf": [{"type": "number"}, {"type": "null"}], "description": "Tải trọng, kg"}
+          },
+          "required": ["lengthCm", "widthCm", "heightCm", "payloadKg"],
+          "additionalProperties": false
+        },
+        {"type": "null"}
+      ]
+    },
+    "cartons": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "lengthCm": {"anyOf": [{"type": "number"}, {"type": "null"}], "description": "Chiều dài một kiện, cm"},
+          "widthCm": {"anyOf": [{"type": "number"}, {"type": "null"}], "description": "Chiều rộng một kiện, cm"},
+          "heightCm": {"anyOf": [{"type": "number"}, {"type": "null"}], "description": "Chiều cao một kiện, cm"},
+          "weightKg": {"anyOf": [{"type": "number"}, {"type": "null"}], "description": "Khối lượng một kiện, kg"},
+          "quantity": {"anyOf": [{"type": "integer"}, {"type": "null"}], "description": "Số kiện của loại này"},
+          "stop": {"anyOf": [{"type": "integer"}, {"type": "null"}], "description": "Điểm giao 1-4"}
+        },
+        "required": ["lengthCm", "widthCm", "heightCm", "weightKg", "quantity", "stop"],
+        "additionalProperties": false
+      }
+    },
+    "assumptions": {"type": "array", "items": {"type": "string"}},
+    "missing": {"type": "array", "items": {"type": "string"}}
+  },
+  "required": ["truck", "cartons", "assumptions", "missing"],
+  "additionalProperties": false
+}
