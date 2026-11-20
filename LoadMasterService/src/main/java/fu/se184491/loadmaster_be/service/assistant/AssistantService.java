@@ -22,6 +22,7 @@ import fu.se184491.loadmaster_be.service.assistant.model.AssistantReply;
 import fu.se184491.loadmaster_be.service.assistant.model.Handoff;
 import fu.se184491.loadmaster_be.service.assistant.prompt.AssistantPromptBuilder;
 import fu.se184491.loadmaster_be.service.assistant.tool.AssistantToolRegistry;
+import fu.se184491.loadmaster_be.service.assistant.tool.AssistantTurn;
 import fu.se184491.loadmaster_be.service.assistant.tool.ToolCallLog;
 import fu.se184491.loadmaster_be.service.assistant.tool.ToolScope;
 import org.springframework.ai.chat.messages.Message;
@@ -44,6 +45,7 @@ import java.time.Clock;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Base64;
+import java.util.Collections;
 import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
@@ -125,11 +127,13 @@ public class AssistantService {
         AssistantConversation conversation = ownedConversation(command);
         String locale = AssistantPromptBuilder.normalizeLocale(command.locale());
         Instant askedAt = clock.instant();
-        Prompt prompt = new Prompt(promptMessages(command, conversation, question, locale, askedAt));
+        List<AssistantMessage> latest = latestMessages(conversation);
+        Prompt prompt = new Prompt(promptMessages(command, latest, question, locale, askedAt));
+        AssistantTurn turn = turnOf(caller, conversation, latest, question, locale);
 
         // Token của mọi lần gọi mô hình tính vào hạn mức, kể cả khi lượt hỏng ở vòng sau
         ToolCallLog toolLog = new ToolCallLog();
-        List<ToolCallback> callbacks = tools.toolsFor(scopeOf(caller), toolLog);
+        List<ToolCallback> callbacks = tools.toolsFor(turn, toolLog);
         TokenMeter meter = new TokenMeter();
         LoopResult result;
         try {
@@ -146,9 +150,9 @@ public class AssistantService {
 
         String modelName = StringUtils.hasText(result.model()) ? result.model() : properties.getModel();
         AssistantConversation saved = transactions.execute(status ->
-                save(command, conversation, question, result, modelName, askedAt, toolLog));
-        return new AssistantReply(Objects.requireNonNull(saved).getPublicId(), result.text(), List.of(), List.of(),
-                Handoff.none(), result.usage());
+                save(command, conversation, question, result, modelName, askedAt, toolLog, turn));
+        return new AssistantReply(Objects.requireNonNull(saved).getPublicId(), result.text(), List.of(), turn.links(),
+                new Handoff(turn.handoffOffered(), turn.reportedTicketCode()), result.usage());
     }
 
     /** Đọc lại một hội thoại trong ứng dụng của chính người gọi; của người khác, của khách hay mã sai dạng thì như không có. */
@@ -197,23 +201,48 @@ public class AssistantService {
         return conversation.getUserId() == null && Objects.equals(conversation.getGuestKey(), command.guestKey());
     }
 
-    private List<Message> promptMessages(AssistantAskCommand command, AssistantConversation conversation,
+    private List<Message> promptMessages(AssistantAskCommand command, List<AssistantMessage> latest,
                                          String question, String locale, Instant askedAt) {
         List<Message> out = new ArrayList<>();
         out.add(new SystemMessage(promptBuilder.systemText(command.channel())));
-        if (conversation != null) {
-            out.addAll(history(conversation.getId()));
-        }
+        out.addAll(history(latest));
         String context = promptBuilder.turnContext(command.caller(), command.page(), command.viewer(), locale, askedAt);
         out.add(new UserMessage(context + "\n\n" + question));
         return out;
     }
 
-    /** Các tin gần nhất, cũ trước, chỉ chữ. Lượt đầu phải là của người dùng nên bỏ tin trợ lý đứng đầu. */
-    private List<Message> history(Long conversationId) {
+    /** Các tin gần nhất của hội thoại, cũ trước; hội thoại mới thì rỗng. */
+    private List<AssistantMessage> latestMessages(AssistantConversation conversation) {
+        if (conversation == null) {
+            return List.of();
+        }
         List<AssistantMessage> latest = new ArrayList<>(messages.findByConversationIdOrderByIdDesc(
-                conversationId, PageRequest.of(0, properties.getHistoryMessages())));
-        java.util.Collections.reverse(latest);
+                conversation.getId(), PageRequest.of(0, properties.getHistoryMessages())));
+        Collections.reverse(latest);
+        return latest;
+    }
+
+    /**
+     * Lượt hỏi cho công cụ hành động. Lời mời chuyển nhân viên chỉ tính khi tin trợ lý liền trước mang
+     * {@code handoff_offered}; các tin gần nhất cộng câu hỏi này đi vào mô tả của yêu cầu hỗ trợ.
+     */
+    private static AssistantTurn turnOf(AssistantCaller caller, AssistantConversation conversation,
+                                        List<AssistantMessage> latest, String question, String locale) {
+        AssistantMessage previous = latest.isEmpty() ? null : latest.getLast();
+        boolean invited = previous != null && previous.getRole() == AssistantMessageRole.ASSISTANT
+                && previous.isHandoffOffered();
+        List<AssistantTurn.Line> recent = new ArrayList<>(latest.size() + 1);
+        for (AssistantMessage message : latest) {
+            recent.add(new AssistantTurn.Line(message.getRole() == AssistantMessageRole.USER, message.getContent()));
+        }
+        recent.add(new AssistantTurn.Line(true, question));
+        return new AssistantTurn(scopeOf(caller), locale, conversation == null ? null : conversation.getId(), invited,
+                conversation == null ? null : conversation.getHandoffTicketCode(), recent);
+    }
+
+    /** Các tin gần nhất cho mô hình, chỉ chữ. Lượt đầu phải là của người dùng nên bỏ tin trợ lý đứng đầu. */
+    private static List<Message> history(List<AssistantMessage> messagesOldestFirst) {
+        List<AssistantMessage> latest = new ArrayList<>(messagesOldestFirst);
         while (!latest.isEmpty() && latest.getFirst().getRole() != AssistantMessageRole.USER) {
             latest.removeFirst();
         }
@@ -228,7 +257,7 @@ public class AssistantService {
 
     private AssistantConversation save(AssistantAskCommand command, AssistantConversation existing, String question,
                                        LoopResult result, String modelName, Instant askedAt,
-                                       ToolCallLog toolLog) {
+                                       ToolCallLog toolLog, AssistantTurn turn) {
         Instant answeredAt = clock.instant();
         AssistantConversation conversation = existing != null ? existing : newConversation(command, askedAt);
         conversation.setUpdatedAt(answeredAt);
@@ -239,7 +268,7 @@ public class AssistantService {
         AssistantMessage answer = messages.save(AssistantMessage.builder()
                 .conversationId(conversation.getId()).role(AssistantMessageRole.ASSISTANT).content(result.text())
                 .inputTokens(result.usage().inputTokens()).outputTokens(result.usage().outputTokens())
-                .model(modelName).createdAt(answeredAt).build());
+                .handoffOffered(turn.handoffOffered()).model(modelName).createdAt(answeredAt).build());
         tools.save(toolLog, answer.getId());
         return conversation;
     }

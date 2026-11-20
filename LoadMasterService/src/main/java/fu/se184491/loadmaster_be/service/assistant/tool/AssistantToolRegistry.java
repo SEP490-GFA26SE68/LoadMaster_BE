@@ -63,11 +63,20 @@ public class AssistantToolRegistry {
 
     /** Công cụ người hỏi được dùng trong lượt này: khách chỉ có công cụ khai {@code guest()}; người đăng nhập có hợp các vai trò. */
     public List<ToolCallback> toolsFor(ToolScope scope, ToolCallLog log) {
+        return select(scope, log, null);
+    }
+
+    /** Như {@link #toolsFor(ToolScope, ToolCallLog)} với phạm vi của lượt; mỗi lần gọi mang lượt đó qua {@link ToolContext}. */
+    public List<ToolCallback> toolsFor(AssistantTurn turn, ToolCallLog log) {
+        return select(turn.scope(), log, new ToolContext(Map.of(AssistantTurn.CONTEXT_KEY, turn)));
+    }
+
+    private List<ToolCallback> select(ToolScope scope, ToolCallLog log, ToolContext context) {
         List<ToolCallback> out = new ArrayList<>();
         for (Registered tool : tools) {
             boolean allowed = scope.guest() ? tool.guest() : !Collections.disjoint(tool.roles(), scope.roles());
             if (allowed) {
-                out.add(new Recording(tool.callback(), log, clock));
+                out.add(new Recording(tool.callback(), log, clock, context));
             }
         }
         return out;
@@ -124,8 +133,12 @@ public class AssistantToolRegistry {
     private record Registered(ToolCallback callback, Set<UserRole> roles, boolean guest) {
     }
 
-    /** Ghi tên, tham số, đạt hay không, thời gian của mỗi lần gọi; ngoại lệ vẫn ném tiếp cho vòng gọi xử lý. */
-    private record Recording(ToolCallback delegate, ToolCallLog log, Clock clock) implements ToolCallback {
+    /**
+     * Ghi tên, tham số, đạt hay không, thời gian của mỗi lần gọi; ngoại lệ vẫn ném tiếp cho vòng gọi xử lý. Có lượt thì
+     * mọi lần gọi mang nó qua {@code context} (công cụ không nhận {@link ToolContext} bỏ qua nó).
+     */
+    private record Recording(ToolCallback delegate, ToolCallLog log, Clock clock, ToolContext context)
+            implements ToolCallback {
 
         @Override
         public ToolDefinition getToolDefinition() {
@@ -139,12 +152,13 @@ public class AssistantToolRegistry {
 
         @Override
         public String call(String input) {
-            return record(input, () -> delegate.call(input));
+            return context == null ? record(input, () -> delegate.call(input)) : call(input, context);
         }
 
         @Override
-        public String call(String input, ToolContext context) {
-            return record(input, () -> delegate.call(input, context));
+        public String call(String input, ToolContext given) {
+            ToolContext used = context != null ? context : given;
+            return record(input, () -> delegate.call(input, used));
         }
 
         private String record(String input, java.util.function.Supplier<String> run) {

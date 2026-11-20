@@ -35,8 +35,12 @@ public class AssistantConversation {
     @Column(name = "channel", length = 20, nullable = false)
     private AssistantChannel channel;
 
-    /** Mã yêu cầu hỗ trợ đã tạo khi chuyển nhân viên; mỗi hội thoại một phiếu. */
-    @Column(name = "handoff_ticket_code", length = 40)
+    /**
+     * Mã yêu cầu hỗ trợ đã tạo khi chuyển nhân viên; mỗi hội thoại một phiếu. Chỉ
+     * {@code AssistantConversationRepository.claimHandoffTicket} ghi cột này: lưu lại hội thoại đọc từ trước lượt hỏi
+     * không được xoá mã mà công cụ vừa ghi trong lượt.
+     */
+    @Column(name = "handoff_ticket_code", length = 40, updatable = false)
     private String handoffTicketCode;
 
     @Column(name = "created_at", nullable = false)

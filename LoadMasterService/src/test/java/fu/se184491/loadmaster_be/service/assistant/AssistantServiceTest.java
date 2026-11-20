@@ -24,6 +24,18 @@ import fu.se184491.loadmaster_be.service.assistant.support.FakeChatModel;
 import fu.se184491.loadmaster_be.service.assistant.support.MutableClock;
 import fu.se184491.loadmaster_be.service.assistant.tool.AssistantTool;
 import fu.se184491.loadmaster_be.service.assistant.tool.AssistantToolRegistry;
+import fu.se184491.loadmaster_be.service.assistant.tool.ToolCallLog;
+import fu.se184491.loadmaster_be.service.assistant.tool.ToolScope;
+import fu.se184491.loadmaster_be.service.assistant.tool.action.HandoffTool;
+import fu.se184491.loadmaster_be.service.assistant.tool.action.LinkTool;
+import fu.se184491.loadmaster_be.service.assistant.model.AssistantLink;
+import fu.se184491.loadmaster_be.service.assistant.model.Handoff;
+import fu.se184491.loadmaster_be.constant.support.TicketCategory;
+import fu.se184491.loadmaster_be.dto.request.support.CreateSupportTicketRequest;
+import fu.se184491.loadmaster_be.dto.response.support.SupportTicketResponse;
+import fu.se184491.loadmaster_be.service.support.SupportTicketService;
+import jakarta.persistence.EntityManager;
+import org.mockito.ArgumentCaptor;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.ai.chat.messages.Message;
@@ -50,6 +62,11 @@ import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 /** Một lượt hỏi không công cụ trên H2, với mô hình giả. */
 @SpringBootTest(properties = "spring.datasource.url=jdbc:h2:mem:assistant-repository;MODE=PostgreSQL;DB_CLOSE_DELAY=-1;DATABASE_TO_LOWER=TRUE")
@@ -67,6 +84,8 @@ class AssistantServiceTest {
     @Autowired private AssistantPromptBuilder promptBuilder;
     @Autowired private AssistantLoop loop;
     @Autowired private AssistantToolCallRepository toolCalls;
+    @Autowired private AssistantToolRegistry registry;
+    @Autowired private EntityManager entityManager;
 
     @MockitoBean private JwtDecoder jwtDecoder;
 
@@ -82,12 +101,14 @@ class AssistantServiceTest {
         properties.setEnabled(true);
     }
 
-    private AssistantService service(ChatModel chatModel) {
+    private AssistantService service(ChatModel chatModel, AssistantTool... extra) {
         StaticListableBeanFactory beans = new StaticListableBeanFactory(
                 chatModel == null ? Map.<String, Object>of() : Map.<String, Object>of("assistantChatModel", chatModel));
         ObjectProvider<ChatModel> provider = beans.getBeanProvider(ChatModel.class);
         AssistantRateLimiter limiter = (key, limit) -> rateKeys.add(key + "@" + limit);
-        AssistantToolRegistry tools = new AssistantToolRegistry(List.of(tripTools), toolCalls, clock);
+        List<AssistantTool> all = new ArrayList<>(List.of(tripTools));
+        all.addAll(List.of(extra));
+        AssistantToolRegistry tools = new AssistantToolRegistry(all, toolCalls, clock);
         return new AssistantService(provider, properties, limiter, budget, promptBuilder, loop, tools,
                 conversations, messages, transactionManager, clock);
     }
@@ -355,6 +376,76 @@ class AssistantServiceTest {
         assertThat(offeredTools(model.prompts().getFirst())).isEmpty();
         assertThat(tripTools.asked).isEmpty();
         assertThat(toolCalls.count()).isZero();
+    }
+
+    @Test
+    void handoffIsOfferedFirstThenCreatedOnceForTheConversation() {
+        SupportTicketService tickets = mock(SupportTicketService.class);
+        when(tickets.createTicket(any())).thenReturn(SupportTicketResponse.builder().ticketCode("TKT-0042").build());
+        String args = "{\"summary\":\"Không duyệt được phương án TRIP-1\",\"category\":\"ALGORITHM_ERROR\"}";
+        model.toolCall("request_human_support", args, 900, 20).reply("Bạn muốn mình chuyển cho nhân viên không?", 1000, 15)
+                .toolCall("request_human_support", args, 900, 20).reply("Đã chuyển, mã TKT-0042.", 1000, 15)
+                .toolCall("request_human_support", args, 900, 20).reply("Yêu cầu TKT-0042 đã có.", 1000, 15);
+        AssistantService service = service(model, new HandoffTool(tickets, conversations, transactionManager));
+
+        AssistantReply offered = service.ask(user(DISPATCHER, null, "Cho tôi gặp nhân viên"));
+        endRequest();
+        AssistantReply created = service.ask(user(DISPATCHER, offered.conversationId(), "Có, chuyển giúp tôi"));
+        endRequest();
+        AssistantReply again = service.ask(user(DISPATCHER, offered.conversationId(), "Chuyển lại đi"));
+        endRequest();
+
+        assertThat(offered.handoff()).isEqualTo(new Handoff(true, null));
+        assertThat(created.handoff()).isEqualTo(new Handoff(false, "TKT-0042"));
+        assertThat(again.handoff()).isEqualTo(new Handoff(false, "TKT-0042"));
+        ArgumentCaptor<CreateSupportTicketRequest> request = ArgumentCaptor.forClass(CreateSupportTicketRequest.class);
+        verify(tickets, times(1)).createTicket(request.capture());
+        assertThat(request.getValue().category()).isEqualTo(TicketCategory.ALGORITHM_ERROR);
+        assertThat(request.getValue().description())
+                .contains("Người dùng: Cho tôi gặp nhân viên", "Lumo: Bạn muốn mình chuyển cho nhân viên không?",
+                        "Người dùng: Có, chuyển giúp tôi");
+        AssistantConversation conversation = conversations.findByPublicId(offered.conversationId()).orElseThrow();
+        assertThat(conversation.getHandoffTicketCode()).isEqualTo("TKT-0042");
+        assertThat(messages.findByConversationIdOrderByIdAsc(conversation.getId()))
+                .filteredOn(message -> message.getRole() == AssistantMessageRole.ASSISTANT)
+                .extracting(AssistantMessage::isHandoffOffered).containsExactly(true, false, false);
+    }
+
+    @Test
+    void suggestedLinksComeBackOnlyForScreensTheCallerOpens() {
+        model.toolCall("suggest_link", "{\"target\":\"OPTIMIZATION_SETUP\",\"tripCode\":\"TRIP-1\"}", 900, 20)
+                .toolCall("suggest_link", "{\"target\":\"BILLING\"}", 900, 20)
+                .reply("Mở Thiết lập tối ưu của TRIP-1.", 1000, 15);
+
+        AssistantReply reply = service(model, new LinkTool()).ask(user(DISPATCHER, null, "Chạy tối ưu TRIP-1 ở đâu?"));
+
+        assertThat(reply.links())
+                .containsExactly(new AssistantLink("Thiết lập tối ưu chuyến TRIP-1", "/chuyen/TRIP-1/toi-uu"));
+        assertThat(reply.handoff().offered()).isFalse();
+    }
+
+    @Test
+    void realRegistryGivesGuestsOnlyPricingAndLinksAndPlatformRolesNoHandoff() {
+        assertThat(toolNames(ToolScope.ofGuest())).containsExactlyInAnyOrder("get_pricing_plans", "suggest_link");
+        for (UserRole role : List.of(UserRole.SYSTEM_ADMIN, UserRole.SYSTEM_MANAGER, UserRole.SYSTEM_SUPPORTER)) {
+            assertThat(toolNames(ToolScope.of(role))).as(role.name()).doesNotContain("request_human_support")
+                    .contains("suggest_link");
+        }
+        assertThat(toolNames(ToolScope.of(UserRole.DRIVER))).contains("request_human_support", "get_my_payroll");
+        registry.toolsFor(ToolScope.of(UserRole.DISPATCHER), new ToolCallLog()).forEach(tool ->
+                assertThat(tool.getToolDefinition().inputSchema()).as(tool.getToolDefinition().name())
+                        .doesNotContain("ToolContext").doesNotContain("\"context\""));
+    }
+
+    private List<String> toolNames(ToolScope scope) {
+        return registry.toolsFor(scope, new ToolCallLog()).stream().map(tool -> tool.getToolDefinition().name())
+                .toList();
+    }
+
+    /** Mỗi lượt hỏi là một yêu cầu riêng: ghi xuống và đọc lại từ cơ sở dữ liệu ở lượt sau. */
+    private void endRequest() {
+        entityManager.flush();
+        entityManager.clear();
     }
 
     private static List<String> offeredTools(Prompt prompt) {
