@@ -3,9 +3,12 @@ package fu.se184491.loadmaster_be.controller.assistant;
 import fu.se184491.loadmaster_be.constant.assistant.AssistantChannel;
 import fu.se184491.loadmaster_be.dto.ApiResponse;
 import fu.se184491.loadmaster_be.dto.request.assistant.AssistantMessageRequest;
+import fu.se184491.loadmaster_be.dto.request.assistant.RequirementDraftRequest;
 import fu.se184491.loadmaster_be.dto.response.assistant.AssistantConversationResponse;
+import fu.se184491.loadmaster_be.dto.response.assistant.RequirementDraftResponse;
 import fu.se184491.loadmaster_be.service.assistant.AssistantCallerResolver;
 import fu.se184491.loadmaster_be.service.assistant.AssistantService;
+import fu.se184491.loadmaster_be.service.assistant.extract.RequirementDraftService;
 import fu.se184491.loadmaster_be.service.assistant.model.AssistantAskCommand;
 import fu.se184491.loadmaster_be.service.assistant.model.AssistantReply;
 import fu.se184491.loadmaster_be.service.assistant.model.PageContext;
@@ -24,7 +27,7 @@ import org.springframework.web.bind.annotation.RestController;
  * Trợ lý trong ứng dụng, mọi vai trò đã đăng nhập. Người hỏi luôn đọc từ token; công ty bị khoá gói thì bộ lọc chặn
  * trước khi tới đây.
  *
- * <p>POST /api/assistant/messages · GET /api/assistant/conversations/{id}
+ * <p>POST /api/assistant/messages · GET /api/assistant/conversations/{id} · POST /api/assistant/requirement-draft
  */
 @RestController
 @RequestMapping("/api/assistant")
@@ -34,6 +37,7 @@ public class AssistantController {
 
     private final AssistantService assistantService;
     private final AssistantCallerResolver callerResolver;
+    private final RequirementDraftService requirementDraftService;
 
     // POST /api/assistant/messages
     @PostMapping("/messages")
@@ -54,5 +58,13 @@ public class AssistantController {
     @GetMapping("/conversations/{id}")
     public ApiResponse<AssistantConversationResponse> conversation(@PathVariable String id) {
         return ApiResponse.success(assistantService.conversation(id, callerResolver.current()));
+    }
+
+    // POST /api/assistant/requirement-draft
+    // Chỉ người lập yêu cầu giao (điều phối viên); đọc nội dung dán vào thành bản nháp, không tạo bản ghi nào.
+    @PostMapping("/requirement-draft")
+    @PreAuthorize("hasAuthority('DELIVERY_DEMAND_MANAGE')")
+    public ApiResponse<RequirementDraftResponse> requirementDraft(@Valid @RequestBody RequirementDraftRequest request) {
+        return ApiResponse.success(requirementDraftService.draft(request.text(), callerResolver.current()).data());
     }
 }

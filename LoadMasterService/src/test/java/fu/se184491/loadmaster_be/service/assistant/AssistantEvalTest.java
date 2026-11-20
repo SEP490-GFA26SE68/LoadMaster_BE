@@ -25,11 +25,14 @@ import fu.se184491.loadmaster_be.entity.trip.DeliveryStop;
 import fu.se184491.loadmaster_be.entity.trip.Trip;
 import fu.se184491.loadmaster_be.entity.vehicle.Vehicle;
 import fu.se184491.loadmaster_be.entity.vehicle.VehicleType;
+import fu.se184491.loadmaster_be.dto.response.assistant.RequirementDraftResponse;
 import fu.se184491.loadmaster_be.exception.AppException;
 import fu.se184491.loadmaster_be.repository.assistant.AssistantConversationRepository;
 import fu.se184491.loadmaster_be.repository.assistant.AssistantMessageRepository;
 import fu.se184491.loadmaster_be.repository.assistant.AssistantToolCallRepository;
 import fu.se184491.loadmaster_be.repository.support.SupportTicketRepository;
+import fu.se184491.loadmaster_be.service.assistant.extract.RequirementDraftResult;
+import fu.se184491.loadmaster_be.service.assistant.extract.RequirementDraftService;
 import fu.se184491.loadmaster_be.service.assistant.extract.TryExtractResult;
 import fu.se184491.loadmaster_be.service.assistant.extract.TryExtractService;
 import fu.se184491.loadmaster_be.service.assistant.model.AssistantAskCommand;
@@ -64,7 +67,9 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.text.Normalizer;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -84,6 +89,9 @@ import static org.assertj.core.api.Assertions.assertThat;
  *
  * <p>Nhóm B ({@code "group": "B"}) kiểm {@code POST /api/assistant/public/try-extract}: gọi thẳng
  * {@link TryExtractService}, mỗi ca một lần gọi mô hình; báo cáo ở {@code target/assistant-eval-report-b.md}.
+ *
+ * <p>Nhóm E ({@code "group": "E"}) kiểm {@code POST /api/assistant/requirement-draft}: gọi thẳng
+ * {@link RequirementDraftService}, mỗi ca một lần gọi mô hình; báo cáo ở {@code target/assistant-eval-report-e.md}.
  */
 @EnabledIfEnvironmentVariable(named = "ASSISTANT_EVAL", matches = "true")
 @SpringBootTest(properties = {
@@ -104,6 +112,10 @@ class AssistantEvalTest {
 
     /** Mã phương án của chuyến {@value #VIEWER_TRIP} theo nhãn A · B · C; {@code null} khi chưa dựng fixture. */
     private static Map<String, Long> viewerPlans;
+    private static final Path REPORT_E = Path.of("target", "assistant-eval-report-e.md");
+    private static final String GROUP_E = "E";
+    private static final String[] DRAFT_PACKAGE_FIELDS = {"quantity", "lengthCm", "widthCm", "heightCm", "weightKg"};
+    private static final ZoneId VIETNAM = ZoneId.of("Asia/Ho_Chi_Minh");
     private static final Map<String, String> SIGN_IN = Map.of(
             "DISPATCHER", "ev-dispatcher",
             "MANAGER", "ev-manager",
@@ -112,6 +124,7 @@ class AssistantEvalTest {
 
     @Autowired private AssistantService service;
     @Autowired private TryExtractService tryExtract;
+    @Autowired private RequirementDraftService requirementDraft;
     @Autowired private AssistantCallerResolver callers;
     @Autowired private AssistantConversationRepository conversations;
     @Autowired private AssistantMessageRepository messages;
@@ -133,8 +146,10 @@ class AssistantEvalTest {
 
     @Test
     void groupA() throws IOException {
-        runGroup("nhóm A và an toàn", REPORT,
-                testCase -> !isGroupC(testCase) && !GROUP_B.equals(text(testCase, "group")));
+        runGroup("nhóm A và an toàn", REPORT, testCase -> {
+            String group = text(testCase, "group");
+            return !isGroupC(testCase) && !GROUP_B.equals(group) && !GROUP_E.equals(group);
+        });
     }
 
     @Test
@@ -501,6 +516,170 @@ class AssistantEvalTest {
     private static void signIn(String keycloakId) {
         Jwt jwt = Jwt.withTokenValue("token").header("alg", "none").subject(keycloakId).build();
         SecurityContextHolder.getContext().setAuthentication(new JwtAuthenticationToken(jwt));
+    }
+
+    // ---- nhóm E: bản nháp yêu cầu giao ----
+
+    record DraftOutcome(JsonNode testCase, RequirementDraftResponse data, int inputTokens, int outputTokens,
+                        List<String> failures) {
+        boolean passed() {
+            return failures.isEmpty();
+        }
+    }
+
+    @Test
+    void groupE() throws IOException {
+        assertThat(System.getenv("ANTHROPIC_API_KEY")).as("cần ANTHROPIC_API_KEY").isNotBlank();
+        // Không cần dữ liệu: kỹ năng E không đọc bản ghi nào, chỉ cần người gọi là điều phối viên
+        AssistantCaller caller = new AssistantCaller(9_001L, null, UserRole.DISPATCHER, null, null);
+        LocalDate today = LocalDate.now(VIETNAM);
+
+        List<DraftOutcome> outcomes = new ArrayList<>();
+        for (JsonNode testCase : cases()) {
+            if (!GROUP_E.equals(text(testCase, "group"))) {
+                continue;
+            }
+            DraftOutcome outcome = draft(testCase, caller, today);
+            outcomes.add(outcome);
+            System.out.printf("[eval-e] %s %s (%d/%d token)%s%n", outcome.passed() ? "ĐẠT  " : "KHÔNG",
+                    text(testCase, "id"), outcome.inputTokens(), outcome.outputTokens(),
+                    outcome.passed() ? "" : " — " + String.join("; ", outcome.failures()));
+        }
+        long passed = outcomes.stream().filter(DraftOutcome::passed).count();
+        long in = outcomes.stream().mapToLong(DraftOutcome::inputTokens).sum();
+        long out = outcomes.stream().mapToLong(DraftOutcome::outputTokens).sum();
+        String summary = "Đạt %d / %d · token vào %d, ra %d".formatted(passed, outcomes.size(), in, out);
+        writeReportE(outcomes, summary);
+        System.out.println("[eval-e] " + summary + " · báo cáo: " + REPORT_E.toAbsolutePath());
+
+        assertThat(outcomes).as("chưa có ca nhóm E").isNotEmpty();
+        assertThat(outcomes.stream().filter(o -> !o.passed()).map(o -> text(o.testCase(), "id")).toList())
+                .as(summary).isEmpty();
+    }
+
+    private DraftOutcome draft(JsonNode testCase, AssistantCaller caller, LocalDate today) {
+        List<String> failures = new ArrayList<>();
+        try {
+            RequirementDraftResult result = requirementDraft.draft(text(testCase, "text"), caller);
+            checkDraft(testCase, result.data(), today, failures);
+            return new DraftOutcome(testCase, result.data(), result.inputTokens(), result.outputTokens(), failures);
+        } catch (RuntimeException e) {
+            String code = e instanceof AppException app ? app.getErrorCode().name() : e.getClass().getSimpleName();
+            failures.add("lỗi: " + code);
+            return new DraftOutcome(testCase, null, 0, 0, failures);
+        }
+    }
+
+    private static void checkDraft(JsonNode testCase, RequirementDraftResponse data, LocalDate today,
+                                   List<String> failures) {
+        expectValue(testCase, "expectDeadline", data.deadline(), failures);
+        JsonNode relative = testCase.get("expectDeadlineFromToday");
+        if (relative != null) {
+            String want = today.plusDays(relative.get("days").asInt()) + "T" + relative.get("time").asString();
+            if (!want.equals(data.deadline())) {
+                failures.add("deadline = " + data.deadline() + ", cần " + want);
+            }
+        }
+        expectValue(testCase, "expectPriority", data.priority() == null ? null : data.priority().name(), failures);
+        expectValue(testCase, "expectPackageCount",
+                data.expectedPackageCount() == null ? null : String.valueOf(data.expectedPackageCount()), failures);
+        mustContainAll("destinationText", data.destinationText(), list(testCase, "destinationMustContain"), failures);
+        mustContainAll("customerNameGuess", data.customerNameGuess(), list(testCase, "customerMustContain"), failures);
+        List<String> noteAny = list(testCase, "noteMustContainAny");
+        String note = fold(data.note() == null ? "" : data.note());
+        if (!noteAny.isEmpty() && noteAny.stream().noneMatch(piece -> note.contains(fold(piece)))) {
+            failures.add("note thiếu mọi chữ trong " + noteAny + " (" + data.note() + ")");
+        }
+        for (String piece : list(testCase, "noteMustNotContain")) {
+            if (note.contains(fold(piece))) {
+                failures.add("note có \"" + piece + "\"");
+            }
+        }
+        String everything = fold(JSON.writeValueAsString(data));
+        for (String piece : list(testCase, "mustNotContainAnywhere")) {
+            if (everything.contains(fold(piece))) {
+                failures.add("bản nháp có \"" + piece + "\"");
+            }
+        }
+        JsonNode packages = testCase.get("expectPackages");
+        if (packages != null) {
+            if (packages.size() != data.packages().size()) {
+                failures.add("có " + data.packages().size() + " loại hàng, cần " + packages.size());
+            } else {
+                for (int i = 0; i < packages.size(); i++) {
+                    RequirementDraftResponse.DraftPackage actual = data.packages().get(i);
+                    Number[] values = {actual.quantity(), actual.lengthCm(), actual.widthCm(), actual.heightCm(),
+                            actual.weightKg()};
+                    comparePresentFields("packages[" + i + "]", packages.get(i), values, failures);
+                }
+            }
+        }
+        if (testCase.get("expectMissing") != null && !list(testCase, "expectMissing").equals(data.missing())) {
+            failures.add("missing = " + data.missing());
+        }
+        for (String field : list(testCase, "missingIncludes")) {
+            if (!data.missing().contains(field)) {
+                failures.add("missing thiếu " + field + " (" + data.missing() + ")");
+            }
+        }
+    }
+
+    /** Khoá có trong ca thì so: {@code null} mong đợi nghĩa là giá trị thật phải {@code null}. */
+    private static void expectValue(JsonNode testCase, String key, String actual, List<String> failures) {
+        JsonNode want = testCase.get(key);
+        if (want == null) {
+            return;
+        }
+        String expected = want.isNull() ? null : want.asString();
+        if (expected == null ? actual != null : !expected.equals(actual)) {
+            failures.add(key + ": được " + actual + ", cần " + expected);
+        }
+    }
+
+    private static void mustContainAll(String field, String actual, List<String> pieces, List<String> failures) {
+        String folded = fold(actual == null ? "" : actual);
+        for (String piece : pieces) {
+            if (!folded.contains(fold(piece))) {
+                failures.add(field + " thiếu \"" + piece + "\" (" + actual + ")");
+            }
+        }
+    }
+
+    /** Chỉ so khoá có ghi trong ca, sai số 0,01; {@code null} mong đợi thì giá trị thật phải là {@code null}. */
+    private static void comparePresentFields(String prefix, JsonNode expected, Number[] actual, List<String> failures) {
+        for (int i = 0; i < DRAFT_PACKAGE_FIELDS.length; i++) {
+            JsonNode want = expected.get(DRAFT_PACKAGE_FIELDS[i]);
+            if (want == null) {
+                continue;
+            }
+            Number got = actual[i];
+            boolean same = want.isNull()
+                    ? got == null
+                    : got != null && Math.abs(want.asDouble() - got.doubleValue()) <= 0.01;
+            if (!same) {
+                failures.add(prefix + "." + DRAFT_PACKAGE_FIELDS[i] + " = " + got + ", cần " + want);
+            }
+        }
+    }
+
+    private void writeReportE(List<DraftOutcome> outcomes, String summary) throws IOException {
+        StringBuilder out = new StringBuilder("# Bộ kiểm thử hành vi Lumo — nhóm E (bản nháp yêu cầu giao)\n\n")
+                .append(summary).append("\n");
+        for (DraftOutcome outcome : outcomes) {
+            JsonNode testCase = outcome.testCase();
+            out.append("\n## ").append(outcome.passed() ? "ĐẠT" : "KHÔNG ĐẠT").append(" · ").append(text(testCase, "id"))
+                    .append(" · token: ").append(outcome.inputTokens()).append('/').append(outcome.outputTokens())
+                    .append('\n')
+                    .append("\nNội dung dán vào: ").append(text(testCase, "text")).append('\n');
+            if (!outcome.passed()) {
+                out.append("\nLý do: ").append(String.join("; ", outcome.failures())).append('\n');
+            }
+            if (outcome.data() != null) {
+                out.append("\n```json\n").append(JSON.writeValueAsString(outcome.data())).append("\n```\n");
+            }
+        }
+        Files.createDirectories(REPORT_E.getParent());
+        Files.writeString(REPORT_E, out, StandardCharsets.UTF_8);
     }
 
     // ---- dữ liệu ----
