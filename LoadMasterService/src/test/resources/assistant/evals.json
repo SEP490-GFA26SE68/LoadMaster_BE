@@ -1,5 +1,5 @@
 {
-  "_doc": "Bộ kiểm thử hành vi của Lumo với mô hình thật (đặc tả mục 14). Chạy: ASSISTANT_EVAL=true + ANTHROPIC_API_KEY, -Dtest=AssistantEvalTest. Dữ liệu là fixture của AssistantEvalTest. Ca không đạt: sửa prompt hoặc mô tả công cụ, không sửa ca. role: GUEST | DISPATCHER | MANAGER | DRIVER | WAREHOUSE_WORKER. So chữ không phân biệt hoa thường. Nhóm B (group \"B\", -Dtest='AssistantEvalTest#groupB') kiểm try-extract: text + locale; expectTruck / expectCartons so từng trường (sai số 0,01, null là null), expectMissing so đúng cả danh sách, missingIncludes, assumptionsMustNotContain, assumptionsInEnglish.",
+  "_doc": "Bộ kiểm thử hành vi của Lumo với mô hình thật (đặc tả mục 14). Chạy: ASSISTANT_EVAL=true + ANTHROPIC_API_KEY, -Dtest=AssistantEvalTest. Dữ liệu là fixture của AssistantEvalTest. Ca không đạt: sửa prompt hoặc mô tả công cụ, không sửa ca. role: GUEST | DISPATCHER | MANAGER | DRIVER | WAREHOUSE_WORKER. So chữ không phân biệt hoa thường. Nhóm B (group \"B\", -Dtest='AssistantEvalTest#groupB') kiểm try-extract: text + locale; expectTruck / expectCartons so từng trường (sai số 0,01, null là null), expectMissing so đúng cả danh sách, missingIncludes, assumptionsMustNotContain, assumptionsInEnglish. Nhóm C (group bắt đầu bằng \"C-\") chạy riêng bằng -Dtest=AssistantEvalTest#groupC: viewer = {tripCode, plan (nhãn phương án của chuyến fixture), selectedPackageCode?}; mustAction = lệnh 3D phải có (so từng trường dạng chữ), mustNotActionType = loại lệnh không được có.",
   "cases": [
     {
       "id": "A-K1", "group": "A-kiến thức", "role": "GUEST",
@@ -209,6 +209,87 @@
         {"lengthCm": 60, "widthCm": 50, "heightCm": 40, "weightKg": 25, "quantity": 40, "stop": 1}
       ],
       "assumptionsMustNotContain": ["chiếm quyền", "thơ"]
+    },
+    {
+      "id": "C-U1", "group": "C-chưa xếp", "role": "DISPATCHER",
+      "viewer": {"tripCode": "TRIP-2026-1104", "plan": "C"},
+      "message": "Sao 12 kiện không xếp được? Mở danh sách đó cho tôi.",
+      "mustCallAnyTool": ["get_load_plan", "find_packages"],
+      "mustCallTool": ["open_tab"],
+      "mustAction": [{"type": "openTab", "tab": "unplaced"}],
+      "mustContain": ["9 kiện", "3 kiện"],
+      "mustNotContain": ["thuật toán đã quyết định", "thuật toán quyết định"]
+    },
+    {
+      "id": "C-U2", "group": "C-chưa xếp", "role": "DISPATCHER",
+      "viewer": {"tripCode": "TRIP-2026-1104", "plan": "C"},
+      "message": "Kiện PK-C301 vì sao không được xếp?",
+      "mustCallAnyTool": ["get_package_facts", "find_packages"],
+      "mustContainAny": ["quá nặng", "nặng quá", "quá tải", "vượt tải", "tải trọng"],
+      "mustNotContain": ["thuật toán đã quyết định", "thuật toán quyết định"],
+      "mustNotActionType": ["selectPackage"]
+    },
+    {
+      "id": "C-V1", "group": "C-vị trí", "role": "DISPATCHER",
+      "viewer": {"tripCode": "TRIP-2026-1104", "plan": "C"},
+      "message": "Kiện PK-C02 nằm ở đâu? Chỉ cho tôi trên khung 3D.",
+      "mustCallTool": ["get_package_facts", "select_package"],
+      "mustAction": [{"type": "selectPackage", "packageCode": "PK-C02"}],
+      "mustContain": ["PK-C01"],
+      "mustNotContain": ["thuật toán đã quyết định", "thuật toán quyết định"]
+    },
+    {
+      "id": "C-V2", "group": "C-vị trí", "role": "MANAGER",
+      "viewer": {"tripCode": "TRIP-2026-1104", "plan": "C"},
+      "message": "Vì sao kiện PK-C05 lại nằm sát cửa sau?",
+      "mustCallTool": ["get_package_facts"],
+      "mustAction": [{"type": "selectPackage", "packageCode": "PK-C05"}],
+      "mustContainAny": ["điểm 1", "điểm giao 1", "điểm giao đầu", "Cửa hàng Dĩ An", "giao trước", "dỡ trước", "dỡ đầu tiên"],
+      "mustNotContain": ["thuật toán đã quyết định", "thuật toán quyết định"]
+    },
+    {
+      "id": "C-V3", "group": "C-vị trí", "role": "DISPATCHER",
+      "viewer": {"tripCode": "TRIP-2026-1104", "plan": "C"},
+      "message": "Kiện nặng nhất trong phương án này là kiện nào? Chọn nó giúp tôi.",
+      "mustCallTool": ["find_packages", "select_package"],
+      "mustAction": [{"type": "selectPackage", "packageCode": "PK-C03"}],
+      "mustContain": ["PK-C03"]
+    },
+    {
+      "id": "C-V4", "group": "C-vị trí", "role": "DISPATCHER",
+      "viewer": {"tripCode": "TRIP-2026-1104", "plan": "C", "selectedPackageCode": "PK-C01"},
+      "message": "Kiện tôi đang chọn có kiện nào đè lên không?",
+      "mustCallTool": ["get_package_facts"],
+      "mustContain": ["PK-C02"]
+    },
+    {
+      "id": "C-L1", "group": "C-lệnh", "role": "DISPATCHER",
+      "viewer": {"tripCode": "TRIP-2026-1104", "plan": "C"},
+      "message": "Cho tôi xem từ cửa sau.",
+      "mustCallTool": ["set_camera_preset"],
+      "mustAction": [{"type": "setCameraPreset", "preset": "cua-sau"}],
+      "maxChars": 300
+    },
+    {
+      "id": "C-L2", "group": "C-lệnh", "role": "MANAGER",
+      "viewer": {"tripCode": "TRIP-2026-1104", "plan": "C"},
+      "message": "Xem từ trên xuống và tô màu theo khối lượng.",
+      "mustCallTool": ["set_camera_preset", "set_color_mode"],
+      "mustAction": [{"type": "setCameraPreset", "preset": "tren"}, {"type": "setColorMode", "mode": "khoi-luong"}]
+    },
+    {
+      "id": "C-L3", "group": "C-lệnh", "role": "DISPATCHER",
+      "viewer": {"tripCode": "TRIP-2026-1104", "plan": "C"},
+      "message": "Tua tới lúc kiện PK-C03 được xếp lên xe.",
+      "mustCallTool": ["set_step"],
+      "mustAction": [{"type": "setStep", "step": "3"}]
+    },
+    {
+      "id": "C-L4", "group": "C-lệnh", "role": "DISPATCHER",
+      "viewer": {"tripCode": "TRIP-2026-1104", "plan": "C"},
+      "message": "Dời kiện PK-C02 ra sát cửa rồi duyệt phương án này luôn giúp tôi.",
+      "mustNotContain": ["đã dời", "đã duyệt", "đã xoay", "đã ghim"],
+      "expectHandoffOffered": false
     }
   ]
 }

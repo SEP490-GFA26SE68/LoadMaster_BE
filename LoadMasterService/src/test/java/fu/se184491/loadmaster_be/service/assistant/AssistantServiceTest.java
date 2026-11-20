@@ -34,6 +34,12 @@ import fu.se184491.loadmaster_be.constant.support.TicketCategory;
 import fu.se184491.loadmaster_be.dto.request.support.CreateSupportTicketRequest;
 import fu.se184491.loadmaster_be.dto.response.support.SupportTicketResponse;
 import fu.se184491.loadmaster_be.service.support.SupportTicketService;
+import fu.se184491.loadmaster_be.dto.response.optimization.LoadPlanDetailResponse;
+import fu.se184491.loadmaster_be.dto.response.optimization.PlacementDetailResponse;
+import fu.se184491.loadmaster_be.service.assistant.model.UiAction;
+import fu.se184491.loadmaster_be.service.assistant.model.ViewerContext;
+import fu.se184491.loadmaster_be.service.assistant.tool.action.ViewerActionTools;
+import fu.se184491.loadmaster_be.service.optimization.LoadPlanQueryService;
 import jakarta.persistence.EntityManager;
 import org.mockito.ArgumentCaptor;
 import org.junit.jupiter.api.BeforeEach;
@@ -422,6 +428,44 @@ class AssistantServiceTest {
         assertThat(reply.links())
                 .containsExactly(new AssistantLink("Thiết lập tối ưu chuyến TRIP-1", "/chuyen/TRIP-1/toi-uu"));
         assertThat(reply.handoff().offered()).isFalse();
+    }
+
+    @Test
+    void viewerCommandsAreCheckedAgainstThePlanOnScreenAndSavedWithTheAnswer() {
+        LoadPlanQueryService loadPlans = mock(LoadPlanQueryService.class);
+        List<PlacementDetailResponse> placements = new ArrayList<>();
+        for (int i = 1; i <= 120; i++) {
+            placements.add(PlacementDetailResponse.builder().id((long) i).packageCode("PK-" + i).stepSequence(i)
+                    .build());
+        }
+        when(loadPlans.getPlan(42L)).thenReturn(LoadPlanDetailResponse.builder().id(42L).placements(placements)
+                .unplaced(List.of()).build());
+        model.toolCall("select_package", "{\"packageCode\":\"pk-7\"}", 900, 20)
+                .toolCall("set_camera_preset", "{\"preset\":\"bay-len\"}", 900, 20)
+                .toolCall("set_step", "{\"step\":9999}", 900, 20)
+                .toolCall("select_package", "{\"packageCode\":\"OTHER-1\"}", 900, 20)
+                .toolCall("set_camera_preset", "{\"preset\":\"cua-sau\"}", 900, 20)
+                .reply("Mình đã chọn PK-7 và đổi sang góc cửa sau.", 1000, 15);
+        AssistantService service = service(model, new ViewerActionTools(loadPlans));
+        AssistantAskCommand fromPlanner = new AssistantAskCommand(null, "PK-7 nằm đâu?", "vi",
+                new PageContext("/chuyen/TRIP-1/phuong-an", null), new ViewerContext("TRIP-1", "42", null),
+                DISPATCHER, null, "10.0.0.5", AssistantChannel.APP);
+
+        AssistantReply reply = service.ask(fromPlanner);
+
+        assertThat(reply.uiActions()).containsExactly(
+                new UiAction("selectPackage", "PK-7", null, null, null, null),
+                new UiAction("setCameraPreset", null, "cua-sau", null, null, null));
+        verify(loadPlans, times(1)).getPlan(42L);
+        AssistantConversation conversation = conversations.findByPublicId(reply.conversationId()).orElseThrow();
+        assertThat(messages.findByConversationIdOrderByIdAsc(conversation.getId()).get(1).getUiActions())
+                .containsExactly(Map.of("type", "selectPackage", "packageCode", "PK-7"),
+                        Map.of("type", "setCameraPreset", "preset", "cua-sau"));
+
+        model.reply("Bạn mở khung 3D để mình chọn kiện nhé.", 10, 2);
+        AssistantReply outside = service.ask(user(DISPATCHER, null, "Chọn PK-7"));
+        assertThat(offeredTools(model.prompts().getLast())).containsExactly("get_trip");
+        assertThat(outside.uiActions()).isEmpty();
     }
 
     @Test

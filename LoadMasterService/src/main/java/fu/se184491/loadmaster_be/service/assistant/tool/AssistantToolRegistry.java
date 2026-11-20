@@ -61,7 +61,10 @@ public class AssistantToolRegistry {
         this.clock = clock;
     }
 
-    /** Công cụ người hỏi được dùng trong lượt này: khách chỉ có công cụ khai {@code guest()}; người đăng nhập có hợp các vai trò. */
+    /**
+     * Công cụ người hỏi được dùng trong lượt này: khách chỉ có công cụ khai {@code guest()}; người đăng nhập có hợp các vai
+     * trò. Công cụ khai {@code needsViewer()} chỉ có khi lượt hỏi từ khung 3D.
+     */
     public List<ToolCallback> toolsFor(ToolScope scope, ToolCallLog log) {
         return select(scope, log, null);
     }
@@ -74,7 +77,8 @@ public class AssistantToolRegistry {
     private List<ToolCallback> select(ToolScope scope, ToolCallLog log, ToolContext context) {
         List<ToolCallback> out = new ArrayList<>();
         for (Registered tool : tools) {
-            boolean allowed = scope.guest() ? tool.guest() : !Collections.disjoint(tool.roles(), scope.roles());
+            boolean allowed = (scope.guest() ? tool.guest() : !Collections.disjoint(tool.roles(), scope.roles()))
+                    && (!tool.needsViewer() || scope.viewer());
             if (allowed) {
                 out.add(new Recording(tool.callback(), log, clock, context));
             }
@@ -124,13 +128,13 @@ public class AssistantToolRegistry {
                         .toolObject(bean)
                         .toolCallResultConverter(ToolResults.CONVERTER)
                         .build();
-                out.add(new Registered(callback, roles, bean.guest()));
+                out.add(new Registered(callback, roles, bean.guest(), bean.needsViewer()));
             }
         }
         return List.copyOf(out);
     }
 
-    private record Registered(ToolCallback callback, Set<UserRole> roles, boolean guest) {
+    private record Registered(ToolCallback callback, Set<UserRole> roles, boolean guest, boolean needsViewer) {
     }
 
     /**

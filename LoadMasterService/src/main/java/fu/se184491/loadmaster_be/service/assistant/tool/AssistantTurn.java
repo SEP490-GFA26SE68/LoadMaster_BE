@@ -1,15 +1,21 @@
 package fu.se184491.loadmaster_be.service.assistant.tool;
 
 import fu.se184491.loadmaster_be.service.assistant.model.AssistantLink;
+import fu.se184491.loadmaster_be.service.assistant.model.UiAction;
+import fu.se184491.loadmaster_be.service.assistant.output.UiActionValidator;
+import fu.se184491.loadmaster_be.service.assistant.output.UiActionValidator.ViewerPlan;
 import org.springframework.ai.chat.model.ToolContext;
 
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
+import java.util.function.Supplier;
 
 /**
  * Trạng thái của một lượt hỏi mà công cụ hành động đọc và ghi: phạm vi, ngôn ngữ, liên kết đã gắn, việc chuyển nhân
- * viên. Sổ công cụ đưa nó tới công cụ qua {@link ToolContext} ({@link #CONTEXT_KEY}); dịch vụ đọc lại sau vòng gọi để
+ * viên, lệnh cho khung 3D và phương án đang xem. Sổ công cụ đưa nó tới công cụ qua {@link ToolContext} ({@link #CONTEXT_KEY}); dịch vụ đọc lại sau vòng gọi để
  * dựng câu trả lời và lưu tin. Một lượt chạy trên một luồng nên không cần đồng bộ.
  */
 public final class AssistantTurn {
@@ -23,6 +29,10 @@ public final class AssistantTurn {
     private final boolean handoffInvited;
     private final List<Line> recent;
     private final Map<String, AssistantLink> links = new LinkedHashMap<>();
+    private final Long viewerPlanId;
+    private final List<UiAction> uiActions = new ArrayList<>();
+    /** {@code null}: chưa công cụ nào đọc phương án đang xem trong lượt này. */
+    private Optional<ViewerPlan> viewerPlan;
     private String ticketCode;
     private boolean ticketReported;
     private boolean handoffOffered;
@@ -38,12 +48,19 @@ public final class AssistantTurn {
      */
     public AssistantTurn(ToolScope scope, String locale, Long conversationId, boolean handoffInvited,
                          String ticketCode, List<Line> recent) {
+        this(scope, locale, conversationId, handoffInvited, ticketCode, recent, null);
+    }
+
+    /** @param viewerPlanId phương án đang mở ở khung 3D (chỉ khi {@code scope.viewer()}), hoặc {@code null} */
+    public AssistantTurn(ToolScope scope, String locale, Long conversationId, boolean handoffInvited,
+                         String ticketCode, List<Line> recent, Long viewerPlanId) {
         this.scope = scope;
         this.locale = locale;
         this.conversationId = conversationId;
         this.handoffInvited = handoffInvited;
         this.ticketCode = ticketCode;
         this.recent = recent == null ? List.of() : List.copyOf(recent);
+        this.viewerPlanId = scope != null && scope.viewer() ? viewerPlanId : null;
     }
 
     /** Lượt của một lần gọi công cụ; thiếu là lỗi lập trình (sổ công cụ luôn gắn lượt khi gọi qua {@link AssistantToolRegistry#toolsFor(AssistantTurn, ToolCallLog)}). */
@@ -89,6 +106,43 @@ public final class AssistantTurn {
 
     public List<AssistantLink> links() {
         return List.copyOf(links.values());
+    }
+
+    /** Phương án đang mở ở khung 3D, hoặc {@code null} khi lượt không hỏi từ khung 3D. */
+    public Long viewerPlanId() {
+        return viewerPlanId;
+    }
+
+    /** Phương án đang xem, đọc một lần mỗi lượt qua {@code loader} (trống: không đọc được, ví dụ của công ty khác). */
+    public Optional<ViewerPlan> viewerPlan(Supplier<Optional<ViewerPlan>> loader) {
+        if (viewerPlan == null) {
+            viewerPlan = viewerPlanId == null ? Optional.empty() : loader.get();
+        }
+        return viewerPlan;
+    }
+
+    /** Phương án đang xem nếu công cụ đã đọc trong lượt này; dịch vụ dùng để lọc lệnh lần cuối. */
+    public Optional<ViewerPlan> loadedViewerPlan() {
+        return viewerPlan == null ? Optional.empty() : viewerPlan;
+    }
+
+    /**
+     * Thêm một lệnh cho khung 3D (đã kiểm ở công cụ). Lệnh trùng tính một lần. {@code false} khi đã đủ
+     * {@value UiActionValidator#MAX_ACTIONS} lệnh.
+     */
+    public boolean addUiAction(UiAction action) {
+        if (uiActions.contains(action)) {
+            return true;
+        }
+        if (uiActions.size() >= UiActionValidator.MAX_ACTIONS) {
+            return false;
+        }
+        uiActions.add(action);
+        return true;
+    }
+
+    public List<UiAction> uiActions() {
+        return List.copyOf(uiActions);
     }
 
     /** Lượt này hỏi người dùng có muốn chuyển cho nhân viên không. */

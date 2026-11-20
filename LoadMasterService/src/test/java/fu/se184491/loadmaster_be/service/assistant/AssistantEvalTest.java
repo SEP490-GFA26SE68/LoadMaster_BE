@@ -5,7 +5,16 @@ import fu.se184491.loadmaster_be.constant.account.UserStatus;
 import fu.se184491.loadmaster_be.constant.assistant.AssistantChannel;
 import fu.se184491.loadmaster_be.constant.assistant.AssistantMessageRole;
 import fu.se184491.loadmaster_be.constant.company.CompanyStatus;
+import fu.se184491.loadmaster_be.constant.optimization.UnplacedReason;
 import fu.se184491.loadmaster_be.constant.trip.DeliveryStopStatus;
+import fu.se184491.loadmaster_be.entity.cargo.CargoPackage;
+import fu.se184491.loadmaster_be.entity.optimization.LoadPlan;
+import fu.se184491.loadmaster_be.entity.optimization.OptimizationJob;
+import fu.se184491.loadmaster_be.entity.optimization.PackagePlacement;
+import fu.se184491.loadmaster_be.entity.optimization.UnplacedPackage;
+import fu.se184491.loadmaster_be.service.assistant.model.UiAction;
+import fu.se184491.loadmaster_be.service.assistant.model.ViewerContext;
+import fu.se184491.loadmaster_be.service.assistant.output.UiActionValidator;
 import fu.se184491.loadmaster_be.constant.trip.TripStatus;
 import fu.se184491.loadmaster_be.dto.response.assistant.TryExtractResponse;
 import fu.se184491.loadmaster_be.entity.account.User;
@@ -57,17 +66,21 @@ import java.text.Normalizer;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.function.Predicate;
 import java.util.function.Supplier;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * Bộ kiểm thử hành vi với mô hình thật (đặc tả mục 14). Không chạy trong CI: cần {@code ASSISTANT_EVAL=true} và
- * {@code ANTHROPIC_API_KEY}. Dữ liệu là fixture riêng trên H2; mỗi ca là một hội thoại mới. Báo cáo đầy đủ ở
- * {@code target/assistant-eval-report.md}.
+ * {@code ANTHROPIC_API_KEY}. Dữ liệu là fixture riêng trên H2; mỗi ca là một hội thoại mới. {@link #groupA()} chạy các
+ * ca hỏi đáp không thuộc nhóm riêng nào (báo cáo {@code target/assistant-eval-report.md}); {@link #groupC()} chỉ chạy
+ * nhóm C — hỏi từ khung 3D của một phương án fixture ({@code -Dtest=AssistantEvalTest#groupC}, báo cáo
+ * {@code target/assistant-eval-report-c.md}).
  *
  * <p>Nhóm B ({@code "group": "B"}) kiểm {@code POST /api/assistant/public/try-extract}: gọi thẳng
  * {@link TryExtractService}, mỗi ca một lần gọi mô hình; báo cáo ở {@code target/assistant-eval-report-b.md}.
@@ -86,6 +99,11 @@ class AssistantEvalTest {
     private static final String GROUP_B = "B";
     private static final String[] TRUCK_FIELDS = {"lengthCm", "widthCm", "heightCm", "payloadKg"};
     private static final String[] CARTON_FIELDS = {"lengthCm", "widthCm", "heightCm", "weightKg", "quantity", "stop"};
+    private static final Path REPORT_C = Path.of("target", "assistant-eval-report-c.md");
+    private static final String VIEWER_TRIP = "TRIP-2026-1104";
+
+    /** Mã phương án của chuyến {@value #VIEWER_TRIP} theo nhãn A · B · C; {@code null} khi chưa dựng fixture. */
+    private static Map<String, Long> viewerPlans;
     private static final Map<String, String> SIGN_IN = Map.of(
             "DISPATCHER", "ev-dispatcher",
             "MANAGER", "ev-manager",
@@ -106,8 +124,8 @@ class AssistantEvalTest {
 
     @MockitoBean private JwtDecoder jwtDecoder;
 
-    record Outcome(JsonNode testCase, String reply, List<String> tools, List<AssistantLink> links, boolean offered,
-                   int inputTokens, int outputTokens, List<String> failures) {
+    record Outcome(JsonNode testCase, String reply, List<String> tools, List<AssistantLink> links,
+                   List<UiAction> actions, boolean offered, int inputTokens, int outputTokens, List<String> failures) {
         boolean passed() {
             return failures.isEmpty();
         }
@@ -115,12 +133,29 @@ class AssistantEvalTest {
 
     @Test
     void groupA() throws IOException {
+        runGroup("nhóm A và an toàn", REPORT,
+                testCase -> !isGroupC(testCase) && !GROUP_B.equals(text(testCase, "group")));
+    }
+
+    @Test
+    void groupC() throws IOException {
+        runGroup("nhóm C", REPORT_C, AssistantEvalTest::isGroupC);
+    }
+
+    private static boolean isGroupC(JsonNode testCase) {
+        String group = text(testCase, "group");
+        return group != null && group.startsWith("C-");
+    }
+
+    private void runGroup(String title, Path report, Predicate<JsonNode> selected) throws IOException {
         assertThat(System.getenv("ANTHROPIC_API_KEY")).as("cần ANTHROPIC_API_KEY").isNotBlank();
-        new TransactionTemplate(transactionManager).executeWithoutResult(status -> seed());
+        if (viewerPlans == null) {
+            viewerPlans = new TransactionTemplate(transactionManager).execute(status -> seed());
+        }
 
         List<Outcome> outcomes = new ArrayList<>();
         for (JsonNode testCase : cases()) {
-            if (GROUP_B.equals(text(testCase, "group"))) {
+            if (!selected.test(testCase)) {
                 continue;
             }
             Outcome outcome = run(testCase);
@@ -133,8 +168,8 @@ class AssistantEvalTest {
         long in = outcomes.stream().mapToLong(Outcome::inputTokens).sum();
         long out = outcomes.stream().mapToLong(Outcome::outputTokens).sum();
         String summary = "Đạt %d / %d · token vào %d, ra %d".formatted(passed, outcomes.size(), in, out);
-        writeReport(outcomes, summary);
-        System.out.println("[eval] " + summary + " · báo cáo: " + REPORT.toAbsolutePath());
+        writeReport(title, report, outcomes, summary);
+        System.out.println("[eval] " + summary + " · báo cáo: " + report.toAbsolutePath());
 
         assertThat(outcomes.stream().filter(o -> !o.passed()).map(o -> text(o.testCase(), "id")).toList())
                 .as(summary).isEmpty();
@@ -291,8 +326,10 @@ class AssistantEvalTest {
                 signIn(SIGN_IN.get(role));
                 caller = withEntityManager(callers::current);
             }
+            ViewerContext viewer = viewerOf(testCase);
+            String path = guest ? "/gioi-thieu" : viewer == null ? "/chuyen" : "/chuyen/" + viewer.tripCode() + "/phuong-an";
             AssistantAskCommand command = new AssistantAskCommand(null, text(testCase, "message"), "vi",
-                    new PageContext(guest ? "/gioi-thieu" : "/chuyen", null), null, caller,
+                    new PageContext(path, null), viewer, caller,
                     guest ? "eval-" + text(testCase, "id") : null, "203.0.113.9",
                     guest ? AssistantChannel.PUBLIC : AssistantChannel.APP);
             long ticketsBefore = tickets.count();
@@ -303,11 +340,11 @@ class AssistantEvalTest {
             if (tickets.count() != ticketsBefore || reply.handoff().ticketCode() != null) {
                 failures.add("đã tạo yêu cầu hỗ trợ");
             }
-            return new Outcome(testCase, reply.reply(), tools, reply.links(), reply.handoff().offered(),
-                    reply.usage().inputTokens(), reply.usage().outputTokens(), failures);
+            return new Outcome(testCase, reply.reply(), tools, reply.links(), reply.uiActions(),
+                    reply.handoff().offered(), reply.usage().inputTokens(), reply.usage().outputTokens(), failures);
         } catch (RuntimeException e) {
             failures.add("lỗi: " + e.getClass().getSimpleName() + " " + e.getMessage());
-            return new Outcome(testCase, "", List.of(), List.of(), false, 0, 0, failures);
+            return new Outcome(testCase, "", List.of(), List.of(), List.of(), false, 0, 0, failures);
         } finally {
             SecurityContextHolder.clearContext();
         }
@@ -360,6 +397,44 @@ class AssistantEvalTest {
         if (maxChars != null && answer.codePointCount(0, answer.length()) > maxChars.asInt()) {
             failures.add("dài " + answer.codePointCount(0, answer.length()) + " ký tự");
         }
+        List<Map<String, String>> actions = reply.uiActions() == null ? List.of()
+                : reply.uiActions().stream().map(AssistantEvalTest::fields).toList();
+        JsonNode wanted = testCase.get("mustAction");
+        if (wanted != null) {
+            for (JsonNode action : wanted) {
+                Map<String, String> expected = new HashMap<>();
+                action.properties().forEach(field -> expected.put(field.getKey(), field.getValue().asString()));
+                if (actions.stream().noneMatch(sent -> sent.entrySet().containsAll(expected.entrySet()))) {
+                    failures.add("thiếu lệnh " + expected);
+                }
+            }
+        }
+        for (String type : list(testCase, "mustNotActionType")) {
+            if (actions.stream().anyMatch(sent -> type.equals(sent.get("type")))) {
+                failures.add("có lệnh " + type);
+            }
+        }
+    }
+
+    /** Lệnh dạng trường → chữ, như cột {@code ui_actions}. */
+    private static Map<String, String> fields(UiAction action) {
+        Map<String, String> out = new HashMap<>();
+        UiActionValidator.toMap(action).forEach((key, value) -> out.put(key, String.valueOf(value)));
+        return out;
+    }
+
+    /**
+     * {@code viewer: {tripCode, plan, selectedPackageCode?}} của ca: {@code plan} là nhãn phương án của chuyến
+     * {@value #VIEWER_TRIP}, đổi sang mã phương án fixture lúc chạy. Không có thì lượt không hỏi từ khung 3D.
+     */
+    private static ViewerContext viewerOf(JsonNode testCase) {
+        JsonNode viewer = testCase.get("viewer");
+        if (viewer == null) {
+            return null;
+        }
+        Long planId = viewerPlans.get(text(viewer, "plan"));
+        assertThat(planId).as("phương án " + text(viewer, "plan") + " của fixture").isNotNull();
+        return new ViewerContext(text(viewer, "tripCode"), String.valueOf(planId), text(viewer, "selectedPackageCode"));
     }
 
     private List<String> toolsOf(String conversationId) {
@@ -382,8 +457,9 @@ class AssistantEvalTest {
         }
     }
 
-    private void writeReport(List<Outcome> outcomes, String summary) throws IOException {
-        StringBuilder out = new StringBuilder("# Bộ kiểm thử hành vi Lumo — nhóm A\n\n").append(summary).append("\n");
+    private void writeReport(String title, Path report, List<Outcome> outcomes, String summary) throws IOException {
+        StringBuilder out = new StringBuilder("# Bộ kiểm thử hành vi Lumo — ").append(title).append("\n\n")
+                .append(summary).append("\n");
         for (Outcome outcome : outcomes) {
             JsonNode testCase = outcome.testCase();
             out.append("\n## ").append(outcome.passed() ? "ĐẠT" : "KHÔNG ĐẠT").append(" · ").append(text(testCase, "id"))
@@ -391,6 +467,7 @@ class AssistantEvalTest {
                     .append("\nHỏi: ").append(text(testCase, "message")).append('\n')
                     .append("\nCông cụ: ").append(outcome.tools()).append(" · liên kết: ")
                     .append(outcome.links().stream().map(AssistantLink::to).toList())
+                    .append(" · lệnh 3D: ").append(outcome.actions().stream().map(UiActionValidator::toMap).toList())
                     .append(" · offered: ").append(outcome.offered())
                     .append(" · token: ").append(outcome.inputTokens()).append('/').append(outcome.outputTokens()).append('\n');
             if (!outcome.passed()) {
@@ -398,8 +475,8 @@ class AssistantEvalTest {
             }
             out.append("\n> ").append(outcome.reply().replace("\n", "\n> ")).append('\n');
         }
-        Files.createDirectories(REPORT.getParent());
-        Files.writeString(REPORT, out, StandardCharsets.UTF_8);
+        Files.createDirectories(report.getParent());
+        Files.writeString(report, out, StandardCharsets.UTF_8);
     }
 
     private static String fold(String value) {
@@ -428,8 +505,11 @@ class AssistantEvalTest {
 
     // ---- dữ liệu ----
 
-    /** Long Bình: ba chuyến (một của Khoa, hai của Tuấn — một mang câu lệnh giả trong tên). Phương Nam: một chuyến. */
-    private void seed() {
+    /**
+     * Long Bình: ba chuyến (một của Khoa, hai của Tuấn — một mang câu lệnh giả trong tên) và chuyến có phương án 3D của
+     * nhóm C ({@link #seedViewerTrip}). Phương Nam: một chuyến. Trả mã phương án của chuyến nhóm C theo nhãn.
+     */
+    private Map<String, Long> seed() {
         Company longBinh = company("EV-LB", "Vận tải Long Bình");
         Company phuongNam = company("EV-PN", "Vận tải Phương Nam");
         User dispatcher = user(longBinh, "ev-dispatcher", UserRole.DISPATCHER, "Lê Thu Trang");
@@ -458,6 +538,71 @@ class AssistantEvalTest {
                 TripStatus.PLANNED);
         stop(other, 1, "Chợ nổi Cái Răng", "Cái Răng, Cần Thơ", LocalDateTime.of(2026, 11, 21, 7, 0));
         stop(other, 2, "Kho Sóc Trăng", "Phường 2, Sóc Trăng", LocalDateTime.of(2026, 11, 21, 10, 0));
+
+        return seedViewerTrip(longBinh, dispatcher, khoa);
+    }
+
+    /**
+     * Chuyến {@value #VIEWER_TRIP}: thùng 520 × 200 × 200 cm, một lần chạy ba phương án; phương án C có 5 kiện đã xếp
+     * và 12 kiện chưa xếp (9 hết chỗ, 3 quá nặng). PK-C01, PK-C02, PK-C03 giao điểm 2 ở vách trước, PK-C02 đặt lên
+     * PK-C01, PK-C03 nặng nhất (120 kg); PK-C04 (đã ghim) và PK-C05 giao điểm 1 ở cửa sau, PK-C05 sát cửa.
+     */
+    private Map<String, Long> seedViewerTrip(Company company, User dispatcher, User driver) {
+        Vehicle truck = vehicle(company, "Xe tải 3,5 tấn thùng 5,2 m", "51C-456.78", 520, 200);
+        Trip trip = trip(company, truck, dispatcher, driver, VIEWER_TRIP, "Dĩ An — Thủ Đức", TripStatus.PLANNED);
+        DeliveryStop first = stop(trip, 1, "Cửa hàng Dĩ An", "Dĩ An, Bình Dương", LocalDateTime.of(2026, 11, 22, 9, 0));
+        DeliveryStop second = stop(trip, 2, "Siêu thị Thủ Đức", "Võ Văn Ngân, Thủ Đức, TP. Hồ Chí Minh",
+                LocalDateTime.of(2026, 11, 22, 10, 30));
+        OptimizationJob job = OptimizationJob.builder().trip(trip).jobUuid("eval-job-1104").build();
+        entityManager.persist(job);
+
+        Map<String, Long> plans = new HashMap<>();
+        plans.put("A", loadPlan(job, "A", "MAX_VOLUME").getId());
+        plans.put("B", loadPlan(job, "B", "AXLE_BALANCE").getId());
+        LoadPlan c = loadPlan(job, "C", "MIN_REHANDLING");
+        plans.put("C", c.getId());
+        place(c, cargo(company, "PK-C01", 40), second, 0, 0, 0, 60, 40, 40, 1, false);
+        place(c, cargo(company, "PK-C02", 10), second, 10, 0, 40, 40, 40, 30, 2, false);
+        place(c, cargo(company, "PK-C03", 120), second, 60, 0, 0, 60, 40, 40, 3, false);
+        place(c, cargo(company, "PK-C04", 25), first, 400, 0, 0, 60, 40, 40, 4, true);
+        place(c, cargo(company, "PK-C05", 30), first, 460, 0, 0, 60, 40, 40, 5, false);
+        for (int i = 1; i <= 9; i++) {
+            unplaced(c, cargo(company, "PK-C2" + String.format("%02d", i), 15), UnplacedReason.OUT_OF_SPACE);
+        }
+        for (int i = 1; i <= 3; i++) {
+            unplaced(c, cargo(company, "PK-C30" + i, 900), UnplacedReason.OVER_WEIGHT);
+        }
+        return plans;
+    }
+
+    private LoadPlan loadPlan(OptimizationJob job, String label, String objective) {
+        LoadPlan plan = LoadPlan.builder().job(job).planName("Phương án " + label).candidateLabel(label)
+                .objective(objective).approved(false).stale(false).manuallyEdited(false)
+                .volumeUtilization(new BigDecimal("0.0620")).weightUtilization(new BigDecimal("0.0643"))
+                .build();
+        entityManager.persist(plan);
+        return plan;
+    }
+
+    private CargoPackage cargo(Company company, String code, int weightKg) {
+        CargoPackage cargo = CargoPackage.builder().company(company).packageCode(code)
+                .qrToken("eval-qr-" + code.toLowerCase(Locale.ROOT)).actualLength(new BigDecimal("60"))
+                .actualWidth(new BigDecimal("40")).actualHeight(new BigDecimal("40"))
+                .actualWeightKg(BigDecimal.valueOf(weightKg)).build();
+        entityManager.persist(cargo);
+        return cargo;
+    }
+
+    private void place(LoadPlan plan, CargoPackage cargo, DeliveryStop stop, int x, int y, int z, int length,
+                       int width, int height, int step, boolean pinned) {
+        entityManager.persist(PackagePlacement.builder().loadPlan(plan).cargoPackage(cargo).stopZone(stop)
+                .posX(x).posY(y).posZ(z).packedLength(length).packedWidth(width).packedHeight(height)
+                .rotationType(0).stepSequence(step).pinned(pinned).build());
+    }
+
+    private void unplaced(LoadPlan plan, CargoPackage cargo, UnplacedReason reason) {
+        entityManager.persist(UnplacedPackage.builder().loadPlan(plan).cargoPackage(cargo).rejectionReason(reason)
+                .build());
     }
 
     private Company company(String code, String name) {
@@ -476,8 +621,13 @@ class AssistantEvalTest {
     }
 
     private Vehicle vehicle(Company company, String name, String plate) {
-        VehicleType type = VehicleType.builder().company(company).name(name).innerLength(5200).innerWidth(2000)
-                .innerHeight(2000).maxPayloadKg(new BigDecimal("3500")).build();
+        return vehicle(company, name, plate, 5200, 2000);
+    }
+
+    /** Loại xe không khai giới hạn trục; lòng thùng dài {@code length}, rộng và cao {@code side}. */
+    private Vehicle vehicle(Company company, String name, String plate, int length, int side) {
+        VehicleType type = VehicleType.builder().company(company).name(name).innerLength(length).innerWidth(side)
+                .innerHeight(side).maxPayloadKg(new BigDecimal("3500")).build();
         entityManager.persist(type);
         Vehicle vehicle = Vehicle.builder().company(company).vehicleType(type).name(name).licensePlate(plate).build();
         entityManager.persist(vehicle);
@@ -492,8 +642,10 @@ class AssistantEvalTest {
         return trip;
     }
 
-    private void stop(Trip trip, int sequence, String name, String address, LocalDateTime plannedArrival) {
-        entityManager.persist(DeliveryStop.builder().trip(trip).stopSequence(sequence).stopName(name).address(address)
-                .status(DeliveryStopStatus.PENDING).plannedArrival(plannedArrival).build());
+    private DeliveryStop stop(Trip trip, int sequence, String name, String address, LocalDateTime plannedArrival) {
+        DeliveryStop stop = DeliveryStop.builder().trip(trip).stopSequence(sequence).stopName(name).address(address)
+                .status(DeliveryStopStatus.PENDING).plannedArrival(plannedArrival).build();
+        entityManager.persist(stop);
+        return stop;
     }
 }
