@@ -15,6 +15,7 @@ import fu.se184491.loadmaster_be.service.assistant.gate.AssistantBudget;
 import fu.se184491.loadmaster_be.service.assistant.gate.AssistantRateLimiter;
 import fu.se184491.loadmaster_be.service.assistant.loop.AssistantLoop;
 import fu.se184491.loadmaster_be.service.assistant.loop.LoopResult;
+import fu.se184491.loadmaster_be.service.assistant.loop.TokenMeter;
 import fu.se184491.loadmaster_be.service.assistant.model.AssistantAskCommand;
 import fu.se184491.loadmaster_be.service.assistant.model.AssistantCaller;
 import fu.se184491.loadmaster_be.service.assistant.model.AssistantReply;
@@ -120,8 +121,17 @@ public class AssistantService {
         Instant askedAt = clock.instant();
         Prompt prompt = new Prompt(promptMessages(command, conversation, question, locale, askedAt));
 
-        LoopResult result = loop.run(model, prompt, locale);
-        budget.record(result.usage().total());
+        // Token của mọi lần gọi mô hình tính vào hạn mức, kể cả khi lượt hỏng ở vòng sau
+        TokenMeter meter = new TokenMeter();
+        LoopResult result;
+        try {
+            result = loop.run(model, prompt, List.of(), locale, meter);
+        } finally {
+            long spent = meter.total().total();
+            if (spent > 0) {
+                budget.record(spent);
+            }
+        }
         if (result.text().isBlank()) {
             throw new AppException(ErrorCode.ASSISTANT_UNAVAILABLE);
         }

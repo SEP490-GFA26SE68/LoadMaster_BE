@@ -1,5 +1,6 @@
 package fu.se184491.loadmaster_be.service.assistant.support;
 
+import org.springframework.ai.anthropic.AnthropicChatOptions;
 import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.metadata.ChatGenerationMetadata;
 import org.springframework.ai.chat.metadata.ChatResponseMetadata;
@@ -7,6 +8,7 @@ import org.springframework.ai.chat.metadata.DefaultUsage;
 import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.model.Generation;
+import org.springframework.ai.chat.prompt.ChatOptions;
 import org.springframework.ai.chat.prompt.Prompt;
 
 import java.util.ArrayDeque;
@@ -19,6 +21,7 @@ import java.util.function.Supplier;
 public final class FakeChatModel implements ChatModel {
 
     public static final String MODEL = "claude-haiku-5-5-fake";
+    public static final int MAX_TOKENS = 800;
 
     private final Deque<Supplier<ChatResponse>> replies = new ArrayDeque<>();
     private final List<Prompt> prompts = new ArrayList<>();
@@ -26,7 +29,7 @@ public final class FakeChatModel implements ChatModel {
 
     /** Hết câu đã xếp thì trả câu này mãi (test gọi qua HTTP nhiều lượt). */
     public FakeChatModel answerAlways(String text, int inputTokens, int outputTokens) {
-        fallback = () -> response(text, "end_turn", inputTokens, outputTokens);
+        fallback = () -> response(new AssistantMessage(text), "end_turn", inputTokens, outputTokens);
         return this;
     }
 
@@ -35,7 +38,24 @@ public final class FakeChatModel implements ChatModel {
     }
 
     public FakeChatModel reply(String text, String stopReason, int inputTokens, int outputTokens) {
-        replies.addLast(() -> response(text, stopReason, inputTokens, outputTokens));
+        replies.addLast(() -> response(new AssistantMessage(text), stopReason, inputTokens, outputTokens));
+        return this;
+    }
+
+    /** Mô hình đòi gọi một công cụ. */
+    public FakeChatModel toolCall(String tool, String arguments, int inputTokens, int outputTokens) {
+        return toolCall(tool, arguments, "tool_use", inputTokens, outputTokens);
+    }
+
+    /** Mô hình đòi gọi công cụ với lý do dừng tuỳ ý (ví dụ {@code max_tokens}: tham số có thể bị cắt dở). */
+    public FakeChatModel toolCall(String tool, String arguments, String stopReason, int inputTokens, int outputTokens) {
+        replies.addLast(() -> toolUse(tool, arguments, stopReason, inputTokens, outputTokens));
+        return this;
+    }
+
+    /** Hết câu đã xếp thì đòi công cụ mãi: thử xem vòng gọi có dừng không. */
+    public FakeChatModel toolCallAlways(String tool, String arguments, int inputTokens, int outputTokens) {
+        fallback = () -> toolUse(tool, arguments, "tool_use", inputTokens, outputTokens);
         return this;
     }
 
@@ -58,6 +78,12 @@ public final class FakeChatModel implements ChatModel {
         throw new IllegalStateException("FakeChatModel: chưa xếp câu trả lời nào");
     }
 
+    /** Tuỳ chọn mặc định như bean thật: vòng gọi công cụ phải giữ chúng khi thêm công cụ. */
+    @Override
+    public ChatOptions getOptions() {
+        return AnthropicChatOptions.builder().model(MODEL).maxTokens(MAX_TOKENS).build();
+    }
+
     public List<Prompt> prompts() {
         return prompts;
     }
@@ -66,9 +92,15 @@ public final class FakeChatModel implements ChatModel {
         return prompts.size();
     }
 
-    private static ChatResponse response(String text, String stopReason, int inputTokens, int outputTokens) {
-        Generation generation = new Generation(new AssistantMessage(text),
-                ChatGenerationMetadata.builder().finishReason(stopReason).build());
+    private ChatResponse toolUse(String tool, String arguments, String stopReason, int inputTokens, int outputTokens) {
+        AssistantMessage output = AssistantMessage.builder().content("")
+                .toolCalls(List.of(new AssistantMessage.ToolCall("toolu_" + (prompts.size() - 1), "function", tool, arguments)))
+                .build();
+        return response(output, stopReason, inputTokens, outputTokens);
+    }
+
+    private static ChatResponse response(AssistantMessage output, String stopReason, int inputTokens, int outputTokens) {
+        Generation generation = new Generation(output, ChatGenerationMetadata.builder().finishReason(stopReason).build());
         ChatResponseMetadata metadata = ChatResponseMetadata.builder()
                 .model(MODEL).usage(new DefaultUsage(inputTokens, outputTokens)).build();
         return new ChatResponse(List.of(generation), metadata);
