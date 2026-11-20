@@ -57,7 +57,9 @@ public class MyAccountTool implements AssistantTool {
     @Tool(name = "get_my_account", description = """
             Hồ sơ của người đang hỏi: họ tên, vai trò, tên công ty, công ty có đang bị khoá vì không có gói còn \
             hiệu lực không. Quản trị công ty, quản lý, điều phối viên thấy thêm gói đang dùng, hạn gói, tự gia hạn \
-            và số dư credit. Dùng khi người hỏi hỏi về chính tài khoản, công ty, gói hay credit của họ.""")
+            và số dư credit. Dùng khi người hỏi hỏi về chính tài khoản, công ty, gói hay credit của họ. Người hỏi là \
+            tài xế hay nhân viên kho mà hỏi gói hay credit thì không gọi: công cụ không trả các số đó cho họ; trả lời \
+            rằng chỉ quản trị công ty, quản lý, điều phối viên xem được.""")
     public Account getMyAccount() {
         UserProfileResponse me = users.getUserProfile(currentJwt());
         boolean hasCompany = me.companyId() != null;

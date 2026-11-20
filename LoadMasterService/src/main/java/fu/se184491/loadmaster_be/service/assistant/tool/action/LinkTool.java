@@ -23,6 +23,8 @@ import java.util.Set;
 @Component
 public class LinkTool implements AssistantTool {
 
+    public static final String NAME = "suggest_link";
+
     /** {@code ADDED} kèm nhãn hiện dưới câu trả lời; {@code NOT_AVAILABLE}; {@code LIMIT_REACHED}. */
     @JsonInclude(JsonInclude.Include.NON_NULL)
     public record Result(String status, String label) {
@@ -38,7 +40,7 @@ public class LinkTool implements AssistantTool {
         return true;
     }
 
-    @Tool(name = "suggest_link", description = """
+    @Tool(name = NAME, description = """
             Gắn một liên kết tới màn của ứng dụng (hoặc bảng giá, trang đăng ký) dưới câu trả lời; hệ thống dựng \
             đường dẫn và nhãn. Dùng khi người dùng cần mở một màn để xem hay làm việc. Không bao giờ tự viết URL \
             hay đường dẫn trong câu trả lời. ADDED: liên kết đã gắn, chỉ cần nhắc tên màn. NOT_AVAILABLE: người hỏi \

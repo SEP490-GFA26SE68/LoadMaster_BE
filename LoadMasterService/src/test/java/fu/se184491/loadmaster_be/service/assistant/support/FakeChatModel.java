@@ -53,6 +53,15 @@ public final class FakeChatModel implements ChatModel {
         return this;
     }
 
+    /** Mô hình viết chữ rồi đòi gọi công cụ trong cùng một tin (mô hình thật hay viết câu trả lời rồi gọi suggest_link). */
+    public FakeChatModel textThenToolCall(String text, String tool, String arguments, int inputTokens, int outputTokens) {
+        replies.addLast(() -> response(AssistantMessage.builder().content(text)
+                .toolCalls(List.of(new AssistantMessage.ToolCall("toolu_" + (prompts.size() - 1), "function", tool,
+                        arguments)))
+                .build(), "tool_use", inputTokens, outputTokens));
+        return this;
+    }
+
     /** Hết câu đã xếp thì đòi công cụ mãi: thử xem vòng gọi có dừng không. */
     public FakeChatModel toolCallAlways(String tool, String arguments, int inputTokens, int outputTokens) {
         fallback = () -> toolUse(tool, arguments, "tool_use", inputTokens, outputTokens);

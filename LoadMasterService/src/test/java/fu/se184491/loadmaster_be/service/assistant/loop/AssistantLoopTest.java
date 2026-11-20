@@ -57,6 +57,41 @@ class AssistantLoopTest {
     }
 
     @Test
+    void textWrittenBeforeAToolCallIsKeptAheadOfTheFinalText() {
+        FakeTool link = FakeTool.returning("suggest_link", "{\"status\":\"ADDED\"}");
+        model.textThenToolCall("Gói Pro giá 3.500.000 đ mỗi tháng.", "suggest_link", "{\"target\":\"PRICING\"}", 1000, 40)
+                .textThenToolCall("  ", "suggest_link", "{\"target\":\"PRICING\"}", 1000, 5)
+                .reply("Bạn xem thêm ở Bảng giá.", 1100, 20);
+
+        LoopResult result = run(List.of(link));
+
+        assertThat(result.text()).isEqualTo("Gói Pro giá 3.500.000 đ mỗi tháng.\n\nBạn xem thêm ở Bảng giá.");
+        assertThat(link.calls()).hasSize(2);
+    }
+
+    @Test
+    void preambleBeforeALookupToolIsDroppedWhenALaterRoundAnswers() {
+        FakeTool getTrip = FakeTool.returning("get_trip", TRIP);
+        FakeTool link = FakeTool.returning("suggest_link", "{\"status\":\"ADDED\"}");
+        model.textThenToolCall("Mình sẽ tra chi tiết chuyến.", "get_trip", "{\"tripCode\":\"TRIP-2026-0914\"}", 1000, 40)
+                .textThenToolCall("Chuyến đã lập kế hoạch.", "suggest_link", "{\"target\":\"TRIP\"}", 1100, 20)
+                .reply("Bạn mở chuyến ở liên kết bên dưới.", 1200, 10);
+
+        assertThat(run(List.of(getTrip, link)).text())
+                .isEqualTo("Chuyến đã lập kế hoạch.\n\nBạn mở chuyến ở liên kết bên dưới.");
+    }
+
+    @Test
+    void textOfToolRoundsSurvivesTheForcedLastRound() {
+        properties.setMaxToolRounds(1);
+        FakeTool getTrip = FakeTool.returning("get_trip", TRIP);
+        model.textThenToolCall("Chuyến đã lập kế hoạch.", "get_trip", "{\"tripCode\":\"TRIP-2026-0914\"}", 1000, 40)
+                .reply("", 1100, 0);
+
+        assertThat(run(List.of(getTrip)).text()).isEqualTo("Chuyến đã lập kế hoạch.");
+    }
+
+    @Test
     void toolRunsOnceAndTheSecondRoundAnswersWithBothRoundsCounted() {
         FakeTool getTrip = FakeTool.returning("get_trip", TRIP);
         model.toolCall("get_trip", "{\"tripCode\":\"TRIP-2026-0914\"}", 1000, 40)

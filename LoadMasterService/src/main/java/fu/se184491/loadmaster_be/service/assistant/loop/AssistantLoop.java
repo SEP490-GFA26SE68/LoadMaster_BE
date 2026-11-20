@@ -7,6 +7,7 @@ import fu.se184491.loadmaster_be.exception.AppException;
 import fu.se184491.loadmaster_be.exception.ErrorCode;
 import fu.se184491.loadmaster_be.service.assistant.model.TokenUsage;
 import fu.se184491.loadmaster_be.service.assistant.tool.ToolResults;
+import fu.se184491.loadmaster_be.service.assistant.tool.action.LinkTool;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.anthropic.AnthropicChatOptions;
 import org.springframework.ai.chat.messages.AssistantMessage;
@@ -35,6 +36,9 @@ import java.util.Map;
  * này điều khiển: gọi mô hình, chạy công cụ mô hình đòi (lần lượt, trên luồng của request vì công cụ đọc
  * {@code SecurityContext}), gửi kết quả về, lặp tối đa {@code maxToolRounds} vòng. Hết vòng mà mô hình còn đòi công cụ
  * thì gọi thêm một lần với {@code tool_choice: none} — vẫn khai công cụ vì lịch sử đã có khối {@code tool_use}.
+ * Câu trả lời là chữ của mọi vòng ghép theo thứ tự: mô hình hay viết câu trả lời rồi mới gắn liên kết
+ * ({@code suggest_link}) trong cùng một tin. Chữ viết trước một công cụ khác (tra cứu, chuyển nhân viên) thường là câu
+ * dẫn mà vòng sau viết lại đầy đủ, nên chỉ giữ khi không vòng nào sau đó có chữ.
  *
  * <p>Lỗi mạng, hết giờ, lỗi API đều thành {@code ASSISTANT_UNAVAILABLE}; cả lượt chạy quá {@code turnTimeoutSeconds}
  * thì không mở vòng mới. Công cụ lỗi không làm hỏng lượt: mô hình nhận {@code {"error":"<mã>"}} — mã của
@@ -74,6 +78,7 @@ public class AssistantLoop {
         int maxRounds = Math.max(0, properties.getMaxToolRounds());
         Instant deadline = clock.instant().plusSeconds(properties.getTurnTimeoutSeconds());
         List<Message> history = new ArrayList<>(prompt.getInstructions());
+        List<Said> said = new ArrayList<>();
         TokenUsage spent = TokenUsage.ZERO;
 
         for (int round = 0; ; round++) {
@@ -91,13 +96,31 @@ public class AssistantLoop {
                 return new LoopResult(refusal(locale), spent, REFUSAL, step.model());
             }
             AssistantMessage output = step.output();
-            if (lastRound || !TOOL_USE.equals(step.stopReason()) || !output.hasToolCalls()) {
-                String text = output.getText();
-                return new LoopResult(text == null ? "" : text.strip(), spent, step.stopReason(), step.model());
+            boolean done = lastRound || !TOOL_USE.equals(step.stopReason()) || !output.hasToolCalls();
+            if (StringUtils.hasText(output.getText())) {
+                said.add(new Said(output.getText().strip(), !done && !onlyLinks(output.getToolCalls())));
+            }
+            if (done) {
+                return new LoopResult(answer(said), spent, step.stopReason(), step.model());
             }
             history.add(output);
             history.add(runTools(output.getToolCalls(), byName));
         }
+    }
+
+    private static boolean onlyLinks(List<AssistantMessage.ToolCall> calls) {
+        return calls.stream().allMatch(call -> LinkTool.NAME.equals(call.name()));
+    }
+
+    /** Câu dẫn chỉ còn lại khi là chữ cuối cùng của lượt (vòng sau không viết gì). */
+    private static String answer(List<Said> said) {
+        List<String> kept = new ArrayList<>();
+        for (int i = 0; i < said.size(); i++) {
+            if (!said.get(i).preamble() || i == said.size() - 1) {
+                kept.add(said.get(i).text());
+            }
+        }
+        return String.join("\n\n", kept);
     }
 
     static String refusal(String locale) {
@@ -206,5 +229,9 @@ public class AssistantLoop {
     }
 
     private record Step(AssistantMessage output, TokenUsage usage, String stopReason, String model) {
+    }
+
+    /** Chữ của một vòng; {@code preamble}: viết cùng tin với lời gọi một công cụ khác {@code suggest_link}. */
+    private record Said(String text, boolean preamble) {
     }
 }
