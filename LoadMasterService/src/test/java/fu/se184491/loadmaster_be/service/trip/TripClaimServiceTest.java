@@ -5,6 +5,7 @@ import fu.se184491.loadmaster_be.constant.trip.TripStatus;
 import fu.se184491.loadmaster_be.dto.request.trip.RejectTripClaimRequest;
 import fu.se184491.loadmaster_be.dto.request.trip.TripClaimRequest;
 import fu.se184491.loadmaster_be.dto.response.trip.OpenTripResponse;
+import fu.se184491.loadmaster_be.dto.response.trip.TripClaimInboxResponse;
 import fu.se184491.loadmaster_be.dto.response.trip.TripClaimResponse;
 import fu.se184491.loadmaster_be.entity.account.User;
 import fu.se184491.loadmaster_be.entity.company.Company;
@@ -22,6 +23,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.Answers;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
@@ -180,6 +182,116 @@ class TripClaimServiceTest {
 
         assertEquals(1, result.size());
         assertEquals(TripClaimStatus.PENDING, result.get(0).myClaimStatus());
+    }
+
+    @Test
+    @DisplayName("Hộp thư phiếu xin chuyến ánh xạ thông tin chuyến, kho, tài xế và điểm giao")
+    void listPendingClaims_mapsClaimAndTripFieldsAndFiltersByCurrentCompany() {
+        LocalDateTime departureTime = LocalDateTime.of(2026, 11, 21, 8, 30, 0);
+        LocalDateTime firstCreatedAt = LocalDateTime.of(2026, 11, 20, 21, 5, 33);
+        LocalDateTime secondCreatedAt = LocalDateTime.of(2026, 11, 20, 21, 7, 10);
+        CompanyWarehouse warehouse = CompanyWarehouse.builder()
+                .id(30L)
+                .warehouseName("Warehouse North")
+                .build();
+        Trip warehouseTrip = Trip.builder()
+                .id(301L)
+                .tripCode("TRIP-301")
+                .tripName("North route")
+                .departureTime(departureTime)
+                .originWarehouse(warehouse)
+                .originName("Ignored origin")
+                .company(company1)
+                .status(TripStatus.DRAFT)
+                .build();
+        Trip fallbackTrip = Trip.builder()
+                .id(302L)
+                .tripCode("TRIP-302")
+                .tripName("Port route")
+                .departureTime(departureTime.plusHours(1))
+                .originName("Port warehouse")
+                .company(company1)
+                .status(TripStatus.PLANNED)
+                .build();
+        TripClaim firstClaim = TripClaim.builder()
+                .id(801L)
+                .trip(warehouseTrip)
+                .driver(driver1)
+                .company(company1)
+                .status(TripClaimStatus.PENDING)
+                .note("First claim note")
+                .createdAt(firstCreatedAt)
+                .build();
+        TripClaim secondClaim = TripClaim.builder()
+                .id(802L)
+                .trip(fallbackTrip)
+                .driver(driver2)
+                .company(company1)
+                .status(TripClaimStatus.PENDING)
+                .note("Second claim note")
+                .createdAt(secondCreatedAt)
+                .build();
+        List<TripClaim> claims = List.of(firstClaim, secondClaim);
+
+        TripClaimRepository inboxRepository = mock(TripClaimRepository.class, invocation ->
+                "findByCompanyIdAndStatusAndTripDriverIsNullAndTripStatusInOrderByCreatedAtAscIdAsc"
+                        .equals(invocation.getMethod().getName())
+                        ? claims
+                        : Answers.RETURNS_DEFAULTS.answer(invocation));
+        DeliveryStopRepository stopRepository = mock(DeliveryStopRepository.class, invocation -> {
+            if ("countStopsByTripIds".equals(invocation.getMethod().getName())) {
+                return List.<Object[]>of(new Object[]{301L, 4L}, new Object[]{302L, 2L});
+            }
+            return Answers.RETURNS_DEFAULTS.answer(invocation);
+        });
+        CurrentUserService currentUser = mock(CurrentUserService.class, invocation ->
+                "getCurrentCompanyId".equals(invocation.getMethod().getName())
+                        ? 1L
+                        : Answers.RETURNS_DEFAULTS.answer(invocation));
+        TripClaimServiceImpl service = new TripClaimServiceImpl(tripRepository, inboxRepository, stopRepository, currentUser);
+
+        List<TripClaimInboxResponse> result = service.listPendingClaims();
+
+        assertEquals(2, result.size());
+        TripClaimInboxResponse first = result.get(0);
+        assertEquals(801L, first.claimId());
+        assertEquals(301L, first.tripId());
+        assertEquals("TRIP-301", first.tripCode());
+        assertEquals("North route", first.tripName());
+        assertEquals(departureTime, first.departureTime());
+        assertEquals("Warehouse North", first.originWarehouse());
+        assertEquals(4, first.stopCount());
+        assertEquals(driver1.getId(), first.driverUserId());
+        assertEquals(driver1.getFullName(), first.driverName());
+        assertEquals(driver1.getPhoneNumber(), first.driverPhone());
+        assertEquals("First claim note", first.note());
+        assertEquals(firstCreatedAt, first.createdAt());
+
+        TripClaimInboxResponse second = result.get(1);
+        assertEquals(802L, second.claimId());
+        assertEquals(302L, second.tripId());
+        assertEquals("TRIP-302", second.tripCode());
+        assertEquals("Port route", second.tripName());
+        assertEquals("Port warehouse", second.originWarehouse());
+        assertEquals(2, second.stopCount());
+        assertEquals(driver2.getFullName(), second.driverName());
+        assertEquals(driver2.getPhoneNumber(), second.driverPhone());
+        assertEquals("Second claim note", second.note());
+        assertEquals(secondCreatedAt, second.createdAt());
+
+        verify(currentUser).getCurrentCompanyId();
+        verify(inboxRepository).findByCompanyIdAndStatusAndTripDriverIsNullAndTripStatusInOrderByCreatedAtAscIdAsc(
+                eq(1L), eq(TripClaimStatus.PENDING), eq(List.of(TripStatus.DRAFT, TripStatus.PLANNED)));
+        verify(stopRepository).countStopsByTripIds(eq(List.of(301L, 302L)));
+    }
+
+    @Test
+    @DisplayName("Hộp thư phiếu xin chuyến trả danh sách rỗng khi không có phiếu")
+    void listPendingClaims_returnsEmptyWhenNoClaims() {
+        List<TripClaimInboxResponse> result = tripClaimService.listPendingClaims();
+
+        assertTrue(result.isEmpty());
+        verifyNoInteractions(deliveryStopRepository);
     }
 
     // -------------------------------------------------------------------------

@@ -5,6 +5,7 @@ import fu.se184491.loadmaster_be.constant.trip.TripStatus;
 import fu.se184491.loadmaster_be.dto.request.trip.RejectTripClaimRequest;
 import fu.se184491.loadmaster_be.dto.request.trip.TripClaimRequest;
 import fu.se184491.loadmaster_be.dto.response.trip.OpenTripResponse;
+import fu.se184491.loadmaster_be.dto.response.trip.TripClaimInboxResponse;
 import fu.se184491.loadmaster_be.dto.response.trip.TripClaimResponse;
 import fu.se184491.loadmaster_be.entity.account.User;
 import fu.se184491.loadmaster_be.entity.trip.Trip;
@@ -32,6 +33,58 @@ public class TripClaimServiceImpl implements TripClaimService {
     private final TripClaimRepository tripClaimRepository;
     private final DeliveryStopRepository deliveryStopRepository;
     private final CurrentUserService currentUserService;
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<TripClaimInboxResponse> listPendingClaims() {
+        Long companyId = currentUserService.getCurrentCompanyId();
+        List<TripClaim> claims = tripClaimRepository
+                .findByCompanyIdAndStatusAndTripDriverIsNullAndTripStatusInOrderByCreatedAtAscIdAsc(
+                        companyId,
+                        TripClaimStatus.PENDING,
+                        List.of(TripStatus.DRAFT, TripStatus.PLANNED)
+                );
+
+        if (claims.isEmpty()) {
+            return List.of();
+        }
+
+        List<Long> tripIds = claims.stream()
+                .map(claim -> claim.getTrip().getId())
+                .distinct()
+                .toList();
+
+        Map<Long, Integer> stopCounts = new HashMap<>();
+        List<Object[]> rawCounts = deliveryStopRepository.countStopsByTripIds(tripIds);
+        for (Object[] row : rawCounts) {
+            Long tripId = (Long) row[0];
+            Long count = (Long) row[1];
+            stopCounts.put(tripId, count != null ? count.intValue() : 0);
+        }
+
+        return claims.stream().map(claim -> {
+            Trip trip = claim.getTrip();
+            User driver = claim.getDriver();
+            String originWarehouse = trip.getOriginWarehouse() != null
+                    ? trip.getOriginWarehouse().getWarehouseName()
+                    : trip.getOriginName();
+
+            return TripClaimInboxResponse.builder()
+                    .claimId(claim.getId())
+                    .tripId(trip.getId())
+                    .tripCode(trip.getTripCode())
+                    .tripName(trip.getTripName())
+                    .departureTime(trip.getDepartureTime())
+                    .originWarehouse(originWarehouse)
+                    .stopCount(stopCounts.getOrDefault(trip.getId(), 0))
+                    .driverUserId(driver.getId())
+                    .driverName(driver.getFullName())
+                    .driverPhone(driver.getPhoneNumber())
+                    .note(claim.getNote())
+                    .createdAt(claim.getCreatedAt())
+                    .build();
+        }).toList();
+    }
 
     @Override
     @Transactional(readOnly = true)
