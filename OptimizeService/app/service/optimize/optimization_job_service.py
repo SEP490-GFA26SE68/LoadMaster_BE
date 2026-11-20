@@ -75,6 +75,7 @@ class OptimizationJobService:
         if job.execution_generation is not None:
             raise RuntimeError("V2 status changes require ownership protocol")
         status_val = status.value if hasattr(status, "value") else str(status)
+        # Quyết định nằm ở câu UPDATE có điều kiện, không ở lần đọc trên: lượt ghi cùng lúc của Java không lọt qua.
         if not self.repository.transition_unfinished(str(job_uuid), status_val, computation_ms, db):
             db.rollback()
             raise JobAlreadyFinishedError(self.get_job(job_uuid, db).status)

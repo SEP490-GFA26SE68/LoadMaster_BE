@@ -71,7 +71,7 @@ public class LoadPlanWriteRepository {
     public int finishUnfinishedJob(String jobUuid, String status, Long computationMs) {
         return jdbc.update("""
                 UPDATE optimization_jobs SET status = :status, computation_ms = COALESCE(:ms, computation_ms)
-                WHERE job_uuid = :uuid AND status IN ('PENDING', 'RUNNING')
+                WHERE job_uuid = :uuid AND execution_generation IS NULL AND status IN ('PENDING', 'RUNNING')
                 """, new MapSqlParameterSource()
                 .addValue("uuid", jobUuid)
                 .addValue("status", status)

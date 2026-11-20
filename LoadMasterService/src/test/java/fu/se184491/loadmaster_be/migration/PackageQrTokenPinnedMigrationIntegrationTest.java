@@ -103,6 +103,7 @@ class PackageQrTokenPinnedMigrationIntegrationTest {
 
     private static void migrate(PostgreSQLContainer postgres, String schema) {
         Flyway.configure()
+                    .locations(fu.se184491.loadmaster_be.support.SingleMigration.location("V37__packages_qr_token_and_pinned.sql"))
                 .dataSource(postgres.getJdbcUrl(), postgres.getUsername(), postgres.getPassword())
                 .schemas(schema)
                 .baselineOnMigrate(true)

@@ -27,6 +27,7 @@ class DeliveryRequirementMigrationIntegrationTest {
             createPrerequisiteSchema(postgres);
 
             Flyway.configure()
+                    .locations(fu.se184491.loadmaster_be.support.SingleMigration.location("V2__delivery_requirement_crud.sql"))
                     .dataSource(postgres.getJdbcUrl(), postgres.getUsername(), postgres.getPassword())
                     .baselineOnMigrate(true)
                     .baselineVersion(MigrationVersion.fromVersion("0"))

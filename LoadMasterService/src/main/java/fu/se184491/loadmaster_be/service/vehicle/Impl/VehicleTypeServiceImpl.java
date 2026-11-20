@@ -52,6 +52,7 @@ public class VehicleTypeServiceImpl implements VehicleTypeService {
 
 
         validateDoor(request);
+        validateAxle(request);
 
 
         if (currentUser.getCompany() == null) {
@@ -78,6 +79,10 @@ public class VehicleTypeServiceImpl implements VehicleTypeService {
                         .rearAxleLimitKg(
                                 request.rearAxleLimitKg()
                         )
+                        .frontAxleX(request.frontAxleX())
+                        .rearAxleX(request.rearAxleX())
+                        .emptyFrontAxleLoadKg(request.emptyFrontAxleLoadKg())
+                        .emptyRearAxleLoadKg(request.emptyRearAxleLoadKg())
                         .maxCogOffsetRatio(
                                 request.maxCogOffsetRatio() != null
                                         ? request.maxCogOffsetRatio()
@@ -102,6 +107,27 @@ public class VehicleTypeServiceImpl implements VehicleTypeService {
         VehicleType savedVehicleType = vehicleTypeRepository.save(vehicleType);
 
         return toResponse(savedVehicleType);
+    }
+
+    /**
+     * Thông số trục cho HC-12: đủ cả sáu số hoặc không số nào (OptimizeService bỏ qua HC-12 khi không có số nào, còn khai
+     * một phần thì mọi kiện bị từ chối với AXLE_CONFIG_MISSING); trục sau phải nằm sau trục trước.
+     */
+    static void validateAxle(CreateVehicleTypeRequest request) {
+        List<BigDecimal> values = java.util.Arrays.asList(
+                request.frontAxleX(), request.rearAxleX(),
+                request.frontAxleLimitKg(), request.rearAxleLimitKg(),
+                request.emptyFrontAxleLoadKg(), request.emptyRearAxleLoadKg());
+        long present = values.stream().filter(java.util.Objects::nonNull).count();
+        if (present == 0) {
+            return;
+        }
+        if (present != values.size()) {
+            throw new AppException(ErrorCode.VEHICLE_AXLE_CONFIG_INCOMPLETE);
+        }
+        if (request.rearAxleX().compareTo(request.frontAxleX()) <= 0) {
+            throw new AppException(ErrorCode.VEHICLE_AXLE_ORDER);
+        }
     }
 
     /** Cửa khoang hàng (cm): cả hai số hoặc không số nào, dương, không vượt lòng thùng. */
@@ -167,6 +193,7 @@ public class VehicleTypeServiceImpl implements VehicleTypeService {
         VehicleType type = vehicleTypeRepository.findByIdAndCompanyId(id, companyId)
                 .orElseThrow(() -> new AppException(ErrorCode.VEHICLE_TYPE_NOT_FOUND));
         validateDoor(request);
+        validateAxle(request);
 
         String before = specOf(type);
         type.setName(request.name().trim());
@@ -178,6 +205,10 @@ public class VehicleTypeServiceImpl implements VehicleTypeService {
         type.setMaxPayloadKg(request.maxPayloadKg());
         type.setFrontAxleLimitKg(request.frontAxleLimitKg());
         type.setRearAxleLimitKg(request.rearAxleLimitKg());
+        type.setFrontAxleX(request.frontAxleX());
+        type.setRearAxleX(request.rearAxleX());
+        type.setEmptyFrontAxleLoadKg(request.emptyFrontAxleLoadKg());
+        type.setEmptyRearAxleLoadKg(request.emptyRearAxleLoadKg());
         if (request.maxCogOffsetRatio() != null) {
             type.setMaxCogOffsetRatio(request.maxCogOffsetRatio());
         }
@@ -209,6 +240,10 @@ public class VehicleTypeServiceImpl implements VehicleTypeService {
                 .append(plain(type.getMaxPayloadKg())).append('|')
                 .append(plain(type.getFrontAxleLimitKg())).append('|')
                 .append(plain(type.getRearAxleLimitKg())).append('|')
+                .append(plain(type.getFrontAxleX())).append('|')
+                .append(plain(type.getRearAxleX())).append('|')
+                .append(plain(type.getEmptyFrontAxleLoadKg())).append('|')
+                .append(plain(type.getEmptyRearAxleLoadKg())).append('|')
                 .append(plain(type.getMaxCogOffsetRatio())).append('|')
                 .append(type.getHazardousCapable());
         for (VehicleTypeObstacle obstacle : type.getObstacles()) {
@@ -317,6 +352,10 @@ public class VehicleTypeServiceImpl implements VehicleTypeService {
                 .maxPayloadKg(vehicleType.getMaxPayloadKg())
                 .frontAxleLimitKg(vehicleType.getFrontAxleLimitKg())
                 .rearAxleLimitKg(vehicleType.getRearAxleLimitKg())
+                .frontAxleX(vehicleType.getFrontAxleX())
+                .rearAxleX(vehicleType.getRearAxleX())
+                .emptyFrontAxleLoadKg(vehicleType.getEmptyFrontAxleLoadKg())
+                .emptyRearAxleLoadKg(vehicleType.getEmptyRearAxleLoadKg())
                 .maxCogOffsetRatio(vehicleType.getMaxCogOffsetRatio())
                 .hazardousCapable(vehicleType.getHazardousCapable())
                 .obstacles(

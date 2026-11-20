@@ -32,6 +32,17 @@ jobs:
 
       # Test chạy trên H2 với cấu hình src/test/resources/config/application.yml: không cần .env, Supabase hay Keycloak.
       # Test migration Flyway dựng PostgreSQL bằng Testcontainers (Docker có sẵn trên ubuntu-latest).
+      # Cross-service tests use a private Python HTTP fixture, never the shared worker.
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: OptimizeService/requirements.txt
+
+      - name: Install isolated Python fixture dependencies
+        working-directory: OptimizeService
+        run: python -m pip install -r requirements.txt
+
       - name: Test
         run: sh ./mvnw -B -ntp test
 

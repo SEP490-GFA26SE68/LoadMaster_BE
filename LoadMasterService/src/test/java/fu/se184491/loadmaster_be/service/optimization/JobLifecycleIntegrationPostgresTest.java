@@ -15,6 +15,19 @@ class JobLifecycleIntegrationPostgresTest {
         OrientationIntegrationPostgresTest.control("POST","enable-v2"); }
     @AfterAll static void stop() throws Exception { OrientationIntegrationPostgresTest.stop(); System.clearProperty("app.optimization.lifecycle-v2.enabled"); System.clearProperty("orientation.evidence"); }
     @BeforeEach void seed() throws Exception { fixture.seed(); }
+    @Test void legacyCasCannotFinalizeOrFailV2Generation() {
+        String uuid=reserveOnly("legacy-writer-fence");
+        var sql=OptimizationCreditPostgresTest.sql;
+        sql.update("UPDATE optimization_jobs SET status='RUNNING',execution_generation=1 WHERE job_uuid=?",uuid);
+        var writer=new fu.se184491.loadmaster_be.repository.optimization.LoadPlanWriteRepository(
+                new org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate(sql));
+        assertEquals(0,writer.finishUnfinishedJob(uuid,"COMPLETED",1L));
+        assertEquals(0,writer.finishUnfinishedJob(uuid,"FAILED",null));
+        assertEquals("RUNNING",fixture.status());
+        assertEquals(1L,sql.queryForObject("SELECT execution_generation FROM optimization_jobs WHERE job_uuid=?",Long.class,uuid));
+        assertEquals(0,fixture.count("load_plans"));
+        fixture.billingSafe();
+    }
     @Test void invalidProfileHasDurableTerminalDecisionAndOneDebitOnRetry() throws Exception {
         OrientationIntegrationPostgresTest.control("POST","seed?mode=invalid");
         fixture.rejected("lifecycle-invalid");

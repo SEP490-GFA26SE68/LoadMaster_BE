@@ -19,7 +19,7 @@ class WarehouseStaffAssignmentPostgresTest {
  @BeforeAll static void start()throws Exception {VehiclePresencePostgresTest.start();assignments=ctx.getBean(WarehouseStaffAssignmentService.class);}
  @AfterAll static void stop(){VehiclePresencePostgresTest.stop();}
  @BeforeEach void setup(){new VehiclePresencePostgresTest().reset();sql.execute("INSERT INTO users VALUES(12,1,'Manager A','MANAGER','ACTIVE'),(13,2,'Manager B','MANAGER','ACTIVE'),(14,1,'Inactive manager','MANAGER','SUSPENDED'),(15,1,'Inactive worker','WAREHOUSE_WORKER','SUSPENDED')");as(12);}
- @AfterEach void clear(){SecurityContextHolder.clearContext();}
+ @AfterEach void clear(){org.springframework.security.test.context.TestSecurityContextHolder.clearContext();}
  static void as(long id){var jwt=Jwt.withTokenValue("synthetic").header("alg","none").subject(Long.toString(id)).issuedAt(Instant.now()).expiresAt(Instant.now().plusSeconds(60)).build();SecurityContextHolder.getContext().setAuthentication(new JwtAuthenticationToken(jwt));}
  String token(long id,String role)throws Exception{return "Bearer "+TestJwtSupport.userToken(Long.toString(id),role);}
  @Test void httpManagerCreatesAndReadsAudit()throws Exception {

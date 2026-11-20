@@ -89,6 +89,11 @@ public enum ErrorCode {
     VEHICLE_NOT_FOUND("Không tìm thấy phương tiện vận tải", HttpStatus.NOT_FOUND),
     VEHICLE_TYPE_NOT_FOUND("Không tìm thấy loại phương tiện", HttpStatus.NOT_FOUND),
     TRIP_NOT_FOUND("Không tìm thấy chuyến đi", HttpStatus.NOT_FOUND),
+    REQUIREMENT_PACKAGES_INCOMPLETE("Chưa đủ kiện hàng để đưa vào chuyến", HttpStatus.CONFLICT),
+    REQUIREMENT_PACKAGE_COUNT_INVALID("Số kiện dự kiến của yêu cầu chưa hợp lệ", HttpStatus.CONFLICT),
+    REQUIREMENT_PACKAGES_INELIGIBLE("Kiện liên kết chưa đủ điều kiện phân chuyến", HttpStatus.CONFLICT),
+    REQUIREMENT_PACKAGE_COMPANY_MISMATCH("Kiện không thuộc công ty của yêu cầu", HttpStatus.FORBIDDEN),
+    REQUIREMENT_PACKAGE_ALREADY_ASSIGNED("Kiện đã thuộc chuyến khác", HttpStatus.CONFLICT),
     PAYROLL_RATE_NOT_CONFIGURED("Công ty chưa cấu hình đơn giá lương cho kỳ này", HttpStatus.BAD_REQUEST),
     PAYROLL_RATE_ALREADY_EXISTS("Đã có đơn giá lương hiệu lực từ ngày này", HttpStatus.CONFLICT),
     PAYROLL_RATE_EFFECTIVE_DATE_TOO_EARLY("Mức lương mới chỉ được áp dụng từ tháng sau", HttpStatus.BAD_REQUEST),
@@ -98,11 +103,6 @@ public enum ErrorCode {
     PAYROLL_INVALID_PERIOD("Kỳ lương không hợp lệ, yêu cầu định dạng yyyy-MM", HttpStatus.BAD_REQUEST),
     PAYROLL_INVALID_DRIVER_ASSIGNMENT("Danh sách tài xế nhận lương năng suất không hợp lệ", HttpStatus.BAD_REQUEST),
     PAYROLL_INVALID_AMOUNT("Khối lượng, quãng đường và đơn giá lương phải là số không âm", HttpStatus.BAD_REQUEST),
-    REQUIREMENT_PACKAGES_INCOMPLETE("Chưa đủ kiện hàng để đưa vào chuyến", HttpStatus.CONFLICT),
-    REQUIREMENT_PACKAGE_COUNT_INVALID("Số kiện dự kiến của yêu cầu chưa hợp lệ", HttpStatus.CONFLICT),
-    REQUIREMENT_PACKAGES_INELIGIBLE("Kiện liên kết chưa đủ điều kiện phân chuyến", HttpStatus.CONFLICT),
-    REQUIREMENT_PACKAGE_COMPANY_MISMATCH("Kiện không thuộc công ty của yêu cầu", HttpStatus.FORBIDDEN),
-    REQUIREMENT_PACKAGE_ALREADY_ASSIGNED("Kiện đã thuộc chuyến khác", HttpStatus.CONFLICT),
     DELIVERY_REQUIREMENT_NOT_FOUND("Không tìm thấy nhu cầu giao hàng", HttpStatus.NOT_FOUND),
     DELIVERY_REQUIREMENT_NOT_PENDING("Chỉ có thể xóa nhu cầu giao hàng đang chờ xử lý", HttpStatus.BAD_REQUEST),
     INVALID_DELIVERY_REQUIREMENT_TRANSITION("Chuyển trạng thái nhu cầu giao hàng không hợp lệ", HttpStatus.BAD_REQUEST),
@@ -121,6 +121,8 @@ public enum ErrorCode {
     LICENSE_PLATE_ALREADY_EXISTS("Biển số phương tiện đã tồn tại trong hệ thống", HttpStatus.CONFLICT),
 
     VEHICLE_WIDTH_HIGH("Phải nhập cả chiều rộng và chiều cao cửa xe", HttpStatus.BAD_REQUEST),
+    VEHICLE_AXLE_CONFIG_INCOMPLETE("Phải nhập đủ sáu thông số trục (vị trí, giới hạn tải, tải xe rỗng của trục trước và trục sau) hoặc để trống cả sáu", HttpStatus.BAD_REQUEST),
+    VEHICLE_AXLE_ORDER("Vị trí trục sau phải lớn hơn vị trí trục trước", HttpStatus.BAD_REQUEST),
     VEHICLE_SIZE("Kích thước cửa xe phải lớn hơn 0", HttpStatus.BAD_REQUEST),
     WIDTH_RATIO("Chiều rộng cửa không được vượt quá chiều rộng thùng xe", HttpStatus.BAD_REQUEST),
 
@@ -389,6 +391,7 @@ public enum ErrorCode {
     DRIVER_VEHICLE_DEPARTURE_BLOCKED("Chưa thể xuất phát do trạng thái xe hoặc kho chưa phù hợp. Vui lòng liên hệ nhân viên kho hoặc điều phối viên để kiểm tra", HttpStatus.CONFLICT),
     VEHICLE_DEPARTURE_INELIGIBLE("Xe không còn đủ điều kiện tại kho xuất phát. Vui lòng chọn lại xe", HttpStatus.CONFLICT),
     VEHICLE_WAREHOUSE_FORBIDDEN("Không có quyền xác nhận xe tại kho này", HttpStatus.FORBIDDEN),
+    VEHICLE_TRANSFER_CONFLICT("Vehicle transfer conflicts with current state. Refresh and retry the same action", HttpStatus.CONFLICT),
     VEHICLE_PRESENCE_CONFLICT("Trạng thái xe hoặc mã xác nhận bị xung đột. Vui lòng tải lại", HttpStatus.CONFLICT);
 
     private final String message;

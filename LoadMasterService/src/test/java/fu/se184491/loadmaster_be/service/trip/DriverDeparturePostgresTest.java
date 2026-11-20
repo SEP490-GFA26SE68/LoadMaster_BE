@@ -105,6 +105,7 @@ class DriverDeparturePostgresTest {
         sql = new JdbcTemplate(context.getBean(DataSource.class));
         try(var in=DriverDeparturePostgresTest.class.getResourceAsStream("/sql/vehicle-current-presence-proposal.sql")) {
             assertNotNull(in);sql.execute(new String(in.readAllBytes(),java.nio.charset.StandardCharsets.UTF_8));
+            try(var transfers=DriverDeparturePostgresTest.class.getResourceAsStream("/sql/vehicle-warehouse-transfers.sql")){assertNotNull(transfers);sql.execute(new String(transfers.readAllBytes(),java.nio.charset.StandardCharsets.UTF_8));}
         } catch(java.io.IOException ex){throw new IllegalStateException(ex);}
 
         service = context.getBean(DriverService.class);

@@ -39,9 +39,11 @@ class UserTimestampMigrationAuditTest {
             var names = assertThrows(FlywayException.class, () -> Flyway.configure()
                     .dataSource(postgres.getJdbcUrl(), postgres.getUsername(), postgres.getPassword())
                     .locations("classpath:db/migration").validateMigrationNaming(true).load().migrate());
-            assertTrue(names.getMessage().contains("V10_next__add_trip_origin_fields.sql"), names.getMessage());
-            assertTrue(names.getMessage().contains("V11_add_trip_delivery_stops.sql"), names.getMessage());
-            assertTrue(names.getMessage().contains("V12_add_columns_delivery_requirement.sql"), names.getMessage());
+            // Malformed filenames were renamed; duplicate versions still block full history.
+            assertTrue(names.getMessage().contains("more than one migration with version"), names.getMessage());
+            for (String name : new String[]{"V10__add_trip_origin_fields.sql", "V11__add_trip_delivery_stops.sql", "V12__add_columns_delivery_requirement.sql"}) {
+                assertNotNull(getClass().getResource("/db/migration/" + name));
+            }
 
             // Copy only unmodified V1/V2 into a test-only location to expose the next blocker behind duplicate versions.
             for (String name : new String[]{"V1__trip_status_stop_coordinates.sql", "V2__delivery_requirement_crud.sql"}) {
@@ -58,7 +60,7 @@ class UserTimestampMigrationAuditTest {
     }
 
     @Test
-    void unchangedV13CreatesLocalStringsAndLosesFractionalSeconds() throws Exception {
+    void unchangedV19CreatesLocalStringsAndLosesFractionalSeconds() throws Exception {
         assumeTrue(DockerClientFactory.instance().isDockerAvailable(), "Docker is required");
         try (var postgres = new PostgreSQLContainer("postgres:17-alpine")) {
             postgres.start();
@@ -67,14 +69,14 @@ class UserTimestampMigrationAuditTest {
                 statement.execute("INSERT INTO users VALUES ('2026-11-04T15:00:00.123456Z', '2026-11-04T15:00:01.654321Z')");
                 connection.setAutoCommit(false);
                 statement.execute("SET LOCAL TIME ZONE 'UTC'");
-                statement.execute(resource("V13__format_users_created_updated_at.sql"));
+                statement.execute(resource("V19__format_users_created_updated_at.sql"));
                 assertEquals("character varying", scalar(connection, """
                         SELECT data_type FROM information_schema.columns
                         WHERE table_schema='public' AND table_name='users' AND column_name='created_at'
                         """));
                 assertEquals("2026-11-04 22:00:00", scalar(connection, "SELECT created_at FROM users"));
                 assertEquals("2026-11-04 22:00:01", scalar(connection, "SELECT updated_at FROM users"));
-                // An explicitly known source zone can recover whole seconds, but not fractions already removed by V13.
+                // An explicitly known source zone can recover whole seconds, but not fractions already removed by V19.
                 assertEquals("2026-11-04 15:00:00+00", scalar(connection,
                         "SELECT (created_at::timestamp AT TIME ZONE 'Asia/Ho_Chi_Minh')::text FROM users"));
                 connection.rollback();

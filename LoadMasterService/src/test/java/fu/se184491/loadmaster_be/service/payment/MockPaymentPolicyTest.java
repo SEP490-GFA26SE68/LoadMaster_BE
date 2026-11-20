@@ -53,7 +53,7 @@ class MockPaymentPolicyTest {
         var transaction=PaymentTransaction.builder().company(Company.builder().id(1L).build()).build();
         when(repo.findByGatewayTransactionIdForUpdate("REF")).thenReturn(Optional.of(transaction));
         when(current.getCurrentCompanyId()).thenReturn(2L);
-        var handler=new PaymentCallbackHandler(repo,mock(VnPayClient.class),policy(true,"dev"),current,subscriptions,credits,mock(fu.se184491.loadmaster_be.service.registration.GuestRegistrationService.class));
+        var handler=new PaymentCallbackHandler(repo,mock(VnPayClient.class),policy(true,"dev"),current,subscriptions,credits,mock(fu.se184491.loadmaster_be.service.billing.InvoiceService.class),mock(fu.se184491.loadmaster_be.service.registration.GuestRegistrationService.class));
         assertThrows(AccessDeniedException.class,()->handler.handleMockCheckout("REF"));
         verify(repo,never()).save(any());verifyNoInteractions(credits,subscriptions);
     }
@@ -67,7 +67,7 @@ class MockPaymentPolicyTest {
                 .gatewayTransactionId("REF").build();
         when(repo.findByGatewayTransactionIdForUpdate("REF")).thenReturn(Optional.of(transaction));
         when(current.getCurrentCompanyId()).thenReturn(1L);
-        var handler=new PaymentCallbackHandler(repo,mock(VnPayClient.class),policy(true,"dev"),current,subscriptions,credits,mock(fu.se184491.loadmaster_be.service.registration.GuestRegistrationService.class));
+        var handler=new PaymentCallbackHandler(repo,mock(VnPayClient.class),policy(true,"dev"),current,subscriptions,credits,mock(fu.se184491.loadmaster_be.service.billing.InvoiceService.class),mock(fu.se184491.loadmaster_be.service.registration.GuestRegistrationService.class));
         assertEquals("00",handler.handleMockCheckout("REF").get("RspCode"));
         verify(credits).addCredits(1L,10,"REF");
     }

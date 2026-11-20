@@ -28,7 +28,7 @@ class OptimizationJobFinalStatusTest {
         jdbc.getJdbcTemplate().execute("""
                 CREATE TABLE optimization_jobs (
                     id BIGINT PRIMARY KEY, job_uuid VARCHAR(64) NOT NULL, status VARCHAR(50) NOT NULL,
-                    computation_ms BIGINT, failure_code VARCHAR(64))
+                    computation_ms BIGINT, failure_code VARCHAR(64), execution_generation BIGINT)
                 """);
         jdbc.update("INSERT INTO optimization_jobs (id, job_uuid, status) VALUES (1, 'job-1', 'RUNNING')", Map.of());
         repository = new LoadPlanWriteRepository(jdbc);

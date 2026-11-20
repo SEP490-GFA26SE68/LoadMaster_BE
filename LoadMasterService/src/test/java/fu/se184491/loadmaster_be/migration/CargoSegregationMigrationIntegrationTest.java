@@ -30,6 +30,7 @@ class CargoSegregationMigrationIntegrationTest {
             createPrerequisiteSchema(postgres);
 
             Flyway.configure()
+                    .locations(fu.se184491.loadmaster_be.support.SingleMigration.location("V3__cargo_segregation_vehicle_capability.sql"))
                     .dataSource(postgres.getJdbcUrl(), postgres.getUsername(), postgres.getPassword())
                     .baselineOnMigrate(true)
                     .baselineVersion(MigrationVersion.fromVersion("0"))

@@ -23,6 +23,10 @@ public record VehicleTypeResponse(
         BigDecimal maxPayloadKg,
         BigDecimal frontAxleLimitKg,
         BigDecimal rearAxleLimitKg,
+        BigDecimal frontAxleX,
+        BigDecimal rearAxleX,
+        BigDecimal emptyFrontAxleLoadKg,
+        BigDecimal emptyRearAxleLoadKg,
         BigDecimal maxCogOffsetRatio,
         Boolean hazardousCapable,
 

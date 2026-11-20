@@ -38,8 +38,10 @@ class RequirementAssignmentPostgresTest {
     @EnableJpaRepositories(basePackages="fu.se184491.loadmaster_be.repository",
       excludeFilters=@ComponentScan.Filter(type=FilterType.REGEX,
         pattern="^(?!.*(?:TripRepository|CargoPackageRepository|DeliveryRequirementRepository|DeliveryStopRepository|CompanyWarehouseRepository|VehicleRepository|UserRepository|RoutePlanRepository|LoadPlanRepository)$).*$"))
-    @Import(TripServiceImpl.class)
+    @Import({TripServiceImpl.class, fu.se184491.loadmaster_be.service.vehicle.VehicleDepartureEligibility.class,
+        fu.se184491.loadmaster_be.service.vehicle.VehiclePresenceStore.class})
     static class Config {
+        @Bean JdbcTemplate presenceJdbc(DataSource ds) { return new JdbcTemplate(ds); }
         @Bean DataSource dataSource() {
             var uri = java.net.URI.create(postgres.getJdbcUrl().substring(5));
             if (!"/requirement_assignment_test".equals(uri.getPath()) || uri.getPort()==5432
@@ -77,7 +79,7 @@ class RequirementAssignmentPostgresTest {
     @BeforeEach void fixtures(){
         sql.execute("TRUNCATE companies RESTART IDENTITY CASCADE");
         sql.update("INSERT INTO companies(id,company_code,company_name,tax_code,billing_email,status) VALUES(1,'C1','Fixture','T1','one@example.test','ACTIVE'),(2,'C2','Fixture2','T2','two@example.test','ACTIVE')");
-        java.time.OffsetDateTime stamp = java.time.OffsetDateTime.parse("2026-11-11T00:00:00Z");
+        String stamp = "2026-11-11 00:00:00"; // Synthetic User LocalDateTime/VARCHAR(19) contract.
         sql.update("INSERT INTO users(id,company_id,keycloak_id,email,full_name,user_role_type,status,created_at,updated_at) VALUES(8,1,'fixture','fixture@example.test','Fixture','DISPATCHER','ACTIVE',?,?)",stamp,stamp);
         sql.update("INSERT INTO vehicle_types(id,company_id,name,inner_length,inner_width,inner_height,max_payload_kg,max_cog_offset_ratio,hazardous_capable) VALUES(1,1,'Fixture',400,200,200,2000,0.15,false)");
         sql.update("INSERT INTO vehicles(id,company_id,vehicle_type_id,name,license_plate,status) VALUES(1,1,1,'Fixture','TEST-1','AVAILABLE')");

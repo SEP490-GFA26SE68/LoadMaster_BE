@@ -57,8 +57,13 @@ class WarehouseConfirmationPostgresTest {
             pattern="^(?!.*(?:TripRepository|LoadPlanRepository|LoadingExecutionRepository|UserRepository|AuditLogRepository|DeliveryStopRepository|PackagePlacementRepository|CargoPackageRepository|PlacementConfirmationRepository|DeviationRepository|LoadingDamageRepository|StagingConfirmationRepository|StagingShortageRepository|ManualUnloadConfirmationRepository)$).*$"))
     @Import({WarehouseServiceImpl.class,WarehouseSessionLookup.class,WarehouseProgress.class,
         WarehouseIncidentServiceImpl.class,WarehouseStagingServiceImpl.class,StagingRecorder.class,TripDepartureReadiness.class,
-        fu.se184491.loadmaster_be.service.driver.Impl.DriverDeliveryServiceImpl.class})
+        fu.se184491.loadmaster_be.service.driver.Impl.DriverDeliveryServiceImpl.class,
+        fu.se184491.loadmaster_be.service.vehicle.VehicleDepartureEligibility.class,
+        fu.se184491.loadmaster_be.service.vehicle.VehiclePresenceStore.class})
     static class Config {
+        @Bean fu.se184491.loadmaster_be.repository.route.RoutePlanRepository routes(){return mock(fu.se184491.loadmaster_be.repository.route.RoutePlanRepository.class);}
+        @Bean JdbcTemplate presenceJdbc(DataSource ds){return new JdbcTemplate(ds);}
+        @Bean fu.se184491.loadmaster_be.repository.vehicle.VehicleRepository presenceVehicles(EntityManagerFactory emf){return new org.springframework.data.jpa.repository.support.JpaRepositoryFactory(org.springframework.orm.jpa.SharedEntityManagerCreator.createSharedEntityManager(emf)).getRepository(fu.se184491.loadmaster_be.repository.vehicle.VehicleRepository.class);}
         @Bean DataSource dataSource() {
             var target = java.net.URI.create(postgres.getJdbcUrl().substring(5));
             if (!"/warehouse_confirmation_test".equals(target.getPath())

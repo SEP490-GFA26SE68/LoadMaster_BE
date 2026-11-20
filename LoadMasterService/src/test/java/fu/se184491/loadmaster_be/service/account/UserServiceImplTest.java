@@ -611,7 +611,7 @@ class UserServiceImplTest {
                 .updatedAt(LocalDateTime.now().minusMonths(3).minusDays(1))
                 .build();
 
-        when(userRepository.findByStatusAndUpdatedAtBefore(eq(UserStatus.INACTIVE), any(Instant.class)))
+        when(userRepository.findByStatusAndUpdatedAtBefore(eq(UserStatus.INACTIVE), any(LocalDateTime.class)))
                 .thenReturn(List.of(expiredInactiveUser));
 
         userService.purgeInactiveUsersAfterThreeMonths();

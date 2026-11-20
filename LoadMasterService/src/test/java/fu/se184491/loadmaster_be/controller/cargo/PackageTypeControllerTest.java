@@ -169,7 +169,7 @@ public class PackageTypeControllerTest {
     @WithMockUser(authorities = "PACKAGE_TYPE_MANAGE")
     void getAllPackageTypes_Success() throws Exception {
         Page<PackageTypeResponse> page = new PageImpl<>(Collections.singletonList(response));
-        when(packageTypeService.getAllPackageTypes(eq(1L), any(Pageable.class))).thenReturn(page);
+        when(packageTypeService.searchPackageTypes(eq(1L), isNull(), any(Pageable.class))).thenReturn(page);
 
         mockMvc.perform(get("/api/package-types"))
                 .andExpect(status().isOk())

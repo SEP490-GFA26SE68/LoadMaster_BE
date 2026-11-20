@@ -31,6 +31,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @Import(WebSecurityConfig.class)
 @AutoConfigureMockMvc(addFilters = false)
 class DriverControllerTest {
+    @MockitoBean private fu.se184491.loadmaster_be.service.optimization.OptimizationAccess optimizationAccess;
 
     @Autowired
     private MockMvc mockMvc;
