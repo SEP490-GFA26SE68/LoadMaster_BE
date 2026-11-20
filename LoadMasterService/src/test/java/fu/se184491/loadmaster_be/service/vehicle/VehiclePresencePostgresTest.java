@@ -85,16 +85,53 @@ class VehiclePresencePostgresTest {
   ctx=new AnnotationConfigWebApplicationContext();ctx.setServletContext(new MockServletContext());ctx.register(Config.class);ctx.refresh();
   sql=ctx.getBean(JdbcTemplate.class); // The same DataSource instance as the transaction manager, not merely the same JDBC URL.
   service=ctx.getBean(VehiclePresenceService.class);eligibility=ctx.getBean(VehicleDepartureEligibility.class);store=ctx.getBean(VehiclePresenceStore.class);tx=new TransactionTemplate(ctx.getBean(org.springframework.transaction.PlatformTransactionManager.class));
-  http=MockMvcBuilders.webAppContextSetup(ctx).apply(springSecurity()).build();
+  http=MockMvcBuilders.webAppContextSetup(ctx)
+   .defaultRequest(get("/").with(TestJwtSupport.clearStaleTestAuthentication()))
+   .apply(springSecurity()).build();
  }
  @AfterAll static void stop(){if(ctx!=null)ctx.close();if(pg!=null)pg.stop();}
+ @AfterEach void clearTestSecurityContexts(){org.springframework.security.test.context.TestSecurityContextHolder.clearContext();}
  @BeforeEach void reset(){
-  SecurityContextHolder.clearContext();
+  org.springframework.security.test.context.TestSecurityContextHolder.clearContext();
   // Test-only full reset of an isolated container, never a shared DB. Append-only triggers stay enabled.
   sql.execute("TRUNCATE audit_logs,vehicle_presence_checkin_requests,vehicle_presence_events,vehicle_current_presence,warehouse_staff_assignments,trips,vehicles,company_warehouses,users RESTART IDENTITY CASCADE");
   sql.execute("INSERT INTO users VALUES(7,1,'Worker A','WAREHOUSE_WORKER','ACTIVE'),(8,1,'Driver A','DRIVER','ACTIVE'),(9,2,'Worker B','WAREHOUSE_WORKER','ACTIVE'),(10,1,'Unassigned','WAREHOUSE_WORKER','ACTIVE'),(11,1,'Dispatcher A','DISPATCHER','ACTIVE'); INSERT INTO company_warehouses VALUES(101,1,'A1',true),(102,1,'A2',true),(201,2,'B1',true); INSERT INTO warehouse_staff_assignments VALUES(7,1,101,true),(9,2,201,true)");
   for(int id=1;id<=6;id++)sql.update("INSERT INTO vehicles VALUES(?,?,?,?,?)",id,id==5?2:1,"V"+id,"TEST-"+id,id==4?"MAINTENANCE":"AVAILABLE");
   tx.executeWithoutResult(t->{store.lockVehicle(1,1);store.change(1,1,101L,"AT_WAREHOUSE",7,"seed:1","CHECK_IN");store.change(2,1,101L,"AT_WAREHOUSE",7,"seed:2","CHECK_IN");store.change(3,1,102L,"AT_WAREHOUSE",7,"seed:3","CHECK_IN");store.change(4,1,101L,"AT_WAREHOUSE",7,"seed:4","CHECK_IN");store.change(5,2,201L,"AT_WAREHOUSE",9,"seed:5","CHECK_IN");});
+ }
+ @Test void httpMissingJwtCannotInheritDirectServiceOrCachedTestAuthentication()throws Exception {
+  var unauthenticated=new org.springframework.security.authentication.UsernamePasswordAuthenticationToken("7",null);
+  var authenticated=org.springframework.security.authentication.UsernamePasswordAuthenticationToken.authenticated("7",null,List.of(new org.springframework.security.core.authority.SimpleGrantedAuthority("ROLE_WAREHOUSE_WORKER")));
+  var jwt=org.springframework.security.oauth2.jwt.Jwt.withTokenValue("synthetic-stale-test-token").header("alg","none").subject("7").issuedAt(java.time.Instant.now()).expiresAt(java.time.Instant.now().plusSeconds(60)).build();
+  var staleJwt=new org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken(jwt);
+  var authenticatedJwt=new org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken(jwt,List.of(new org.springframework.security.core.authority.SimpleGrantedAuthority("ROLE_WAREHOUSE_WORKER")));
+  for(var inherited:List.of(unauthenticated,authenticated,staleJwt,authenticatedJwt)) {
+   org.springframework.security.test.context.TestSecurityContextHolder.setAuthentication(inherited);
+   assertSame(inherited,SecurityContextHolder.getContext().getAuthentication());
+   http.perform(get("/api/warehouse/vehicle-presence/101/vehicles")).andExpect(status().isUnauthorized());
+   assertNull(SecurityContextHolder.getContext().getAuthentication());
+   assertNull(org.springframework.security.test.context.TestSecurityContextHolder.getContext().getAuthentication());
+   org.springframework.security.test.context.TestSecurityContextHolder.setAuthentication(inherited);
+   http.perform(post("/api/warehouse/vehicle-presence/101/check-in").contentType("application/json").header("Idempotency-Key",UUID.randomUUID()).content("{\"vehicleId\":6}")).andExpect(status().isUnauthorized());
+   assertNull(SecurityContextHolder.getContext().getAuthentication());
+   assertNull(org.springframework.security.test.context.TestSecurityContextHolder.getContext().getAuthentication());
+  }
+  assertEquals("UNKNOWN",store.presence(6,1).status());
+  assertTrue(store.events(6,1).isEmpty());
+ }
+ @Test void invalidBearerCannotFallBackToCachedServiceIdentity()throws Exception {
+  String valid=TestJwtSupport.userToken("7","WAREHOUSE_WORKER");
+  int signatureStart=valid.lastIndexOf('.')+1;
+  String badSignature=valid.substring(0,signatureStart)+(valid.charAt(signatureStart)=='A'?'B':'A')+valid.substring(signatureStart+1);
+  String expired=TestJwtSupport.token("loadmaster-api","loadmaster-web","7","7",List.of("WAREHOUSE_WORKER"),TestJwtSupport.ISSUER,java.time.Instant.now().minusSeconds(300));
+  for(String invalid:List.of("invalid-test-token",badSignature,expired)) {
+   org.springframework.security.test.context.TestSecurityContextHolder.setAuthentication(org.springframework.security.authentication.UsernamePasswordAuthenticationToken.authenticated("7",null,List.of(new org.springframework.security.core.authority.SimpleGrantedAuthority("ROLE_WAREHOUSE_WORKER"))));
+   http.perform(get("/api/warehouse/vehicle-presence/101/vehicles").header("Authorization","Bearer "+invalid)).andExpect(status().isUnauthorized());
+   assertNull(SecurityContextHolder.getContext().getAuthentication());
+   assertNull(org.springframework.security.test.context.TestSecurityContextHolder.getContext().getAuthentication());
+  }
+  assertEquals("UNKNOWN",store.presence(6,1).status());
+  assertTrue(store.events(6,1).isEmpty());
  }
  String worker(String subject)throws Exception{return "Bearer "+TestJwtSupport.userToken(subject,"WAREHOUSE_WORKER");}
  @Test void T01_T02_T04_T06_choicesAreScopedToPhysicalPresence(){assertEquals(List.of(1L,2L),store.eligibleIds(1,101,null,0,100));assertEquals(List.of(3L),store.eligibleIds(1,102,null,0,100));}

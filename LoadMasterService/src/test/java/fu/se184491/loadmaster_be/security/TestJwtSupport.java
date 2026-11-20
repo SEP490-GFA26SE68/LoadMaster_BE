@@ -56,6 +56,17 @@ public class TestJwtSupport {
         return token(audience, client, username, "credit-service-account", roles);
     }
 
+    /** Clear stale thread-local test authentication before Spring Security copies it into a request.
+     * Register on the default request before springSecurity(); explicit per-request processors run later.
+     * This does not remove bearer headers or authentication explicitly attached to the request.
+     */
+    public static org.springframework.test.web.servlet.request.RequestPostProcessor clearStaleTestAuthentication() {
+        return request -> {
+            org.springframework.security.test.context.TestSecurityContextHolder.clearContext();
+            return request;
+        };
+    }
+
     public static String userToken(String subject, String role) throws Exception {
         return token("loadmaster-api", "loadmaster-web", subject, subject, List.of(role));
     }
