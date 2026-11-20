@@ -17,6 +17,8 @@ public class AssistantProperties {
     private boolean enabled = false;
     private String model = "claude-haiku-5-5";
     private int maxOutputTokens = 800;
+    /** max_tokens của một lượt đọc mô tả hàng cho form "Thử với hàng của bạn" (JSON nhiều loại kiện + giả định). */
+    private int extractMaxOutputTokens = 1200;
     private int maxToolRounds = 5;
     /** Số tin gần nhất của hội thoại gửi kèm cho mô hình. */
     private int historyMessages = 12;
