@@ -17,6 +17,7 @@ import fu.se184491.loadmaster_be.service.assistant.model.ViewerContext;
 import fu.se184491.loadmaster_be.service.assistant.output.UiActionValidator;
 import fu.se184491.loadmaster_be.constant.trip.TripStatus;
 import fu.se184491.loadmaster_be.dto.response.assistant.TryExtractResponse;
+import fu.se184491.loadmaster_be.dto.response.assistant.AssistantBriefingResponse;
 import fu.se184491.loadmaster_be.entity.account.User;
 import fu.se184491.loadmaster_be.entity.assistant.AssistantMessage;
 import fu.se184491.loadmaster_be.entity.assistant.AssistantToolCall;
@@ -35,6 +36,9 @@ import fu.se184491.loadmaster_be.service.assistant.extract.RequirementDraftResul
 import fu.se184491.loadmaster_be.service.assistant.extract.RequirementDraftService;
 import fu.se184491.loadmaster_be.service.assistant.extract.TryExtractResult;
 import fu.se184491.loadmaster_be.service.assistant.extract.TryExtractService;
+import fu.se184491.loadmaster_be.service.assistant.briefing.BriefingFactsCollector;
+import fu.se184491.loadmaster_be.service.assistant.briefing.BriefingService;
+import fu.se184491.loadmaster_be.service.assistant.gate.AssistantBudget;
 import fu.se184491.loadmaster_be.service.assistant.model.AssistantAskCommand;
 import fu.se184491.loadmaster_be.service.assistant.model.AssistantCaller;
 import fu.se184491.loadmaster_be.service.assistant.model.AssistantLink;
@@ -79,6 +83,8 @@ import java.util.function.Predicate;
 import java.util.function.Supplier;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.when;
 
 /**
  * Bộ kiểm thử hành vi với mô hình thật (đặc tả mục 14). Không chạy trong CI: cần {@code ASSISTANT_EVAL=true} và
@@ -92,6 +98,10 @@ import static org.assertj.core.api.Assertions.assertThat;
  *
  * <p>Nhóm E ({@code "group": "E"}) kiểm {@code POST /api/assistant/requirement-draft}: gọi thẳng
  * {@link RequirementDraftService}, mỗi ca một lần gọi mô hình; báo cáo ở {@code target/assistant-eval-report-e.md}.
+ *
+ * <p>Nhóm D ({@code "group": "D"}) kiểm bản tin {@code GET /api/assistant/briefing}: gọi thẳng {@link BriefingService}
+ * với bộ đếm giả trả đúng {@code facts} của ca (cách đếm trên DB đã có test riêng), mỗi ca tối đa một lần gọi mô hình;
+ * báo cáo ở {@code target/assistant-eval-report-d.md}.
  */
 @EnabledIfEnvironmentVariable(named = "ASSISTANT_EVAL", matches = "true")
 @SpringBootTest(properties = {
@@ -116,6 +126,8 @@ class AssistantEvalTest {
     private static final String GROUP_E = "E";
     private static final String[] DRAFT_PACKAGE_FIELDS = {"quantity", "lengthCm", "widthCm", "heightCm", "weightKg"};
     private static final ZoneId VIETNAM = ZoneId.of("Asia/Ho_Chi_Minh");
+    private static final Path REPORT_D = Path.of("target", "assistant-eval-report-d.md");
+    private static final String GROUP_D = "D";
     private static final Map<String, String> SIGN_IN = Map.of(
             "DISPATCHER", "ev-dispatcher",
             "MANAGER", "ev-manager",
@@ -125,6 +137,8 @@ class AssistantEvalTest {
     @Autowired private AssistantService service;
     @Autowired private TryExtractService tryExtract;
     @Autowired private RequirementDraftService requirementDraft;
+    @Autowired private BriefingService briefings;
+    @Autowired private AssistantBudget budget;
     @Autowired private AssistantCallerResolver callers;
     @Autowired private AssistantConversationRepository conversations;
     @Autowired private AssistantMessageRepository messages;
@@ -136,6 +150,7 @@ class AssistantEvalTest {
     @Autowired private EntityManager entityManager;
 
     @MockitoBean private JwtDecoder jwtDecoder;
+    @MockitoBean private BriefingFactsCollector briefingFacts;
 
     record Outcome(JsonNode testCase, String reply, List<String> tools, List<AssistantLink> links,
                    List<UiAction> actions, boolean offered, int inputTokens, int outputTokens, List<String> failures) {
@@ -148,7 +163,7 @@ class AssistantEvalTest {
     void groupA() throws IOException {
         runGroup("nhóm A và an toàn", REPORT, testCase -> {
             String group = text(testCase, "group");
-            return !isGroupC(testCase) && !GROUP_B.equals(group) && !GROUP_E.equals(group);
+            return !isGroupC(testCase) && !GROUP_B.equals(group) && !GROUP_D.equals(group) && !GROUP_E.equals(group);
         });
     }
 
@@ -164,9 +179,7 @@ class AssistantEvalTest {
 
     private void runGroup(String title, Path report, Predicate<JsonNode> selected) throws IOException {
         assertThat(System.getenv("ANTHROPIC_API_KEY")).as("cần ANTHROPIC_API_KEY").isNotBlank();
-        if (viewerPlans == null) {
-            viewerPlans = new TransactionTemplate(transactionManager).execute(status -> seed());
-        }
+        seedOnce();
 
         List<Outcome> outcomes = new ArrayList<>();
         for (JsonNode testCase : cases()) {
@@ -220,6 +233,33 @@ class AssistantEvalTest {
         System.out.println("[eval-b] " + summary + " · báo cáo: " + REPORT_B.toAbsolutePath());
 
         assertThat(outcomes).as("chưa có ca nhóm B").isNotEmpty();
+        assertThat(outcomes.stream().filter(o -> !o.passed()).map(o -> text(o.testCase(), "id")).toList())
+                .as(summary).isEmpty();
+    }
+
+    @Test
+    void groupD() throws IOException {
+        assertThat(System.getenv("ANTHROPIC_API_KEY")).as("cần ANTHROPIC_API_KEY").isNotBlank();
+        seedOnce();
+
+        List<BriefingEval.Outcome> outcomes = new ArrayList<>();
+        for (JsonNode testCase : cases()) {
+            if (!GROUP_D.equals(text(testCase, "group"))) {
+                continue;
+            }
+            BriefingEval.Outcome outcome = brief(testCase);
+            outcomes.add(outcome);
+            System.out.printf("[eval-d] %s %s (%d token)%s%n", outcome.passed() ? "ĐẠT  " : "KHÔNG",
+                    text(testCase, "id"), outcome.tokens(),
+                    outcome.passed() ? "" : " — " + String.join("; ", outcome.failures()));
+        }
+        long passed = outcomes.stream().filter(BriefingEval.Outcome::passed).count();
+        long tokens = outcomes.stream().mapToLong(BriefingEval.Outcome::tokens).sum();
+        String summary = "Đạt %d / %d · token %d".formatted(passed, outcomes.size(), tokens);
+        BriefingEval.writeReport(REPORT_D, outcomes, summary);
+        System.out.println("[eval-d] " + summary + " · báo cáo: " + REPORT_D.toAbsolutePath());
+
+        assertThat(outcomes).as("chưa có ca nhóm D").isNotEmpty();
         assertThat(outcomes.stream().filter(o -> !o.passed()).map(o -> text(o.testCase(), "id")).toList())
                 .as(summary).isEmpty();
     }
@@ -322,6 +362,29 @@ class AssistantEvalTest {
         }
         Files.createDirectories(REPORT_B.getParent());
         Files.writeString(REPORT_B, out, StandardCharsets.UTF_8);
+    }
+
+    /** Một bản tin: người đọc thật từ fixture, sự kiện của ca; token đo bằng ngân sách ngày trước và sau. */
+    private BriefingEval.Outcome brief(JsonNode testCase) {
+        List<String> failures = new ArrayList<>();
+        try {
+            SecurityContextHolder.clearContext();
+            String keycloakId = text(testCase, "signIn");
+            signIn(keycloakId != null ? keycloakId : SIGN_IN.get(text(testCase, "role")));
+            AssistantCaller caller = withEntityManager(callers::current);
+            when(briefingFacts.collect(any(), any(), any())).thenReturn(BriefingEval.factsOf(testCase.get("facts")));
+            long before = budget.remaining();
+            AssistantBriefingResponse briefing = briefings.briefing(caller, text(testCase, "locale"));
+            long tokens = Math.max(0, before - budget.remaining());
+            BriefingEval.check(testCase, briefing, tokens, failures);
+            return new BriefingEval.Outcome(testCase, briefing, tokens, failures);
+        } catch (RuntimeException e) {
+            String code = e instanceof AppException app ? app.getErrorCode().name() : e.getClass().getSimpleName();
+            failures.add("lỗi: " + code);
+            return new BriefingEval.Outcome(testCase, null, 0, failures);
+        } finally {
+            SecurityContextHolder.clearContext();
+        }
     }
 
     private static JsonNode cases() throws IOException {
@@ -683,6 +746,13 @@ class AssistantEvalTest {
     }
 
     // ---- dữ liệu ----
+
+    /** Các nhóm dùng chung một ngữ cảnh và một DB H2: chạy cả lớp thì chỉ dựng fixture một lần. */
+    private void seedOnce() {
+        if (viewerPlans == null) {
+            viewerPlans = new TransactionTemplate(transactionManager).execute(status -> seed());
+        }
+    }
 
     /**
      * Long Bình: ba chuyến (một của Khoa, hai của Tuấn — một mang câu lệnh giả trong tên) và chuyến có phương án 3D của

@@ -4,10 +4,12 @@ import fu.se184491.loadmaster_be.constant.assistant.AssistantChannel;
 import fu.se184491.loadmaster_be.dto.ApiResponse;
 import fu.se184491.loadmaster_be.dto.request.assistant.AssistantMessageRequest;
 import fu.se184491.loadmaster_be.dto.request.assistant.RequirementDraftRequest;
+import fu.se184491.loadmaster_be.dto.response.assistant.AssistantBriefingResponse;
 import fu.se184491.loadmaster_be.dto.response.assistant.AssistantConversationResponse;
 import fu.se184491.loadmaster_be.dto.response.assistant.RequirementDraftResponse;
 import fu.se184491.loadmaster_be.service.assistant.AssistantCallerResolver;
 import fu.se184491.loadmaster_be.service.assistant.AssistantService;
+import fu.se184491.loadmaster_be.service.assistant.briefing.BriefingService;
 import fu.se184491.loadmaster_be.service.assistant.extract.RequirementDraftService;
 import fu.se184491.loadmaster_be.service.assistant.model.AssistantAskCommand;
 import fu.se184491.loadmaster_be.service.assistant.model.AssistantReply;
@@ -21,6 +23,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
@@ -28,6 +31,7 @@ import org.springframework.web.bind.annotation.RestController;
  * trước khi tới đây.
  *
  * <p>POST /api/assistant/messages · GET /api/assistant/conversations/{id} · POST /api/assistant/requirement-draft
+ * · GET /api/assistant/briefing
  */
 @RestController
 @RequestMapping("/api/assistant")
@@ -38,6 +42,7 @@ public class AssistantController {
     private final AssistantService assistantService;
     private final AssistantCallerResolver callerResolver;
     private final RequirementDraftService requirementDraftService;
+    private final BriefingService briefingService;
 
     // POST /api/assistant/messages
     @PostMapping("/messages")
@@ -66,5 +71,12 @@ public class AssistantController {
     @PreAuthorize("hasAuthority('DELIVERY_DEMAND_MANAGE')")
     public ApiResponse<RequirementDraftResponse> requirementDraft(@Valid @RequestBody RequirementDraftRequest request) {
         return ApiResponse.success(requirementDraftService.draft(request.text(), callerResolver.current()).data());
+    }
+
+    // GET /api/assistant/briefing
+    @GetMapping("/briefing")
+    @PreAuthorize("hasAnyRole('DISPATCHER', 'MANAGER')")
+    public ApiResponse<AssistantBriefingResponse> briefing(@RequestParam(required = false) String locale) {
+        return ApiResponse.success(briefingService.briefing(callerResolver.current(), locale));
     }
 }
