@@ -560,6 +560,22 @@ public class DriverServiceImpl implements DriverService {
         return trip;
     }
 
+    @Override
+    @Transactional(readOnly = true)
+    public Trip requireOwnOrOpenTrip(String tripIdOrCode) {
+        User driver = currentDriver(null);
+        if (driver.getCompany() == null) {
+            throw new AppException(ErrorCode.USER_COMPANY_NOT_FOUND);
+        }
+        // Tìm theo công ty của tài xế: chuyến công ty khác không bao giờ lộ ra.
+        Trip trip = tripLookupHelper.requireTrip(tripIdOrCode, driver.getCompany().getId());
+        if (trip.getDriver() == null && (trip.getStatus() == TripStatus.DRAFT || trip.getStatus() == TripStatus.PLANNED)) {
+            return trip;
+        }
+        requireDriverOf(trip, driver);
+        return trip;
+    }
+
     /** Người đăng nhập; {@code driverId} gửi kèm (client cũ) phải đúng là người đó. */
     private User currentDriver(Long driverId) {
         User current = currentUserService.getCurrentUser();
@@ -617,6 +633,7 @@ public class DriverServiceImpl implements DriverService {
         return DriverTripResponse.builder()
                 .tripId(trip.getId())
                 .tripCode(trip.getTripCode())
+                .tripName(trip.getTripName())
                 .vehicleLicensePlate(trip.getVehicle() != null ? trip.getVehicle().getLicensePlate() : null)
                 .stopCount(stopCount)
                 .totalPackages(totalPackages)
