@@ -196,6 +196,8 @@ public class AssistantLoop {
         if (usage == null) {
             return TokenUsage.ZERO;
         }
+        log.debug("Token của lần gọi mô hình: vào {}, ra {}, đọc bộ đệm {}, ghi bộ đệm {}", usage.getPromptTokens(),
+                usage.getCompletionTokens(), usage.getCacheReadInputTokens(), usage.getCacheWriteInputTokens());
         return new TokenUsage(orZero(usage.getPromptTokens()), orZero(usage.getCompletionTokens()));
     }
 
