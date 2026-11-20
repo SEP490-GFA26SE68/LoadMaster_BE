@@ -1,0 +1,30 @@
+{
+  "type": "object",
+  "properties": {
+    "destinationText": {"anyOf": [{"type": "string"}, {"type": "null"}], "description": "Nơi giao: tên nơi nhận và địa chỉ, một dòng"},
+    "deadline": {"anyOf": [{"type": "string"}, {"type": "null"}], "description": "Hạn giao theo giờ Việt Nam, dạng yyyy-MM-ddTHH:mm:ss"},
+    "priority": {"anyOf": [{"type": "string", "enum": ["LOW", "NORMAL", "HIGH", "URGENT"]}, {"type": "null"}], "description": "Mức gấp văn bản nói rõ"},
+    "expectedPackageCount": {"anyOf": [{"type": "integer"}, {"type": "null"}], "description": "Tổng số kiện văn bản nêu"},
+    "note": {"anyOf": [{"type": "string"}, {"type": "null"}], "description": "Ghi chú cho lần giao"},
+    "customerNameGuess": {"anyOf": [{"type": "string"}, {"type": "null"}], "description": "Tên bên gửi hàng"},
+    "packages": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "description": {"type": "string", "description": "Mô tả ngắn loại hàng"},
+          "quantity": {"anyOf": [{"type": "integer"}, {"type": "null"}], "description": "Số kiện của loại này"},
+          "lengthCm": {"anyOf": [{"type": "number"}, {"type": "null"}], "description": "Chiều dài một kiện, cm"},
+          "widthCm": {"anyOf": [{"type": "number"}, {"type": "null"}], "description": "Chiều rộng một kiện, cm"},
+          "heightCm": {"anyOf": [{"type": "number"}, {"type": "null"}], "description": "Chiều cao một kiện, cm"},
+          "weightKg": {"anyOf": [{"type": "number"}, {"type": "null"}], "description": "Khối lượng một kiện, kg"}
+        },
+        "required": ["description", "quantity", "lengthCm", "widthCm", "heightCm", "weightKg"],
+        "additionalProperties": false
+      }
+    },
+    "missing": {"type": "array", "items": {"type": "string"}}
+  },
+  "required": ["destinationText", "deadline", "priority", "expectedPackageCount", "note", "customerNameGuess", "packages", "missing"],
+  "additionalProperties": false
+}

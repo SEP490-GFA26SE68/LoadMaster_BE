@@ -29,6 +29,8 @@ public class AssistantProperties {
     private int maxMessageChars = 1000;
     /** Độ dài tối đa của nội dung dán vào ô bản nháp yêu cầu giao. */
     private int maxDraftChars = 4000;
+    /** max_tokens của một lượt đọc bản nháp yêu cầu giao (JSON gồm ghi chú và danh sách hàng). */
+    private int draftMaxOutputTokens = 1500;
     /** {@code disabled} hoặc {@code adaptive}. */
     private String thinking = "disabled";
     /** {@code low}, {@code medium} hoặc {@code high}. */
