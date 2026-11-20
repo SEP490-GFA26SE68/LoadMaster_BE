@@ -123,6 +123,20 @@ public final class PayrollMath {
         }
     }
 
+    /**
+     * Tiền tăng ca: VND/giờ × giờ/ngày × số ngày, làm tròn đồng HALF_UP.
+     */
+    public static BigDecimal overtimeAmount(BigDecimal vndPerHour, BigDecimal hoursPerDay, int days) {
+        requireNonNegative(vndPerHour, hoursPerDay);
+        if (days < 0) throw new AppException(ErrorCode.PAYROLL_INVALID_OVERTIME_DAYS);
+        if (hoursPerDay.compareTo(BigDecimal.valueOf(24)) > 0) {
+            throw new AppException(ErrorCode.PAYROLL_INVALID_AMOUNT);
+        }
+        return vndPerHour.multiply(hoursPerDay)
+                .multiply(BigDecimal.valueOf(days))
+                .setScale(0, RoundingMode.HALF_UP);
+    }
+
     private static void requireNonNegative(BigDecimal... values) {
         for (BigDecimal value : values) {
             if (value == null || value.signum() < 0) {

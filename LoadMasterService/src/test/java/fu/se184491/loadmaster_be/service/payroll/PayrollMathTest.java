@@ -77,6 +77,28 @@ class PayrollMathTest {
     }
 
     @Test
+    void overtimeIsHourlyRateTimesHoursPerDayTimesDaysRoundedHalfUp() {
+        assertEquals(new BigDecimal("300000"), PayrollMath.overtimeAmount(
+                new BigDecimal("50000"), new BigDecimal("2.00"), 3));
+        assertEquals(new BigDecimal("75001"), PayrollMath.overtimeAmount(
+                new BigDecimal("50000.50"), new BigDecimal("1.50"), 1));
+    }
+
+    @Test
+    void rejectsNegativeOvertimeDays() {
+        AppException error = assertThrows(AppException.class, () -> PayrollMath.overtimeAmount(
+                BigDecimal.ONE, BigDecimal.ONE, -1));
+        assertEquals(ErrorCode.PAYROLL_INVALID_OVERTIME_DAYS, error.getErrorCode());
+    }
+
+    @Test
+    void rejectsHoursPerDayAboveTwentyFour() {
+        AppException error = assertThrows(AppException.class, () -> PayrollMath.overtimeAmount(
+                BigDecimal.ONE, new BigDecimal("24.01"), 1));
+        assertEquals(ErrorCode.PAYROLL_INVALID_AMOUNT, error.getErrorCode());
+    }
+
+    @Test
     void reportsNegativeWeightUsingPayrollErrorCode() {
         AppException exception = assertThrows(AppException.class, () -> PayrollMath.calculateTripAmounts(
                 new BigDecimal("-1"), BigDecimal.ONE, BigDecimal.ONE, BigDecimal.ONE, BigDecimal.ONE));
