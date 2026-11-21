@@ -141,6 +141,16 @@ public enum ErrorCode {
     STOP_ORDER_BLOCKS_CARGO("Thứ tự mới làm kiện bị che kín lối dỡ", HttpStatus.CONFLICT),
 
     // -------------------------------------------------------------------------
+    // Phiếu xin chuyến của tài xế
+    // -------------------------------------------------------------------------
+    TRIP_CLAIM_NOT_FOUND("Không tìm thấy phiếu xin chuyến", HttpStatus.NOT_FOUND),
+    TRIP_CLAIM_DUPLICATE("Bạn đã gửi phiếu xin chuyến này rồi", HttpStatus.CONFLICT),
+    TRIP_CLAIM_TRIP_TAKEN("Chuyến này đã có tài xế nhận", HttpStatus.CONFLICT),
+    TRIP_CLAIM_TRIP_NOT_OPEN("Chuyến không còn ở trạng thái cho phép nhận", HttpStatus.CONFLICT),
+    TRIP_CLAIM_ALREADY_DECIDED("Phiếu xin chuyến này đã có quyết định", HttpStatus.CONFLICT),
+    TRIP_CLAIM_NOT_OWN("Bạn không thể thao tác trên phiếu của người khác", HttpStatus.FORBIDDEN),
+
+    // -------------------------------------------------------------------------
     // Subscription & Payment errors
     // -------------------------------------------------------------------------
     OPTIMIZATION_ENTITLEMENT_REQUIRED("Subscription is missing, inactive, expired or not yet started", HttpStatus.FORBIDDEN),

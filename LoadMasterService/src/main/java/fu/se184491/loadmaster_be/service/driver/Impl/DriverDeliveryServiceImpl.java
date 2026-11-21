@@ -293,7 +293,9 @@ public class DriverDeliveryServiceImpl implements DriverDeliveryService {
     @Override
     @Transactional(readOnly = true)
     public DriverTripDetailResponse getTripDetail(String tripIdOrCode) {
-        Trip trip = driverService.requireOwnTrip(tripIdOrCode);
+        Trip trip = driverService.requireOwnOrOpenTrip(tripIdOrCode);
+        // Chuyến chưa có tài xế (đang mở): tài xế chỉ xem để cân nhắc xin nhận, chưa được thấy số điện thoại khách.
+        boolean openPreview = trip.getDriver() == null;
         List<DeliveryStop> stops = deliveryStopRepository.findByTripIdOrderByStopSequenceAsc(trip.getId());
         boolean inTransit = trip.getStatus() == TripStatus.IN_TRANSIT;
         GpsTracking latest = inTransit ? gpsTrackingRepository.findFirstByTripIdOrderByRecordedAtDesc(trip.getId()).orElse(null) : null;
@@ -354,7 +356,7 @@ public class DriverDeliveryServiceImpl implements DriverDeliveryService {
             String contactPhone = null;
             if (req != null && req.getCustomer() != null) {
                 contactName = req.getCustomer().getName();
-                contactPhone = req.getCustomer().getContactPhone();
+                contactPhone = openPreview ? null : req.getCustomer().getContactPhone();
             }
 
             List<CargoPackage> packages = tripPackageResolver.packagesOfStop(stop.getId());

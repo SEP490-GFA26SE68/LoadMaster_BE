@@ -22,6 +22,9 @@ public class DriverTripResponse {
     @Schema(description = "Mã chuyến đi")
     private String tripCode;
 
+    @Schema(description = "Tên chuyến do điều phối viên đặt; chuyến chưa đặt tên thì null")
+    private String tripName;
+
     @Schema(description = "Biển số xe")
     private String vehicleLicensePlate;
 
