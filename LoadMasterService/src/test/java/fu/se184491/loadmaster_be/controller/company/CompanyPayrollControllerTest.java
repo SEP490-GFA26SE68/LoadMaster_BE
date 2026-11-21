@@ -76,6 +76,52 @@ class CompanyPayrollControllerTest {
         putRate("15.25", "150.50", "84.75").andExpect(status().isOk());
     }
 
+    private static org.springframework.test.web.servlet.ResultActions putRateWithKpi(String kpiTargetKg, String kpiBonusVnd) throws Exception {
+        DriverPayrollService service = mock(DriverPayrollService.class);
+        CurrentUserService currentUser = mock(CurrentUserService.class);
+        when(currentUser.getCurrentCompanyId()).thenReturn(10L);
+        String nextMonth = LocalDate.now(ZoneId.of("Asia/Ho_Chi_Minh"))
+                .plusMonths(1).withDayOfMonth(1).toString();
+        return MockMvcBuilders.standaloneSetup(new CompanyPayrollController(service, currentUser)).build()
+                .perform(put("/api/company/payroll/settings")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"effectiveFrom\":\"" + nextMonth + "\",\"baseSalaryVnd\":8000000,\"rateVndPerKg\":100,"
+                                + "\"commissionPercent\":15,\"handlingFeeVndPerKg\":150,\"handlingDriverPercent\":85,"
+                                + "\"kpiTargetKg\":" + kpiTargetKg + ",\"kpiBonusVnd\":" + kpiBonusVnd + "}"));
+    }
+
+    @Test
+    void acceptsAKpiTargetWithItsBonus() throws Exception {
+        putRateWithKpi("1500.50", "500000").andExpect(status().isOk());
+    }
+
+    @Test
+    void acceptsAnEmptyKpiTarget() throws Exception {
+        putRateWithKpi("null", "null").andExpect(status().isOk());
+    }
+
+    @Test
+    void rejectsAKpiTargetOfZeroOrLess() throws Exception {
+        putRateWithKpi("0", "500000").andExpect(status().isBadRequest());
+        putRateWithKpi("-5", "500000").andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void rejectsAKpiTargetWithMoreThanTwoDecimals() throws Exception {
+        putRateWithKpi("1500.505", "500000").andExpect(status().isBadRequest());
+        putRateWithKpi("1500.5555", "500000").andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void acceptsTheSmallestKpiTargetWithTwoDecimals() throws Exception {
+        putRateWithKpi("0.01", "500000").andExpect(status().isOk());
+    }
+
+    @Test
+    void rejectsANegativeKpiBonus() throws Exception {
+        putRateWithKpi("1500", "-1").andExpect(status().isBadRequest());
+    }
+
     @Test
     void canCreatePayrollRateForNextMonth() throws Exception {
         DriverPayrollService service = mock(DriverPayrollService.class);

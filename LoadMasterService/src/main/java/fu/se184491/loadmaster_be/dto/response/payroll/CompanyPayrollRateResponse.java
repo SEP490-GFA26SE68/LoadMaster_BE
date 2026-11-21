@@ -13,6 +13,9 @@ public record CompanyPayrollRateResponse(
         BigDecimal commissionPercent,
         BigDecimal handlingFeeVndPerKg,
         BigDecimal handlingDriverPercent,
+        /** Chỉ tiêu KPI (kg/tháng); null là công ty không dùng KPI. */
+        BigDecimal kpiTargetKg,
+        BigDecimal kpiBonusVnd,
         PayrollPeriodStatus periodStatus
 ) {
 }
