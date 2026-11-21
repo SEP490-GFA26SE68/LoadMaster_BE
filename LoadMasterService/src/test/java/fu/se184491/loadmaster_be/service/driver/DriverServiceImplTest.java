@@ -60,6 +60,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
@@ -121,6 +122,57 @@ class DriverServiceImplTest {
         order.verify(departureReadiness).lockAssignedTrip(10L, driver);
         order.verify(departureReadiness).canStartLocked(trip, driver);
         order.verify(tripStatusService).transitionTo(10L, TripStatus.IN_TRANSIT, 8L);
+    }
+
+    @Test
+    void listCarriesTheTripNameForTheDriverCard() {
+        trip.setTripName("Tuyến Biên Hoà - Vũng Tàu");
+        when(tripRepository.findByDriver_IdAndCompany_IdOrderByDepartureTimeDesc(8L, 1L)).thenReturn(List.of(trip));
+
+        assertEquals("Tuyến Biên Hoà - Vũng Tàu", service.listTrips(null).get(0).getTripName());
+    }
+
+    @Test
+    void ownTripStaysViewable() {
+        trip.setStatus(TripStatus.IN_TRANSIT);
+
+        assertSame(trip, service.requireOwnOrOpenTrip("10"));
+    }
+
+    @Test
+    void openPlannedTripOfTheSameCompanyIsViewableByAnyDriver() {
+        trip.setDriver(null);
+        trip.setStatus(TripStatus.PLANNED);
+
+        assertSame(trip, service.requireOwnOrOpenTrip("10"));
+    }
+
+    @Test
+    void openDraftTripOfTheSameCompanyIsViewableByAnyDriver() {
+        trip.setDriver(null);
+        trip.setStatus(TripStatus.DRAFT);
+
+        assertSame(trip, service.requireOwnOrOpenTrip("10"));
+    }
+
+    @Test
+    void tripAssignedToAnotherDriverIsNotViewable() {
+        trip.setDriver(User.builder().id(9L).company(trip.getCompany()).build());
+        trip.setStatus(TripStatus.PLANNED);
+
+        AppException error = assertThrows(AppException.class, () -> service.requireOwnOrOpenTrip("10"));
+
+        assertEquals(ErrorCode.TRIP_NOT_ASSIGNED_TO_DRIVER, error.getErrorCode());
+    }
+
+    @Test
+    void unassignedTripBeyondPlanningIsNotViewable() {
+        trip.setDriver(null);
+        trip.setStatus(TripStatus.LOADING);
+
+        AppException error = assertThrows(AppException.class, () -> service.requireOwnOrOpenTrip("10"));
+
+        assertEquals(ErrorCode.TRIP_NOT_ASSIGNED_TO_DRIVER, error.getErrorCode());
     }
 
     @Test

@@ -34,4 +34,10 @@ public interface DriverService {
 
     /** Chuyến của công ty người đăng nhập và được giao cho chính tài xế đó. */
     Trip requireOwnTrip(String tripIdOrCode);
+
+    /**
+     * Chuyến tài xế được xem chi tiết: chuyến của chính họ, hoặc chuyến đang mở của cùng công ty (chưa có tài xế, còn Nháp hoặc
+     * Đã lập kế hoạch) để cân nhắc xin nhận. Chuyến đã giao cho tài xế khác hoặc đã qua giai đoạn lập kế hoạch thì không xem được.
+     */
+    Trip requireOwnOrOpenTrip(String tripIdOrCode);
 }
