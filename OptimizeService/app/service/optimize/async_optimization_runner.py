@@ -474,13 +474,13 @@ class AsyncOptimizationRunner:
         """
         job_uuid_str = str(job_uuid)
         session = db
-        should_close = False
-        if session is None:
+        owns_session = session is None
+        if owns_session:
             session = self.session_factory()
-            should_close = True
 
         is_credit_deducted = False
         job = None
+        company_id = None
         try:
             logger.info(f"Starting async optimization job: {job_uuid_str}")
             job = self.job_service.get_job(job_uuid_str, session)
@@ -495,18 +495,27 @@ class AsyncOptimizationRunner:
 
             if problem is None:
                 problem = self.build_problem_request(job_uuid_str, session)
+            company_id = job.company_id
+
+            # Do not hold a pooled connection for the engine call (60s+). Java's Hikari pool is
+            # only a few slots on the shared Supabase pooler; a stuck checkout blocks GET job status.
+            if owns_session:
+                session.close()
+                session = None
 
             result = await self.optimization_client.solve(problem)
             from app.dto.optimization.engine.rotation_contract import validate_result_rotations
             validate_result_rotations(problem, result)
 
+            if owns_session:
+                session = self.session_factory()
 
             if self.persistence_service is not None and hasattr(self.persistence_service, "save"):
                 self.persistence_service.save(job_uuid_str, result, session)
 
             status = self.engine_exception_handler.handle_result(result, job_uuid_str, session)
             if _status_value(status) == OptimizationJobStatus.NO_SOLUTION.value and is_credit_deducted:
-                await self._refund(job.company_id, job_uuid_str)
+                await self._refund(company_id, job_uuid_str)
                 is_credit_deducted = False
             logger.info(f"Finished async optimization job: {job_uuid_str}")
 
@@ -520,23 +529,22 @@ class AsyncOptimizationRunner:
                 job_uuid_str,
                 finished.current_status,
             )
-            if is_credit_deducted and job and job.company_id:
-                await self._refund(job.company_id, job_uuid_str)
+            if is_credit_deducted and company_id:
+                await self._refund(company_id, job_uuid_str)
                 is_credit_deducted = False
 
         except Exception as exc:
             logger.error(f"Error executing async optimization job {job_uuid_str}: {exc}")
-            # Khôi phục Session sau lỗi SQLAlchemy/PostgreSQL.
-            # Bắt buộc trước khi truy vấn hoặc cập nhật Job tiếp theo.
-            session.rollback()
-            # Hoàn trả credit nếu job bị FAILED (fix B4 PRD)
-            if is_credit_deducted and job and job.company_id:
-                await self._refund(job.company_id, job_uuid_str)
+            if session is not None:
+                session.rollback()
+            if is_credit_deducted and company_id:
+                await self._refund(company_id, job_uuid_str)
                 is_credit_deducted = False
-
+            if session is None and owns_session:
+                session = self.session_factory()
             self.engine_exception_handler.handle(exc, job_uuid_str, session)
         finally:
-            if should_close and session is not None:
+            if owns_session and session is not None:
                 session.close()
 
     async def run_owned(self, job_uuid, generation, problem_json):

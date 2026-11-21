@@ -12,6 +12,14 @@ from app.exception.error_code import ErrorCode
 from app.repository.optimization.optimization_job_repository import OptimizationJobRepository
 
 
+class JobAlreadyFinishedError(Exception):
+    """Job đã ở trạng thái cuối: không ghi đè, rollback phần kết quả đến muộn trong cùng giao dịch."""
+
+    def __init__(self, current_status: str):
+        self.current_status = current_status
+        super().__init__(f"Optimization job already finished with status {current_status}")
+
+
 class OptimizationJobService:
     def __init__(self, repository: Optional[OptimizationJobRepository] = None):
         self.repository = repository or OptimizationJobRepository()
@@ -60,12 +68,8 @@ class OptimizationJobService:
         db: Session = None,
     ) -> OptimizationJob:
         """
-        Cập nhật trạng thái và thời gian tính toán của job, rồi commit cùng mọi thứ đã ghi trong giao dịch.
+        Cập nhật trạng thái và thời gian tính toán của job.
         Status flow: PENDING -> RUNNING -> COMPLETED / FAILED / TIMEOUT / NO_SOLUTION / PARTIAL
-
-        Trạng thái cuối là cuối: chỉ đổi khi job còn PENDING / RUNNING (UPDATE có điều kiện). Job đã kết thúc —
-        thường là LoadMasterService đã đánh dấu FAILED JOB_INTERRUPTED và hoàn credit vì job quá hạn — thì
-        rollback cả giao dịch (bỏ phương án vừa ghi của kết quả đến muộn) và ném JobAlreadyFinishedError.
         """
         job = self.get_job(job_uuid, db)
         if job.execution_generation is not None:
@@ -74,20 +78,7 @@ class OptimizationJobService:
         # Quyết định nằm ở câu UPDATE có điều kiện, không ở lần đọc trên: lượt ghi cùng lúc của Java không lọt qua.
         if not self.repository.transition_unfinished(str(job_uuid), status_val, computation_ms, db):
             db.rollback()
-            raise JobAlreadyFinishedError(str(job_uuid), job.status, status_val)
+            raise JobAlreadyFinishedError(self.get_job(job_uuid, db).status)
         db.commit()
-        # Sau commit job đã hết hạn trong phiên: đọc thuộc tính là đọc lại từ DB. Không đọc ngay ở đây để không mở
-        # giao dịch mới giữ kết nối suốt lúc bộ giải chạy.
+        db.refresh(job)
         return job
-
-
-class JobAlreadyFinishedError(Exception):
-    """Job đã ở trạng thái cuối khi một kết quả / trạng thái mới đến: phần đến muộn bị bỏ, không ghi gì."""
-
-    def __init__(self, job_uuid: str, current_status: Optional[str], attempted_status: str):
-        self.job_uuid = job_uuid
-        self.current_status = current_status
-        self.attempted_status = attempted_status
-        super().__init__(
-            f"Optimization job {job_uuid} already {current_status}; ignored transition to {attempted_status}"
-        )

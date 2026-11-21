@@ -46,6 +46,7 @@ public class LoadPlanQueryServiceImpl implements LoadPlanQueryService {
     private final InterruptedOptimizationJobService interruptedJobs;
 
     @Override
+    @Transactional(readOnly = true)
     public TripLoadPlansResponse getTripLoadPlans(Long tripId) {
         Long companyId = currentUserService.getCurrentCompanyId();
         tripRepository.findByIdAndCompanyId(tripId, companyId)
@@ -66,22 +67,26 @@ public class LoadPlanQueryServiceImpl implements LoadPlanQueryService {
     }
 
     @Override
+    @Transactional(readOnly = true)
     public LoadPlanDetailResponse getPlan(Long planId) {
         return withItems(List.of(ownedPlan(planId))).get(0);
     }
 
     @Override
+    @Transactional(readOnly = true)
     public List<LoadPlanDetailResponse> getJobPlans(String jobUuid) {
         JobOwner owner = requireOwnedJob(jobUuid);
         return withItems(readRepository.findPlansByJob(owner.jobId()));
     }
 
     @Override
+    @Transactional(readOnly = true)
     public OptimizationJobStatusResponse getJobStatus(String jobUuid) {
         JobOwner owner = requireOwnedJob(jobUuid);
         OptimizationJobStatusResponse status = readRepository.findJobStatus(owner.jobId())
                 .orElseThrow(() -> new AppException(ErrorCode.OPTIMIZATION_JOB_NOT_FOUND));
-        // Read-only: expiry and settlement are independent fenced background transactions.
+        // One Spring transaction so JPA (user/company) and JdbcTemplate share the Hikari connection.
+        // Polling this endpoint with open-in-view plus a second checkout exhausted DB_MAX_POOL_SIZE=3.
         return status;
     }
 

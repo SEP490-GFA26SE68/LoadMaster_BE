@@ -7,6 +7,7 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 
 import java.math.BigDecimal;
+import java.util.List;
 
 /** Kiện không xếp được của phương án. {@code reason} là mã do dịch vụ tối ưu ghi. */
 @Getter
@@ -19,6 +20,11 @@ public class UnplacedPackageResponse {
     private String packageCode;
     private String trackingBarcode;
     private String reason;
+    /**
+     * Mã ràng buộc cứng khi {@code reason} là {@code CONSTRAINT_VIOLATED}
+     * ({@code AXLE_CONFIG_MISSING}, {@code PACKAGE_CANNOT_PASS_DOOR}, …). Rỗng khi solver không ghi.
+     */
+    private List<String> violatedConstraints;
     /** Kích thước (cm) và khối lượng (kg) của kiện; null khi kiện không còn. */
     private BigDecimal lengthCm;
     private BigDecimal widthCm;

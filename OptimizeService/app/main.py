@@ -23,8 +23,15 @@ _docs_enabled = settings.api_docs_enabled()
 
 @asynccontextmanager
 async def lifespan(app):
+    import asyncio
+    from app.controller.optimization.optimization_router import get_async_runner
+    from app.service.optimize.pending_job_recovery import recovery_loop
     startup_identity(__file__)
-    yield
+    recover = asyncio.create_task(recovery_loop(get_async_runner()))
+    try:
+        yield
+    finally:
+        recover.cancel()
 
 
 app = FastAPI(
@@ -47,6 +54,13 @@ app.add_middleware(
 
 # Gói ULTIMATE cần torch (requirements-ai.txt): báo ngay lúc khởi động, không để job âm thầm chạy heuristic.
 from app.ml.lumo_models import torch_available
+from jwt.algorithms import has_crypto
+
+if not has_crypto:
+    logger.error(
+        "Chưa cài cryptography: không xác minh được token Keycloak (RS256), mọi API sẽ 401. "
+        "Cài bằng: pip install -r requirements.txt"
+    )
 
 if not torch_available():
     logger.warning(

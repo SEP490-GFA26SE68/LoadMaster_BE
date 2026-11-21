@@ -24,4 +24,8 @@ public class UnplacedPackage {
 
     @Enumerated(EnumType.STRING) @Column(name = "rejection_reason")
     private UnplacedReason rejectionReason;
+
+    /** JSON array of solver constraint codes; written by OptimizeService. */
+    @Column(name = "violated_constraints", columnDefinition = "jsonb")
+    private String violatedConstraints;
 }

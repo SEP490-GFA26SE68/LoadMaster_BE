@@ -8,8 +8,9 @@ psycopg2-binary==2.9.13
 pydantic==2.14.3
 pydantic-settings==2.16.2
 httpx==0.28.1
-# [crypto]: kiểm chữ ký RS256 của token Keycloak cần gói cryptography.
+# [crypto]: kiểm chữ ký RS256 của token Keycloak cần gói cryptography (thiếu thì mọi API 401).
 pyjwt[crypto]==2.15.1
+cryptography==50.0.2
 python-dotenv==1.2.4
 websockets==17.4
 pytest==9.2.0

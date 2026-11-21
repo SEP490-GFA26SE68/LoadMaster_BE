@@ -103,6 +103,7 @@ public enum ErrorCode {
     PAYROLL_INVALID_PERIOD("Kỳ lương không hợp lệ, yêu cầu định dạng yyyy-MM", HttpStatus.BAD_REQUEST),
     PAYROLL_INVALID_DRIVER_ASSIGNMENT("Danh sách tài xế nhận lương năng suất không hợp lệ", HttpStatus.BAD_REQUEST),
     PAYROLL_INVALID_AMOUNT("Khối lượng, quãng đường và đơn giá lương phải là số không âm", HttpStatus.BAD_REQUEST),
+    PAYROLL_INVALID_OVERTIME_DAYS("Số ngày tăng ca phải từ 0 đến số ngày của tháng lương", HttpStatus.BAD_REQUEST),
     DELIVERY_REQUIREMENT_NOT_FOUND("Không tìm thấy nhu cầu giao hàng", HttpStatus.NOT_FOUND),
     DELIVERY_REQUIREMENT_NOT_PENDING("Chỉ có thể xóa nhu cầu giao hàng đang chờ xử lý", HttpStatus.BAD_REQUEST),
     INVALID_DELIVERY_REQUIREMENT_TRANSITION("Chuyển trạng thái nhu cầu giao hàng không hợp lệ", HttpStatus.BAD_REQUEST),
