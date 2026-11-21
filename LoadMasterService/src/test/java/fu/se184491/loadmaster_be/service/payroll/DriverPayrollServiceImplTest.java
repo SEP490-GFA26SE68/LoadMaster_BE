@@ -729,8 +729,9 @@ class DriverPayrollServiceImplTest {
                 .status(PayrollPeriodStatus.DRAFT)
                 .driverPayrolls(List.of())
                 .build();
-        when(periodRepository.findByCompanyIdAndPeriodStart(10L, periodStart))
+        when(periodRepository.findByCompanyIdAndPeriodStartForUpdate(10L, periodStart))
                 .thenReturn(Optional.of(period));
+        when(periodRepository.findByCompanyIdAndStatus(10L, PayrollPeriodStatus.LOCKED)).thenReturn(List.of());
         when(periodRepository.save(any(PayrollPeriod.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
         var response = service.lockPeriod(10L, "2026-11");
@@ -740,6 +741,26 @@ class DriverPayrollServiceImplTest {
         assertEquals(PayrollPeriodStatus.LOCKED, period.getStatus());
         assertNotNull(period.getLockedAt());
         assertEquals(0, period.getLockedAt().getNano(), "lockedAt must not have fractional seconds");
+        verify(periodRepository).save(period);
+    }
+
+    @Test
+    void unlockPeriodReturnsLockedPayrollToDraft() {
+        LocalDate periodStart = LocalDate.of(2026, 11, 1);
+        PayrollPeriod period = PayrollPeriod.builder()
+                .id(1L)
+                .periodStart(periodStart)
+                .status(PayrollPeriodStatus.LOCKED)
+                .driverPayrolls(List.of())
+                .build();
+        when(periodRepository.findByCompanyIdAndPeriodStartForUpdate(10L, periodStart))
+                .thenReturn(Optional.of(period));
+        when(periodRepository.save(any(PayrollPeriod.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        var response = service.unlockPeriod(10L, "2026-11");
+
+        assertEquals(PayrollPeriodStatus.DRAFT, response.status());
+        assertEquals(null, period.getLockedAt());
         verify(periodRepository).save(period);
     }
 

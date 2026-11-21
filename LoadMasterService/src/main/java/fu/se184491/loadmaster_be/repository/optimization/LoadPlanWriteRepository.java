@@ -81,8 +81,8 @@ public class LoadPlanWriteRepository {
     /** Chép kiện không xếp được của phương án nguồn sang phương án mới. */
     public void copyUnplaced(Long sourcePlanId, Long targetPlanId) {
         jdbc.update("""
-                INSERT INTO unplaced_packages (load_plan_id, package_id, rejection_reason)
-                SELECT :target, package_id, rejection_reason FROM unplaced_packages WHERE load_plan_id = :source
+                INSERT INTO unplaced_packages (load_plan_id, package_id, rejection_reason, violated_constraints)
+                SELECT :target, package_id, rejection_reason, violated_constraints FROM unplaced_packages WHERE load_plan_id = :source
                 """, Map.of("source", sourcePlanId, "target", targetPlanId));
     }
 }

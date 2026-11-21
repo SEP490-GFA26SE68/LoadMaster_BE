@@ -16,6 +16,10 @@ public interface DispatcherPayrollPeriodRepository extends JpaRepository<Dispatc
 
     Optional<DispatcherPayrollPeriod> findByCompanyIdAndPeriodStart(Long companyId, LocalDate periodStart);
 
+    List<DispatcherPayrollPeriod> findByCompanyIdAndPeriodStartIn(Long companyId, List<LocalDate> periodStarts);
+
+    List<DispatcherPayrollPeriod> findByCompanyIdAndStatus(Long companyId, PayrollPeriodStatus status);
+
     boolean existsByCompanyIdAndPayrollRateIdAndStatus(Long companyId, Long payrollRateId, PayrollPeriodStatus status);
 
     List<DispatcherPayrollPeriod> findByCompanyIdAndPayrollRateIdAndStatusOrderByPeriodStartAsc(

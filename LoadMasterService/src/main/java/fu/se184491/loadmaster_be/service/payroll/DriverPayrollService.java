@@ -34,4 +34,6 @@ public interface DriverPayrollService {
     PayrollStatementResponse getDriverStatement(Long companyId, Long driverId, String period);
 
     PayrollPeriodResponse lockPeriod(Long companyId, String period);
+
+    PayrollPeriodResponse unlockPeriod(Long companyId, String period);
 }

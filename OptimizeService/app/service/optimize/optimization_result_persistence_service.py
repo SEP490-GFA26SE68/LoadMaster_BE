@@ -240,6 +240,11 @@ class OptimizationResultPersistenceService:
                         load_plan_id=plan.id,
                         package_id=pkg_id_val,
                         rejection_reason=u.reason or "OUT_OF_SPACE",
+                        violated_constraints=[
+                            str(code).strip()
+                            for code in (u.violated_constraints or [])
+                            if str(code).strip()
+                        ],
                     )
                 )
             self.unplaced_package_repository.create_all(unplaced_entities, db)

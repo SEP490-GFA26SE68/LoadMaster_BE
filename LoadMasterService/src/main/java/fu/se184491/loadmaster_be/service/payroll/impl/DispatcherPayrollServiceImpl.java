@@ -50,6 +50,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.stream.Collectors;
 
 @Service
 @Slf4j
@@ -70,8 +71,16 @@ public class DispatcherPayrollServiceImpl implements DispatcherPayrollService {
     @Override
     @Transactional(readOnly = true)
     public List<CompanyDispatcherPayrollRateResponse> getRates(Long companyId) {
-        return rateRepository.findByCompanyIdOrderByEffectiveFromDesc(companyId).stream()
-                .map(this::rateResponse)
+        List<CompanyDispatcherPayrollRate> rates = rateRepository.findByCompanyIdOrderByEffectiveFromDesc(companyId);
+        if (rates.isEmpty()) return List.of();
+        Map<LocalDate, PayrollPeriodStatus> statusByStart = periodRepository
+                .findByCompanyIdAndPeriodStartIn(
+                        companyId, rates.stream().map(CompanyDispatcherPayrollRate::getEffectiveFrom).toList())
+                .stream()
+                .collect(Collectors.toMap(
+                        DispatcherPayrollPeriod::getPeriodStart, DispatcherPayrollPeriod::getStatus, (first, ignored) -> first));
+        return rates.stream()
+                .map(rate -> rateResponse(rate, statusByStart.get(rate.getEffectiveFrom())))
                 .toList();
     }
 
@@ -90,13 +99,10 @@ public class DispatcherPayrollServiceImpl implements DispatcherPayrollService {
         if (existingRate.isEmpty() && effectiveFrom.isBefore(earliestAllowed)) {
             throw new AppException(ErrorCode.PAYROLL_RATE_EFFECTIVE_DATE_TOO_EARLY);
         }
-
-        periodRepository.findByCompanyIdAndPeriodStart(companyId, effectiveFrom)
-                .filter(period -> period.getStatus() == PayrollPeriodStatus.LOCKED)
-                .ifPresent(period -> { throw new AppException(ErrorCode.PAYROLL_PERIOD_LOCKED); });
-        if (existingRate.isPresent() && periodRepository.existsByCompanyIdAndPayrollRateIdAndStatus(
-                companyId, existingRate.get().getId(), PayrollPeriodStatus.LOCKED)) {
-            throw new AppException(ErrorCode.PAYROLL_PERIOD_LOCKED);
+        if (existingRate.isEmpty()) {
+            periodRepository.findByCompanyIdAndPeriodStart(companyId, effectiveFrom)
+                    .filter(period -> period.getStatus() == PayrollPeriodStatus.LOCKED)
+                    .ifPresent(period -> { throw new AppException(ErrorCode.PAYROLL_PERIOD_LOCKED); });
         }
         List<DispatcherPayrollPeriod> affectedDrafts = existingRate.isPresent()
                 ? periodRepository.findByCompanyIdAndPayrollRateIdAndStatusOrderByPeriodStartAsc(
@@ -111,12 +117,15 @@ public class DispatcherPayrollServiceImpl implements DispatcherPayrollService {
         rate.setBaseSalaryVnd(request.baseSalaryVnd());
         rate.setOvertimeVndPerHour(request.overtimeVndPerHour());
         rate.setOvertimeHoursPerDay(request.overtimeHoursPerDay());
+        rate.setOvertimeDaysPerMonth(request.overtimeDaysPerMonth());
+        rate.setKpiAmountVnd(request.kpiAmountVnd());
 
         CompanyDispatcherPayrollRate savedRate = rateRepository.save(rate);
         for (DispatcherPayrollPeriod draft : affectedDrafts) {
             calculatePeriod(companyId, YearMonth.from(draft.getPeriodStart()).toString());
         }
-        return rateResponse(savedRate);
+        return rateResponse(savedRate, periodRepository.findByCompanyIdAndPeriodStart(companyId, savedRate.getEffectiveFrom())
+                .map(DispatcherPayrollPeriod::getStatus).orElse(null));
     }
 
     @Override
@@ -184,7 +193,7 @@ public class DispatcherPayrollServiceImpl implements DispatcherPayrollService {
         if (payrollPeriod.getId() != null) {
             for (DispatcherPayroll line : payrollPeriod.getDispatcherPayrolls()) {
                 preserved.put(line.getDispatcher().getId(),
-                        new LineInputs(line.getOvertimeDays(), line.getKpiAmountVnd()));
+                        new LineInputs(line.getOvertimeDays(), kpiAchieved(line.getKpiAmountVnd())));
             }
             payrollPeriod.getDispatcherPayrolls().clear();
             periodRepository.flush();
@@ -196,7 +205,7 @@ public class DispatcherPayrollServiceImpl implements DispatcherPayrollService {
                 .sorted(Comparator.comparing(User::getId))
                 .toList();
         for (User dispatcher : dispatchers) {
-            LineInputs inputs = preserved.getOrDefault(dispatcher.getId(), LineInputs.ZERO);
+            LineInputs inputs = preserved.getOrDefault(dispatcher.getId(), defaultLineInputs(rate, month));
             payrollPeriod.getDispatcherPayrolls().add(newLine(payrollPeriod, dispatcher, rate, inputs));
         }
         periodRepository.save(payrollPeriod);
@@ -220,10 +229,19 @@ public class DispatcherPayrollServiceImpl implements DispatcherPayrollService {
 
     @Override
     public DispatcherPayrollPeriodResponse lockPeriod(Long companyId, String period) {
-        DispatcherPayrollPeriod payrollPeriod = findPeriod(companyId, parsePeriod(period).atDay(1));
-        if (payrollPeriod.getStatus() != PayrollPeriodStatus.LOCKED) {
-            payrollPeriod.setStatus(PayrollPeriodStatus.LOCKED);
-            payrollPeriod.setLockedAt(LocalDateTime.now(VIETNAM_TIME_ZONE).truncatedTo(ChronoUnit.SECONDS));
+        lockCompanyForPayrollUpdate(companyId);
+        DispatcherPayrollPeriod payrollPeriod = findPeriodForUpdate(companyId, parsePeriod(period).atDay(1));
+        becomeSoleLockedPeriod(companyId, payrollPeriod);
+        return periodResponse(payrollPeriod);
+    }
+
+    @Override
+    public DispatcherPayrollPeriodResponse unlockPeriod(Long companyId, String period) {
+        lockCompanyForPayrollUpdate(companyId);
+        DispatcherPayrollPeriod payrollPeriod = findPeriodForUpdate(companyId, parsePeriod(period).atDay(1));
+        if (payrollPeriod.getStatus() == PayrollPeriodStatus.LOCKED) {
+            payrollPeriod.setStatus(PayrollPeriodStatus.DRAFT);
+            payrollPeriod.setLockedAt(null);
             periodRepository.save(payrollPeriod);
         }
         return periodResponse(payrollPeriod);
@@ -235,14 +253,18 @@ public class DispatcherPayrollServiceImpl implements DispatcherPayrollService {
         lockCompanyForPayrollUpdate(companyId);
         YearMonth month = parsePeriod(period);
         DispatcherPayrollPeriod payrollPeriod = findPeriodForUpdate(companyId, month.atDay(1));
-        if (payrollPeriod.getStatus() == PayrollPeriodStatus.LOCKED) {
-            throw new AppException(ErrorCode.PAYROLL_PERIOD_LOCKED);
-        }
         requireOvertimeDays(month, request.overtimeDays());
-        DispatcherPayroll line = dispatcherPayrollRepository
-                .findByPayrollPeriodIdAndDispatcherId(payrollPeriod.getId(), dispatcherId)
+        DispatcherPayroll line = payrollPeriod.getDispatcherPayrolls().stream()
+                .filter(item -> item.getDispatcher() != null && Objects.equals(item.getDispatcher().getId(), dispatcherId))
+                .findFirst()
+                .or(() -> dispatcherPayrollRepository.findByPayrollPeriodIdAndDispatcherId(payrollPeriod.getId(), dispatcherId))
                 .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
-        applyAmounts(line, request.overtimeDays(), request.kpiAmountVnd());
+        boolean achieved = kpiAchieved(request.kpiAmountVnd());
+        applyAmounts(
+                line,
+                request.overtimeDays(),
+                resolvedKpiAmount(payrollPeriod.getPayrollRate(), achieved, request.kpiAmountVnd()));
+        dispatcherPayrollRepository.save(line);
         return periodResponse(payrollPeriod);
     }
 
@@ -283,23 +305,6 @@ public class DispatcherPayrollServiceImpl implements DispatcherPayrollService {
                 log.warn("Không gửi được email tăng lương cứng cho điều phối {}: {}", dispatcher.getId(), ex.getMessage());
             }
         });
-    }
-
-    private DispatcherPayroll newLine(
-            DispatcherPayrollPeriod period,
-            User dispatcher,
-            CompanyDispatcherPayrollRate rate,
-            LineInputs inputs
-    ) {
-        DispatcherPayroll line = DispatcherPayroll.builder()
-                .payrollPeriod(period)
-                .dispatcher(dispatcher)
-                .overtimeVndPerHour(rate.getOvertimeVndPerHour())
-                .overtimeHoursPerDay(rate.getOvertimeHoursPerDay())
-                .build();
-        line.setBaseSalaryVnd(dispatcherBaseSalary(dispatcher.getId(), period.getPeriodStart(), rate));
-        applyAmounts(line, inputs.overtimeDays(), inputs.kpiAmountVnd());
-        return line;
     }
 
     private void applyAmounts(DispatcherPayroll line, int overtimeDays, BigDecimal kpiAmountVnd) {
@@ -361,13 +366,30 @@ public class DispatcherPayrollServiceImpl implements DispatcherPayrollService {
                         line.getTotalSalaryVnd()))
                 .toList();
         return new DispatcherPayrollPeriodResponse(
-                YearMonth.from(period.getPeriodStart()).toString(), period.getStatus(), dispatchers);
+                YearMonth.from(period.getPeriodStart()).toString(), period.getStatus(),
+                resolvedKpiAmount(period.getPayrollRate(), true), dispatchers);
     }
 
-    private CompanyDispatcherPayrollRateResponse rateResponse(CompanyDispatcherPayrollRate rate) {
+    private CompanyDispatcherPayrollRateResponse rateResponse(
+            CompanyDispatcherPayrollRate rate, PayrollPeriodStatus periodStatus) {
         return new CompanyDispatcherPayrollRateResponse(
                 rate.getId(), rate.getEffectiveFrom(), rate.getBaseSalaryVnd(),
-                rate.getOvertimeVndPerHour(), rate.getOvertimeHoursPerDay());
+                rate.getOvertimeVndPerHour(), rate.getOvertimeHoursPerDay(), rate.getOvertimeDaysPerMonth(),
+                rateKpiAmount(rate), periodStatus);
+    }
+
+    private void becomeSoleLockedPeriod(Long companyId, DispatcherPayrollPeriod payrollPeriod) {
+        for (DispatcherPayrollPeriod other : periodRepository.findByCompanyIdAndStatus(companyId, PayrollPeriodStatus.LOCKED)) {
+            if (!Objects.equals(other.getId(), payrollPeriod.getId())) {
+                other.setStatus(PayrollPeriodStatus.DRAFT);
+                other.setLockedAt(null);
+            }
+        }
+        if (payrollPeriod.getStatus() != PayrollPeriodStatus.LOCKED) {
+            payrollPeriod.setStatus(PayrollPeriodStatus.LOCKED);
+            payrollPeriod.setLockedAt(LocalDateTime.now(VIETNAM_TIME_ZONE).truncatedTo(ChronoUnit.SECONDS));
+            periodRepository.save(payrollPeriod);
+        }
     }
 
     private DispatcherPayrollPeriod findPeriod(Long companyId, LocalDate periodStart) {
@@ -418,7 +440,56 @@ public class DispatcherPayrollServiceImpl implements DispatcherPayrollService {
                 .orElseThrow(() -> new AppException(ErrorCode.COMPANY_NOT_FOUND));
     }
 
-    private record LineInputs(int overtimeDays, BigDecimal kpiAmountVnd) {
-        static final LineInputs ZERO = new LineInputs(0, BigDecimal.ZERO);
+    private LineInputs defaultLineInputs(CompanyDispatcherPayrollRate rate, YearMonth month) {
+        int days = rate.getOvertimeDaysPerMonth() == null ? 0 : rate.getOvertimeDaysPerMonth();
+        if (days < 0) days = 0;
+        if (days > month.lengthOfMonth()) days = month.lengthOfMonth();
+        return new LineInputs(days, false);
+    }
+
+    private DispatcherPayroll newLine(
+            DispatcherPayrollPeriod period,
+            User dispatcher,
+            CompanyDispatcherPayrollRate rate,
+            LineInputs inputs
+    ) {
+        DispatcherPayroll line = DispatcherPayroll.builder()
+                .payrollPeriod(period)
+                .dispatcher(dispatcher)
+                .overtimeVndPerHour(rate.getOvertimeVndPerHour())
+                .overtimeHoursPerDay(rate.getOvertimeHoursPerDay())
+                .build();
+        line.setBaseSalaryVnd(dispatcherBaseSalary(dispatcher.getId(), period.getPeriodStart(), rate));
+        applyAmounts(line, inputs.overtimeDays(), resolvedKpiAmount(rate, inputs.kpiAchieved()));
+        return line;
+    }
+
+    private BigDecimal resolvedKpiAmount(CompanyDispatcherPayrollRate rate, boolean achieved) {
+        return resolvedKpiAmount(rate, achieved, null);
+    }
+
+    private BigDecimal resolvedKpiAmount(
+            CompanyDispatcherPayrollRate rate, boolean achieved, BigDecimal requestedAmount) {
+        if (!achieved) return BigDecimal.ZERO.setScale(0, RoundingMode.HALF_UP);
+        BigDecimal fromRate = rateKpiAmount(rate);
+        if (fromRate.signum() > 0) return fromRate;
+        if (requestedAmount == null || requestedAmount.signum() <= 0) return fromRate;
+        return requestedAmount.setScale(0, RoundingMode.HALF_UP);
+    }
+
+    private BigDecimal rateKpiAmount(CompanyDispatcherPayrollRate rate) {
+        if (rate == null || rate.getKpiAmountVnd() == null) {
+            return BigDecimal.ZERO.setScale(0, RoundingMode.HALF_UP);
+        }
+        BigDecimal kpi = rate.getKpiAmountVnd().setScale(0, RoundingMode.HALF_UP);
+        if (kpi.signum() < 0) throw new AppException(ErrorCode.PAYROLL_INVALID_AMOUNT);
+        return kpi;
+    }
+
+    private boolean kpiAchieved(BigDecimal kpiAmountVnd) {
+        return kpiAmountVnd != null && kpiAmountVnd.signum() > 0;
+    }
+
+    private record LineInputs(int overtimeDays, boolean kpiAchieved) {
     }
 }

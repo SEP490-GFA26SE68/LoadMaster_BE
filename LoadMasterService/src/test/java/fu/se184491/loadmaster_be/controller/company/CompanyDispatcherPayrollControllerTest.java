@@ -28,7 +28,7 @@ class CompanyDispatcherPayrollControllerTest {
                 .perform(put("/api/company/dispatcher-payroll/settings")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"effectiveFrom\":\"" + nextMonth
-                                + "\",\"baseSalaryVnd\":10000000,\"overtimeVndPerHour\":50000,\"overtimeHoursPerDay\":2}"))
+                                + "\",\"baseSalaryVnd\":10000000,\"overtimeVndPerHour\":50000,\"overtimeHoursPerDay\":2,\"overtimeDaysPerMonth\":4,\"kpiAmountVnd\":500000}"))
                 .andExpect(status().isOk());
     }
 

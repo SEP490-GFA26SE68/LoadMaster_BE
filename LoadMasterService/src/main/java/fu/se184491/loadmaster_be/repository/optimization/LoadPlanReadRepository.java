@@ -1,5 +1,7 @@
 package fu.se184491.loadmaster_be.repository.optimization;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import fu.se184491.loadmaster_be.dto.response.optimization.LoadPlanDetailResponse;
 import fu.se184491.loadmaster_be.dto.response.optimization.OptimizationJobStatusResponse;
 import fu.se184491.loadmaster_be.dto.response.optimization.PlacementDetailResponse;
@@ -13,6 +15,7 @@ import org.springframework.stereotype.Repository;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
+import java.util.ArrayList;
 import java.util.Calendar;
 import java.util.Collection;
 import java.util.List;
@@ -67,6 +70,8 @@ public class LoadPlanReadRepository {
 
     // Cả Java lẫn dịch vụ tối ưu ghi created_at theo giờ Việt Nam, không múi giờ.
     private static final TimeZone VIETNAM = TimeZone.getTimeZone("Asia/Ho_Chi_Minh");
+
+    private static final ObjectMapper JSON = new ObjectMapper();
 
     private static final RowMapper<LoadPlanDetailResponse> PLAN_MAPPER = (rs, i) -> mapPlan(rs);
 
@@ -216,7 +221,7 @@ public class LoadPlanReadRepository {
         }
         return jdbc.query("""
                         SELECT up.load_plan_id, up.package_id, p.package_code, p.tracking_barcode,
-                               up.rejection_reason, p.actual_length, p.actual_width,
+                               up.rejection_reason, up.violated_constraints, p.actual_length, p.actual_width,
                                p.actual_height, p.actual_weight_kg
                         FROM unplaced_packages up
                         LEFT JOIN packages p ON p.id = up.package_id
@@ -229,6 +234,7 @@ public class LoadPlanReadRepository {
                         .packageCode(rs.getString("package_code"))
                         .trackingBarcode(rs.getString("tracking_barcode"))
                         .reason(rs.getString("rejection_reason"))
+                        .violatedConstraints(violatedConstraints(rs))
                         .lengthCm(rs.getBigDecimal("actual_length"))
                         .widthCm(rs.getBigDecimal("actual_width"))
                         .heightCm(rs.getBigDecimal("actual_height"))
@@ -274,6 +280,32 @@ public class LoadPlanReadRepository {
     private static Long nullableLong(ResultSet rs, String column) throws SQLException {
         long value = rs.getLong(column);
         return rs.wasNull() ? null : value;
+    }
+
+    /** JSON array do OptimizeService ghi; cột trống hoặc JSON hỏng thì không bịa mã. */
+    private static List<String> violatedConstraints(ResultSet rs) throws SQLException {
+        String raw = rs.getString("violated_constraints");
+        if (raw == null || raw.isBlank() || "null".equals(raw.trim()) || "[]".equals(raw.trim())) {
+            return List.of();
+        }
+        try {
+            JsonNode node = JSON.readTree(raw);
+            if (node == null || !node.isArray()) {
+                return List.of();
+            }
+            List<String> codes = new ArrayList<>();
+            for (JsonNode item : node) {
+                if (item != null && item.isTextual()) {
+                    String code = item.asText().trim();
+                    if (!code.isEmpty()) {
+                        codes.add(code);
+                    }
+                }
+            }
+            return List.copyOf(codes);
+        } catch (Exception ignored) {
+            return List.of();
+        }
     }
 
     private static Integer nullableInt(ResultSet rs, String column) throws SQLException {
