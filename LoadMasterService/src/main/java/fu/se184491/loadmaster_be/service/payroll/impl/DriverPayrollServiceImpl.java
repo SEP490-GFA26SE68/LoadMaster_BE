@@ -109,6 +109,16 @@ public class DriverPayrollServiceImpl implements DriverPayrollService {
     @Override
     public CompanyPayrollRateResponse createRate(Long companyId, CompanyPayrollRateRequest request) {
         lockCompanyForPayrollUpdate(companyId);
+        // KPI tuỳ chọn: không có chỉ tiêu là không dùng KPI (tiền thưởng về 0); có chỉ tiêu thì phải có tiền thưởng lớn hơn 0.
+        BigDecimal kpiTargetKg = request.kpiTargetKg();
+        BigDecimal kpiBonusVnd = BigDecimal.ZERO;
+        if (kpiTargetKg != null) {
+            // Tiền thưởng trả theo đồng (làm tròn HALF_UP): số làm tròn về 0 đồng thì tài xế đạt vẫn không được gì.
+            if (request.kpiBonusVnd() == null || request.kpiBonusVnd().setScale(0, RoundingMode.HALF_UP).signum() <= 0) {
+                throw new AppException(ErrorCode.PAYROLL_KPI_BONUS_REQUIRED);
+            }
+            kpiBonusVnd = request.kpiBonusVnd();
+        }
         LocalDate effectiveFrom = request.effectiveFrom();
         if (effectiveFrom.getDayOfMonth() != 1) {
             throw new AppException(ErrorCode.PAYROLL_INVALID_PERIOD);
@@ -146,6 +156,8 @@ public class DriverPayrollServiceImpl implements DriverPayrollService {
         rate.setCommissionPercent(request.commissionPercent());
         rate.setHandlingFeeVndPerKg(request.handlingFeeVndPerKg());
         rate.setHandlingDriverPercent(request.handlingDriverPercent());
+        rate.setKpiTargetKg(kpiTargetKg);
+        rate.setKpiBonusVnd(kpiBonusVnd);
 
         CompanyPayrollRate savedRate = rateRepository.save(rate);
         for (PayrollPeriod draft : affectedDrafts) {
@@ -327,6 +339,8 @@ public class DriverPayrollServiceImpl implements DriverPayrollService {
         for (Trip trip : completedTrips) {
             addTripToPayroll(trip, payrollPeriod, rate, payrollByDriver);
         }
+        // KPI cần tổng kg cả tháng của từng tài xế nên tính sau khi đã cộng hết các chuyến.
+        payrollByDriver.values().forEach(payroll -> applyKpi(payroll, rate));
 
         payrollPeriod.getDriverPayrolls().addAll(payrollByDriver.values());
         payrollRepositorySave(payrollPeriod);
@@ -368,14 +382,14 @@ public class DriverPayrollServiceImpl implements DriverPayrollService {
                 .map(rate -> driverBaseSalary(driver.getId(), periodStart, rate))
                 .orElse(null);
         return new PayrollStatementResponse(false, month.toString(), status, driver.getId(), driver.getFullName(),
-                baseSalary, null, null, null, null, null, null, null, null, List.of());
+                baseSalary, null, null, null, null, null, null, null, null, null, null, null, List.of());
     }
 
     @Override
     public PayrollPeriodResponse lockPeriod(Long companyId, String period) {
         lockCompanyForPayrollUpdate(companyId);
         PayrollPeriod payrollPeriod = findPeriodForUpdate(companyId, parsePeriod(period).atDay(1));
-        becomeSoleLockedPeriod(companyId, payrollPeriod);
+        lockPeriodNow(payrollPeriod);
         return periodResponse(payrollPeriod);
     }
 
@@ -458,6 +472,19 @@ public class DriverPayrollServiceImpl implements DriverPayrollService {
         }
     }
 
+    /**
+     * Thưởng KPI theo kg: tài xế đạt khi tổng kg trong tháng không nhỏ hơn chỉ tiêu của công ty; hệ thống tự tính, không ai đánh dấu tay.
+     * Lương tháng = lương cứng + hoa hồng + bốc dỡ + thưởng KPI.
+     */
+    private void applyKpi(DriverPayroll payroll, CompanyPayrollRate rate) {
+        BigDecimal target = rate.getKpiTargetKg();
+        BigDecimal bonus = PayrollMath.kpiBonus(payroll.getTotalKg(), target, rate.getKpiBonusVnd());
+        payroll.setKpiAchieved(target != null && payroll.getTotalKg().compareTo(target) >= 0);
+        payroll.setKpiAmountVnd(bonus);
+        payroll.setTotalSalaryVnd(payroll.getBaseSalaryVnd()
+                .add(payroll.getKgAmountVnd()).add(payroll.getHandlingAmountVnd()).add(bonus));
+    }
+
     private BigDecimal plannedWeight(List<PackagePlacement> placements) {
         if (placements.isEmpty()) throw new AppException(ErrorCode.PAYROLL_DATA_INCOMPLETE);
         BigDecimal total = BigDecimal.ZERO;
@@ -533,20 +560,21 @@ public class DriverPayrollServiceImpl implements DriverPayrollService {
         PayrollPeriod payrollPeriod = periodRepository.findByCompanyIdAndPeriodStart(companyId, periodStart).orElse(null);
         if (payrollPeriod == null) {
             return new PayrollStatementResponse(false, month.toString(), null, driver.getId(), driver.getFullName(),
-                    null, null, null, null, null, null, null, null, null, List.of());
+                    null, null, null, null, null, null, null, null, null, null, null, null, List.of());
         }
         DriverPayroll payroll = driverPayrollRepository
                 .findByPayrollPeriodIdAndDriverId(payrollPeriod.getId(), driver.getId()).orElse(null);
         if (payroll == null) {
             return new PayrollStatementResponse(false, month.toString(), payrollPeriod.getStatus(), driver.getId(), driver.getFullName(),
-                    null, null, null, null, null, null, null, null, null, List.of());
+                    null, null, null, null, null, null, null, null, null, null, null, null, List.of());
         }
         CompanyPayrollRate rate = payrollPeriod.getPayrollRate();
         List<PayrollTripLineResponse> lines = payroll.getTrips().stream().map(this::lineResponse).toList();
         return new PayrollStatementResponse(true, month.toString(), payrollPeriod.getStatus(), driver.getId(), driver.getFullName(),
                 payroll.getBaseSalaryVnd(), payroll.getTotalKg(), rate.getRateVndPerKg(), payroll.getKgAmountVnd(),
                 rate.getCommissionPercent(), rate.getHandlingFeeVndPerKg(), rate.getHandlingDriverPercent(),
-                payroll.getHandlingAmountVnd(), payroll.getTotalSalaryVnd(), lines);
+                payroll.getHandlingAmountVnd(), rate.getKpiTargetKg(), payroll.isKpiAchieved(), payroll.getKpiAmountVnd(),
+                payroll.getTotalSalaryVnd(), lines);
     }
 
     private PayrollPeriod findPeriod(Long companyId, LocalDate periodStart) {
@@ -565,7 +593,7 @@ public class DriverPayrollServiceImpl implements DriverPayrollService {
                 .map(payroll -> new PayrollDriverSummaryResponse(
                         payroll.getDriver().getId(), payroll.getDriver().getFullName(), payroll.getBaseSalaryVnd(),
                         payroll.getTotalKg(), payroll.getKgAmountVnd(), payroll.getHandlingAmountVnd(),
-                        payroll.getTotalSalaryVnd()))
+                        payroll.isKpiAchieved(), payroll.getKpiAmountVnd(), payroll.getTotalSalaryVnd()))
                 .toList();
         return new PayrollPeriodResponse(YearMonth.from(period.getPeriodStart()).toString(), period.getStatus(), drivers);
     }
@@ -587,16 +615,11 @@ public class DriverPayrollServiceImpl implements DriverPayrollService {
     private CompanyPayrollRateResponse rateResponse(CompanyPayrollRate rate, PayrollPeriodStatus periodStatus) {
         return new CompanyPayrollRateResponse(rate.getId(), rate.getEffectiveFrom(), rate.getBaseSalaryVnd(),
                 rate.getRateVndPerKg(), rate.getCommissionPercent(), rate.getHandlingFeeVndPerKg(),
-                rate.getHandlingDriverPercent(), periodStatus);
+                rate.getHandlingDriverPercent(), rate.getKpiTargetKg(), rate.getKpiBonusVnd(), periodStatus);
     }
 
-    private void becomeSoleLockedPeriod(Long companyId, PayrollPeriod payrollPeriod) {
-        for (PayrollPeriod other : periodRepository.findByCompanyIdAndStatus(companyId, PayrollPeriodStatus.LOCKED)) {
-            if (!Objects.equals(other.getId(), payrollPeriod.getId())) {
-                other.setStatus(PayrollPeriodStatus.DRAFT);
-                other.setLockedAt(null);
-            }
-        }
+    /** Chỉ chốt kỳ này; các tháng đã chốt trước đó giữ nguyên để còn xem lại lương. */
+    private void lockPeriodNow(PayrollPeriod payrollPeriod) {
         if (payrollPeriod.getStatus() != PayrollPeriodStatus.LOCKED) {
             payrollPeriod.setStatus(PayrollPeriodStatus.LOCKED);
             payrollPeriod.setLockedAt(LocalDateTime.now(VIETNAM_TIME_ZONE).truncatedTo(ChronoUnit.SECONDS));

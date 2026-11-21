@@ -43,6 +43,16 @@ public class DriverPayroll {
     @Column(name = "handling_amount_vnd", nullable = false, precision = 15, scale = 0)
     private BigDecimal handlingAmountVnd;
 
+    /** Tài xế có đạt chỉ tiêu KPI tháng này không (hệ thống tự tính từ tổng kg, không ai đánh dấu tay). */
+    @Builder.Default
+    @Column(name = "kpi_achieved", nullable = false)
+    private boolean kpiAchieved = false;
+
+    /** Tiền thưởng KPI đã cộng vào lương: bằng mức thưởng của công ty khi đạt, 0 khi không đạt. */
+    @Builder.Default
+    @Column(name = "kpi_amount_vnd", nullable = false, precision = 15, scale = 0)
+    private BigDecimal kpiAmountVnd = BigDecimal.ZERO;
+
     @Column(name = "total_salary_vnd", nullable = false, precision = 15, scale = 0)
     private BigDecimal totalSalaryVnd;
 

@@ -130,4 +130,42 @@ class PayrollMathTest {
 
         assertEquals(ErrorCode.PAYROLL_INVALID_DRIVER_ASSIGNMENT, exception.getErrorCode());
     }
+
+    @Test
+    void kpiBonusIsPaidWhenTotalKgReachesTheTarget() {
+        assertEquals(new BigDecimal("500000"),
+                PayrollMath.kpiBonus(new BigDecimal("1200.500"), new BigDecimal("1000"), new BigDecimal("500000")));
+    }
+
+    @Test
+    void kpiBonusIsPaidWhenTotalKgEqualsTheTargetExactly() {
+        assertEquals(new BigDecimal("500000"),
+                PayrollMath.kpiBonus(new BigDecimal("1000.000"), new BigDecimal("1000"), new BigDecimal("500000")));
+    }
+
+    @Test
+    void kpiBonusIsZeroWhenTotalKgIsBelowTheTarget() {
+        assertEquals(new BigDecimal("0"),
+                PayrollMath.kpiBonus(new BigDecimal("999.999"), new BigDecimal("1000"), new BigDecimal("500000")));
+    }
+
+    @Test
+    void kpiBonusIsZeroWhenTheCompanyDoesNotUseKpi() {
+        assertEquals(new BigDecimal("0"),
+                PayrollMath.kpiBonus(new BigDecimal("5000"), null, new BigDecimal("500000")));
+    }
+
+    @Test
+    void kpiBonusIsRoundedToWholeDong() {
+        assertEquals(new BigDecimal("500001"),
+                PayrollMath.kpiBonus(new BigDecimal("1000"), new BigDecimal("1000"), new BigDecimal("500000.50")));
+    }
+
+    @Test
+    void kpiBonusRejectsNegativeKg() {
+        AppException exception = assertThrows(AppException.class,
+                () -> PayrollMath.kpiBonus(new BigDecimal("-1"), new BigDecimal("1000"), new BigDecimal("500000")));
+
+        assertEquals(ErrorCode.PAYROLL_INVALID_AMOUNT, exception.getErrorCode());
+    }
 }
