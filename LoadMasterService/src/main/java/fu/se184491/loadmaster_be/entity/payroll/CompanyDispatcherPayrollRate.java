@@ -5,6 +5,7 @@ import fu.se184491.loadmaster_be.entity.support.SupportTicket;
 import jakarta.persistence.*;
 import lombok.*;
 import org.hibernate.annotations.Check;
+import org.hibernate.annotations.ColumnDefault;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -44,6 +45,16 @@ public class CompanyDispatcherPayrollRate {
 
     @Column(name = "overtime_hours_per_day", nullable = false, precision = 5, scale = 2)
     private BigDecimal overtimeHoursPerDay;
+
+    @Builder.Default
+    @ColumnDefault("0")
+    @Column(name = "overtime_days_per_month", nullable = false)
+    private Integer overtimeDaysPerMonth = 0;
+
+    @Builder.Default
+    @ColumnDefault("0")
+    @Column(name = "kpi_amount_vnd", nullable = false, precision = 15, scale = 2)
+    private BigDecimal kpiAmountVnd = BigDecimal.ZERO;
 
     @Convert(converter = SupportTicket.LocalDateTimeSecondsConverter.class)
     @Column(name = "created_at", nullable = false, updatable = false, length = 19, columnDefinition = "varchar(19)")

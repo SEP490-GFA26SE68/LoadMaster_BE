@@ -16,6 +16,10 @@ public interface PayrollPeriodRepository extends JpaRepository<PayrollPeriod, Lo
 
     Optional<PayrollPeriod> findByCompanyIdAndPeriodStart(Long companyId, LocalDate periodStart);
 
+    List<PayrollPeriod> findByCompanyIdAndPeriodStartIn(Long companyId, List<LocalDate> periodStarts);
+
+    List<PayrollPeriod> findByCompanyIdAndStatus(Long companyId, PayrollPeriodStatus status);
+
     boolean existsByCompanyIdAndPayrollRateIdAndStatus(Long companyId, Long payrollRateId, PayrollPeriodStatus status);
 
     List<PayrollPeriod> findByCompanyIdAndPayrollRateIdAndStatusOrderByPeriodStartAsc(

@@ -94,8 +94,15 @@ public class DriverPayrollServiceImpl implements DriverPayrollService {
     @Override
     @Transactional(readOnly = true)
     public List<CompanyPayrollRateResponse> getRates(Long companyId) {
-        return rateRepository.findByCompanyIdOrderByEffectiveFromDesc(companyId).stream()
-                .map(this::rateResponse)
+        List<CompanyPayrollRate> rates = rateRepository.findByCompanyIdOrderByEffectiveFromDesc(companyId);
+        if (rates.isEmpty()) return List.of();
+        Map<LocalDate, PayrollPeriodStatus> statusByStart = periodRepository
+                .findByCompanyIdAndPeriodStartIn(
+                        companyId, rates.stream().map(CompanyPayrollRate::getEffectiveFrom).toList())
+                .stream()
+                .collect(Collectors.toMap(PayrollPeriod::getPeriodStart, PayrollPeriod::getStatus, (first, ignored) -> first));
+        return rates.stream()
+                .map(rate -> rateResponse(rate, statusByStart.get(rate.getEffectiveFrom())))
                 .toList();
     }
 
@@ -144,7 +151,8 @@ public class DriverPayrollServiceImpl implements DriverPayrollService {
         for (PayrollPeriod draft : affectedDrafts) {
             calculatePeriod(companyId, YearMonth.from(draft.getPeriodStart()).toString());
         }
-        return rateResponse(savedRate);
+        return rateResponse(savedRate, periodRepository.findByCompanyIdAndPeriodStart(companyId, savedRate.getEffectiveFrom())
+                .map(PayrollPeriod::getStatus).orElse(null));
     }
 
     @Override
@@ -365,10 +373,19 @@ public class DriverPayrollServiceImpl implements DriverPayrollService {
 
     @Override
     public PayrollPeriodResponse lockPeriod(Long companyId, String period) {
-        PayrollPeriod payrollPeriod = findPeriod(companyId, parsePeriod(period).atDay(1));
-        if (payrollPeriod.getStatus() != PayrollPeriodStatus.LOCKED) {
-            payrollPeriod.setStatus(PayrollPeriodStatus.LOCKED);
-            payrollPeriod.setLockedAt(LocalDateTime.now(VIETNAM_TIME_ZONE).truncatedTo(ChronoUnit.SECONDS));
+        lockCompanyForPayrollUpdate(companyId);
+        PayrollPeriod payrollPeriod = findPeriodForUpdate(companyId, parsePeriod(period).atDay(1));
+        becomeSoleLockedPeriod(companyId, payrollPeriod);
+        return periodResponse(payrollPeriod);
+    }
+
+    @Override
+    public PayrollPeriodResponse unlockPeriod(Long companyId, String period) {
+        lockCompanyForPayrollUpdate(companyId);
+        PayrollPeriod payrollPeriod = findPeriodForUpdate(companyId, parsePeriod(period).atDay(1));
+        if (payrollPeriod.getStatus() == PayrollPeriodStatus.LOCKED) {
+            payrollPeriod.setStatus(PayrollPeriodStatus.DRAFT);
+            payrollPeriod.setLockedAt(null);
             payrollRepositorySave(payrollPeriod);
         }
         return periodResponse(payrollPeriod);
@@ -567,10 +584,24 @@ public class DriverPayrollServiceImpl implements DriverPayrollService {
         return new TripPayrollDriverResponse(share.getDriver().getId(), share.getDriver().getFullName(), share.getSharePercent());
     }
 
-    private CompanyPayrollRateResponse rateResponse(CompanyPayrollRate rate) {
+    private CompanyPayrollRateResponse rateResponse(CompanyPayrollRate rate, PayrollPeriodStatus periodStatus) {
         return new CompanyPayrollRateResponse(rate.getId(), rate.getEffectiveFrom(), rate.getBaseSalaryVnd(),
                 rate.getRateVndPerKg(), rate.getCommissionPercent(), rate.getHandlingFeeVndPerKg(),
-                rate.getHandlingDriverPercent());
+                rate.getHandlingDriverPercent(), periodStatus);
+    }
+
+    private void becomeSoleLockedPeriod(Long companyId, PayrollPeriod payrollPeriod) {
+        for (PayrollPeriod other : periodRepository.findByCompanyIdAndStatus(companyId, PayrollPeriodStatus.LOCKED)) {
+            if (!Objects.equals(other.getId(), payrollPeriod.getId())) {
+                other.setStatus(PayrollPeriodStatus.DRAFT);
+                other.setLockedAt(null);
+            }
+        }
+        if (payrollPeriod.getStatus() != PayrollPeriodStatus.LOCKED) {
+            payrollPeriod.setStatus(PayrollPeriodStatus.LOCKED);
+            payrollPeriod.setLockedAt(LocalDateTime.now(VIETNAM_TIME_ZONE).truncatedTo(ChronoUnit.SECONDS));
+            payrollRepositorySave(payrollPeriod);
+        }
     }
 
     private YearMonth parsePeriod(String period) {

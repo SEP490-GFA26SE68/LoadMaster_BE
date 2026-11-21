@@ -26,6 +26,8 @@ public interface DispatcherPayrollService {
 
     DispatcherPayrollPeriodResponse lockPeriod(Long companyId, String period);
 
+    DispatcherPayrollPeriodResponse unlockPeriod(Long companyId, String period);
+
     DispatcherPayrollPeriodResponse updateLine(
             Long companyId, String period, Long dispatcherId, DispatcherPayrollLineRequest request);
 

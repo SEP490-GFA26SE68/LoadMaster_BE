@@ -160,7 +160,8 @@ class TestOptimizationResultPersistenceService:
             unplaced=[
                 UnplacedData(
                     package_id=str(pkg2.id),
-                    reason="WEIGHT_LIMIT_EXCEEDED",
+                    reason="CONSTRAINT_VIOLATED",
+                    violated_constraints=["AXLE_CONFIG_MISSING"],
                 )
             ],
             metrics=MetricsData(
@@ -197,7 +198,8 @@ class TestOptimizationResultPersistenceService:
         unplaced = db_session.query(UnplacedPackage).filter(UnplacedPackage.load_plan_id == plan.id).all()
         assert len(unplaced) == 1
         assert unplaced[0].package_id == pkg2.id
-        assert unplaced[0].rejection_reason in ("OVER_WEIGHT", "WEIGHT_LIMIT_EXCEEDED")
+        assert unplaced[0].rejection_reason == "CONSTRAINT_VIOLATED"
+        assert unplaced[0].violated_constraints == ["AXLE_CONFIG_MISSING"]
 
     def test_save_atomic_transaction_rolls_back_on_error(self, db_session, sample_job):
         """Nếu có lỗi giữa chừng, toàn bộ transaction bị rollback, không lưu rác trong DB"""

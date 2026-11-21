@@ -65,6 +65,11 @@ public class CompanyDispatcherPayrollController {
         return ApiResponse.success(payrollService.lockPeriod(currentUserService.getCurrentCompanyId(), period));
     }
 
+    @PostMapping("/periods/{period}/unlock")
+    public ApiResponse<DispatcherPayrollPeriodResponse> unlockPeriod(@PathVariable String period) {
+        return ApiResponse.success(payrollService.unlockPeriod(currentUserService.getCurrentCompanyId(), period));
+    }
+
     @PutMapping("/periods/{period}/dispatchers/{dispatcherId}")
     public ApiResponse<DispatcherPayrollPeriodResponse> updateLine(
             @PathVariable String period,

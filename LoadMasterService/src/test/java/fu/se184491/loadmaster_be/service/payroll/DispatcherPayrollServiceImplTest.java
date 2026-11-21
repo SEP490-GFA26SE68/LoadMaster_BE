@@ -66,6 +66,7 @@ class DispatcherPayrollServiceImplTest {
     void setUp() {
         company = Company.builder().id(10L).companyName("Công ty TNHH Vận tải Long Bình").build();
         lenient().when(companyRepository.findByIdForPayrollUpdate(10L)).thenReturn(Optional.of(company));
+        lenient().when(dispatcherPayrollRepository.save(any(DispatcherPayroll.class))).thenAnswer(invocation -> invocation.getArgument(0));
         dispatcher = dispatcher(31L, "Nguyễn Thanh Tùng", company);
         rate = CompanyDispatcherPayrollRate.builder()
                 .id(4L)
@@ -74,6 +75,7 @@ class DispatcherPayrollServiceImplTest {
                 .baseSalaryVnd(new BigDecimal("10000000"))
                 .overtimeVndPerHour(new BigDecimal("50000"))
                 .overtimeHoursPerDay(new BigDecimal("2.00"))
+                .overtimeDaysPerMonth(0)
                 .build();
     }
 
@@ -90,11 +92,12 @@ class DispatcherPayrollServiceImplTest {
         });
 
         var response = service.createRate(10L, new CompanyDispatcherPayrollRateRequest(
-                currentMonth, new BigDecimal("10000000"), new BigDecimal("50000"), new BigDecimal("2.00")));
+                currentMonth, new BigDecimal("10000000"), new BigDecimal("50000"), new BigDecimal("2.00"), 4, BigDecimal.ZERO));
 
         assertNotNull(response);
         assertEquals(new BigDecimal("50000"), response.overtimeVndPerHour());
         assertEquals(new BigDecimal("2.00"), response.overtimeHoursPerDay());
+        assertEquals(4, response.overtimeDaysPerMonth());
     }
 
     @Test
@@ -105,9 +108,36 @@ class DispatcherPayrollServiceImplTest {
 
         AppException error = assertThrows(AppException.class, () -> service.createRate(10L,
                 new CompanyDispatcherPayrollRateRequest(
-                        currentMonth, new BigDecimal("10000000"), new BigDecimal("50000"), new BigDecimal("2.00"))));
+                        currentMonth, new BigDecimal("10000000"), new BigDecimal("50000"), new BigDecimal("2.00"), 0, BigDecimal.ZERO)));
 
         assertEquals("PAYROLL_RATE_EFFECTIVE_DATE_TOO_EARLY", error.getErrorCode().name());
+    }
+
+    @Test
+    void createRateOverwritesExistingVersionEvenWhenPeriodIsLocked() {
+        LocalDate month = LocalDate.of(2026, 12, 1);
+        CompanyDispatcherPayrollRate existing = CompanyDispatcherPayrollRate.builder()
+                .id(7L)
+                .company(company)
+                .effectiveFrom(month)
+                .baseSalaryVnd(new BigDecimal("20000000"))
+                .overtimeVndPerHour(new BigDecimal("150000"))
+                .overtimeHoursPerDay(new BigDecimal("4"))
+                .overtimeDaysPerMonth(6)
+                .kpiAmountVnd(new BigDecimal("2000000"))
+                .build();
+        when(rateRepository.findByCompanyIdAndEffectiveFrom(10L, month)).thenReturn(Optional.of(existing));
+        when(rateRepository.existsByCompanyId(10L)).thenReturn(true);
+        when(periodRepository.findByCompanyIdAndPayrollRateIdAndStatusOrderByPeriodStartAsc(
+                10L, 7L, PayrollPeriodStatus.DRAFT)).thenReturn(List.of());
+        when(periodRepository.findByCompanyIdAndPeriodStart(10L, month)).thenReturn(Optional.empty());
+        when(rateRepository.save(any(CompanyDispatcherPayrollRate.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        var response = service.createRate(10L, new CompanyDispatcherPayrollRateRequest(
+                month, new BigDecimal("21000000"), new BigDecimal("150000"), new BigDecimal("4"), 6, new BigDecimal("2500000")));
+
+        assertEquals(new BigDecimal("21000000"), response.baseSalaryVnd());
+        assertEquals(new BigDecimal("2500000"), response.kpiAmountVnd());
     }
 
     @Test
@@ -130,6 +160,24 @@ class DispatcherPayrollServiceImplTest {
         assertEquals(new BigDecimal("0"), response.dispatchers().getFirst().overtimeAmountVnd());
         assertEquals(new BigDecimal("0"), response.dispatchers().getFirst().kpiAmountVnd());
         assertEquals(new BigDecimal("10000000"), response.dispatchers().getFirst().totalSalaryVnd());
+    }
+
+    @Test
+    void calculatePeriodUsesRateOvertimeDaysPerMonth() {
+        rate.setOvertimeDaysPerMonth(3);
+        LocalDate periodStart = LocalDate.of(2026, 11, 1);
+        stubCalculate(periodStart, Optional.empty());
+        when(periodRepository.save(any(DispatcherPayrollPeriod.class))).thenAnswer(invocation -> {
+            DispatcherPayrollPeriod period = invocation.getArgument(0);
+            period.setId(8L);
+            return period;
+        });
+
+        DispatcherPayrollPeriodResponse response = service.calculatePeriod(10L, "2026-11");
+
+        assertEquals(3, response.dispatchers().getFirst().overtimeDays());
+        assertEquals(new BigDecimal("300000"), response.dispatchers().getFirst().overtimeAmountVnd());
+        assertEquals(new BigDecimal("10300000"), response.dispatchers().getFirst().totalSalaryVnd());
     }
 
     @Test
@@ -158,12 +206,13 @@ class DispatcherPayrollServiceImplTest {
         stubCalculate(periodStart, Optional.of(existing));
         when(periodRepository.save(any(DispatcherPayrollPeriod.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
+        rate.setKpiAmountVnd(new BigDecimal("2000000"));
         DispatcherPayrollPeriodResponse response = service.calculatePeriod(10L, "2026-11");
 
         assertEquals(3, response.dispatchers().getFirst().overtimeDays());
         assertEquals(new BigDecimal("300000"), response.dispatchers().getFirst().overtimeAmountVnd());
-        assertEquals(new BigDecimal("1000000"), response.dispatchers().getFirst().kpiAmountVnd());
-        assertEquals(new BigDecimal("11300000"), response.dispatchers().getFirst().totalSalaryVnd());
+        assertEquals(new BigDecimal("2000000"), response.dispatchers().getFirst().kpiAmountVnd());
+        assertEquals(new BigDecimal("12300000"), response.dispatchers().getFirst().totalSalaryVnd());
     }
 
     @Test
@@ -232,15 +281,83 @@ class DispatcherPayrollServiceImplTest {
                 .build();
         draft.getDispatcherPayrolls().add(line);
         when(periodRepository.findByCompanyIdAndPeriodStartForUpdate(10L, periodStart)).thenReturn(Optional.of(draft));
-        when(dispatcherPayrollRepository.findByPayrollPeriodIdAndDispatcherId(8L, 31L)).thenReturn(Optional.of(line));
 
+        rate.setKpiAmountVnd(new BigDecimal("1500000"));
         DispatcherPayrollPeriodResponse response = service.updateLine(
-                10L, "2026-11", 31L, new DispatcherPayrollLineRequest(4, new BigDecimal("1500000")));
+                10L, "2026-11", 31L, new DispatcherPayrollLineRequest(4, new BigDecimal("1")));
 
         assertEquals(4, response.dispatchers().getFirst().overtimeDays());
         assertEquals(new BigDecimal("400000"), response.dispatchers().getFirst().overtimeAmountVnd());
         assertEquals(new BigDecimal("1500000"), response.dispatchers().getFirst().kpiAmountVnd());
         assertEquals(new BigDecimal("11900000"), response.dispatchers().getFirst().totalSalaryVnd());
+    }
+
+    @Test
+    void updateLineAllowsKpiAndOvertimeWhenPeriodIsLocked() {
+        LocalDate periodStart = LocalDate.of(2026, 11, 1);
+        DispatcherPayrollPeriod locked = DispatcherPayrollPeriod.builder()
+                .id(8L)
+                .company(company)
+                .periodStart(periodStart)
+                .payrollRate(rate)
+                .status(PayrollPeriodStatus.LOCKED)
+                .dispatcherPayrolls(new ArrayList<>())
+                .build();
+        DispatcherPayroll line = DispatcherPayroll.builder()
+                .payrollPeriod(locked)
+                .dispatcher(dispatcher)
+                .baseSalaryVnd(new BigDecimal("10000000"))
+                .overtimeVndPerHour(new BigDecimal("50000"))
+                .overtimeHoursPerDay(new BigDecimal("2.00"))
+                .overtimeDays(0)
+                .overtimeAmountVnd(BigDecimal.ZERO)
+                .kpiAmountVnd(BigDecimal.ZERO)
+                .totalSalaryVnd(new BigDecimal("10000000"))
+                .build();
+        locked.getDispatcherPayrolls().add(line);
+        when(periodRepository.findByCompanyIdAndPeriodStartForUpdate(10L, periodStart)).thenReturn(Optional.of(locked));
+
+        rate.setKpiAmountVnd(new BigDecimal("2000000"));
+        DispatcherPayrollPeriodResponse response = service.updateLine(
+                10L, "2026-11", 31L, new DispatcherPayrollLineRequest(6, new BigDecimal("1")));
+
+        assertEquals(PayrollPeriodStatus.LOCKED, response.status());
+        assertEquals(6, response.dispatchers().getFirst().overtimeDays());
+        assertEquals(new BigDecimal("2000000"), response.dispatchers().getFirst().kpiAmountVnd());
+        assertEquals(new BigDecimal("12600000"), response.dispatchers().getFirst().totalSalaryVnd());
+    }
+
+    @Test
+    void updateLineAddsRequestedKpiWhenRateBonusIsZero() {
+        LocalDate periodStart = LocalDate.of(2026, 11, 1);
+        rate.setKpiAmountVnd(BigDecimal.ZERO);
+        DispatcherPayrollPeriod locked = DispatcherPayrollPeriod.builder()
+                .id(8L)
+                .company(company)
+                .periodStart(periodStart)
+                .payrollRate(rate)
+                .status(PayrollPeriodStatus.LOCKED)
+                .dispatcherPayrolls(new ArrayList<>())
+                .build();
+        DispatcherPayroll line = DispatcherPayroll.builder()
+                .payrollPeriod(locked)
+                .dispatcher(dispatcher)
+                .baseSalaryVnd(new BigDecimal("20000000"))
+                .overtimeVndPerHour(new BigDecimal("150000"))
+                .overtimeHoursPerDay(new BigDecimal("4.00"))
+                .overtimeDays(6)
+                .overtimeAmountVnd(new BigDecimal("3600000"))
+                .kpiAmountVnd(BigDecimal.ZERO)
+                .totalSalaryVnd(new BigDecimal("23600000"))
+                .build();
+        locked.getDispatcherPayrolls().add(line);
+        when(periodRepository.findByCompanyIdAndPeriodStartForUpdate(10L, periodStart)).thenReturn(Optional.of(locked));
+
+        DispatcherPayrollPeriodResponse response = service.updateLine(
+                10L, "2026-11", 31L, new DispatcherPayrollLineRequest(6, new BigDecimal("2000000")));
+
+        assertEquals(new BigDecimal("2000000"), response.dispatchers().getFirst().kpiAmountVnd());
+        assertEquals(new BigDecimal("25600000"), response.dispatchers().getFirst().totalSalaryVnd());
     }
 
     @Test
@@ -337,7 +454,8 @@ class DispatcherPayrollServiceImplTest {
                 .status(PayrollPeriodStatus.DRAFT)
                 .dispatcherPayrolls(new ArrayList<>())
                 .build();
-        when(periodRepository.findByCompanyIdAndPeriodStart(10L, periodStart)).thenReturn(Optional.of(draft));
+        when(periodRepository.findByCompanyIdAndPeriodStartForUpdate(10L, periodStart)).thenReturn(Optional.of(draft));
+        when(periodRepository.findByCompanyIdAndStatus(10L, PayrollPeriodStatus.LOCKED)).thenReturn(List.of());
         when(periodRepository.save(any(DispatcherPayrollPeriod.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
         DispatcherPayrollPeriodResponse response = service.lockPeriod(10L, "2026-11");
@@ -345,6 +463,55 @@ class DispatcherPayrollServiceImplTest {
         assertEquals(PayrollPeriodStatus.LOCKED, response.status());
         assertNotNull(draft.getLockedAt());
         verify(periodRepository).save(draft);
+    }
+
+    @Test
+    void lockPeriodTurnsPreviousLockedPeriodBackToDraft() {
+        LocalDate november = LocalDate.of(2026, 11, 1);
+        LocalDate december = LocalDate.of(2026, 12, 1);
+        DispatcherPayrollPeriod previous = DispatcherPayrollPeriod.builder()
+                .id(7L)
+                .company(company)
+                .periodStart(november)
+                .status(PayrollPeriodStatus.LOCKED)
+                .dispatcherPayrolls(new ArrayList<>())
+                .build();
+        DispatcherPayrollPeriod next = DispatcherPayrollPeriod.builder()
+                .id(8L)
+                .company(company)
+                .periodStart(december)
+                .status(PayrollPeriodStatus.DRAFT)
+                .dispatcherPayrolls(new ArrayList<>())
+                .build();
+        when(periodRepository.findByCompanyIdAndPeriodStartForUpdate(10L, december)).thenReturn(Optional.of(next));
+        when(periodRepository.findByCompanyIdAndStatus(10L, PayrollPeriodStatus.LOCKED)).thenReturn(List.of(previous));
+        when(periodRepository.save(any(DispatcherPayrollPeriod.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        DispatcherPayrollPeriodResponse response = service.lockPeriod(10L, "2026-12");
+
+        assertEquals(PayrollPeriodStatus.LOCKED, response.status());
+        assertEquals(PayrollPeriodStatus.DRAFT, previous.getStatus());
+        assertEquals(null, previous.getLockedAt());
+    }
+
+    @Test
+    void unlockPeriodReturnsLockedPayrollToDraft() {
+        LocalDate periodStart = LocalDate.of(2026, 11, 1);
+        DispatcherPayrollPeriod locked = DispatcherPayrollPeriod.builder()
+                .id(8L)
+                .company(company)
+                .periodStart(periodStart)
+                .status(PayrollPeriodStatus.LOCKED)
+                .dispatcherPayrolls(new ArrayList<>())
+                .build();
+        when(periodRepository.findByCompanyIdAndPeriodStartForUpdate(10L, periodStart)).thenReturn(Optional.of(locked));
+        when(periodRepository.save(any(DispatcherPayrollPeriod.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        DispatcherPayrollPeriodResponse response = service.unlockPeriod(10L, "2026-11");
+
+        assertEquals(PayrollPeriodStatus.DRAFT, response.status());
+        assertEquals(null, locked.getLockedAt());
+        verify(periodRepository).save(locked);
     }
 
     private void stubCalculate(LocalDate periodStart, Optional<DispatcherPayrollPeriod> existing) {
