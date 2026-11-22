@@ -168,4 +168,24 @@ class PayrollMathTest {
 
         assertEquals(ErrorCode.PAYROLL_INVALID_AMOUNT, exception.getErrorCode());
     }
+
+    @Test
+    void loadedAmountRoundsTheMonthTotalToWholeDongOnce() {
+        // 22,750 kg × 150,50 đ = 3.423,875 đ → 3.424 đ.
+        assertEquals(new BigDecimal("3424"),
+                PayrollMath.loadedAmount(new BigDecimal("22.750"), new BigDecimal("150.50")));
+    }
+
+    @Test
+    void loadedAmountIsZeroWithoutLoadedKg() {
+        assertEquals(new BigDecimal("0"), PayrollMath.loadedAmount(new BigDecimal("0.000"), new BigDecimal("150.50")));
+    }
+
+    @Test
+    void loadedAmountRejectsNegativeValues() {
+        AppException exception = assertThrows(AppException.class,
+                () -> PayrollMath.loadedAmount(new BigDecimal("-0.001"), new BigDecimal("150")));
+
+        assertEquals(ErrorCode.PAYROLL_INVALID_AMOUNT, exception.getErrorCode());
+    }
 }
