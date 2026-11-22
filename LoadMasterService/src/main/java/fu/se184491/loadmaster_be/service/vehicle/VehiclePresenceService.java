@@ -39,9 +39,15 @@ public class VehiclePresenceService {
         if(page<0 || page>100000 || size<1 || size>100 || search.length()>80 || search.length()==1) throw new AppException(ErrorCode.INVALID_INPUT);
         return store.catalog(u.getCompany().getId(),warehouse,search,page,size,atWarehouse);
     }
+    /** Ordinary check-in. The vehicle of a LOADING trip that leaves from this warehouse goes through the same
+     * physical verification as {@link #confirmLoadingPresence}, so the "vehicle at warehouse" screen also unblocks
+     * its departure; any other active trip (LOADING elsewhere, IN_TRANSIT) still makes the vehicle busy. */
     @Transactional
     public VehiclePresenceStore.Presence checkIn(long warehouse,long vehicle,UUID key) {
         var u=worker();scope(u,warehouse);long company=u.getCompany().getId();
+        // Read without a lock: confirmLoadingPresence locks Trip before Vehicle and rechecks everything.
+        Long loadingTrip=store.loadingTripFrom(vehicle,company,warehouse);
+        if(loadingTrip!=null) return confirmLoadingPresence(warehouse,loadingTrip,vehicle,key);
         store.lockRequest(company,key.toString());
         store.lockVehicle(vehicle,company);
         // Recheck assignment after acquiring serialization lock; assignment revocation obtains its own row lock.
@@ -63,7 +69,9 @@ public class VehiclePresenceService {
         store.receipt(company,key.toString(),vehicle,warehouse,u.getId());
         return store.presence(vehicle,company);
     }
-    /** Explicit physical verification for a loading vehicle, including legacy UNKNOWN presence.
+    /** Explicit physical verification of the loading trip's own vehicle at the trip's origin: the worker sees it there.
+     * Presence UNKNOWN or IN_TRANSIT (nobody checked it in after an earlier trip) becomes AT_WAREHOUSE at the origin;
+     * AT_WAREHOUSE at another warehouse is first checked out of it. Already at the origin is a no-op (receipt only).
      * Trip -> request -> Vehicle -> assignment/warehouse. Never infer arrival from loading completion. */
     @Transactional
     public VehiclePresenceStore.Presence confirmLoadingPresence(long warehouse,long trip,long expectedVehicle,UUID key) {
@@ -78,19 +86,29 @@ public class VehiclePresenceService {
         store.lockRequest(company,key.toString());
         var locked=store.lockVehicle(vehicle,company);
         if(!store.lockAssignment(u.getId(),company,warehouse)) throw new AppException(ErrorCode.VEHICLE_WAREHOUSE_FORBIDDEN);
-        if(!"AVAILABLE".equals(locked.get("status")) || store.busy(vehicle,trip)) throw new AppException(ErrorCode.VEHICLE_BUSY);
         if(store.activeTransfer(vehicle)) throw new AppException(ErrorCode.VEHICLE_TRANSFER_CONFLICT);
+        if(!"AVAILABLE".equals(locked.get("status")) || store.tripBusy(vehicle,trip)) throw new AppException(ErrorCode.VEHICLE_BUSY);
         var old=store.receipt(company,key.toString());
         if(old!=null) {
             if(((Number)old.get("vehicle_id")).longValue()!=vehicle || ((Number)old.get("warehouse_id")).longValue()!=warehouse
-                || ((Number)old.get("actor_user_id")).longValue()!=u.getId() || store.event(company,reference).isEmpty())
+                || ((Number)old.get("actor_user_id")).longValue()!=u.getId())
                 throw new AppException(ErrorCode.VEHICLE_PRESENCE_CONFLICT);
-            return store.presence(vehicle,company);
+            var current=store.presence(vehicle,company);
+            // A no-op confirmation leaves no event; its replay is still valid while the vehicle is at the origin.
+            if(store.event(company,reference).isEmpty() && !atWarehouse(current,warehouse)) throw new AppException(ErrorCode.VEHICLE_PRESENCE_CONFLICT);
+            return current;
         }
-        if(!"UNKNOWN".equals(store.presence(vehicle,company).status())) throw new AppException(ErrorCode.VEHICLE_PRESENCE_CONFLICT);
-        store.change(vehicle,company,warehouse,"AT_WAREHOUSE",u.getId(),reference,"CHECK_IN");
+        var p=store.presence(vehicle,company);
+        if(!atWarehouse(p,warehouse)) {
+            // CHECK_IN only follows UNKNOWN / IN_TRANSIT: leave the other warehouse first, in the same transaction.
+            if("AT_WAREHOUSE".equals(p.status())) store.change(vehicle,company,p.warehouseId(),"IN_TRANSIT",u.getId(),reference+":out","CHECK_OUT");
+            store.change(vehicle,company,warehouse,"AT_WAREHOUSE",u.getId(),reference,"CHECK_IN");
+        }
         store.receipt(company,key.toString(),vehicle,warehouse,u.getId());
         return store.presence(vehicle,company);
+    }
+    private static boolean atWarehouse(VehiclePresenceStore.Presence p,long warehouse) {
+        return "AT_WAREHOUSE".equals(p.status()) && Objects.equals(p.warehouseId(),warehouse);
     }
     @Transactional(readOnly=true)
     public List<VehiclePresenceStore.Event> history(long warehouse,long vehicle) {
@@ -106,7 +124,9 @@ public class VehiclePresenceService {
         var locked=store.lockVehicle(vehicle,company);
         var p=store.presence(vehicle,company);
         if("UNKNOWN".equals(p.status())) throw new AppException(ErrorCode.DRIVER_VEHICLE_PRESENCE_UNVERIFIED);
-        if(!"AVAILABLE".equals(locked.get("status")) || !"AT_WAREHOUSE".equals(p.status()) || trip.getOriginWarehouse()==null || !Objects.equals(p.warehouseId(),trip.getOriginWarehouse().getId()) || store.busy(vehicle,trip.getId())) throw new AppException(ErrorCode.DRIVER_VEHICLE_DEPARTURE_BLOCKED);
+        if(!"AVAILABLE".equals(locked.get("status")) || trip.getOriginWarehouse()==null || store.busy(vehicle,trip.getId())) throw new AppException(ErrorCode.DRIVER_VEHICLE_DEPARTURE_BLOCKED);
+        // In transit or at another warehouse: like UNKNOWN, a worker at the origin can confirm the vehicle (confirmLoadingPresence).
+        if(!atWarehouse(p,trip.getOriginWarehouse().getId())) throw new AppException(ErrorCode.DRIVER_VEHICLE_PRESENCE_UNVERIFIED);
         store.change(vehicle,company,p.warehouseId(),"IN_TRANSIT",actor,"trip:"+trip.getId()+":departure","CHECK_OUT");
     }
 }

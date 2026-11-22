@@ -32,6 +32,12 @@ public class StartLoadingResponse {
     private Long tripId;
     private String tripCode;
     private String vehicleInfo;
+    /** Mã số xe của chuyến; null khi chuyến chưa gắn xe. */
+    private Long vehicleId;
+    /** Kho xuất phát của chuyến; null khi chưa có. */
+    private Long originWarehouseId;
+    /** Xe đang ở đâu theo kho ghi nhận (chỉ đọc); null khi chuyến chưa gắn xe. */
+    private VehiclePresenceSummary vehiclePresence;
     private String licensePlate;
     private String vehicleTypeName;
     private Integer innerLength;
