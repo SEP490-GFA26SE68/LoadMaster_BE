@@ -9,6 +9,8 @@ import org.testcontainers.postgresql.PostgreSQLContainer;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.ResultSet;
@@ -21,10 +23,10 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
-/** V47: ba bảng của trợ lý AI có đủ cột, kiểu, ràng buộc; chạy lại không lỗi. */
+/** V53: ba bảng của trợ lý AI có đủ cột, kiểu, ràng buộc; chạy lại không lỗi. */
 class AssistantTablesMigrationIntegrationTest {
 
-    private static final String SCRIPT = "db/migration/V47__assistant_tables.sql";
+    private static final String SCRIPT = "db/migration/V53__assistant_tables.sql";
     private static final String SCHEMA = "app";
 
     @Test
@@ -35,7 +37,7 @@ class AssistantTablesMigrationIntegrationTest {
         try (PostgreSQLContainer postgres = new PostgreSQLContainer("postgres:17-alpine")) {
             postgres.start();
             try (Connection connection = connection(postgres)) {
-                // Schema đã có bảng khác (như DB đang chạy) để Flyway baseline ở V46 rồi chỉ chạy V47
+                // Schema đã có bảng khác (như DB đang chạy) để Flyway baseline ở V52 rồi chỉ chạy V53
                 execute(connection, "CREATE SCHEMA " + SCHEMA);
                 execute(connection, "CREATE TABLE " + SCHEMA + ".users (id BIGSERIAL PRIMARY KEY)");
             }
@@ -88,13 +90,17 @@ class AssistantTablesMigrationIntegrationTest {
         }
     }
 
-    private static void migrate(PostgreSQLContainer postgres) {
+    private static void migrate(PostgreSQLContainer postgres) throws IOException {
+        // Chỉ dò thư mục chứa đúng V53: db/migration của develop có hai file V47 nên Flyway dò cả thư mục sẽ báo trùng
+        Path dir = Files.createTempDirectory("assistant-migration");
+        Files.writeString(dir.resolve("V53__assistant_tables.sql"), script());
         Flyway.configure()
                 .dataSource(postgres.getJdbcUrl(), postgres.getUsername(), postgres.getPassword())
+                .locations("filesystem:" + dir.toAbsolutePath())
                 .schemas(SCHEMA)
                 .baselineOnMigrate(true)
-                .baselineVersion(MigrationVersion.fromVersion("46"))
-                .target(MigrationVersion.fromVersion("47"))
+                .baselineVersion(MigrationVersion.fromVersion("52"))
+                .target(MigrationVersion.fromVersion("53"))
                 .load()
                 .migrate();
     }

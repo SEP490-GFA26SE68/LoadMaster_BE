@@ -178,14 +178,18 @@ public class PackageController {
     public ResponseEntity<PageResponse<PackageResponse>> getAllPackages(
             @RequestParam(required = false) Long orderId,
             @RequestParam(required = false) Long packageTypeId,
+            @RequestParam(required = false) String packageCode,
+            @RequestParam(required = false) String search,
+            @RequestParam(required = false) fu.se184491.loadmaster_be.constant.cargo.PackageStatus status,
+            @RequestParam(required = false) fu.se184491.loadmaster_be.constant.cargo.HandlingClass handlingClass,
+            @RequestParam(required = false) String sortBy,
+            @RequestParam(required = false) String sortDir,
             Pageable pageable
     ) {
-        Page<PackageResponse> page = packageService.getAllPackages(
-                getCurrentCompanyId(),
-                orderId,
-                packageTypeId,
-                pageable
-        );
+        var sorted = fu.se184491.loadmaster_be.service.cargo.WarehouseListQuery.pageable(
+                pageable, sortBy, sortDir, fu.se184491.loadmaster_be.service.cargo.WarehouseListQuery.PACKAGES);
+        Page<PackageResponse> page = packageService.searchPackages(
+                getCurrentCompanyId(), orderId, packageTypeId, packageCode, search, status, handlingClass, sorted);
 
         PageResponse<PackageResponse> response = PageResponse.<PackageResponse>builder()
                 .success(true)

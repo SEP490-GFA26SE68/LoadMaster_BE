@@ -44,6 +44,8 @@ class TripVehicleChoiceServiceTest {
     @Mock TripPackageResolver tripPackageResolver;
     @Mock CurrentUserService currentUserService;
 
+    @Mock fu.se184491.loadmaster_be.service.vehicle.VehicleDepartureEligibility vehicleEligibility;
+
     @InjectMocks TripVehicleChoiceService service;
 
     private static Vehicle vehicle(long id, String name, int payloadKg, VehicleStatus status) {
@@ -54,6 +56,7 @@ class TripVehicleChoiceServiceTest {
 
     @BeforeEach
     void setUp() {
+        org.mockito.Mockito.lenient().when(vehicleEligibility.eligible(any(), org.mockito.ArgumentMatchers.<Long>any(), any())).thenAnswer(i -> ((Vehicle)i.getArgument(0)).getStatus()==VehicleStatus.AVAILABLE);
         when(currentUserService.getCurrentCompanyId()).thenReturn(1L);
         Vehicle current = vehicle(3L, "Xe A", 5000, VehicleStatus.AVAILABLE);
         when(tripRepository.findByIdAndCompanyId(10L, 1L))

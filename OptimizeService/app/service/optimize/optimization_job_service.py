@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import uuid
 from typing import Optional, Union
 from sqlalchemy.orm import Session
 
@@ -11,6 +10,14 @@ from app.entity.trip_model import Trip
 from app.exception.app_exception import AppException
 from app.exception.error_code import ErrorCode
 from app.repository.optimization.optimization_job_repository import OptimizationJobRepository
+
+
+class JobAlreadyFinishedError(Exception):
+    """Job đã ở trạng thái cuối: không ghi đè, rollback phần kết quả đến muộn trong cùng giao dịch."""
+
+    def __init__(self, current_status: str):
+        self.current_status = current_status
+        super().__init__(f"Optimization job already finished with status {current_status}")
 
 
 class OptimizationJobService:
@@ -25,46 +32,9 @@ class OptimizationJobService:
             db: Session,
     ) -> OptimizationJob:
         """
-        Tạo Optimization Job cho Trip có ID kiểu BIGINT.
+        Retired: Spring Boot creates and charges jobs in one transaction.
         """
-        if isinstance(trip_id, bool) or not isinstance(trip_id, int) or trip_id <= 0:
-            raise AppException(ErrorCode.INVALID_INPUT)
-
-        trip = db.query(Trip).filter(Trip.id == trip_id).first()
-
-        if not trip:
-            raise AppException(ErrorCode.TRIP_NOT_FOUND)
-
-        from app.service.optimize.algorithm_tier_service import AlgorithmTierService
-
-        objective_val = (
-            config.objective.value
-            if hasattr(config.objective, "value")
-            else str(config.objective)
-        )
-
-        tier = AlgorithmTierService.get_algorithm_tier(
-            config.subscription_tier
-        )
-
-        resolved_algo = AlgorithmTierService.resolve_algorithm(
-            tier,
-            config.algorithm_name,
-        )
-
-        job = OptimizationJob(
-            trip_id=trip_id,
-            job_uuid=str(uuid.uuid4()),
-            objective=objective_val,
-            time_limit_sec=config.time_limit_sec,
-            status=OptimizationJobStatus.PENDING.value,
-            algorithm_name=resolved_algo,
-            company_id=config.company_id,
-            subscription_tier=tier,
-            algorithm_tier=tier,
-        )
-
-        return self.repository.create(job, db)
+        raise AppException(ErrorCode.UNAUTHORIZED)  # Spring is the sole job/credit admission authority.
 
 
     def get_job(self, job_uuid: str, db: Session) -> OptimizationJob:
@@ -98,32 +68,17 @@ class OptimizationJobService:
         db: Session = None,
     ) -> OptimizationJob:
         """
-        Cập nhật trạng thái và thời gian tính toán của job, rồi commit cùng mọi thứ đã ghi trong giao dịch.
+        Cập nhật trạng thái và thời gian tính toán của job.
         Status flow: PENDING -> RUNNING -> COMPLETED / FAILED / TIMEOUT / NO_SOLUTION / PARTIAL
-
-        Trạng thái cuối là cuối: chỉ đổi khi job còn PENDING / RUNNING (UPDATE có điều kiện). Job đã kết thúc —
-        thường là LoadMasterService đã đánh dấu FAILED JOB_INTERRUPTED và hoàn credit vì job quá hạn — thì
-        rollback cả giao dịch (bỏ phương án vừa ghi của kết quả đến muộn) và ném JobAlreadyFinishedError.
         """
-        status_val = status.value if hasattr(status, "value") else str(status)
         job = self.get_job(job_uuid, db)
+        if job.execution_generation is not None:
+            raise RuntimeError("V2 status changes require ownership protocol")
+        status_val = status.value if hasattr(status, "value") else str(status)
         # Quyết định nằm ở câu UPDATE có điều kiện, không ở lần đọc trên: lượt ghi cùng lúc của Java không lọt qua.
         if not self.repository.transition_unfinished(str(job_uuid), status_val, computation_ms, db):
             db.rollback()
-            raise JobAlreadyFinishedError(str(job_uuid), job.status, status_val)
+            raise JobAlreadyFinishedError(self.get_job(job_uuid, db).status)
         db.commit()
-        # Sau commit job đã hết hạn trong phiên: đọc thuộc tính là đọc lại từ DB. Không đọc ngay ở đây để không mở
-        # giao dịch mới giữ kết nối suốt lúc bộ giải chạy.
+        db.refresh(job)
         return job
-
-
-class JobAlreadyFinishedError(Exception):
-    """Job đã ở trạng thái cuối khi một kết quả / trạng thái mới đến: phần đến muộn bị bỏ, không ghi gì."""
-
-    def __init__(self, job_uuid: str, current_status: Optional[str], attempted_status: str):
-        self.job_uuid = job_uuid
-        self.current_status = current_status
-        self.attempted_status = attempted_status
-        super().__init__(
-            f"Optimization job {job_uuid} already {current_status}; ignored transition to {attempted_status}"
-        )

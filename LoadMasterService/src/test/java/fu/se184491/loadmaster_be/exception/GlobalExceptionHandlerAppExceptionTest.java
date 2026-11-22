@@ -1,14 +1,20 @@
 package fu.se184491.loadmaster_be.exception;
 
 import fu.se184491.loadmaster_be.dto.ApiResponse;
+import org.apache.catalina.connector.ClientAbortException;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.mock.web.MockHttpServletRequest;
+import org.springframework.web.context.request.async.AsyncRequestNotUsableException;
 
+import java.io.IOException;
+
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 
 class GlobalExceptionHandlerAppExceptionTest {
 
@@ -50,5 +56,17 @@ class GlobalExceptionHandlerAppExceptionTest {
         assertFalse(response.getBody().isSuccess());
         assertEquals("INCOMPLETE_LOADING", response.getBody().getCode());
         assertEquals("Còn 2 kiện", response.getBody().getMessage());
+    }
+
+    @Test
+    @DisplayName("Client cắt kết nối khi đang flush /api/packages: không trả 500")
+    void clientAbortIsNotInternalError() {
+        var request = new MockHttpServletRequest("GET", "/api/packages");
+        var aborted = new AsyncRequestNotUsableException(
+                "ServletResponse failed to flushBuffer",
+                new ClientAbortException(new IOException("An established connection was aborted by the software in your host machine")));
+
+        assertDoesNotThrow(() -> handler.handleClientAbort(aborted, request));
+        assertNull(handler.handleGlobalException(aborted, request));
     }
 }

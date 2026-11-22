@@ -156,32 +156,26 @@ class TestSubmitJobWithPins:
             "trip_id": 5, "objective": "MAX_VOLUME", "time_limit_sec": 30, "pinned_placements": pins,
         })
 
-    def test_invalid_pins_are_rejected_before_any_job(self):
+    def test_invalid_pins_without_reserved_identity_cannot_create_or_run_a_job(self):
         response = self.post([
             {"package_id": 1, "pos_x": 0, "pos_y": 0, "pos_z": 0},
             {"package_id": 2, "pos_x": 50, "pos_y": 0, "pos_z": 0},
         ])
-
-        assert response.status_code == 400
-        body = response.json()
-        assert body["code"] == "PINNED_SET_INVALID"
-        assert body["errors"]
+        assert response.status_code == 422
         assert self.jobs.created == []
+        assert self.runner.built == []
         assert self.runner.runs == []
 
-    def test_valid_pins_run_with_the_pinned_problem(self):
+    def test_valid_pins_do_not_bypass_reserved_billing_contract(self):
         response = self.post([{"package_id": 2, "pos_x": 250, "pos_y": 70, "pos_z": 0}])
-
-        assert response.status_code == 202
-        assert self.runner.built == [(5, "MAX_VOLUME", 30)]
-        assert self.jobs.created == [5]
-        job_uuid, pinned_problem = self.runner.runs[0]
-        assert job_uuid == "job-1"
-        assert [str(p.package_id) for p in pinned_problem.pinned] == ["2"]
-
-    def test_without_pins_the_job_builds_its_own_problem(self):
-        response = self.post([])
-
-        assert response.status_code == 202
+        assert response.status_code == 422
+        assert self.jobs.created == []
         assert self.runner.built == []
-        assert self.runner.runs == [("job-1", None)]
+        assert self.runner.runs == []
+
+    def test_without_pins_reserved_identity_is_still_required(self):
+        response = self.post([])
+        assert response.status_code == 422
+        assert self.jobs.created == []
+        assert self.runner.built == []
+        assert self.runner.runs == []

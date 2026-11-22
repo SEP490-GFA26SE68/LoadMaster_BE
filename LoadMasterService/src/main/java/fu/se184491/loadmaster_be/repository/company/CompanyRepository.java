@@ -13,6 +13,11 @@ import java.util.Optional;
 
 @Repository
 public interface CompanyRepository extends JpaRepository<Company, Long>, JpaSpecificationExecutor<Company> {
+    // A stable parent row also serializes first-time credit-account creation.
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select company from Company company where company.id = :companyId")
+    Optional<Company> findByIdForUpdate(@Param("companyId") Long companyId);
+
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select company from Company company where company.id = :companyId")
     Optional<Company> findByIdForPayrollUpdate(@Param("companyId") Long companyId);

@@ -109,13 +109,17 @@ class MyPayrollToolTest {
         when(payroll.getDriverStatement(7L, 42L, "2026-10")).thenReturn(new PayrollStatementResponse(true, "2026-10",
                 PayrollPeriodStatus.LOCKED, 42L, "Trần Minh Khoa", new BigDecimal("8000000"), new BigDecimal("42000"),
                 new BigDecimal("300"), new BigDecimal("1260000"), new BigDecimal("10"), new BigDecimal("50"),
-                new BigDecimal("40"), new BigDecimal("840000"), new BigDecimal("10100000"), lines));
+                new BigDecimal("40"), new BigDecimal("840000"), new BigDecimal("40000"), true, new BigDecimal("500000"),
+                new BigDecimal("10600000"), lines));
 
         JsonNode out = JSON.readTree(ToolResults.json(new MyPayrollTool(currentUser, payroll).getMyPayroll("2026-10")));
 
         assertThat(out.get("calculated").asBoolean()).isTrue();
         assertThat(out.get("periodStatus").asString()).isEqualTo("LOCKED");
-        assertThat(out.get("totalSalaryVnd").decimalValue()).isEqualByComparingTo("10100000");
+        assertThat(out.get("totalSalaryVnd").decimalValue()).isEqualByComparingTo("10600000");
+        assertThat(out.get("kpiTargetKg").decimalValue()).isEqualByComparingTo("40000");
+        assertThat(out.get("kpiAchieved").asBoolean()).isTrue();
+        assertThat(out.get("kpiBonusVnd").decimalValue()).isEqualByComparingTo("500000");
         assertThat(out.get("tripCount").asInt()).isEqualTo(35);
         assertThat(out.get("trips").size()).isEqualTo(MyPayrollTool.MAX_TRIPS);
         assertThat(out.get("trips").get(0).get("tripCode").asString()).isEqualTo("TRIP-2026-0001");

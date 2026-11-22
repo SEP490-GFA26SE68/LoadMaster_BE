@@ -59,7 +59,7 @@ public class LoadPlanWriteRepository {
     public int failUnfinishedJob(Long jobId, String failureCode) {
         return jdbc.update("""
                 UPDATE optimization_jobs SET status = 'FAILED', failure_code = :code
-                WHERE id = :id AND status IN ('PENDING', 'RUNNING')
+                WHERE id = :id AND execution_generation IS NULL AND status IN ('PENDING', 'RUNNING')
                 """, Map.of("id", jobId, "code", failureCode));
     }
 
@@ -71,7 +71,7 @@ public class LoadPlanWriteRepository {
     public int finishUnfinishedJob(String jobUuid, String status, Long computationMs) {
         return jdbc.update("""
                 UPDATE optimization_jobs SET status = :status, computation_ms = COALESCE(:ms, computation_ms)
-                WHERE job_uuid = :uuid AND status IN ('PENDING', 'RUNNING')
+                WHERE job_uuid = :uuid AND execution_generation IS NULL AND status IN ('PENDING', 'RUNNING')
                 """, new MapSqlParameterSource()
                 .addValue("uuid", jobUuid)
                 .addValue("status", status)
@@ -81,8 +81,8 @@ public class LoadPlanWriteRepository {
     /** Chép kiện không xếp được của phương án nguồn sang phương án mới. */
     public void copyUnplaced(Long sourcePlanId, Long targetPlanId) {
         jdbc.update("""
-                INSERT INTO unplaced_packages (load_plan_id, package_id, rejection_reason)
-                SELECT :target, package_id, rejection_reason FROM unplaced_packages WHERE load_plan_id = :source
+                INSERT INTO unplaced_packages (load_plan_id, package_id, rejection_reason, violated_constraints)
+                SELECT :target, package_id, rejection_reason, violated_constraints FROM unplaced_packages WHERE load_plan_id = :source
                 """, Map.of("source", sourcePlanId, "target", targetPlanId));
     }
 }

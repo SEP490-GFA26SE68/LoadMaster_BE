@@ -86,6 +86,8 @@ import static org.mockito.Mockito.when;
 @ExtendWith(MockitoExtension.class)
 class DriverDeliveryServiceImplTest {
 
+    @Mock private jakarta.persistence.EntityManager entityManager;
+    @Mock private fu.se184491.loadmaster_be.service.warehouse.WarehouseSessionLookup warehouseLookup;
     @Mock private DriverService driverService;
     @Mock private CurrentUserService currentUserService;
     @Mock private TripLookupHelper tripLookupHelper;
@@ -357,6 +359,9 @@ class DriverDeliveryServiceImplTest {
     }
 
     private ManualUnloadConfirmation pendingConfirmation(CargoPackage pkg) {
+        lenient().when(warehouseLookup.activeSession(10L)).thenReturn(new fu.se184491.loadmaster_be.service.warehouse.WarehouseSessionLookup.Session(
+                driver, trip, LoadPlan.builder().id(50L).build(), LoadingExecution.builder().id(60L).build(), List.of()));
+        org.springframework.test.util.ReflectionTestUtils.setField(service, "entityManager", entityManager);
         ManualUnloadConfirmation confirmation = ManualUnloadConfirmation.builder().id(60L).trip(trip).deliveryStop(stop1)
                 .cargoPackage(pkg).reason(ManualConfirmReason.LABEL_DAMAGED).status(ManualConfirmStatus.PENDING)
                 .requestedBy(driver).build();
@@ -522,7 +527,7 @@ class DriverDeliveryServiceImplTest {
         trip.setCreatedByDispatcher(dispatcher);
         RoutePlan routePlan = RoutePlan.builder().id(7L).totalDistanceMeters(45200).totalDurationSeconds(3600).isActive(true).build();
 
-        when(driverService.requireOwnTrip("10")).thenReturn(trip);
+        when(driverService.requireOwnOrOpenTrip("10")).thenReturn(trip);
         when(deliveryStopRepository.findByTripIdOrderByStopSequenceAsc(trip.getId())).thenReturn(List.of(stop));
         when(loadingExecutionRepository.existsByLoadPlanJobTripIdAndStatus(trip.getId(), LoadingExecutionStatus.COMPLETED)).thenReturn(true);
         when(tripPackageResolver.packagesOfStop(stop.getId())).thenReturn(List.of(pkg));
@@ -548,5 +553,24 @@ class DriverDeliveryServiceImplTest {
         assertEquals("0912345678", stopDetail.getContactPhone());
         assertEquals(1, stopDetail.getPackages().size());
         assertEquals("PKG-001", stopDetail.getPackages().get(0).getPackageCode());
+    }
+
+    @Test
+    void getTripDetailHidesCustomerPhoneWhileTheTripIsStillOpen() {
+        trip.setDriver(null);
+        trip.setStatus(TripStatus.PLANNED);
+        Customer customer = Customer.builder().id(100L).name("Nguyễn Văn A").contactPhone("0912345678").build();
+        DeliveryRequirement req = DeliveryRequirement.builder().id(20L).customer(customer).build();
+        DeliveryStop stop = DeliveryStop.builder().id(50L).stopSequence(1).stopName("Điểm 1").address("Cầu Giấy").deliveryRequirement(req).build();
+
+        when(driverService.requireOwnOrOpenTrip("10")).thenReturn(trip);
+        when(deliveryStopRepository.findByTripIdOrderByStopSequenceAsc(trip.getId())).thenReturn(List.of(stop));
+        when(tripPackageResolver.packagesOfStop(stop.getId())).thenReturn(List.of());
+
+        DriverTripDetailResponse detail = service.getTripDetail("10");
+
+        DriverTripDetailResponse.StopDetail stopDetail = detail.getStops().get(0);
+        assertEquals("Nguyễn Văn A", stopDetail.getContactName());
+        assertNull(stopDetail.getContactPhone());
     }
 }

@@ -26,6 +26,7 @@ from app.service.optimize.candidate_plans import (
     pick_candidates,
 )
 from app.service.optimize.stop_zone_calculator import StopZoneCalculator
+from app.service.optimize.load_balance_search import LoadBalanceSearch, validate_plan
 from app.service.optimize.constraint_engine import ConstraintEngine
 from app.service.optimize.unload_feasibility_validator import (
     UnloadFeasibilityValidator,
@@ -67,7 +68,7 @@ class OptimizationClient:
         Nếu không thành công hoặc cấu hình in-process, chạy thuật toán nội bộ.
         """
         if self.http_client is not None or self.engine_url:
-            return await self._solve_http(problem)
+            return self._validated_remote(problem, await self._solve_http(problem))
         return self.solve_candidates(problem)
 
     def solve_candidates(self, problem: ProblemRequest) -> EngineOptimizationResponse:
@@ -215,6 +216,21 @@ class OptimizationClient:
                 resp.raise_for_status()
                 return EngineOptimizationResponse.model_validate(resp.json())
 
+    @staticmethod
+    def _validated_remote(problem, result):
+        from app.dto.optimization.engine.rotation_contract import validate_result_rotations
+        validate_result_rotations(problem, result)
+        metadata = {str(p.id): p for p in problem.packages}
+        ids = [str(p.package_id) for p in result.placements] + [str(p.package_id) for p in result.unplaced]
+        if len(ids) != len(set(ids)) or set(ids) != set(metadata):
+            raise ValueError("Remote result has invalid package partition")
+        for placements in [result.placements, *[candidate.result.placements for candidate in result.candidates]]:
+            violations = validate_plan(placements, problem.vehicle, metadata,
+                                       time.monotonic() + max(float(problem.time_limit_sec or 60), 1))
+            if violations:
+                raise ValueError("Remote result violates hard constraints: " + ",".join(violations))
+        return result
+
     def solve_in_process(
         self,
         problem: ProblemRequest,
@@ -241,6 +257,20 @@ class OptimizationClient:
         None giữ cách cũ (theo algorithm_name của job). quiet: tắt bản ghi gỡ lỗi trước HC-11 / HC-12.
         """
         start_time = time.time()
+        deadline = time.monotonic() + max(float(problem.time_limit_sec or 60), 1)
+        ids = [str(p.id) for p in problem.packages]
+        if len(ids) != len(set(ids)): raise ValueError("Duplicate package identity")
+        stop_ids = [str(stop.id) for stop in problem.stops]
+        stop_sequences = [stop.sequence for stop in problem.stops]
+        if len(stop_ids) != len(set(stop_ids)) or len(stop_sequences) != len(set(stop_sequences)):
+            raise ValueError("Stop IDs and sequences must be unique")
+        search = LoadBalanceSearch(problem, deadline)
+        input_codes = [code for code in search.input_violations() if code != "PINNED_PLACEMENT_UNSUPPORTED"]
+        logger.info("[INPUT CHECK] Packages=%d Violations=%s", len(ids), input_codes)
+        if input_codes:
+            return EngineOptimizationResponse(placements=[], unplaced=[UnplacedData(package_id=p.id,
+                reason="CONSTRAINT_VIOLATED", violated_constraints=["PACKAGE_CANNOT_PASS_DOOR" if code in {"DOOR_CONFIG_MISSING","DOOR_CONFIG_INVALID"} else code for code in input_codes]) for p in problem.packages],
+                metrics=MetricsData(packed_count=0,volume_utilization=0,weight_utilization=0,computation_ms=0))
         # Bản ghi gỡ lỗi trước HC-11 / HC-12 đi qua logger ở mức DEBUG, không in ra console.
         _debug_print = (
             (lambda *args, **kwargs: None)
@@ -350,6 +380,7 @@ class OptimizationClient:
 
 # 2. Xếp hàng theo từng zone
         for zone in sorted_zones:
+            if time.monotonic() >= deadline: break
             zone_pkgs = [
                 p for p in stops_dict.get(zone.stop_id, [])
                 if str(p.id) not in pinned_ids
@@ -429,10 +460,11 @@ class OptimizationClient:
                             ep_list.append(candidate_pt)
 
             for pkg in sorted_pkgs:
+                if time.monotonic() >= deadline: break
                 if vt.max_payload_kg > 0 and (total_placed_weight + pkg.weight > vt.max_payload_kg):
                     unplaced.append(UnplacedData(
                         package_id=pkg.id,
-                        reason="WEIGHT_LIMIT_EXCEEDED",
+                        reason="OVER_WEIGHT",
                         violated_constraints=["WEIGHT_LIMIT_EXCEEDED"],
                     ))
                     continue
@@ -528,6 +560,7 @@ class OptimizationClient:
                 for pt in sorted_eps:
                     px, py, pz = pt
                     for (ol, ow, oh, rot_type) in orientations:
+                        if time.monotonic() >= deadline: break
                         # 1. Bounds check trong zone
                         if px + ol > zone.zone_end_x + 1e-4:
                             continue
@@ -624,6 +657,7 @@ class OptimizationClient:
                     for pt in all_vehicle_eps:
                         px, py, pz = pt
                         for (ol, ow, oh, rot_type) in orientations:
+                            if time.monotonic() >= deadline: break
                             if px + ol > vt.inner_l + 1e-4 or py + ow > vt.inner_w + 1e-4 or pz + oh > vt.inner_h + 1e-4:
                                 continue
                             if self._check_overlap(px, py, pz, ol, ow, oh, placements):
@@ -681,181 +715,35 @@ class OptimizationClient:
                     ))
 
 
-        # HC-11 / HC-12: Final LoadPlan Validation
-        # Chỉ kiểm tra sau khi đã xếp xong tất cả kiện hàng.
-        if placements:
-
-            # DEBUG: Quan sát phương án trước final validation.
-            _debug_print("\n=== BEFORE HC-11 / HC-12 ===")
-
-            total_weight = 0.0
-            weighted_x = 0.0
-            weighted_y = 0.0
-            weighted_z = 0.0
-
-            for p in placements:
-                pkg = packages_map[str(p.package_id)]
-                weight = float(pkg.weight)
-
-                cx = float(p.x) + float(p.packed_l) / 2
-                cy = float(p.y) + float(p.packed_w) / 2
-                cz = float(p.z) + float(p.packed_h) / 2
-
-                total_weight += weight
-                weighted_x += weight * cx
-                weighted_y += weight * cy
-                weighted_z += weight * cz
-
-                _debug_print(
-                    f"Package {p.package_id}: "
-                    f"position=({p.x}, {p.y}, {p.z}), "
-                    f"center=({cx}, {cy}, {cz}), "
-                    f"weight={weight}kg"
-                )
-
-            if total_weight > 0:
-                _debug_print(
-                    "COG:",
-                    round(weighted_x / total_weight, 2),
-                    round(weighted_y / total_weight, 2),
-                    round(weighted_z / total_weight, 2),
-                )
-
-            _debug_print(
-                "Allowed COG X:",
-                round(float(vt.inner_l) * 0.35, 2),
-                "-",
-                round(float(vt.inner_l) * 0.65, 2),
-            )
-
-            _debug_print(
-                "Allowed COG Y:",
-                round(float(vt.inner_w) * 0.35, 2),
-                "-",
-                round(float(vt.inner_w) * 0.65, 2),
-            )
-
-            final_checks = [
-                ConstraintEngine.check_cog(
-                    all_placements=placements,
-                    vehicle=vt,
-                    packages_map=packages_map,
-                ),
-                ConstraintEngine.check_axle_load(
-                    all_placements=placements,
-                    vehicle=vt,
-                    packages_map=packages_map,
-                ),
-            ]
-
-            violations = [
-                result.violation_code
-                for result in final_checks
-                if not result.passed
-            ]
-
-            # HC-11 hỏng vì cả khối hàng dồn về một đầu (vùng chia theo thể tích trên cả chiều dài thùng,
-            # hàng nhẹ thì rải ra tới cửa): dồn các khối điểm giao sát nhau theo đúng thứ tự LIFO rồi dời
-            # cả khối cho trọng tâm về giữa thùng. Chỉ nhận khi mọi kiện vẫn qua ConstraintEngine và HC-11/HC-12.
-            if "CENTER_OF_GRAVITY_OUT_OF_RANGE" in violations:
-                rebalanced = self._rebalance_along_x(placements, packages_map, vt)
-                if rebalanced is not None:
-                    rebalanced_checks = [
-                        ConstraintEngine.check_cog(all_placements=rebalanced, vehicle=vt, packages_map=packages_map),
-                        ConstraintEngine.check_axle_load(all_placements=rebalanced, vehicle=vt, packages_map=packages_map),
-                    ]
-                    if all(result.passed for result in rebalanced_checks):
-                        placements = rebalanced
-                        violations = []
-
-            if violations:
-                # Fail-safe: Không trả về LoadPlan vi phạm
-                # HC-11 hoặc HC-12.
-                for placement in placements:
-                    unplaced.append(
-                        UnplacedData(
-                            package_id=placement.package_id,
-                            reason="CONSTRAINT_VIOLATED",
-                            violated_constraints=violations,
-                        )
-                    )
-
-                placements = []
-                total_placed_weight = 0.0
-                total_placed_volume = 0.0
-
-
-        # Số dỡ-xếp lại theo đúng một luật với bản chỉnh tay của LoadMasterService: kiện có tâm theo X nằm
-        # ngoài vùng của điểm giao mình, trên cách xếp cuối (kể cả kiện ghim và sau khi dời khối cân trọng tâm).
-        rehandling_count = StopZoneCalculator.count_rehandling(
-            zone_calc_res.zones, placements, package_stop
-        )
-
-        # 3. Tính COG tổng và Axle Load
-        comp_ms = int((time.time() - start_time) * 1000)
-        metrics = self._plan_metrics(
-            placements, packages_map, vt, total_placed_weight, total_placed_volume, rehandling_count, comp_ms
-        )
-
-
-        # HC-09: Final Unload Feasibility Validation
-        # Kiểm tra toàn bộ LoadPlan sau khi xếp.
-
-        unload_result = UnloadFeasibilityValidator.validate(
-            placements=placements,
-            packages_map=packages_map,
-            vehicle=vt,
-        )
-
-        if not unload_result.passed:
-            # Không trả về một phương án xếp hàng
-            # có trình tự dỡ không hợp lệ.
-            #
-            # Đây là cơ chế fail-safe tạm thời:
-            # từ chối toàn bộ phương án,
-            # chưa thực hiện tìm lại phương án khác.
-
-            rejected_ids = {
-                str(p.package_id)
-                for p in placements
-            }
-
-            for package_id in rejected_ids:
-                unplaced.append(
-                    UnplacedData(
-                        package_id=package_id,
-                        reason="CONSTRAINT_VIOLATED",
-                        violated_constraints=[
-                            unload_result.violation_code
-                            or "MULTI_DROP_LIFO_VIOLATION"
-                        ],
-                    )
-                )
-
-            # Xóa placements đã bị từ chối.
-            placements = []
-
-            # Đồng bộ lại metrics với kết quả thực tế.
-            metrics = MetricsData(
-                volume_utilization=0.0,
-                weight_utilization=0.0,
-                packed_count=0,
-                computation_ms=int(
-                    (time.time() - start_time) * 1000
-                ),
-                cog_x=None,
-                cog_y=None,
-                cog_z=None,
-                front_axle_load=None,
-                rear_axle_load=None,
-                rehandling_count=0,
-            )
-
-        return EngineOptimizationResponse(
-            placements=placements,
-            unplaced=unplaced,
-            metrics=metrics,
-        )
+        _debug_print("=== BEFORE HC-11 / HC-12 ===")
+        logger.info("[INITIAL PLAN] Placed=%d Unplaced=%d",len(placements),len(unplaced))
+        if problem.pinned:
+            codes = validate_plan(placements, vt, packages_map, deadline)
+            placements = [] if codes else placements
+        else:
+            placements = search.improve(placements, zones_by_id)
+            validated = search.validated_copy(placements)
+            if validated is not None:
+                placements = validated
+                codes = []
+            else:
+                codes = validate_plan(placements, vt, packages_map, deadline)
+                if codes: placements = search.best_plan_copy()
+        logger.info("[FINAL VALIDATION] Placed=%d Violations=%s",len(placements),codes)
+        placed_ids = {str(p.package_id) for p in placements}
+        previous = {str(p.package_id): p for p in unplaced}
+        expired = time.monotonic() >= deadline
+        fallback_codes = ["OPTIMIZATION_TIME_LIMIT_REACHED"] if expired else codes or search.last_violations or ["NO_FEASIBLE_SPACE"]
+        unplaced = [previous.get(str(pkg.id),UnplacedData(package_id=pkg.id,
+                    reason="CONSTRAINT_VIOLATED",violated_constraints=fallback_codes))
+                    for pkg in problem.packages if str(pkg.id) not in placed_ids]
+        total_placed_weight = sum(float(packages_map[str(p.package_id)].weight) for p in placements)
+        total_placed_volume = sum(p.packed_l*p.packed_w*p.packed_h for p in placements)
+        rehandling_count = StopZoneCalculator.count_rehandling(zone_calc_res.zones, placements, package_stop)
+        metrics = self._plan_metrics(placements,packages_map,vt,total_placed_weight,total_placed_volume,
+                                   rehandling_count,int((time.time()-start_time)*1000))
+        logger.info("[OPTIMIZATION SUMMARY] Placed=%d Unplaced=%d",len(placements),len(unplaced))
+        return EngineOptimizationResponse(placements=placements,unplaced=unplaced,metrics=metrics)
 
 
     def evaluate_fixed_layout(

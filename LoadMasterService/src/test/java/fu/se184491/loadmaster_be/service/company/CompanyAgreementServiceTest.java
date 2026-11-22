@@ -72,8 +72,8 @@ class CompanyAgreementServiceTest {
                 .phoneNumber("0912345678")
                 .userRoleType(UserRole.ADMIN)
                 .status(UserStatus.ACTIVE)
-                .createdAt(LocalDateTime.of(2026, 10, 1, 8, 0, 0))
-                .updatedAt(LocalDateTime.of(2026, 10, 1, 8, 0, 0))
+                .createdAt(LocalDateTime.of(2026, 10, 1, 8, 0))
+                .updatedAt(LocalDateTime.of(2026, 10, 1, 8, 0))
                 .build();
 
         testAgreement = CompanyAgreement.builder()

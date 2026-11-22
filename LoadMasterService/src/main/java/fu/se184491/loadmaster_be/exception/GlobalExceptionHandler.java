@@ -4,6 +4,7 @@ import fu.se184491.loadmaster_be.dto.ApiResponse;
 import fu.se184491.loadmaster_be.dto.response.ImportPreviewResult;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.catalina.connector.ClientAbortException;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -18,6 +19,7 @@ import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.context.request.async.AsyncRequestNotUsableException;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
 
@@ -66,7 +68,7 @@ public class GlobalExceptionHandler {
                         .code(errorCode.name())
                         .message(ex.getMessage())
                         .data(null)
-                        .errors(ex.getDetails())
+                        .errors(ex.getDetails() != null ? ex.getDetails() : ex instanceof RequirementPackagesIncompleteException incomplete ? incomplete.getCounts() : null)
                         .build());
     }
 
@@ -535,9 +537,23 @@ public class GlobalExceptionHandler {
     }
 
 
+    /**
+     * Client (trình duyệt, app, proxy) đã cắt TCP trước khi Tomcat kịp flush body — thường do đổi trang, React Query
+     * hủy request, timeout, hoặc phần mềm trên máy (antivirus). Controller đã xong; không phải lỗi nghiệp vụ hay 500.
+     * Không ghi ERROR và không cố ghi phong bì: kết nối đã chết.
+     */
+    @ExceptionHandler({AsyncRequestNotUsableException.class, ClientAbortException.class})
+    public void handleClientAbort(Exception ex, HttpServletRequest request) {
+        log.debug("Client aborted request at {}: {}", request.getRequestURI(), ex.getMessage());
+    }
+
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ApiResponse<Void>> handleGlobalException(
             Exception ex, HttpServletRequest request) {
+        if (isClientAbort(ex)) {
+            handleClientAbort(ex, request);
+            return null;
+        }
         log.error("Unhandled exception at " + request.getRequestURI(), ex);
 
         return ResponseEntity
@@ -547,6 +563,16 @@ public class GlobalExceptionHandler {
                         .message(ErrorCode.INTERNAL_SERVER_ERROR.getMessage())
                         .data(null)
                         .build());
+    }
+
+    private static boolean isClientAbort(Throwable ex) {
+        while (ex != null) {
+            if (ex instanceof AsyncRequestNotUsableException || ex instanceof ClientAbortException) {
+                return true;
+            }
+            ex = ex.getCause();
+        }
+        return false;
     }
 }
 

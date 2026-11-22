@@ -44,7 +44,7 @@ public class SubscriptionPlanInitializer implements ApplicationRunner {
                     .price(new BigDecimal("3500000"))
                     .billingCycle(BillingCycle.MONTHLY)
                     .tier(SubscriptionTier.PRO)
-                    .monthlyCredits(10000)
+                    .monthlyCredits(15000)
                     .algorithmTier(AlgorithmTier.EP_DBLF_GA)
                     .features("[\"Tối ưu 3D nâng cao (EP-DBLF + Genetic Algorithm)\",\"10.000 Credits / tháng (2 Credits/lần đầu, 1 Credit/lần chạy lại)\",\"Tối ưu lộ trình đa điểm dừng (LIFO)\",\"Hỗ trợ kỹ thuật ưu tiên 24/7\"]")
                     .active(true)

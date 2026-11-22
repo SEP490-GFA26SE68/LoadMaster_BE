@@ -1,5 +1,6 @@
 package fu.se184491.loadmaster_be.entity.optimization;
 
+import fu.se184491.loadmaster_be.constant.billing.SubscriptionTier;
 import fu.se184491.loadmaster_be.entity.trip.Trip;
 
 
@@ -49,8 +50,9 @@ public class OptimizationJob {
     @Column(name = "company_id", length = 64)
     private String companyId;
 
+    @Enumerated(EnumType.STRING)
     @Column(name = "subscription_tier", length = 50)
-    private String subscriptionTier;
+    private SubscriptionTier subscriptionTier;
 
     @Column(name = "algorithm_tier", length = 50)
     private String algorithmTier;
@@ -61,6 +63,18 @@ public class OptimizationJob {
     /** Lý do job FAILED khi Java tự kết thúc job (ví dụ JOB_INTERRUPTED: dịch vụ tối ưu dừng giữa chừng). */
     @Column(name = "failure_code", length = 64)
     private String failureCode;
+
+    @Column(name = "execution_generation")
+    private Long executionGeneration;
+    @org.hibernate.annotations.JdbcTypeCode(org.hibernate.type.SqlTypes.TIMESTAMP_WITH_TIMEZONE)
+    @Column(name = "dispatch_expires_at")
+    private java.time.Instant dispatchExpiresAt;
+    @org.hibernate.annotations.JdbcTypeCode(org.hibernate.type.SqlTypes.TIMESTAMP_WITH_TIMEZONE)
+    @Column(name = "lease_expires_at")
+    private java.time.Instant leaseExpiresAt;
+    @org.hibernate.annotations.JdbcTypeCode(org.hibernate.type.SqlTypes.TIMESTAMP_WITH_TIMEZONE)
+    @Column(name = "execution_started_at")
+    private java.time.Instant executionStartedAt;
 
     /** Job do Java tạo (chạy lại giữ ghim) cũng có giờ tạo, giờ Việt Nam như dịch vụ tối ưu ghi. */
     @PrePersist

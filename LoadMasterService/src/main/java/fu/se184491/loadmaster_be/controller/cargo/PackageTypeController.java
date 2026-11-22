@@ -90,13 +90,16 @@ public class PackageTypeController {
     @GetMapping
     @PreAuthorize("hasAnyAuthority('PACKAGE_TYPE_MANAGE', 'ROLE_DISPATCHER', 'ROLE_MANAGER')")
     public ResponseEntity<PageResponse<PackageTypeResponse>> getAllPackageTypes(
+            @RequestParam(required = false) String search,
+            @RequestParam(required = false) String sortBy,
+            @RequestParam(required = false) String sortDir,
             Pageable pageable) {
 
         Page<PackageTypeResponse> result =
-                packageTypeService.getAllPackageTypes(
-                        getCurrentCompanyId(),
-                        pageable
-                );
+                packageTypeService.searchPackageTypes(
+                        getCurrentCompanyId(), search,
+                        fu.se184491.loadmaster_be.service.cargo.WarehouseListQuery.pageable(
+                            pageable, sortBy, sortDir, fu.se184491.loadmaster_be.service.cargo.WarehouseListQuery.TYPES));
 
         return ResponseEntity.ok(PageResponse.of(result));
     }

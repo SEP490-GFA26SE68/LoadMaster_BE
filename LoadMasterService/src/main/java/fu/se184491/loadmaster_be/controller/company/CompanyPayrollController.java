@@ -87,4 +87,9 @@ public class CompanyPayrollController {
     public ApiResponse<PayrollPeriodResponse> lockPeriod(@PathVariable String period) {
         return ApiResponse.success(payrollService.lockPeriod(currentUserService.getCurrentCompanyId(), period));
     }
+
+    @PostMapping("/periods/{period}/unlock")
+    public ApiResponse<PayrollPeriodResponse> unlockPeriod(@PathVariable String period) {
+        return ApiResponse.success(payrollService.unlockPeriod(currentUserService.getCurrentCompanyId(), period));
+    }
 }

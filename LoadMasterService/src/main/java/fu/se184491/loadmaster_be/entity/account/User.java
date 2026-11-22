@@ -3,10 +3,10 @@ package fu.se184491.loadmaster_be.entity.account;
 import fu.se184491.loadmaster_be.constant.account.UserRole;
 import fu.se184491.loadmaster_be.constant.account.UserStatus;
 import fu.se184491.loadmaster_be.entity.company.Company;
-import fu.se184491.loadmaster_be.entity.support.SupportTicket;
 import jakarta.persistence.*;
 import lombok.*;
 import org.hibernate.annotations.Check;
+import org.hibernate.annotations.Type;
 
 import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
@@ -103,7 +103,7 @@ public class User {
     )
     private UserStatus status;
 
-    @Convert(converter = SupportTicket.LocalDateTimeSecondsConverter.class)
+    @Type(LocalDateTimeStringType.class)
     @Column(
             name = "created_at",
             nullable = false,
@@ -114,7 +114,7 @@ public class User {
     @Check(name = "users_created_at_check", constraints = "created_at ~ '^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01]) ([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]$'")
     private LocalDateTime createdAt;
 
-    @Convert(converter = SupportTicket.LocalDateTimeSecondsConverter.class)
+    @Type(LocalDateTimeStringType.class)
     @Column(
             name = "updated_at",
             nullable = false,

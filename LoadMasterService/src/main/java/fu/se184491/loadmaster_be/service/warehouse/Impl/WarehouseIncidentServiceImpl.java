@@ -63,12 +63,12 @@ public class WarehouseIncidentServiceImpl implements WarehouseIncidentService {
 
     @Override
     @Transactional
-    public ManualConfirmationResponse confirmPlacementManually(Long placementId, ManualUnloadRequest request) {
+    public ManualConfirmationResponse confirmPlacementManually(Long tripId, Long placementId, ManualUnloadRequest request) {
         String note = WarehouseSessionLookup.trimmed(request.getNote());
         if (request.getReason() == ManualConfirmReason.OTHER && note == null) {
             throw new AppException(ErrorCode.MANUAL_CONFIRM_NOTE_REQUIRED);
         }
-        Session session = lookup.activeSessionOfPlacement(placementId);
+        Session session = lookup.activeSessionOfPlacement(placementId, tripId);
         PackagePlacement placement = lookup.placement(session, placementId);
         requireNext(session, placement);
         CargoPackage pkg = placement.getCargoPackage();
@@ -113,8 +113,8 @@ public class WarehouseIncidentServiceImpl implements WarehouseIncidentService {
 
     @Override
     @Transactional
-    public DamageResponse reportDamaged(Long placementId, ReportDamageRequest request) {
-        Session session = lookup.activeSessionOfPlacement(placementId);
+    public DamageResponse reportDamaged(Long tripId, Long placementId, ReportDamageRequest request) {
+        Session session = lookup.activeSessionOfPlacement(placementId, tripId);
         PackagePlacement placement = lookup.placement(session, placementId);
         requireNext(session, placement);
         CargoPackage pkg = placement.getCargoPackage();
@@ -178,7 +178,7 @@ public class WarehouseIncidentServiceImpl implements WarehouseIncidentService {
         }
         Session session;
         try {
-            session = lookup.session(tripId);
+            session = lookup.lockedSession(tripId);
         } catch (AppException error) {
             if (error.getErrorCode() == ErrorCode.TRIP_NOT_FOUND) {
                 throw error;

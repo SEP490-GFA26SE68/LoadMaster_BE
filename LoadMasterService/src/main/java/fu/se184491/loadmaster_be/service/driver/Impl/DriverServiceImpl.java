@@ -79,6 +79,7 @@ import java.util.stream.Collectors;
 @Slf4j
 public class DriverServiceImpl implements DriverService {
 
+    private final fu.se184491.loadmaster_be.service.trip.TripDepartureReadiness departureReadiness;
     private final TripRepository tripRepository;
     private final DeliveryStopRepository deliveryStopRepository;
     private final LoadPlanRepository loadPlanRepository;
@@ -101,8 +102,9 @@ public class DriverServiceImpl implements DriverService {
     @Transactional(readOnly = true)
     public List<DriverTripResponse> listTrips(Long driverId) {
         User driver = currentDriver(driverId);
+        if (driver.getCompany() == null || driver.getCompany().getId() == null) throw new AppException(ErrorCode.USER_COMPANY_NOT_FOUND);
         List<DriverTripResponse> trips = new ArrayList<>();
-        for (Trip trip : tripRepository.findByDriver_IdOrderByDepartureTimeDesc(driver.getId())) {
+        for (Trip trip : tripRepository.findByDriver_IdAndCompany_IdOrderByDepartureTimeDesc(driver.getId(), driver.getCompany().getId())) {
             trips.add(toTripResponse(trip));
         }
         return trips;
@@ -112,15 +114,9 @@ public class DriverServiceImpl implements DriverService {
     @Transactional
     public DriverTripResponse startTrip(Long tripId) {
         User driver = currentDriver(null);
-        Trip trip = requireOwnTrip(String.valueOf(tripId));
-        // Khoá chuyến rồi kiểm trạng thái: không xuất phát chồng với lệnh huỷ
-        tripStatusService.lockForTransition(trip.getId());
-        if (trip.getStatus() != TripStatus.LOADING) {
-            throw new AppException(ErrorCode.LOADING_NOT_COMPLETED);
-        }
-        boolean loaded = loadingExecutionRepository
-                .existsByLoadPlanJobTripIdAndStatus(trip.getId(), LoadingExecutionStatus.COMPLETED);
-        if (!loaded) {
+        Trip trip = departureReadiness.lockAssignedTrip(tripId, driver);
+        requireDriverOf(trip, driver);
+        if (trip.getStatus() != TripStatus.LOADING || !departureReadiness.canStartLocked(trip, driver)) {
             throw new AppException(ErrorCode.LOADING_NOT_COMPLETED);
         }
 
@@ -564,6 +560,22 @@ public class DriverServiceImpl implements DriverService {
         return trip;
     }
 
+    @Override
+    @Transactional(readOnly = true)
+    public Trip requireOwnOrOpenTrip(String tripIdOrCode) {
+        User driver = currentDriver(null);
+        if (driver.getCompany() == null) {
+            throw new AppException(ErrorCode.USER_COMPANY_NOT_FOUND);
+        }
+        // Tìm theo công ty của tài xế: chuyến công ty khác không bao giờ lộ ra.
+        Trip trip = tripLookupHelper.requireTrip(tripIdOrCode, driver.getCompany().getId());
+        if (trip.getDriver() == null && (trip.getStatus() == TripStatus.DRAFT || trip.getStatus() == TripStatus.PLANNED)) {
+            return trip;
+        }
+        requireDriverOf(trip, driver);
+        return trip;
+    }
+
     /** Người đăng nhập; {@code driverId} gửi kèm (client cũ) phải đúng là người đó. */
     private User currentDriver(Long driverId) {
         User current = currentUserService.getCurrentUser();
@@ -621,6 +633,7 @@ public class DriverServiceImpl implements DriverService {
         return DriverTripResponse.builder()
                 .tripId(trip.getId())
                 .tripCode(trip.getTripCode())
+                .tripName(trip.getTripName())
                 .vehicleLicensePlate(trip.getVehicle() != null ? trip.getVehicle().getLicensePlate() : null)
                 .stopCount(stopCount)
                 .totalPackages(totalPackages)
@@ -630,8 +643,7 @@ public class DriverServiceImpl implements DriverService {
                 .estimatedCompletionTime(estimatedCompletionTime)
                 .departureTime(trip.getDepartureTime())
                 .status(trip.getStatus() != null ? trip.getStatus().name() : null)
-                .loadingCompleted(loadingExecutionRepository
-                        .existsByLoadPlanJobTripIdAndStatus(trip.getId(), LoadingExecutionStatus.COMPLETED))
+                .loadingCompleted(departureReadiness.canStart(trip, currentDriver(null)))
                 .completedAt(completedAtOf(trip, stops))
                 .build();
     }

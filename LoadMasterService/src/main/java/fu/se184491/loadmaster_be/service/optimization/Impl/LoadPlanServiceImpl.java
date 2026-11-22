@@ -157,25 +157,8 @@ public class LoadPlanServiceImpl implements LoadPlanService {
      */
     @Override
     public LoadPlanResponse rerunOptimization(Long loadPlanId, RerunOptimizationRequest request) {
-        TransactionTemplate tx = new TransactionTemplate(transactionManager);
-        RerunStart start = tx.execute(status -> startRerun(loadPlanId, request));
-
-        OptimizationResultDto engineResult;
-        try {
-            engineResult = optimizationEngineClient.rerunOptimization(start.engineRequest());
-        } catch (RuntimeException e) {
-            log.error("Optimization engine failed for job {}: {}", start.job().getJobUuid(), e.getMessage());
-            failRerun(tx, start);
-            throw e;
-        }
-
-        try {
-            return tx.execute(status -> finishRerun(start, engineResult));
-        } catch (RuntimeException e) {
-            log.error("Saving rerun result failed for job {}: {}", start.job().getJobUuid(), e.getMessage());
-            failRerun(tx, start);
-            throw e;
-        }
+        editablePlan(loadPlanId); // Preserve ownership/state checks before the unavailable-operation response.
+        throw new AppException(ErrorCode.OPTIMIZATION_RERUN_UNAVAILABLE);
     }
 
     /** Job mới, yêu cầu gửi dịch vụ tối ưu và những gì bước lưu kết quả cần. */
@@ -214,8 +197,8 @@ public class LoadPlanServiceImpl implements LoadPlanService {
         OptimizationObjective objective = request.getObjective() != null
                 ? request.getObjective()
                 : (currentPlan.getJob() != null && currentPlan.getJob().getObjective() != null
-                    ? currentPlan.getJob().getObjective()
-                    : OptimizationObjective.MAX_VOLUME);
+                ? currentPlan.getJob().getObjective()
+                : OptimizationObjective.MAX_VOLUME);
         Integer timeLimit = request.getTimeLimitSec() != null ? request.getTimeLimitSec() : 60;
 
         OptimizationJob newJob = OptimizationJob.builder()

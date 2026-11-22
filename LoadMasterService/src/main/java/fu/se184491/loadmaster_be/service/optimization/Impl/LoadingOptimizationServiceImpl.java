@@ -56,7 +56,6 @@ public class LoadingOptimizationServiceImpl implements LoadingOptimizationServic
     }
 
     @Override
-    @org.springframework.transaction.annotation.Transactional(readOnly = true)
     public OptimizationJobStartResponse startLoadingOptimization(Long tripId, Long keepPinsFromPlanId) {
         Long companyId = currentUserService.getCurrentCompanyId();
         Trip trip = tripRepository.findByIdAndCompanyId(tripId, companyId)

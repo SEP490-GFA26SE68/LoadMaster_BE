@@ -12,6 +12,7 @@ public interface PackageTypeService {
     PackageTypeResponse updatePackageType(Long companyId, Long id, PackageTypeRequest request);
     PackageTypeResponse getPackageTypeById(Long companyId, Long id);
     Page<PackageTypeResponse> getAllPackageTypes(Long companyId, Pageable pageable);
+    Page<PackageTypeResponse> searchPackageTypes(Long companyId, String search, Pageable pageable);
     List<PackageTypeResponse> getAllPackageTypes(Long companyId);
     void deletePackageType(Long companyId, Long id);
 }

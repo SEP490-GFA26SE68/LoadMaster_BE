@@ -8,6 +8,12 @@ class ErrorCode(str, Enum):
     VALIDATION_ERROR = ("VALIDATION_ERROR", "Lỗi xác thực dữ liệu", 400)
     RESOURCE_NOT_FOUND = ("RESOURCE_NOT_FOUND", "Không tìm thấy tài nguyên yêu cầu", 404)
 
+    PACKING_PROFILE_ORIENTATION_INVALID = (
+        "PACKING_PROFILE_ORIENTATION_INVALID",
+        "PACKING_PROFILE_ORIENTATION_INVALID: expected CSV profile IDs 0..5 or orientation names LWH, WLH, LHW, WHL, HLW, HWL",
+        400,
+    )
+
     # Auth errors
     UNAUTHENTICATED = ("UNAUTHENTICATED", "Yêu cầu xác thực tài khoản", 401)
     UNAUTHORIZED = ("UNAUTHORIZED", "Bạn không có quyền thực hiện hành động này", 403)

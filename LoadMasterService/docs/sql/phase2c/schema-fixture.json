@@ -1,0 +1,613 @@
+{
+  "columns": [
+    {
+      "table_schema": "public",
+      "table_name": "credit_accounts",
+      "column_name": "id",
+      "data_type": "bigint",
+      "udt_name": "int8",
+      "character_maximum_length": null,
+      "is_nullable": "NO",
+      "column_default": null
+    },
+    {
+      "table_schema": "public",
+      "table_name": "credit_accounts",
+      "column_name": "balance",
+      "data_type": "integer",
+      "udt_name": "int4",
+      "character_maximum_length": null,
+      "is_nullable": "NO",
+      "column_default": null
+    },
+    {
+      "table_schema": "public",
+      "table_name": "credit_accounts",
+      "column_name": "version",
+      "data_type": "bigint",
+      "udt_name": "int8",
+      "character_maximum_length": null,
+      "is_nullable": "NO",
+      "column_default": null
+    },
+    {
+      "table_schema": "public",
+      "table_name": "credit_accounts",
+      "column_name": "company_id",
+      "data_type": "bigint",
+      "udt_name": "int8",
+      "character_maximum_length": null,
+      "is_nullable": "NO",
+      "column_default": null
+    },
+    {
+      "table_schema": "public",
+      "table_name": "credit_transactions",
+      "column_name": "id",
+      "data_type": "bigint",
+      "udt_name": "int8",
+      "character_maximum_length": null,
+      "is_nullable": "NO",
+      "column_default": null
+    },
+    {
+      "table_schema": "public",
+      "table_name": "credit_transactions",
+      "column_name": "amount",
+      "data_type": "integer",
+      "udt_name": "int4",
+      "character_maximum_length": null,
+      "is_nullable": "NO",
+      "column_default": null
+    },
+    {
+      "table_schema": "public",
+      "table_name": "credit_transactions",
+      "column_name": "created_at",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 19,
+      "is_nullable": "NO",
+      "column_default": null
+    },
+    {
+      "table_schema": "public",
+      "table_name": "credit_transactions",
+      "column_name": "reference",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 100,
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_schema": "public",
+      "table_name": "credit_transactions",
+      "column_name": "refunded",
+      "data_type": "boolean",
+      "udt_name": "bool",
+      "character_maximum_length": null,
+      "is_nullable": "NO",
+      "column_default": null
+    },
+    {
+      "table_schema": "public",
+      "table_name": "credit_transactions",
+      "column_name": "type",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 20,
+      "is_nullable": "NO",
+      "column_default": null
+    },
+    {
+      "table_schema": "public",
+      "table_name": "credit_transactions",
+      "column_name": "credit_account_id",
+      "data_type": "bigint",
+      "udt_name": "int8",
+      "character_maximum_length": null,
+      "is_nullable": "NO",
+      "column_default": null
+    },
+    {
+      "table_schema": "public",
+      "table_name": "optimization_jobs",
+      "column_name": "id",
+      "data_type": "bigint",
+      "udt_name": "int8",
+      "character_maximum_length": null,
+      "is_nullable": "NO",
+      "column_default": null
+    },
+    {
+      "table_schema": "public",
+      "table_name": "optimization_jobs",
+      "column_name": "algorithm_name",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 255,
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_schema": "public",
+      "table_name": "optimization_jobs",
+      "column_name": "computation_ms",
+      "data_type": "bigint",
+      "udt_name": "int8",
+      "character_maximum_length": null,
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_schema": "public",
+      "table_name": "optimization_jobs",
+      "column_name": "job_uuid",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 64,
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_schema": "public",
+      "table_name": "optimization_jobs",
+      "column_name": "objective",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 255,
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_schema": "public",
+      "table_name": "optimization_jobs",
+      "column_name": "parent_plan_id",
+      "data_type": "bigint",
+      "udt_name": "int8",
+      "character_maximum_length": null,
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_schema": "public",
+      "table_name": "optimization_jobs",
+      "column_name": "seed",
+      "data_type": "integer",
+      "udt_name": "int4",
+      "character_maximum_length": null,
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_schema": "public",
+      "table_name": "optimization_jobs",
+      "column_name": "status",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 255,
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_schema": "public",
+      "table_name": "optimization_jobs",
+      "column_name": "time_limit_sec",
+      "data_type": "integer",
+      "udt_name": "int4",
+      "character_maximum_length": null,
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_schema": "public",
+      "table_name": "optimization_jobs",
+      "column_name": "trip_id",
+      "data_type": "bigint",
+      "udt_name": "int8",
+      "character_maximum_length": null,
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_schema": "public",
+      "table_name": "optimization_jobs",
+      "column_name": "company_id",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 64,
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_schema": "public",
+      "table_name": "optimization_jobs",
+      "column_name": "subscription_tier",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 50,
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_schema": "public",
+      "table_name": "optimization_jobs",
+      "column_name": "algorithm_tier",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 50,
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_schema": "public",
+      "table_name": "optimization_jobs",
+      "column_name": "created_at",
+      "data_type": "timestamp without time zone",
+      "udt_name": "timestamp",
+      "character_maximum_length": null,
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_schema": "public",
+      "table_name": "subscription_plans",
+      "column_name": "id",
+      "data_type": "bigint",
+      "udt_name": "int8",
+      "character_maximum_length": null,
+      "is_nullable": "NO",
+      "column_default": null
+    },
+    {
+      "table_schema": "public",
+      "table_name": "subscription_plans",
+      "column_name": "active",
+      "data_type": "boolean",
+      "udt_name": "bool",
+      "character_maximum_length": null,
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_schema": "public",
+      "table_name": "subscription_plans",
+      "column_name": "algorithm_tier",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 20,
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_schema": "public",
+      "table_name": "subscription_plans",
+      "column_name": "billing_cycle",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 255,
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_schema": "public",
+      "table_name": "subscription_plans",
+      "column_name": "features",
+      "data_type": "text",
+      "udt_name": "text",
+      "character_maximum_length": null,
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_schema": "public",
+      "table_name": "subscription_plans",
+      "column_name": "max_monthly_jobs",
+      "data_type": "integer",
+      "udt_name": "int4",
+      "character_maximum_length": null,
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_schema": "public",
+      "table_name": "subscription_plans",
+      "column_name": "max_vehicles",
+      "data_type": "integer",
+      "udt_name": "int4",
+      "character_maximum_length": null,
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_schema": "public",
+      "table_name": "subscription_plans",
+      "column_name": "monthly_credits",
+      "data_type": "integer",
+      "udt_name": "int4",
+      "character_maximum_length": null,
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_schema": "public",
+      "table_name": "subscription_plans",
+      "column_name": "name",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 150,
+      "is_nullable": "NO",
+      "column_default": null
+    },
+    {
+      "table_schema": "public",
+      "table_name": "subscription_plans",
+      "column_name": "plan_code",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 50,
+      "is_nullable": "NO",
+      "column_default": null
+    },
+    {
+      "table_schema": "public",
+      "table_name": "subscription_plans",
+      "column_name": "price",
+      "data_type": "numeric",
+      "udt_name": "numeric",
+      "character_maximum_length": null,
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_schema": "public",
+      "table_name": "subscription_plans",
+      "column_name": "tier",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 20,
+      "is_nullable": "NO",
+      "column_default": null
+    }
+  ],
+  "constraints": [
+    {
+      "schema_name": "public",
+      "table_name": "credit_accounts",
+      "conname": "credit_accounts_balance_check",
+      "contype": "c",
+      "convalidated": true,
+      "definition": "CHECK ((balance >= 0))"
+    },
+    {
+      "schema_name": "public",
+      "table_name": "credit_accounts",
+      "conname": "credit_accounts_pkey",
+      "contype": "p",
+      "convalidated": true,
+      "definition": "PRIMARY KEY (id)"
+    },
+    {
+      "schema_name": "public",
+      "table_name": "credit_accounts",
+      "conname": "fkqyf2afqs3o3kqo96saslj4pbd",
+      "contype": "f",
+      "convalidated": true,
+      "definition": "FOREIGN KEY (company_id) REFERENCES companies(id)"
+    },
+    {
+      "schema_name": "public",
+      "table_name": "credit_accounts",
+      "conname": "uk_company_credit_account",
+      "contype": "u",
+      "convalidated": true,
+      "definition": "UNIQUE (company_id)"
+    },
+    {
+      "schema_name": "public",
+      "table_name": "credit_transactions",
+      "conname": "credit_transactions_pkey",
+      "contype": "p",
+      "convalidated": true,
+      "definition": "PRIMARY KEY (id)"
+    },
+    {
+      "schema_name": "public",
+      "table_name": "credit_transactions",
+      "conname": "credit_transactions_type_check",
+      "contype": "c",
+      "convalidated": true,
+      "definition": "CHECK (((type)::text = ANY ((ARRAY['MONTHLY_GRANT'::character varying, 'PURCHASE'::character varying, 'USAGE'::character varying, 'REFUND'::character varying])::text[])))"
+    },
+    {
+      "schema_name": "public",
+      "table_name": "credit_transactions",
+      "conname": "fktk1erviuiknat5ix8fj6dn1yf",
+      "contype": "f",
+      "convalidated": true,
+      "definition": "FOREIGN KEY (credit_account_id) REFERENCES credit_accounts(id)"
+    },
+    {
+      "schema_name": "public",
+      "table_name": "optimization_jobs",
+      "conname": "fk30xhsar0ik11beihxsb1p9d8s",
+      "contype": "f",
+      "convalidated": true,
+      "definition": "FOREIGN KEY (trip_id) REFERENCES trips(id)"
+    },
+    {
+      "schema_name": "public",
+      "table_name": "optimization_jobs",
+      "conname": "optimization_jobs_algorithm_name_check",
+      "contype": "c",
+      "convalidated": true,
+      "definition": "CHECK (((algorithm_name)::text = ANY ((ARRAY['EP_DBLF'::character varying, 'GENETIC_ALGORITHM'::character varying])::text[])))"
+    },
+    {
+      "schema_name": "public",
+      "table_name": "optimization_jobs",
+      "conname": "optimization_jobs_objective_check",
+      "contype": "c",
+      "convalidated": true,
+      "definition": "CHECK (((objective)::text = ANY ((ARRAY['MAX_VOLUME'::character varying, 'AXLE_BALANCE'::character varying])::text[])))"
+    },
+    {
+      "schema_name": "public",
+      "table_name": "optimization_jobs",
+      "conname": "optimization_jobs_pkey",
+      "contype": "p",
+      "convalidated": true,
+      "definition": "PRIMARY KEY (id)"
+    },
+    {
+      "schema_name": "public",
+      "table_name": "optimization_jobs",
+      "conname": "optimization_jobs_status_check",
+      "contype": "c",
+      "convalidated": true,
+      "definition": "CHECK (((status)::text = ANY ((ARRAY['PENDING'::character varying, 'RUNNING'::character varying, 'COMPLETED'::character varying, 'SUCCESS'::character varying, 'FAILED'::character varying, 'TIMEOUT'::character varying, 'NO_SOLUTION'::character varying, 'PARTIAL'::character varying])::text[])))"
+    },
+    {
+      "schema_name": "public",
+      "table_name": "optimization_jobs",
+      "conname": "uk2t1ly949hnjlhly02pe9cku30",
+      "contype": "u",
+      "convalidated": true,
+      "definition": "UNIQUE (job_uuid)"
+    },
+    {
+      "schema_name": "public",
+      "table_name": "subscription_plans",
+      "conname": "subscription_plans_algorithm_tier_check",
+      "contype": "c",
+      "convalidated": true,
+      "definition": "CHECK (((algorithm_tier)::text = ANY ((ARRAY['EP_DBLF'::character varying, 'EP_DBLF_GA'::character varying, 'EP_DBLF_GA_AI'::character varying])::text[])))"
+    },
+    {
+      "schema_name": "public",
+      "table_name": "subscription_plans",
+      "conname": "subscription_plans_billing_cycle_check",
+      "contype": "c",
+      "convalidated": true,
+      "definition": "CHECK (((billing_cycle)::text = ANY ((ARRAY['MONTHLY'::character varying, 'YEARLY'::character varying])::text[])))"
+    },
+    {
+      "schema_name": "public",
+      "table_name": "subscription_plans",
+      "conname": "subscription_plans_pkey",
+      "contype": "p",
+      "convalidated": true,
+      "definition": "PRIMARY KEY (id)"
+    },
+    {
+      "schema_name": "public",
+      "table_name": "subscription_plans",
+      "conname": "subscription_plans_tier_check",
+      "contype": "c",
+      "convalidated": true,
+      "definition": "CHECK (((tier)::text = ANY ((ARRAY['BASIC'::character varying, 'PRO'::character varying, 'ULTIMATE'::character varying])::text[])))"
+    },
+    {
+      "schema_name": "public",
+      "table_name": "subscription_plans",
+      "conname": "ukrsiqsy651mlytqpby2qlh7orb",
+      "contype": "u",
+      "convalidated": true,
+      "definition": "UNIQUE (plan_code)"
+    }
+  ],
+  "indexes": [
+    {
+      "table_name": "credit_accounts",
+      "index_name": "credit_accounts_pkey",
+      "indisunique": true,
+      "indisvalid": true,
+      "indisready": true,
+      "indnkeyatts": 1,
+      "definition": "CREATE UNIQUE INDEX credit_accounts_pkey ON public.credit_accounts USING btree (id)",
+      "predicate": null
+    },
+    {
+      "table_name": "credit_accounts",
+      "index_name": "uk_company_credit_account",
+      "indisunique": true,
+      "indisvalid": true,
+      "indisready": true,
+      "indnkeyatts": 1,
+      "definition": "CREATE UNIQUE INDEX uk_company_credit_account ON public.credit_accounts USING btree (company_id)",
+      "predicate": null
+    },
+    {
+      "table_name": "credit_transactions",
+      "index_name": "credit_transactions_pkey",
+      "indisunique": true,
+      "indisvalid": true,
+      "indisready": true,
+      "indnkeyatts": 1,
+      "definition": "CREATE UNIQUE INDEX credit_transactions_pkey ON public.credit_transactions USING btree (id)",
+      "predicate": null
+    },
+    {
+      "table_name": "credit_transactions",
+      "index_name": "idx_credit_account_id",
+      "indisunique": false,
+      "indisvalid": true,
+      "indisready": true,
+      "indnkeyatts": 1,
+      "definition": "CREATE INDEX idx_credit_account_id ON public.credit_transactions USING btree (credit_account_id)",
+      "predicate": null
+    },
+    {
+      "table_name": "credit_transactions",
+      "index_name": "idx_credit_reference",
+      "indisunique": false,
+      "indisvalid": true,
+      "indisready": true,
+      "indnkeyatts": 1,
+      "definition": "CREATE INDEX idx_credit_reference ON public.credit_transactions USING btree (reference)",
+      "predicate": null
+    },
+    {
+      "table_name": "optimization_jobs",
+      "index_name": "optimization_jobs_pkey",
+      "indisunique": true,
+      "indisvalid": true,
+      "indisready": true,
+      "indnkeyatts": 1,
+      "definition": "CREATE UNIQUE INDEX optimization_jobs_pkey ON public.optimization_jobs USING btree (id)",
+      "predicate": null
+    },
+    {
+      "table_name": "optimization_jobs",
+      "index_name": "uk2t1ly949hnjlhly02pe9cku30",
+      "indisunique": true,
+      "indisvalid": true,
+      "indisready": true,
+      "indnkeyatts": 1,
+      "definition": "CREATE UNIQUE INDEX uk2t1ly949hnjlhly02pe9cku30 ON public.optimization_jobs USING btree (job_uuid)",
+      "predicate": null
+    },
+    {
+      "table_name": "subscription_plans",
+      "index_name": "subscription_plans_pkey",
+      "indisunique": true,
+      "indisvalid": true,
+      "indisready": true,
+      "indnkeyatts": 1,
+      "definition": "CREATE UNIQUE INDEX subscription_plans_pkey ON public.subscription_plans USING btree (id)",
+      "predicate": null
+    },
+    {
+      "table_name": "subscription_plans",
+      "index_name": "ukrsiqsy651mlytqpby2qlh7orb",
+      "indisunique": true,
+      "indisvalid": true,
+      "indisready": true,
+      "indnkeyatts": 1,
+      "definition": "CREATE UNIQUE INDEX ukrsiqsy651mlytqpby2qlh7orb ON public.subscription_plans USING btree (plan_code)",
+      "predicate": null
+    }
+  ],
+  "original_proposal_sql": "-- PROPOSED ONLY. Not in db/migration; never executed by this change.\n-- Review backups, preflight results, current column types, index names and CHECK definitions first.\n-- Existing Flyway history has duplicate V13/V14/V15 versions; do not enable Flyway to run this script.\n-- No balance writes, data deletion or timestamp conversion. The transaction aborts on invalid legacy data.\nBEGIN;\nSET LOCAL lock_timeout='5s';\nSET LOCAL statement_timeout='60s';\nDO $$ BEGIN\n IF EXISTS(SELECT 1 FROM credit_transactions WHERE type='USAGE'\n           GROUP BY reference HAVING count(*)>1 OR reference IS NULL OR btrim(reference)='') THEN\n  RAISE EXCEPTION 'Invalid/duplicate USAGE references: reconcile manually, do not delete ledger rows';\n END IF;\n IF EXISTS(SELECT 1 FROM optimization_jobs GROUP BY job_uuid\n           HAVING count(*)>1 OR job_uuid IS NULL OR btrim(job_uuid)='') THEN\n  RAISE EXCEPTION 'Invalid/duplicate job UUIDs: reconcile manually before migration';\n END IF;\nEND $$;\nALTER TABLE optimization_jobs ADD COLUMN IF NOT EXISTS company_id varchar(64);\nALTER TABLE optimization_jobs ADD COLUMN IF NOT EXISTS subscription_tier varchar(50);\nALTER TABLE optimization_jobs ADD COLUMN IF NOT EXISTS algorithm_tier varchar(50);\nALTER TABLE optimization_jobs ADD COLUMN IF NOT EXISTS parent_plan_id bigint;\nALTER TABLE optimization_jobs ADD COLUMN IF NOT EXISTS seed integer;\n-- IF NOT EXISTS does not validate existing column types. Confirm against preflight; abort if incompatible.\n-- Legacy jobs are intentionally NOT backfilled or authorized to run by this migration.\nCREATE UNIQUE INDEX IF NOT EXISTS uk_phase2_job_uuid ON optimization_jobs(job_uuid);\nCREATE UNIQUE INDEX IF NOT EXISTS uk_phase2_credit_usage_reference\n ON credit_transactions(reference) WHERE type='USAGE';\n-- READ ONLY metadata inspection on 2026-11-05 confirmed this exact old CHECK on the current DB.\n-- Refuse to replace a definition that differs from the reviewed old enum-list constraint.\nDO $migration$\nDECLARE old_definition text;\nBEGIN\n SELECT pg_get_constraintdef(oid) INTO old_definition FROM pg_constraint\n WHERE conrelid='optimization_jobs'::regclass AND conname='optimization_jobs_algorithm_name_check';\n IF old_definition IS DISTINCT FROM $expected$CHECK (((algorithm_name)::text = ANY ((ARRAY['EP_DBLF'::character varying, 'GENETIC_ALGORITHM'::character varying])::text[])))$expected$ THEN\n  RAISE EXCEPTION 'Unexpected algorithm CHECK; review its definition manually before replacing it';\n END IF;\nEND $migration$;\nALTER TABLE optimization_jobs DROP CONSTRAINT optimization_jobs_algorithm_name_check;\nALTER TABLE optimization_jobs ADD CONSTRAINT optimization_jobs_algorithm_name_check CHECK\n (algorithm_name IS NULL OR algorithm_name IN ('EP_DBLF','EP_DBLF_GA','EP_DBLF_GA_AI','GENETIC_ALGORITHM'));\n-- Existing enum CHECKs may reject the new server-selected algorithm names.\n-- Inspect each old definition; preserve additional business constraints rather than dropping blindly.\n-- After review, replace ONLY an enum-list CHECK on algorithm_name with one accepting:\n-- EP_DBLF, EP_DBLF_GA, EP_DBLF_GA_AI, GENETIC_ALGORITHM.\n-- Example (replace actual_enum_check_name with the inspected name; not executable as-is):\n-- ALTER TABLE optimization_jobs DROP CONSTRAINT actual_enum_check_name;\n-- ALTER TABLE optimization_jobs ADD CONSTRAINT chk_phase2_algorithm_name CHECK\n--   (algorithm_name IS NULL OR algorithm_name IN ('EP_DBLF','EP_DBLF_GA','EP_DBLF_GA_AI','GENETIC_ALGORITHM'));\n-- Existing PRO catalog rows are NOT changed by the initializer fix. Review a separate catalog correction:\n-- UPDATE subscription_plans SET monthly_credits=15000\n-- WHERE plan_code='PRO_MONTHLY' AND tier='PRO' AND monthly_credits=10000;\n-- This does not grant credits or change an existing account balance. Decide its effective billing cycle first.\nCOMMIT;\n"
+}

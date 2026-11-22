@@ -105,19 +105,23 @@ def test_hc12_fail_rear_axle():
 
 
 # TEST 04: Thiếu cấu hình vị trí trục.
-def test_hc12_missing_axle_configuration():
+@pytest.mark.parametrize("missing_field", [
+    "front_axle_x", "rear_axle_x", "front_axle_limit_kg", "rear_axle_limit_kg",
+    "empty_front_axle_load_kg", "empty_rear_axle_load_kg",
+])
+def test_hc12_missing_axle_configuration(missing_field):
     result = check(
         placements=[make_placement("P1")],
         packages=[make_package("P1")],
-        vehicle=make_vehicle(rear_axle_x=None),
+        vehicle=make_vehicle(**{missing_field: None}),
     )
 
     assert result.passed is False
     assert result.violation_code == "AXLE_CONFIG_MISSING"
 
 
-# TEST 04b: Loại xe không khai thông số trục nào (xe Van, xe công ty tự tạo chưa có số liệu): bỏ qua HC-12.
-def test_hc12_skipped_when_vehicle_declares_no_axle_data():
+# TEST 04b: Approved HC-12 policy: all-null axle configuration fails closed.
+def test_hc12_missing_all_axle_data_is_rejected():
     result = check(
         placements=[make_placement("P1", x=500)],
         packages=[make_package("P1", weight=9000)],
@@ -131,7 +135,8 @@ def test_hc12_skipped_when_vehicle_declares_no_axle_data():
         ),
     )
 
-    assert result.passed is True
+    assert result.passed is False
+    assert result.violation_code == "AXLE_CONFIG_MISSING"
 
 
 # TEST 04c: Chỉ khai giới hạn tải trục (2/6 trường, như API loại xe cũ): vẫn là lỗi dữ liệu.

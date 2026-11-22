@@ -53,6 +53,7 @@ class VehicleServiceImplTest {
     @Mock private TripRepository tripRepository;
     @Mock private CurrentUserService currentUserService;
     @Mock private LoadPlanRepository loadPlanRepository;
+    @Mock private fu.se184491.loadmaster_be.service.vehicle.VehiclePresenceStore presenceStore;
     @InjectMocks private VehicleServiceImpl service;
 
     private VehicleType box;
@@ -202,5 +203,11 @@ class VehicleServiceImplTest {
         assertEquals(VehicleStatus.IN_TRIP, response.status());
         assertEquals("TRIP-2026-0001", response.currentTripCode());
         assertEquals(TripStatus.IN_TRANSIT, response.currentTripStatus());
+    }
+    @Test void deletionPreservesPresenceAuditEvenWithoutTrips() {
+        when(presenceStore.hasReferences(vehicle.getId(),1L)).thenReturn(true);
+        var result=service.deleteVehicle(vehicle.getId());
+        assertEquals(VehicleStatus.RETIRED,vehicle.getStatus());
+        verify(vehicleRepository,never()).delete(any(Vehicle.class));
     }
 }

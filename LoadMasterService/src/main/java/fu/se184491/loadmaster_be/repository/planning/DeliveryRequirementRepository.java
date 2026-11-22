@@ -92,6 +92,13 @@ public interface DeliveryRequirementRepository extends JpaRepository<DeliveryReq
     );
 
 
+    @Query("""
+        select count(r) from DeliveryRequirement r join r.packages p
+        where p.id in :ids and r.id <> :requirementId and r.trip is not null
+          and r.trip.status <> fu.se184491.loadmaster_be.constant.trip.TripStatus.CANCELLED
+        """)
+    long countOtherAssignedPackageLinks(@Param("ids") List<Long> ids, @Param("requirementId") Long requirementId);
+
     interface PackageRequirementInfo {
         Long getPackageId();
         Long getDeliveryRequirementId();

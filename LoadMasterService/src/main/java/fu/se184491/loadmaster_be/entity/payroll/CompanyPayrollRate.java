@@ -53,6 +53,18 @@ public class CompanyPayrollRate {
     @Column(name = "handling_driver_percent", nullable = false, precision = 5, scale = 2)
     private BigDecimal handlingDriverPercent;
 
+    /**
+     * Chỉ tiêu KPI: tổng kg tài xế chở trong tháng (kg của phương án đã duyệt, cùng số tính lương). Rỗng là công ty không dùng KPI;
+     * tài xế đạt khi tổng kg trong tháng không nhỏ hơn chỉ tiêu.
+     */
+    @Column(name = "kpi_target_kg", precision = 15, scale = 3)
+    private BigDecimal kpiTargetKg;
+
+    /** Tiền thưởng cộng thêm khi tài xế đạt chỉ tiêu KPI; 0 khi công ty không dùng KPI. */
+    @Builder.Default
+    @Column(name = "kpi_bonus_vnd", nullable = false, precision = 15, scale = 2)
+    private BigDecimal kpiBonusVnd = BigDecimal.ZERO;
+
     @Convert(converter = SupportTicket.LocalDateTimeSecondsConverter.class)
     @Column(name = "created_at", nullable = false, updatable = false, length = 19, columnDefinition = "varchar(19)")
     @Check(name = "company_payroll_rates_created_at_check", constraints = "created_at ~ '^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01]) ([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]$'")

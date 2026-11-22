@@ -10,7 +10,7 @@ spring:
     oauth2:
       resourceserver:
         jwt:
-          issuer-uri: ${KEYCLOAK_AUTH_URL:http://localhost:8180}/realms/loadmaster
+          issuer-uri: ${KEYCLOAK_AUTH_URL}/realms/loadmaster
       client:
         registration:
           optimization-client:
@@ -27,9 +27,9 @@ spring:
             authorization-grant-type: client_credentials
         provider:
           keycloak:
-            token-uri: ${KEYCLOAK_AUTH_URL:http://localhost:8180}/realms/loadmaster/protocol/openid-connect/token
+            token-uri: ${KEYCLOAK_AUTH_URL}/realms/loadmaster/protocol/openid-connect/token
   datasource:
-    url: ${DATABASE_URL:jdbc:postgresql://localhost:5432/loadmaster}
+    url: ${DATABASE_URL}
     username: ${POSTGRES_USER}
     password: ${POSTGRES_PASSWORD}
     # Pooler Supabase dùng chung cả nhóm chỉ có khoảng 15 kết nối: giữ pool nhỏ, máy nào cần hơn thì đặt biến.
@@ -39,12 +39,14 @@ spring:
       idle-timeout: 30000
       max-lifetime: 600000
       connection-timeout: 20000
+      leak-detection-threshold: ${DB_LEAK_DETECTION_MS:15000}
 
   data:
     redis:
       host: ${REDIS_HOST:localhost}
       port: ${REDIS_PORT:6379}
       password: ${REDIS_PASSWORD:}
+      url: ${REDIS_URL}
 
   # Key của trợ lý AI. Không dùng auto-config của starter Spring AI: AssistantModelConfig tự đọc khoá này.
   ai:
@@ -52,7 +54,8 @@ spring:
       api-key: ${ANTHROPIC_API_KEY:}
 
   flyway:
-    # DB dùng chung đã baseline ở V41 (schema trước đó do Hibernate tạo); từ V42 trở đi do Flyway chạy khi khởi động.
+    enabled: false
+    locations: classpath:db/migration
     baseline-on-migrate: true
     baseline-version: 41
 
@@ -62,7 +65,8 @@ spring:
     # Ghi rõ để Spring không cảnh báo lúc khởi động.
     open-in-view: true
     hibernate:
-      ddl-auto: update
+      # Shared databases: schema changes require a separately reviewed migration.
+      ddl-auto: validate
     properties:
       hibernate:
         format_sql: true
@@ -127,6 +131,8 @@ springdoc:
 app:
   security:
     qr-aes-secret: ${QR_AES_SECRET}
+    qr-migration:
+      enabled: ${QR_MIGRATION_ENABLED:false}
   # Tài khoản dùng thử không ký thoả thuận: luôn gắn cờ; xoá cứng sau 30 ngày chỉ khi bật cờ này (mặc định tắt).
   trial:
     hard-delete-enabled: ${TRIAL_HARD_DELETE_ENABLED:false}

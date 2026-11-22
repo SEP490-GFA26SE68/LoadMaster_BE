@@ -9,6 +9,10 @@ public record PayrollDriverSummaryResponse(
         BigDecimal totalKg,
         BigDecimal kgAmountVnd,
         BigDecimal handlingAmountVnd,
+        /** Đạt chỉ tiêu KPI tháng này (hệ thống tự tính từ tổng kg). */
+        boolean kpiAchieved,
+        /** Tiền thưởng KPI đã cộng vào lương (0 khi không đạt hoặc công ty không dùng KPI). */
+        BigDecimal kpiAmountVnd,
         BigDecimal totalSalaryVnd
 ) {
 }

@@ -23,6 +23,7 @@ from unittest.mock import patch
 from app.controller.optimization.optimization_router import get_async_runner
 from app.service.optimize.async_optimization_runner import AsyncOptimizationRunner
 from app.main import app
+from tests.optimization_legacy_fixtures import (spring_reserved_job, billing_snapshot, restored_overrides, service_token, make_offline_runner)
 from app.config.database import Base, get_db
 from app.constant.optimization.job_status import OptimizationJobStatus
 from app.dto.optimization.engine.engine_response import (
@@ -57,9 +58,9 @@ def db_session():
     session = TestingSession()
 
     # Tạo trip + vehicle + packages
-    vt = VehicleType(max_cog_offset_ratio=0.15, id=1, name="Van 1 Tan", inner_length=3000, inner_width=1800, inner_height=1800, door_width=1800, door_height=1800, max_payload_kg=1000.0,
-                     front_axle_x=-100, rear_axle_x=200, front_axle_limit_kg=2000, rear_axle_limit_kg=3000,
-                     empty_front_axle_load_kg=800, empty_rear_axle_load_kg=600)
+    vt = VehicleType(max_cog_offset_ratio=0.15, id=1, name="Van 1 Tan", inner_length=300, inner_width=180, inner_height=180, door_width=180, door_height=180, max_payload_kg=1000.0,
+                     front_axle_x=50, rear_axle_x=250, front_axle_limit_kg=2000, rear_axle_limit_kg=3000,
+                     empty_front_axle_load_kg=500, empty_rear_axle_load_kg=300)
     session.add(vt)
     v = Vehicle(id=1, license_plate="29A-12345", vehicle_type_id=1)
     session.add(v)
@@ -70,6 +71,7 @@ def db_session():
     # và INTEGER PRIMARY KEY trong SQLite test.
     trip = Trip(
         vehicle_id=1,
+        company_id=1,
         status="DRAFT",
     )
 
@@ -97,7 +99,7 @@ def db_session():
     session.add(order)
     session.commit()
 
-    pt = PackageType(id=1, type_code="BOX_M", length=500, width=400, height=300)
+    pt = PackageType(id=1, type_code="BOX_M", length=50, width=40, height=30)
     session.add(pt)
     pkg1 = CargoPackage(id=1, order_id=1, package_type_id=1, actual_weight_kg=15.0)
     pkg2 = CargoPackage(id=2, order_id=1, package_type_id=1, actual_weight_kg=20.0)
@@ -110,8 +112,11 @@ def db_session():
     ])
     session.commit()
 
-    yield session
-    session.close()
+    try:
+        yield session
+    finally:
+        session.close()
+        engine.dispose()
 
 
 @pytest.fixture
@@ -155,7 +160,8 @@ class TestOptimizationResultPersistenceService:
             unplaced=[
                 UnplacedData(
                     package_id=str(pkg2.id),
-                    reason="WEIGHT_LIMIT_EXCEEDED",
+                    reason="CONSTRAINT_VIOLATED",
+                    violated_constraints=["AXLE_CONFIG_MISSING"],
                 )
             ],
             metrics=MetricsData(
@@ -192,7 +198,8 @@ class TestOptimizationResultPersistenceService:
         unplaced = db_session.query(UnplacedPackage).filter(UnplacedPackage.load_plan_id == plan.id).all()
         assert len(unplaced) == 1
         assert unplaced[0].package_id == pkg2.id
-        assert unplaced[0].rejection_reason in ("OVER_WEIGHT", "WEIGHT_LIMIT_EXCEEDED")
+        assert unplaced[0].rejection_reason == "CONSTRAINT_VIOLATED"
+        assert unplaced[0].violated_constraints == ["AXLE_CONFIG_MISSING"]
 
     def test_save_atomic_transaction_rolls_back_on_error(self, db_session, sample_job):
         """Nếu có lỗi giữa chừng, toàn bộ transaction bị rollback, không lưu rác trong DB"""
@@ -256,60 +263,31 @@ class TestLoadPlanServiceQuery:
 
 
 class TestIntegrationEndToEndPlansApi:
-    def test_post_job_then_get_job_plans_returns_persisted_load_plan(self, db_session):
-        """End-to-End: POST /jobs -> background task solves and persists -> GET /jobs/{id}/plans returns plans"""
-        headers = {}
-
+    def test_post_job_then_get_job_plans_returns_persisted_load_plan(self, db_session, service_token):
+        """In-process HTTP/background/persistence integration, not a deployed E2E test."""
         trip = db_session.query(Trip).first()
-        app.dependency_overrides[get_db] = lambda: db_session
-        # Giả lập service account đã được Keycloak xác thực.
-# Chỉ áp dụng trong bài test, không ảnh hưởng production.
-        app.dependency_overrides[require_optimization_service] = lambda: {
-            "sub": "test-service-account",
-            "azp": "loadmaster-backend-service",
-            "aud": "optimization-service",
-            "resource_access": {
-                "optimization-service": {
-                    "roles": ["OPTIMIZATION_EXECUTE"]
-                }
-            },
-        }
-
-        class FakeCreditClient:
-            async def deduct_credit(self, company_id, job_uuid):
-                return None
-
-            async def refund_credit(self, company_id, job_uuid):
-                return None
-
-        def get_test_runner():
-            return AsyncOptimizationRunner(
-                credit_client=FakeCreditClient(),
-                session_factory=lambda: db_session,
-            )
-
-        app.dependency_overrides[get_async_runner] = get_test_runner
-
-        client = TestClient(app)
-
-        submit_payload = {
-            "trip_id": trip.id,
-            "objective": "MAX_VOLUME",
-            "time_limit_sec": 30,
-            "algorithm_name": "DEFAULT_GREEDY",
-        }
-
-        # 1. POST /jobs
-        post_resp = client.post("/api/v1/optimization/jobs", json=submit_payload, headers=headers)
-        assert post_resp.status_code == 202
-        job_id = post_resp.json()["data"]["job_id"]
-
-        # 2. GET /jobs/{job_id}/plans
-        plans_resp = client.get(f"/api/v1/optimization/jobs/{job_id}/plans", headers=headers)
-        assert plans_resp.status_code == 200
-        plans_data = plans_resp.json()["data"]
-        assert len(plans_data) >= 1
-        assert plans_data[0]["packed_items_count"] >= 1
-        assert len(plans_data[0]["placements"]) >= 1
-
-        app.dependency_overrides.clear()
+        job = spring_reserved_job(db_session, trip)
+        before = billing_snapshot(db_session)
+        Sessions = sessionmaker(bind=db_session.get_bind())
+        def test_db():
+            with Sessions() as session:
+                yield session
+        runner = make_offline_runner(session_factory=Sessions)
+        headers = {'Authorization': 'Bearer '+service_token()}
+        with restored_overrides(app, {get_db: test_db, get_async_runner: lambda: runner}), TestClient(app) as client:
+            post_resp = client.post('/api/v1/optimization/jobs', json={
+                'trip_id': trip.id, 'job_uuid': job.job_uuid}, headers=headers)
+            assert post_resp.status_code == 202
+            job_id = post_resp.json()['data']['job_id']
+            assert job_id == job.job_uuid
+            plans_resp = client.get(f'/api/v1/optimization/jobs/{job_id}/plans', headers=headers)
+            assert plans_resp.status_code == 200
+            plans_data = plans_resp.json()['data']
+            assert len(plans_data) >= 1
+            assert plans_data[0]['packed_items_count'] >= 1
+            assert len(plans_data[0]['placements']) >= 1
+        db_session.expire_all()
+        assert db_session.query(OptimizationJob).count() == 1
+        assert billing_snapshot(db_session) == before
+        runner.credit_client.deduct_credit.assert_not_awaited()
+        runner.credit_client.refund_credit.assert_not_awaited()

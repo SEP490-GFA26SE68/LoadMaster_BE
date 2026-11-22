@@ -77,6 +77,28 @@ class PayrollMathTest {
     }
 
     @Test
+    void overtimeIsHourlyRateTimesHoursPerDayTimesDaysRoundedHalfUp() {
+        assertEquals(new BigDecimal("300000"), PayrollMath.overtimeAmount(
+                new BigDecimal("50000"), new BigDecimal("2.00"), 3));
+        assertEquals(new BigDecimal("75001"), PayrollMath.overtimeAmount(
+                new BigDecimal("50000.50"), new BigDecimal("1.50"), 1));
+    }
+
+    @Test
+    void rejectsNegativeOvertimeDays() {
+        AppException error = assertThrows(AppException.class, () -> PayrollMath.overtimeAmount(
+                BigDecimal.ONE, BigDecimal.ONE, -1));
+        assertEquals(ErrorCode.PAYROLL_INVALID_OVERTIME_DAYS, error.getErrorCode());
+    }
+
+    @Test
+    void rejectsHoursPerDayAboveTwentyFour() {
+        AppException error = assertThrows(AppException.class, () -> PayrollMath.overtimeAmount(
+                BigDecimal.ONE, new BigDecimal("24.01"), 1));
+        assertEquals(ErrorCode.PAYROLL_INVALID_AMOUNT, error.getErrorCode());
+    }
+
+    @Test
     void reportsNegativeWeightUsingPayrollErrorCode() {
         AppException exception = assertThrows(AppException.class, () -> PayrollMath.calculateTripAmounts(
                 new BigDecimal("-1"), BigDecimal.ONE, BigDecimal.ONE, BigDecimal.ONE, BigDecimal.ONE));
@@ -107,5 +129,43 @@ class PayrollMathTest {
                 BigDecimal.ONE, List.of(new BigDecimal("60"), new BigDecimal("30"))));
 
         assertEquals(ErrorCode.PAYROLL_INVALID_DRIVER_ASSIGNMENT, exception.getErrorCode());
+    }
+
+    @Test
+    void kpiBonusIsPaidWhenTotalKgReachesTheTarget() {
+        assertEquals(new BigDecimal("500000"),
+                PayrollMath.kpiBonus(new BigDecimal("1200.500"), new BigDecimal("1000"), new BigDecimal("500000")));
+    }
+
+    @Test
+    void kpiBonusIsPaidWhenTotalKgEqualsTheTargetExactly() {
+        assertEquals(new BigDecimal("500000"),
+                PayrollMath.kpiBonus(new BigDecimal("1000.000"), new BigDecimal("1000"), new BigDecimal("500000")));
+    }
+
+    @Test
+    void kpiBonusIsZeroWhenTotalKgIsBelowTheTarget() {
+        assertEquals(new BigDecimal("0"),
+                PayrollMath.kpiBonus(new BigDecimal("999.999"), new BigDecimal("1000"), new BigDecimal("500000")));
+    }
+
+    @Test
+    void kpiBonusIsZeroWhenTheCompanyDoesNotUseKpi() {
+        assertEquals(new BigDecimal("0"),
+                PayrollMath.kpiBonus(new BigDecimal("5000"), null, new BigDecimal("500000")));
+    }
+
+    @Test
+    void kpiBonusIsRoundedToWholeDong() {
+        assertEquals(new BigDecimal("500001"),
+                PayrollMath.kpiBonus(new BigDecimal("1000"), new BigDecimal("1000"), new BigDecimal("500000.50")));
+    }
+
+    @Test
+    void kpiBonusRejectsNegativeKg() {
+        AppException exception = assertThrows(AppException.class,
+                () -> PayrollMath.kpiBonus(new BigDecimal("-1"), new BigDecimal("1000"), new BigDecimal("500000")));
+
+        assertEquals(ErrorCode.PAYROLL_INVALID_AMOUNT, exception.getErrorCode());
     }
 }

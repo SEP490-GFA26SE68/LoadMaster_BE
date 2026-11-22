@@ -37,6 +37,17 @@ public final class PayrollMath {
         return new TripAmounts(commission, handling, commission.add(handling));
     }
 
+    /**
+     * Tiền thưởng KPI của một tài xế trong tháng: bằng mức thưởng khi tổng kg không nhỏ hơn chỉ tiêu, ngược lại 0.
+     * Không có chỉ tiêu (null) là công ty không dùng KPI: 0.
+     */
+    public static BigDecimal kpiBonus(BigDecimal totalKg, BigDecimal targetKg, BigDecimal bonusVnd) {
+        requireNonNegative(totalKg);
+        if (targetKg == null || totalKg.compareTo(targetKg) < 0) return BigDecimal.ZERO;
+        requireNonNegative(bonusVnd);
+        return bonusVnd.setScale(0, RoundingMode.HALF_UP);
+    }
+
     private static void requirePercent(BigDecimal... values) {
         for (BigDecimal value : values) {
             if (value.compareTo(ONE_HUNDRED) > 0) throw new AppException(ErrorCode.PAYROLL_INVALID_AMOUNT);
@@ -121,6 +132,20 @@ public final class PayrollMath {
         if (participantCount < 1) {
             throw new AppException(ErrorCode.PAYROLL_INVALID_DRIVER_ASSIGNMENT);
         }
+    }
+
+    /**
+     * Tiền tăng ca: VND/giờ × giờ/ngày × số ngày, làm tròn đồng HALF_UP.
+     */
+    public static BigDecimal overtimeAmount(BigDecimal vndPerHour, BigDecimal hoursPerDay, int days) {
+        requireNonNegative(vndPerHour, hoursPerDay);
+        if (days < 0) throw new AppException(ErrorCode.PAYROLL_INVALID_OVERTIME_DAYS);
+        if (hoursPerDay.compareTo(BigDecimal.valueOf(24)) > 0) {
+            throw new AppException(ErrorCode.PAYROLL_INVALID_AMOUNT);
+        }
+        return vndPerHour.multiply(hoursPerDay)
+                .multiply(BigDecimal.valueOf(days))
+                .setScale(0, RoundingMode.HALF_UP);
     }
 
     private static void requireNonNegative(BigDecimal... values) {

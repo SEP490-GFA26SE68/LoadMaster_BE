@@ -55,10 +55,23 @@ import static org.mockito.Mockito.when;
         "app.brevo.sender-email=test@example.com",
         "app.brevo.sender-name=Test",
         "app.brevo.security.otp-hmac-secret=test-secret",
-        "vnpay.mock=true"
+        "vnpay.mock=true",
+        "spring.data.redis.url=redis://127.0.0.1:16379"
 })
 @Transactional
 class PaymentInvoiceIntegrationTest {
+    @org.springframework.boot.test.context.TestConfiguration(proxyBeanMethods=false)
+    static class DevPaymentFixture {
+        @org.springframework.context.annotation.Bean
+        @org.springframework.context.annotation.Primary
+        fu.se184491.loadmaster_be.service.payment.MockPaymentPolicy isolatedDevPolicy(
+                fu.se184491.loadmaster_be.config.payment.VnPayConfig config) {
+            var environment=new org.springframework.mock.env.MockEnvironment();
+            environment.setActiveProfiles("dev");
+            return new fu.se184491.loadmaster_be.service.payment.MockPaymentPolicy(config,environment);
+        }
+    }
+
 
     private static final String SUCCESS = "00";
     /** Khách huỷ giao dịch ở cổng thanh toán. */

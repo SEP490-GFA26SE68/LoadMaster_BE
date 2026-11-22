@@ -24,6 +24,7 @@ public class PaymentGatewayService {
 
     private final PaymentTransactionRepository paymentTransactionRepository;
     private final VnPayClient vnPayClient;
+    private final MockPaymentPolicy mockPolicy;
 
     @Transactional
     public PaymentUrlResponse createPayment(Company company,
@@ -35,9 +36,7 @@ public class PaymentGatewayService {
                                             String ipAddress) {
         // Cổng giả lập chỉ có khi máy chủ bật vnpay.mock; tắt thì /api/payment/mock-checkout từ chối,
         // nên không tạo giao dịch treo PENDING với liên kết không dùng được.
-        if (gateway == PaymentGateway.MOCK && !vnPayClient.isMock()) {
-            throw new AppException(ErrorCode.INVALID_INPUT, "Cổng thanh toán giả lập không được bật trên máy chủ này");
-        }
+        if (gateway == PaymentGateway.MOCK) mockPolicy.requireEnabled();
         String prefix = (gateway != null ? gateway.name() : "VNPAY") + "_";
         String gatewayTxnId = prefix + UUID.randomUUID().toString().replace("-", "").substring(0, 16).toUpperCase();
 

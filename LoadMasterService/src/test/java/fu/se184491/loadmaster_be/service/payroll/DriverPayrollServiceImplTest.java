@@ -729,7 +729,7 @@ class DriverPayrollServiceImplTest {
                 .status(PayrollPeriodStatus.DRAFT)
                 .driverPayrolls(List.of())
                 .build();
-        when(periodRepository.findByCompanyIdAndPeriodStart(10L, periodStart))
+        when(periodRepository.findByCompanyIdAndPeriodStartForUpdate(10L, periodStart))
                 .thenReturn(Optional.of(period));
         when(periodRepository.save(any(PayrollPeriod.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
@@ -740,6 +740,57 @@ class DriverPayrollServiceImplTest {
         assertEquals(PayrollPeriodStatus.LOCKED, period.getStatus());
         assertNotNull(period.getLockedAt());
         assertEquals(0, period.getLockedAt().getNano(), "lockedAt must not have fractional seconds");
+        verify(periodRepository).save(period);
+    }
+
+    @Test
+    void lockingAnotherMonthKeepsEarlierLockedMonthsLocked() {
+        LocalDate novemberStart = LocalDate.of(2026, 11, 1);
+        LocalDateTime decemberLockedAt = LocalDateTime.of(2026, 12, 5, 9, 0, 0);
+        PayrollPeriod november = PayrollPeriod.builder()
+                .id(1L)
+                .periodStart(novemberStart)
+                .status(PayrollPeriodStatus.DRAFT)
+                .driverPayrolls(List.of())
+                .build();
+        PayrollPeriod december = PayrollPeriod.builder()
+                .id(2L)
+                .periodStart(LocalDate.of(2026, 12, 1))
+                .status(PayrollPeriodStatus.LOCKED)
+                .lockedAt(decemberLockedAt)
+                .driverPayrolls(List.of())
+                .build();
+        when(periodRepository.findByCompanyIdAndPeriodStartForUpdate(10L, novemberStart))
+                .thenReturn(Optional.of(november));
+        // Chốt một kỳ không được động tới các kỳ khác: lenient để test đỏ vì kết quả sai, không vì stub thừa.
+        lenient().when(periodRepository.findByCompanyIdAndStatus(10L, PayrollPeriodStatus.LOCKED))
+                .thenReturn(List.of(december));
+        when(periodRepository.save(any(PayrollPeriod.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        service.lockPeriod(10L, "2026-11");
+
+        assertEquals(PayrollPeriodStatus.LOCKED, november.getStatus());
+        assertEquals(PayrollPeriodStatus.LOCKED, december.getStatus());
+        assertEquals(decemberLockedAt, december.getLockedAt());
+    }
+
+    @Test
+    void unlockPeriodReturnsLockedPayrollToDraft() {
+        LocalDate periodStart = LocalDate.of(2026, 11, 1);
+        PayrollPeriod period = PayrollPeriod.builder()
+                .id(1L)
+                .periodStart(periodStart)
+                .status(PayrollPeriodStatus.LOCKED)
+                .driverPayrolls(List.of())
+                .build();
+        when(periodRepository.findByCompanyIdAndPeriodStartForUpdate(10L, periodStart))
+                .thenReturn(Optional.of(period));
+        when(periodRepository.save(any(PayrollPeriod.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        var response = service.unlockPeriod(10L, "2026-11");
+
+        assertEquals(PayrollPeriodStatus.DRAFT, response.status());
+        assertEquals(null, period.getLockedAt());
         verify(periodRepository).save(period);
     }
 
@@ -895,6 +946,212 @@ class DriverPayrollServiceImplTest {
         assertEquals(new BigDecimal("600000"), statement.kgAmountVnd());
         assertEquals(new BigDecimal("12750"), statement.handlingAmountVnd());
         assertEquals(new BigDecimal("15612750"), statement.totalSalaryVnd());
+    }
+
+    // ---- KPI theo kg: công ty đặt chỉ tiêu kg/tháng và tiền thưởng; hệ thống tự tính đạt hay không ----------
+
+    private static CompanyPayrollRate kpiRate(Company company, BigDecimal targetKg, BigDecimal bonusVnd) {
+        return CompanyPayrollRate.builder()
+                .id(5L).company(company).effectiveFrom(LocalDate.of(2026, 11, 1))
+                .baseSalaryVnd(new BigDecimal("8000000"))
+                .rateVndPerKg(new BigDecimal("100"))
+                .commissionPercent(new BigDecimal("15")).handlingFeeVndPerKg(new BigDecimal("150")).handlingDriverPercent(new BigDecimal("85"))
+                .kpiTargetKg(targetKg).kpiBonusVnd(bonusVnd)
+                .build();
+    }
+
+    /** Tháng 11/2026: chuyến 77 giao 1.000 kg, tài xế Một chở một mình; tài xế Hai không có chuyến. */
+    private PayrollPeriodResponse calculateNovemberWith(CompanyPayrollRate rate) {
+        LocalDate periodStart = LocalDate.of(2026, 11, 1);
+        LoadPlan loadPlan = LoadPlan.builder().id(55L).approved(true).build();
+        CargoPackage cargoPackage = CargoPackage.builder().actualWeightKg(new BigDecimal("1000")).build();
+        PackagePlacement placement = PackagePlacement.builder().cargoPackage(cargoPackage).build();
+        when(rateRepository.findFirstByCompanyIdAndEffectiveFromLessThanEqualOrderByEffectiveFromDesc(10L, periodStart))
+                .thenReturn(Optional.of(rate));
+        when(periodRepository.findByCompanyIdAndPeriodStartForUpdate(10L, periodStart)).thenReturn(Optional.empty());
+        when(userRepository.findByCompanyIdAndUserRoleTypeAndStatus(10L, UserRole.DRIVER, UserStatus.ACTIVE))
+                .thenReturn(List.of(driverOne, driverTwo));
+        when(tripRepository.findByCompanyIdAndStatusAndCompletedAtGreaterThanEqualAndCompletedAtLessThan(
+                10L, TripStatus.DELIVERED, periodStart.atStartOfDay(), periodStart.plusMonths(1).atStartOfDay()))
+                .thenReturn(List.of(trip));
+        when(loadPlanRepository.findFirstByJobTripIdAndApprovedTrueOrderByIdDesc(77L)).thenReturn(Optional.of(loadPlan));
+        when(packagePlacementRepository.findByLoadPlanId(55L)).thenReturn(List.of(placement));
+        return service.calculatePeriod(10L, "2026-11");
+    }
+
+    @Test
+    void kpiBonusIsAddedToTheSalaryOfADriverWhoReachesTheKgTarget() {
+        var response = calculateNovemberWith(kpiRate(company, new BigDecimal("1000"), new BigDecimal("500000")));
+
+        var reached = response.drivers().get(0);
+        var idle = response.drivers().get(1);
+        // 1000 kg × 100 đ × 15% = 15.000 hoa hồng; 1000 kg × 150 đ × 85% = 127.500 bốc dỡ; KPI 500.000
+        assertEquals(true, reached.kpiAchieved());
+        assertEquals(new BigDecimal("500000"), reached.kpiAmountVnd());
+        assertEquals(new BigDecimal("8642500"), reached.totalSalaryVnd());
+        assertEquals(false, idle.kpiAchieved());
+        assertEquals(new BigDecimal("0"), idle.kpiAmountVnd());
+        assertEquals(new BigDecimal("8000000"), idle.totalSalaryVnd());
+    }
+
+    @Test
+    void noKpiBonusWhenTheDriverStaysBelowTheKgTarget() {
+        var response = calculateNovemberWith(kpiRate(company, new BigDecimal("1000.001"), new BigDecimal("500000")));
+
+        var driver = response.drivers().get(0);
+        assertEquals(false, driver.kpiAchieved());
+        assertEquals(new BigDecimal("0"), driver.kpiAmountVnd());
+        assertEquals(new BigDecimal("8142500"), driver.totalSalaryVnd());
+    }
+
+    @Test
+    void noKpiBonusWhenTheCompanyDoesNotSetAKgTarget() {
+        var response = calculateNovemberWith(kpiRate(company, null, BigDecimal.ZERO));
+
+        var driver = response.drivers().get(0);
+        assertEquals(false, driver.kpiAchieved());
+        assertEquals(new BigDecimal("0"), driver.kpiAmountVnd());
+        assertEquals(new BigDecimal("8142500"), driver.totalSalaryVnd());
+    }
+
+    @Test
+    void createRateStoresTheKpiTargetAndBonus() {
+        LocalDate currentMonth = YearMonth.now(ZoneId.of("Asia/Ho_Chi_Minh")).atDay(1);
+        when(rateRepository.existsByCompanyId(10L)).thenReturn(false);
+        when(periodRepository.findByCompanyIdAndPeriodStart(10L, currentMonth)).thenReturn(Optional.empty());
+        when(rateRepository.findByCompanyIdAndEffectiveFrom(10L, currentMonth)).thenReturn(Optional.empty());
+        when(rateRepository.save(any(CompanyPayrollRate.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        var response = service.createRate(10L, new CompanyPayrollRateRequest(currentMonth, new BigDecimal("8000000"),
+                new BigDecimal("100"), new BigDecimal("15"), new BigDecimal("150"), new BigDecimal("85"),
+                new BigDecimal("1500.500"), new BigDecimal("500000")));
+
+        assertEquals(new BigDecimal("1500.500"), response.kpiTargetKg());
+        assertEquals(new BigDecimal("500000"), response.kpiBonusVnd());
+    }
+
+    @Test
+    void createRateRejectsAKpiTargetWithoutABonus() {
+        LocalDate currentMonth = YearMonth.now(ZoneId.of("Asia/Ho_Chi_Minh")).atDay(1);
+        CompanyPayrollRateRequest noBonus = new CompanyPayrollRateRequest(currentMonth, new BigDecimal("8000000"),
+                new BigDecimal("100"), new BigDecimal("15"), new BigDecimal("150"), new BigDecimal("85"),
+                new BigDecimal("1500"), null);
+        CompanyPayrollRateRequest zeroBonus = new CompanyPayrollRateRequest(currentMonth, new BigDecimal("8000000"),
+                new BigDecimal("100"), new BigDecimal("15"), new BigDecimal("150"), new BigDecimal("85"),
+                new BigDecimal("1500"), BigDecimal.ZERO);
+
+        assertEquals("PAYROLL_KPI_BONUS_REQUIRED",
+                assertThrows(AppException.class, () -> service.createRate(10L, noBonus)).getErrorCode().name());
+        assertEquals("PAYROLL_KPI_BONUS_REQUIRED",
+                assertThrows(AppException.class, () -> service.createRate(10L, zeroBonus)).getErrorCode().name());
+        verify(rateRepository, never()).save(any(CompanyPayrollRate.class));
+    }
+
+    @Test
+    void createRateRejectsAKpiBonusThatRoundsDownToZeroDong() {
+        LocalDate currentMonth = YearMonth.now(ZoneId.of("Asia/Ho_Chi_Minh")).atDay(1);
+        CompanyPayrollRateRequest tinyBonus = new CompanyPayrollRateRequest(currentMonth, new BigDecimal("8000000"),
+                new BigDecimal("100"), new BigDecimal("15"), new BigDecimal("150"), new BigDecimal("85"),
+                new BigDecimal("1500"), new BigDecimal("0.49"));
+
+        assertEquals("PAYROLL_KPI_BONUS_REQUIRED",
+                assertThrows(AppException.class, () -> service.createRate(10L, tinyBonus)).getErrorCode().name());
+        verify(rateRepository, never()).save(any(CompanyPayrollRate.class));
+    }
+
+    @Test
+    void kpiThresholdIsMeasuredOnTheKgSharedToEachCoDriver() {
+        LocalDate periodStart = LocalDate.of(2026, 11, 1);
+        // 1.000 kg chia đôi: mỗi tài xế 500 kg. Chỉ tiêu 500 kg thì cả hai đạt; chỉ tiêu 501 kg thì không ai đạt.
+        List<TripPayrollDriverShare> shares = List.of(
+                TripPayrollDriverShare.builder().trip(trip).driver(driverOne).sharePercent(new BigDecimal("50.00")).build(),
+                TripPayrollDriverShare.builder().trip(trip).driver(driverTwo).sharePercent(new BigDecimal("50.00")).build());
+        when(shareRepository.findByTripId(77L)).thenReturn(shares);
+
+        var reached = calculateNovemberWith(kpiRate(company, new BigDecimal("500"), new BigDecimal("300000")));
+        assertEquals(true, reached.drivers().get(0).kpiAchieved());
+        assertEquals(true, reached.drivers().get(1).kpiAchieved());
+        assertEquals(new BigDecimal("300000"), reached.drivers().get(0).kpiAmountVnd());
+        assertEquals(new BigDecimal("300000"), reached.drivers().get(1).kpiAmountVnd());
+    }
+
+    @Test
+    void kpiThresholdJustAboveTheSharedKgLeavesBothCoDriversWithoutBonus() {
+        // 500 kg mỗi người, chỉ tiêu 500,001 kg: không ai đạt.
+        List<TripPayrollDriverShare> shares = List.of(
+                TripPayrollDriverShare.builder().trip(trip).driver(driverOne).sharePercent(new BigDecimal("50.00")).build(),
+                TripPayrollDriverShare.builder().trip(trip).driver(driverTwo).sharePercent(new BigDecimal("50.00")).build());
+        when(shareRepository.findByTripId(77L)).thenReturn(shares);
+
+        var response = calculateNovemberWith(kpiRate(company, new BigDecimal("500.001"), new BigDecimal("300000")));
+
+        assertEquals(false, response.drivers().get(0).kpiAchieved());
+        assertEquals(false, response.drivers().get(1).kpiAchieved());
+        assertEquals(new BigDecimal("0"), response.drivers().get(0).kpiAmountVnd());
+    }
+
+    @Test
+    void createRateDropsTheBonusWhenThereIsNoKpiTarget() {
+        LocalDate currentMonth = YearMonth.now(ZoneId.of("Asia/Ho_Chi_Minh")).atDay(1);
+        when(rateRepository.existsByCompanyId(10L)).thenReturn(false);
+        when(periodRepository.findByCompanyIdAndPeriodStart(10L, currentMonth)).thenReturn(Optional.empty());
+        when(rateRepository.findByCompanyIdAndEffectiveFrom(10L, currentMonth)).thenReturn(Optional.empty());
+        when(rateRepository.save(any(CompanyPayrollRate.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        var response = service.createRate(10L, new CompanyPayrollRateRequest(currentMonth, new BigDecimal("8000000"),
+                new BigDecimal("100"), new BigDecimal("15"), new BigDecimal("150"), new BigDecimal("85"),
+                null, new BigDecimal("500000")));
+
+        assertEquals(null, response.kpiTargetKg());
+        assertEquals(0, BigDecimal.ZERO.compareTo(response.kpiBonusVnd()));
+    }
+
+    @Test
+    void driverSeesTheKpiResultOnceThePeriodIsLocked() {
+        LocalDate periodStart = LocalDate.of(2026, 11, 1);
+        CompanyPayrollRate rate = kpiRate(company, new BigDecimal("1000"), new BigDecimal("500000"));
+        PayrollPeriod locked = PayrollPeriod.builder().id(9L).company(company).periodStart(periodStart)
+                .payrollRate(rate).status(PayrollPeriodStatus.LOCKED).build();
+        DriverPayroll payroll = DriverPayroll.builder()
+                .payrollPeriod(locked).driver(driverOne)
+                .baseSalaryVnd(new BigDecimal("8000000"))
+                .totalKg(new BigDecimal("1200.000"))
+                .kgAmountVnd(new BigDecimal("18000"))
+                .handlingAmountVnd(new BigDecimal("153000"))
+                .kpiAchieved(true).kpiAmountVnd(new BigDecimal("500000"))
+                .totalSalaryVnd(new BigDecimal("8671000"))
+                .trips(new java.util.ArrayList<>())
+                .build();
+        when(userRepository.findById(21L)).thenReturn(Optional.of(driverOne));
+        when(periodRepository.findByCompanyIdAndPeriodStart(10L, periodStart)).thenReturn(Optional.of(locked));
+        when(driverPayrollRepository.findByPayrollPeriodIdAndDriverId(9L, 21L)).thenReturn(Optional.of(payroll));
+
+        var statement = service.getDriverStatement(10L, 21L, "2026-11");
+
+        assertEquals(new BigDecimal("1000"), statement.kpiTargetKg());
+        assertEquals(true, statement.kpiAchieved());
+        assertEquals(new BigDecimal("500000"), statement.kpiBonusVnd());
+        assertEquals(new BigDecimal("8671000"), statement.totalSalaryVnd());
+    }
+
+    @Test
+    void driverSeesNoKpiWhilePeriodIsStillDraft() {
+        LocalDate periodStart = LocalDate.of(2026, 11, 1);
+        CompanyPayrollRate rate = kpiRate(company, new BigDecimal("1000"), new BigDecimal("500000"));
+        PayrollPeriod draft = PayrollPeriod.builder().id(9L).company(company).periodStart(periodStart)
+                .payrollRate(rate).status(PayrollPeriodStatus.DRAFT).build();
+        when(userRepository.findById(21L)).thenReturn(Optional.of(driverOne));
+        when(periodRepository.findByCompanyIdAndPeriodStart(10L, periodStart)).thenReturn(Optional.of(draft));
+        when(rateRepository.findFirstByCompanyIdAndEffectiveFromLessThanEqualOrderByEffectiveFromDesc(10L, periodStart))
+                .thenReturn(Optional.of(rate));
+
+        var statement = service.getDriverStatement(10L, 21L, "2026-11");
+
+        assertEquals(null, statement.kpiTargetKg());
+        assertEquals(null, statement.kpiAchieved());
+        assertEquals(null, statement.kpiBonusVnd());
+        // Bảng chưa chốt: không đọc dòng lương đã lưu nên KPI không thể lộ ra.
+        verify(driverPayrollRepository, never()).findByPayrollPeriodIdAndDriverId(any(), any());
     }
 
     private static User driver(Long id, String name, Company company) {

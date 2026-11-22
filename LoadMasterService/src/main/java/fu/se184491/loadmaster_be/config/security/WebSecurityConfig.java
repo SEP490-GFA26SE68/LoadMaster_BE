@@ -29,6 +29,7 @@ import java.util.List;
 @EnableMethodSecurity
 @Import({
         RolePermissionMapping.class,
+        CreditServiceAuthorization.class,
         RestAuthenticationEntryPoint.class,
         RestAccessDeniedHandler.class
 })
@@ -56,12 +57,21 @@ public class WebSecurityConfig {
                 .csrf(AbstractHttpConfigurer::disable)
 
                 .authorizeHttpRequests(auth -> auth
+                        // These exact rules must precede the unrelated internal/public matchers.
+                        .requestMatchers("/api/internal/credits/**", "/api/credits/deduct", "/api/credits/refund")
+                        .authenticated()
+                        .requestMatchers("/api/load-plans/**", "/api/payment/mock-checkout", "/api/warehouse/**")
+                        .authenticated()
+
+                        .requestMatchers(org.springframework.http.HttpMethod.GET,
+                                "/api/driver/trips", "/api/driver/trips/*/current-stop").authenticated()
 
                         .requestMatchers(
                                 "/v3/api-docs/**",
                                 "/swagger-ui/**",
                                 "/swagger-ui.html",
                                 "/api/auth/password-reset/**",
+                                "/api/driver/**",
                                 "/webhook/**",
                                 "/api/payment/**",
                                 "/api/guest-registration/**",

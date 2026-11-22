@@ -21,7 +21,8 @@ import java.util.Set;
 
 /**
  * Phiếu lương của chính tài xế đang hỏi, đọc qua đúng hàm của {@code GET /api/driver/payroll}: kỳ chưa chốt thì chỉ
- * có lương cứng ({@code calculated: false}), hoa hồng và bốc dỡ hiện sau khi công ty chốt kỳ. Không trả mã số nội bộ.
+ * có lương cứng ({@code calculated: false}), hoa hồng, bốc dỡ và thưởng KPI hiện sau khi công ty chốt kỳ. Không trả
+ * mã số nội bộ.
  */
 @Component
 @RequiredArgsConstructor
@@ -38,7 +39,8 @@ public class MyPayrollTool implements AssistantTool {
     public record Statement(boolean calculated, String period, PayrollPeriodStatus periodStatus,
                             BigDecimal baseSalaryVnd, BigDecimal totalKg, BigDecimal rateVndPerKg,
                             BigDecimal kgAmountVnd, BigDecimal commissionPercent, BigDecimal handlingFeeVndPerKg,
-                            BigDecimal handlingDriverPercent, BigDecimal handlingAmountVnd, BigDecimal totalSalaryVnd,
+                            BigDecimal handlingDriverPercent, BigDecimal handlingAmountVnd, BigDecimal kpiTargetKg,
+                            Boolean kpiAchieved, BigDecimal kpiBonusVnd, BigDecimal totalSalaryVnd,
                             Integer tripCount, List<TripLine> trips) {
     }
 
@@ -55,8 +57,9 @@ public class MyPayrollTool implements AssistantTool {
 
     @Tool(name = "get_my_payroll", description = """
             Phiếu lương một tháng của chính tài xế đang hỏi: lương cứng, tổng kg đã chở, tiền theo kg, tiền bốc \
-            dỡ, tổng lương và phần của từng chuyến. calculated = false nghĩa là công ty chưa chốt kỳ: chỉ có lương \
-            cứng, hoa hồng và bốc dỡ hiện sau khi chốt — không tự tính. Dùng khi tài xế hỏi lương của mình.""")
+            dỡ, thưởng KPI (chỉ tiêu kg, đạt hay không, tiền thưởng — chỉ khi công ty dùng KPI), tổng lương và phần \
+            của từng chuyến. Tổng lương đã gồm thưởng KPI. calculated = false nghĩa là công ty chưa chốt kỳ: chỉ có \
+            lương cứng, hoa hồng, bốc dỡ và KPI hiện sau khi chốt — không tự tính. Dùng khi tài xế hỏi lương của mình.""")
     public Statement getMyPayroll(
             @ToolParam(description = "Kỳ lương dạng yyyy-MM, ví dụ 2026-11 (\"tháng này\" là tháng của hôm nay)")
             String period) {
@@ -71,7 +74,8 @@ public class MyPayrollTool implements AssistantTool {
         return new Statement(statement.calculated(), statement.period(), statement.status(),
                 statement.baseSalaryVnd(), statement.totalKg(), statement.rateVndPerKg(), statement.kgAmountVnd(),
                 statement.commissionPercent(), statement.handlingFeeVndPerKg(), statement.handlingDriverPercent(),
-                statement.handlingAmountVnd(), statement.totalSalaryVnd(),
+                statement.handlingAmountVnd(), statement.kpiTargetKg(), statement.kpiAchieved(),
+                statement.kpiBonusVnd(), statement.totalSalaryVnd(),
                 statement.calculated() ? lines.size() : null, statement.calculated() ? trips : null);
     }
 

@@ -94,6 +94,8 @@ public class DriverDeliveryServiceImpl implements DriverDeliveryService {
     /** Chuyến Đang vận chuyển: màn tài xế đọc lại giờ đến sau ngần này (như màn Giám sát). */
     static final int IN_TRANSIT_REFRESH_MS = 30_000;
 
+    @jakarta.persistence.PersistenceContext private jakarta.persistence.EntityManager entityManager;
+    private final fu.se184491.loadmaster_be.service.warehouse.WarehouseSessionLookup warehouseLookup;
     private final DriverService driverService;
     private final CurrentUserService currentUserService;
     private final TripLookupHelper tripLookupHelper;
@@ -291,7 +293,9 @@ public class DriverDeliveryServiceImpl implements DriverDeliveryService {
     @Override
     @Transactional(readOnly = true)
     public DriverTripDetailResponse getTripDetail(String tripIdOrCode) {
-        Trip trip = driverService.requireOwnTrip(tripIdOrCode);
+        Trip trip = driverService.requireOwnOrOpenTrip(tripIdOrCode);
+        // Chuyến chưa có tài xế (đang mở): tài xế chỉ xem để cân nhắc xin nhận, chưa được thấy số điện thoại khách.
+        boolean openPreview = trip.getDriver() == null;
         List<DeliveryStop> stops = deliveryStopRepository.findByTripIdOrderByStopSequenceAsc(trip.getId());
         boolean inTransit = trip.getStatus() == TripStatus.IN_TRANSIT;
         GpsTracking latest = inTransit ? gpsTrackingRepository.findFirstByTripIdOrderByRecordedAtDesc(trip.getId()).orElse(null) : null;
@@ -352,7 +356,7 @@ public class DriverDeliveryServiceImpl implements DriverDeliveryService {
             String contactPhone = null;
             if (req != null && req.getCustomer() != null) {
                 contactName = req.getCustomer().getName();
-                contactPhone = req.getCustomer().getContactPhone();
+                contactPhone = openPreview ? null : req.getCustomer().getContactPhone();
             }
 
             List<CargoPackage> packages = tripPackageResolver.packagesOfStop(stop.getId());
@@ -680,6 +684,20 @@ public class DriverDeliveryServiceImpl implements DriverDeliveryService {
         ManualUnloadConfirmation confirmation = manualConfirmationRepository.findById(confirmationId)
                 .filter(found -> found.getTrip() != null && trip.getId().equals(found.getTrip().getId()))
                 .orElseThrow(() -> new AppException(ErrorCode.MANUAL_CONFIRM_NOT_FOUND));
+        if (confirmation.getStatus() != ManualConfirmStatus.PENDING || !stepMatches(confirmation, trip)) {
+            throw new AppException(ErrorCode.MANUAL_CONFIRM_NOT_PENDING);
+        }
+        if (!confirmation.isUnloadingStep()) {
+            // Warehouse decisions must serialize with confirm/staging/complete, before changing any progress.
+            var session = warehouseLookup.activeSession(trip.getId());
+            entityManager.refresh(confirmation, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
+            if (confirmation.effectiveStep() == ManualConfirmStep.LOADING) {
+                if (confirmation.getPlacement() == null) throw new AppException(ErrorCode.PLACEMENT_NOT_FOUND);
+                warehouseLookup.placement(session, confirmation.getPlacement().getId());
+            } else {
+                warehouseLookup.placementOfPackage(session, confirmation.getCargoPackage().getId());
+            }
+        }
         if (confirmation.getStatus() != ManualConfirmStatus.PENDING || !stepMatches(confirmation, trip)) {
             throw new AppException(ErrorCode.MANUAL_CONFIRM_NOT_PENDING);
         }

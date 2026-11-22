@@ -22,9 +22,17 @@ class OptimizationJob(Base):
     time_limit_sec = Column(Integer, default=60)
     status = Column(String(50), nullable=False, default=OptimizationJobStatus.PENDING.value)
     computation_ms = Column(Integer().with_variant(BigInteger, "postgresql"), nullable=True)
+    parent_plan_id = Column(BigInteger, nullable=True)
+    seed = Column(Integer, nullable=True)
     company_id = Column(String(64), nullable=True)
     subscription_tier = Column(String(50), nullable=True, default="BASIC")
     algorithm_tier = Column(String(50), nullable=True)
     created_at = Column(DateTime, default=vietnam_now)
+
+    failure_code = Column(String(64), nullable=True)
+    execution_generation = Column(BigInteger, nullable=True)
+    dispatch_expires_at = Column(DateTime(timezone=True), nullable=True)
+    lease_expires_at = Column(DateTime(timezone=True), nullable=True)
+    execution_started_at = Column(DateTime(timezone=True), nullable=True)
 
     trip = relationship("Trip")

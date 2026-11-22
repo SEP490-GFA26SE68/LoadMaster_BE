@@ -35,6 +35,10 @@ import static org.mockito.Mockito.when;
 @ExtendWith(MockitoExtension.class)
 class TripStatusServiceTest {
 
+    @Mock private fu.se184491.loadmaster_be.service.vehicle.VehicleDepartureEligibility vehicleEligibility;
+    @Mock private fu.se184491.loadmaster_be.service.vehicle.VehiclePresenceService vehiclePresence;
+    @Mock private TripDepartureReadiness departureReadiness;
+    @Mock private fu.se184491.loadmaster_be.helpers.CurrentUserService currentUserService;
     @Mock private TripRepository tripRepository;
     @Mock private UserRepository userRepository;
     @Mock private AuditLogRepository auditLogRepository;
@@ -44,6 +48,46 @@ class TripStatusServiceTest {
 
     @InjectMocks
     private TripStatusService service;
+
+
+    @Test
+    void departureTransitionUsesTheSameReadinessAndRejectsStaleOrIncompletePlans() {
+        var driver = fu.se184491.loadmaster_be.entity.account.User.builder().id(8L).build();
+        Trip trip = Trip.builder().id(10L).status(TripStatus.LOADING).build();
+        when(currentUserService.getCurrentUser()).thenReturn(driver);
+        when(departureReadiness.lockAssignedTrip(10L, driver)).thenReturn(trip);
+        when(departureReadiness.canStartLocked(trip, driver)).thenReturn(false);
+        assertThrows(InvalidTripStatusTransitionException.class,
+                () -> service.transitionTo(10L, TripStatus.IN_TRANSIT, 8L));
+        verify(tripRepository, org.mockito.Mockito.never()).save(any());
+        verify(loadingExecutionRepository, org.mockito.Mockito.never())
+                .existsByLoadPlanJobTripIdAndStatus(any(), any());
+    }
+
+    @Test
+    void departureTransitionKeepsAuditAndCannotTransitionTwice() {
+        var driver = fu.se184491.loadmaster_be.entity.account.User.builder().id(8L).build();
+        Trip trip = Trip.builder().id(10L).status(TripStatus.LOADING).build();
+        when(currentUserService.getCurrentUser()).thenReturn(driver);
+        when(departureReadiness.lockAssignedTrip(10L, driver)).thenReturn(trip);
+        when(departureReadiness.canStartLocked(trip, driver)).thenReturn(true);
+        when(userRepository.findById(8L)).thenReturn(Optional.of(driver));
+        when(tripRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+        service.transitionTo(10L, TripStatus.IN_TRANSIT, 8L);
+        assertThrows(InvalidTripStatusTransitionException.class,
+                () -> service.transitionTo(10L, TripStatus.IN_TRANSIT, 8L));
+        verify(vehiclePresence, org.mockito.Mockito.times(1)).departure(trip, 8L);
+        verify(tripRepository, org.mockito.Mockito.times(1)).save(trip);
+        verify(auditLogRepository, org.mockito.Mockito.times(1)).save(any());
+    }
+
+    @Test
+    void departureActorMustMatchTheAuthenticatedDriver() {
+        when(currentUserService.getCurrentUser()).thenReturn(
+                fu.se184491.loadmaster_be.entity.account.User.builder().id(8L).build());
+        assertThrows(AppException.class, () -> service.transitionTo(10L, TripStatus.IN_TRANSIT, 99L));
+        verify(departureReadiness, org.mockito.Mockito.never()).lockAssignedTrip(any(), any());
+    }
 
     @Test
     void deliveredTripCannotBeCancelled() {
