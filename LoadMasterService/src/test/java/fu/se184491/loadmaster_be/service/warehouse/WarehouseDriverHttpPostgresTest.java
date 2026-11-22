@@ -312,6 +312,22 @@ class WarehouseDriverHttpPostgresTest {
         assertEquals(0,count("placement_confirmations"));
     }
     static Reply warehouseAnonymous()throws Exception{return request("GET","/api/warehouse/tasks",null,null);}
+    @Test void awaitingReplanTripsOnlyListedWhenAskedForByQueryParam()throws Exception{
+        long id=start();
+        // Kho báo thiếu, điều phối bỏ kiện: phiên dừng, chuyến về Đã lập kế hoạch, phương án cũ hết hiệu lực.
+        sql.update("UPDATE loading_executions SET status='ABORTED',abort_reason='STAGING_SHORTAGE' WHERE id=?",id);
+        sql.update("UPDATE load_plans SET is_approved=false,is_stale=true WHERE id=50");
+        sql.update("UPDATE trips SET status='PLANNED' WHERE id=10");
+        // OptimizationAccess là mock: trả 1 như bản thật trả công ty của người đăng nhập.
+        when(context.getBean(OptimizationAccess.class).requireCompanyId(org.mockito.ArgumentMatchers.<Long>any())).thenReturn(1L);
+        java.util.function.Function<JsonNode,Set<Integer>> trips=list->{Set<Integer> s=new HashSet<>();for(var t:list)s.add(t.path("tripId").asInt());return s;};
+        assertFalse(trips.apply(ok(warehouse("GET","/tasks",null))).contains(10));
+        assertFalse(trips.apply(ok(warehouse("GET","/tasks?includeAwaitingReplan=false",null))).contains(10));
+        var listed=ok(warehouse("GET","/tasks?includeAwaitingReplan=true",null));
+        assertEquals(Set.of(10),trips.apply(listed));
+        assertTrue(listed.get(0).path("awaitingReplan").asBoolean());
+        assertEquals("STAGING_SHORTAGE",listed.get(0).path("replanReason").asText());
+    }
     @ParameterizedTest @ValueSource(strings={"COMPLETED","ABORTED"})
     void closedExecutionCannotConfirm(String state)throws Exception{
         long id=start();stage();sql.update("UPDATE loading_executions SET status=? WHERE id=?",state,id);
