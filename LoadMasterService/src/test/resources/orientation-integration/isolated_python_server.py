@@ -34,6 +34,11 @@ with engine.connect() as db:
 Base.metadata.create_all(engine)  # Fixture schema only on this verified disposable Testcontainer.
 Sessions=sessionmaker(bind=engine)
 from app.main import app
+# The recovery loop in app.main opens the production SessionLocal (blocked here) and would
+# schedule jobs outside this owned server; tests drive every job explicitly, so disable it.
+from app.service.optimize import pending_job_recovery
+async def no_recovery(runner,interval_sec=10.0):await asyncio.Event().wait()
+pending_job_recovery.recovery_loop=no_recovery
 from app.controller.optimization.optimization_router import get_async_runner
 from app.service.auth import auth_dependency as auth
 from app.exception.app_exception import AppException

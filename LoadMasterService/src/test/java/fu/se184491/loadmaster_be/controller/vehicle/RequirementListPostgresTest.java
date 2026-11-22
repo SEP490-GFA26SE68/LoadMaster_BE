@@ -184,6 +184,7 @@ class RequirementListPostgresTest {
    .andExpect(status().isOk()).andExpect(jsonPath("$.totalElements").value(0));
  }
 
+ // DISPATCHER and MANAGER both hold DELIVERY_DEMAND_MANAGE; WAREHOUSE_WORKER only reads.
  @Test void createStillUsesDedicatedPermissionAndTenantGuard()throws Exception{
   String body="{\"customerId\":1,\"destination\":\"Fixture create\",\"deadline\":\"2099-11-12T12:00:00\",\"priority\":\"NORMAL\",\"expectedPackageCount\":4,\"packageIds\":[]}";
   sql.queryForObject("SELECT setval(pg_get_serial_sequence('delivery_requirements','id'),111,true)",Long.class);
@@ -191,10 +192,12 @@ class RequirementListPostgresTest {
    http.perform(post("/api/delivery-requirements").header("Authorization","Bearer "+TestJwtSupport.userToken("company-a","DISPATCHER")).contentType("application/json").content(body))
     .andExpect(status().isCreated()).andExpect(jsonPath("$.data.companyId").value(1)).andExpect(jsonPath("$.data.receivedPackageCount").value(0));
    http.perform(post("/api/delivery-requirements").header("Authorization","Bearer "+TestJwtSupport.userToken("company-a","MANAGER")).contentType("application/json").content(body))
+    .andExpect(status().isCreated()).andExpect(jsonPath("$.data.companyId").value(1));
+   http.perform(post("/api/delivery-requirements").header("Authorization","Bearer "+TestJwtSupport.userToken("company-a","WAREHOUSE_WORKER")).contentType("application/json").content(body))
     .andExpect(status().isForbidden());
    http.perform(post("/api/delivery-requirements").header("Authorization","Bearer "+TestJwtSupport.userToken("company-a","DISPATCHER")).contentType("application/json").content(body.replace("\"customerId\":1","\"customerId\":2")))
     .andExpect(status().isBadRequest());
-  } finally { sql.update("DELETE FROM delivery_requirements WHERE id=112 AND destination='Fixture create'"); }
+  } finally { sql.update("DELETE FROM delivery_requirements WHERE destination='Fixture create'"); }
  }
  @ParameterizedTest @ValueSource(strings={"no-such-customer","%","_"})
  void nonexistentOrLiteralWildcardDoesNotReturnUnrelatedRows(String term)throws Exception{
