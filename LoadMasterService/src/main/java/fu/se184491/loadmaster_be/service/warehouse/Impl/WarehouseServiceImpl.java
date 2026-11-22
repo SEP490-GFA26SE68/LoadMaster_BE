@@ -12,6 +12,7 @@ import fu.se184491.loadmaster_be.dto.response.warehouse.DeviationResponse;
 import fu.se184491.loadmaster_be.dto.response.warehouse.PlacementStepResponse;
 import fu.se184491.loadmaster_be.dto.response.warehouse.StartLoadingResponse;
 import fu.se184491.loadmaster_be.dto.response.warehouse.WarehouseTaskResponse;
+import fu.se184491.loadmaster_be.dto.response.warehouse.VehiclePresenceSummary;
 import fu.se184491.loadmaster_be.entity.account.User;
 import fu.se184491.loadmaster_be.entity.cargo.CargoPackage;
 import fu.se184491.loadmaster_be.entity.common.AuditLog;
@@ -83,6 +84,7 @@ public class WarehouseServiceImpl implements WarehouseService {
     private final TripPackageResolver tripPackageResolver;
     private final WarehouseProgress warehouseProgress;
     private final LoadingDamageRepository loadingDamageRepository;
+    private final fu.se184491.loadmaster_be.service.vehicle.VehiclePresenceStore presenceStore;
 
     /**
      * Nhiệm vụ của kho: chuyến Đã lập kế hoạch của công ty người đăng nhập, có phương án đã
@@ -124,7 +126,7 @@ public class WarehouseServiceImpl implements WarehouseService {
                 }
             }
 
-            tasks.add(WarehouseTaskResponse.builder()
+            tasks.add(withVehicle(trip, WarehouseTaskResponse.builder()
                     .tripId(trip.getId())
                     .tripCode(trip.getTripCode())
                     .vehicleInfo(formatVehicleInfo(trip.getVehicle()))
@@ -132,7 +134,7 @@ public class WarehouseServiceImpl implements WarehouseService {
                     .loadPlanId(approvedPlan.getId())
                     .departureTime(trip.getDepartureTime())
                     .status(trip.getStatus() != null ? trip.getStatus().name() : "APPROVED")
-                    .build());
+                    .build()));
         }
 
         // Chuyến Đang xếp hàng có phiên xếp: kho mở lại phiên bằng GET /api/warehouse/tasks/{tripId}.
@@ -145,7 +147,7 @@ public class WarehouseServiceImpl implements WarehouseService {
                 continue;
             }
             LoadingExecution execution = executionOpt.get();
-            tasks.add(WarehouseTaskResponse.builder()
+            tasks.add(withVehicle(trip, WarehouseTaskResponse.builder()
                     .tripId(trip.getId())
                     .tripCode(trip.getTripCode())
                     .vehicleInfo(formatVehicleInfo(trip.getVehicle()))
@@ -155,7 +157,7 @@ public class WarehouseServiceImpl implements WarehouseService {
                     .status(TripStatus.LOADING.name())
                     .executionId(execution.getId())
                     .executionStatus(execution.getStatus() != null ? execution.getStatus().name() : null)
-                    .build());
+                    .build()));
         }
 
         // Bỏ yêu cầu giao vừa hết kiện đưa chuyến về Nháp: vẫn chờ điều phối viên tối ưu lại.
@@ -174,7 +176,7 @@ public class WarehouseServiceImpl implements WarehouseService {
         return loadingExecutionRepository.findAllByLoadPlanJobTripId(trip.getId()).stream()
                 .max(java.util.Comparator.comparing(LoadingExecution::getId))
                 .filter(execution -> execution.getStatus() == LoadingExecutionStatus.ABORTED && execution.getAbortReason() != null)
-                .map(execution -> WarehouseTaskResponse.builder()
+                .map(execution -> withVehicle(trip, WarehouseTaskResponse.builder()
                         .tripId(trip.getId())
                         .tripCode(trip.getTripCode())
                         .vehicleInfo(formatVehicleInfo(trip.getVehicle()))
@@ -182,7 +184,7 @@ public class WarehouseServiceImpl implements WarehouseService {
                         .status(trip.getStatus() != null ? trip.getStatus().name() : null)
                         .awaitingReplan(true)
                         .replanReason(execution.getAbortReason().name())
-                        .build());
+                        .build()));
     }
 
     @Override
@@ -348,6 +350,9 @@ public class WarehouseServiceImpl implements WarehouseService {
                 .tripId(trip.getId())
                 .tripCode(trip.getTripCode())
                 .vehicleInfo(formatVehicleInfo(vehicle))
+                .vehicleId(vehicle != null ? vehicle.getId() : null)
+                .originWarehouseId(trip.getOriginWarehouse() != null ? trip.getOriginWarehouse().getId() : null)
+                .vehiclePresence(presenceOf(trip))
                 .licensePlate(vehicle != null ? vehicle.getLicensePlate() : null)
                 .vehicleTypeName(type != null ? type.getName() : null)
                 .innerLength(type != null ? type.getInnerLength() : null)
@@ -742,6 +747,24 @@ public class WarehouseServiceImpl implements WarehouseService {
                 || cargoPackage.getStatus() == PackageStatus.PLANNED)) {
             cargoPackage.setStatus(PackageStatus.LOADED);
         }
+    }
+
+    /** Xe, kho xuất phát và nơi xe đang ở của chuyến: kho thấy trước việc tài xế sẽ bị chặn xuất phát. */
+    private WarehouseTaskResponse withVehicle(Trip trip, WarehouseTaskResponse task) {
+        task.setVehicleId(trip.getVehicle() != null ? trip.getVehicle().getId() : null);
+        task.setOriginWarehouseId(trip.getOriginWarehouse() != null ? trip.getOriginWarehouse().getId() : null);
+        task.setVehiclePresence(presenceOf(trip));
+        return task;
+    }
+
+    /** Chỉ đọc nơi xe đang ở theo kho ghi nhận; không ghi gì. */
+    private VehiclePresenceSummary presenceOf(Trip trip) {
+        if (trip.getVehicle() == null || trip.getVehicle().getId() == null
+                || trip.getCompany() == null || trip.getCompany().getId() == null) {
+            return null;
+        }
+        var presence = presenceStore.presence(trip.getVehicle().getId(), trip.getCompany().getId());
+        return presence == null ? null : new VehiclePresenceSummary(presence.status(), presence.warehouseId());
     }
 
     private String formatVehicleInfo(Vehicle vehicle) {

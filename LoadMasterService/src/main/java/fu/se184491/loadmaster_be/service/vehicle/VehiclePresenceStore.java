@@ -65,6 +65,10 @@ public class VehiclePresenceStore {
         var rows=sql.query("SELECT p.*,u.full_name actor_name FROM vehicle_current_presence p LEFT JOIN users u ON u.id=p.actor_user_id WHERE p.vehicle_id=? AND p.company_id=?",(rs,n)->new Presence(rs.getLong("vehicle_id"),rs.getLong("company_id"),(Long)rs.getObject("current_warehouse_id"),rs.getString("status"),rs.getTimestamp("observed_at").toInstant(),(Long)rs.getObject("actor_user_id"),rs.getString("actor_name"),rs.getLong("version")),vehicle,company);
         return rows.isEmpty()?new Presence(vehicle,company,null,"UNKNOWN",null,null,null,0):rows.getFirst();
     }
+    /** The vehicle's LOADING trip leaving from this warehouse, if any. No lock: callers lock the Trip, then the Vehicle. */
+    public Long loadingTripFrom(long vehicle,long company,long warehouse) {
+        return sql.queryForList("SELECT id FROM trips WHERE vehicle_id=? AND company_id=? AND status='LOADING' AND origin_warehouse_id=? ORDER BY id LIMIT 1",Long.class,vehicle,company,warehouse).stream().findFirst().orElse(null);
+    }
     public List<Event> events(long vehicle,long company) {
         return sql.query("SELECT * FROM vehicle_presence_events WHERE vehicle_id=? AND company_id=? ORDER BY id DESC LIMIT 100",(rs,n)->event(rs),vehicle,company);
     }

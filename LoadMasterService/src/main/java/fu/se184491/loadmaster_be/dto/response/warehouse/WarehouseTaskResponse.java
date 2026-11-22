@@ -35,4 +35,10 @@ public class WarehouseTaskResponse {
     private Boolean awaitingReplan;
     /** {@code STAGING_SHORTAGE} | {@code DAMAGED_PACKAGE} khi {@code awaitingReplan}. */
     private String replanReason;
+    /** Mã số xe của chuyến; null khi chuyến chưa gắn xe. */
+    private Long vehicleId;
+    /** Kho xuất phát của chuyến; null khi chưa có. */
+    private Long originWarehouseId;
+    /** Xe đang ở đâu theo kho ghi nhận; null khi chuyến chưa gắn xe. */
+    private VehiclePresenceSummary vehiclePresence;
 }
