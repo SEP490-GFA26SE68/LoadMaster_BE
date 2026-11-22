@@ -48,6 +48,15 @@ public final class PayrollMath {
         return bonusVnd.setScale(0, RoundingMode.HALF_UP);
     }
 
+    /**
+     * Tiền theo kg đã xếp của nhân viên kho trong tháng: tổng kg × đơn giá, làm tròn đồng HALF_UP một lần trên tổng tháng
+     * (như hoa hồng theo kg của tài xế làm tròn từng khoản về đồng).
+     */
+    public static BigDecimal loadedAmount(BigDecimal loadedKg, BigDecimal rateVndPerKg) {
+        requireNonNegative(loadedKg, rateVndPerKg);
+        return loadedKg.multiply(rateVndPerKg).setScale(0, RoundingMode.HALF_UP);
+    }
+
     private static void requirePercent(BigDecimal... values) {
         for (BigDecimal value : values) {
             if (value.compareTo(ONE_HUNDRED) > 0) throw new AppException(ErrorCode.PAYROLL_INVALID_AMOUNT);
