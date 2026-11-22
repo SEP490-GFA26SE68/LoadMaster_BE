@@ -83,7 +83,7 @@ public class WebSecurityConfig {
                         .requestMatchers(org.springframework.http.HttpMethod.GET, "/api/subscription/plans", "/api/subscription/plans/**")
                         .permitAll()
 
-                        .requestMatchers(org.springframework.http.HttpMethod.POST, "/api/contact-guests")
+                        .requestMatchers(org.springframework.http.HttpMethod.POST, "/api/contact-guests", "/api/assistant/public/**")
                         .permitAll()
 
                         .anyRequest()

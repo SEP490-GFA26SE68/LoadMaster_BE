@@ -295,6 +295,71 @@ class FlaggedUserEnforcementFilterTest {
     }
 
     @Test
+    @DisplayName("Gói cước EXPIRED: trợ lý trong ứng dụng POST /api/assistant/messages bị chặn 403 SUBSCRIPTION_EXPIRED")
+    void doFilter_shouldBlockAppAssistantWhenSubscriptionExpired() throws Exception {
+        mockAuthentication();
+        Company company = Company.builder().id(10L).companyCode("GAMMA-TRIAL").build();
+        User dispatcherUser = User.builder()
+                .id(3L)
+                .email("dispatcher@gamma.vn")
+                .status(UserStatus.ACTIVE)
+                .userRoleType(UserRole.DISPATCHER)
+                .company(company)
+                .build();
+        when(currentUserService.getCurrentUser()).thenReturn(dispatcherUser);
+        CompanySubscription sub = CompanySubscription.builder()
+                .id(5L)
+                .company(company)
+                .status(SubscriptionStatus.EXPIRED)
+                .expiresAt(LocalDateTime.now().minusDays(1))
+                .build();
+        when(companySubscriptionRepository.findByCompanyId(10L)).thenReturn(Optional.of(sub));
+
+        MockHttpServletRequest request = new MockHttpServletRequest("POST", "/api/assistant/messages");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        filter.doFilterInternal(request, response, filterChain);
+
+        assertThat(response.getStatus()).isEqualTo(HttpServletResponse.SC_FORBIDDEN);
+        assertThat(response.getContentAsString()).contains("SUBSCRIPTION_EXPIRED");
+        verify(filterChain, never()).doFilter(any(), any());
+    }
+
+    @Test
+    @DisplayName("Trợ lý công khai POST /api/assistant/public/messages đi thẳng kể cả khi đã đăng nhập, không tra người dùng")
+    void doFilter_shouldAllowPublicAssistantWithoutLookup() throws Exception {
+        mockAuthentication();
+        MockHttpServletRequest request = new MockHttpServletRequest("POST", "/api/assistant/public/messages");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        filter.doFilterInternal(request, response, filterChain);
+
+        verify(filterChain).doFilter(request, response);
+        verify(currentUserService, never()).getCurrentUser();
+    }
+
+    @Test
+    @DisplayName("Chỉ POST của trợ lý công khai được qua; GET cùng đường dẫn vẫn bị kiểm")
+    void doFilter_shouldCheckNonPostToPublicAssistant() throws Exception {
+        mockAuthentication();
+        User flaggedUser = User.builder()
+                .id(1L)
+                .email("trial@company.vn")
+                .status(UserStatus.FLAGGED)
+                .userRoleType(UserRole.DISPATCHER)
+                .build();
+        when(currentUserService.getCurrentUser()).thenReturn(flaggedUser);
+
+        MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/assistant/public/messages");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        filter.doFilterInternal(request, response, filterChain);
+
+        assertThat(response.getStatus()).isEqualTo(HttpServletResponse.SC_FORBIDDEN);
+        verify(filterChain, never()).doFilter(any(), any());
+    }
+
+    @Test
     @DisplayName("Platform Roles: Không bị ảnh hưởng kể cả khi kiểm tra subscription")
     void doFilter_shouldAllowPlatformRolesAlways() throws Exception {
         mockAuthentication();

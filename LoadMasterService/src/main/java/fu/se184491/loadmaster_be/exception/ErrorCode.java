@@ -404,7 +404,15 @@ public enum ErrorCode {
     VEHICLE_DEPARTURE_INELIGIBLE("Xe không còn đủ điều kiện tại kho xuất phát. Vui lòng chọn lại xe", HttpStatus.CONFLICT),
     VEHICLE_WAREHOUSE_FORBIDDEN("Không có quyền xác nhận xe tại kho này", HttpStatus.FORBIDDEN),
     VEHICLE_TRANSFER_CONFLICT("Vehicle transfer conflicts with current state. Refresh and retry the same action", HttpStatus.CONFLICT),
-    VEHICLE_PRESENCE_CONFLICT("Trạng thái xe hoặc mã xác nhận bị xung đột. Vui lòng tải lại", HttpStatus.CONFLICT);
+    VEHICLE_PRESENCE_CONFLICT("Trạng thái xe hoặc mã xác nhận bị xung đột. Vui lòng tải lại", HttpStatus.CONFLICT),
+
+    // -------------------------------------------------------------------------
+    // Trợ lý AI
+    // -------------------------------------------------------------------------
+    ASSISTANT_RATE_LIMITED("Bạn đã hỏi trợ lý quá nhiều lần trong một giờ. Vui lòng thử lại sau", HttpStatus.TOO_MANY_REQUESTS),
+    ASSISTANT_BUDGET_EXCEEDED("Trợ lý đã dùng hết hạn mức hôm nay. Vui lòng thử lại vào ngày mai", HttpStatus.SERVICE_UNAVAILABLE),
+    ASSISTANT_UNAVAILABLE("Trợ lý AI tạm thời không khả dụng", HttpStatus.SERVICE_UNAVAILABLE),
+    ASSISTANT_MESSAGE_TOO_LONG("Câu hỏi quá dài", HttpStatus.BAD_REQUEST);
 
     private final String message;
     private final HttpStatus httpStatus;
