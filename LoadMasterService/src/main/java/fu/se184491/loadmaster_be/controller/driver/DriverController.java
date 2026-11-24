@@ -25,8 +25,6 @@ import fu.se184491.loadmaster_be.service.driver.DriverDeliveryService;
 import fu.se184491.loadmaster_be.service.driver.DriverService;
 import fu.se184491.loadmaster_be.service.monitoring.GpsTrackingService;
 import fu.se184491.loadmaster_be.service.monitoring.TripExceptionService;
-import fu.se184491.loadmaster_be.service.pickup.PickupDriverService;
-import fu.se184491.loadmaster_be.dto.response.pickup.PickupRequestResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -55,7 +53,6 @@ public class DriverController {
     private final GpsTrackingService gpsTrackingService;
     private final TripExceptionService tripExceptionService;
     private final DriverDeliveryService driverDeliveryService;
-    private final PickupDriverService pickupDriverService;
 
     @org.springframework.security.access.prepost.PreAuthorize("hasAnyRole('DRIVER','DISPATCHER','MANAGER','ADMIN','COMPANY_ADMIN')")
     @GetMapping("/trips")
@@ -92,15 +89,6 @@ public class DriverController {
             @RequestBody(required = false) LabelConfirmRequest request) {
         ConfirmUnloadResponse response = driverService.confirmUnload(id, driverId, LabelConfirmRequest.methodOf(request));
         return ResponseEntity.ok(ApiResponse.success("Xác nhận dỡ kiện hàng thành công", response));
-    }
-
-    @PostMapping("/pickup-packages/{id}/pick")
-    @Operation(summary = "Confirm pickup package", description = "Driver confirms (QR or code) that an en-route pickup package is on the truck at the current pickup stop; optional body { method: QR | CODE } (default QR)")
-    public ResponseEntity<ApiResponse<PickupRequestResponse>> pickPackage(
-            @PathVariable("id") Long id,
-            @RequestBody(required = false) LabelConfirmRequest request) {
-        return ResponseEntity.ok(ApiResponse.success("Đã nhận kiện lên xe",
-                pickupDriverService.pick(id, LabelConfirmRequest.methodOf(request))));
     }
 
     @PostMapping("/stops/{id}/arrive")

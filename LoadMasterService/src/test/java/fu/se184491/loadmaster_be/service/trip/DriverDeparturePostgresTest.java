@@ -17,7 +17,6 @@ import fu.se184491.loadmaster_be.repository.warehouse.LoadingExecutionRepository
 import fu.se184491.loadmaster_be.service.driver.DriverService;
 import fu.se184491.loadmaster_be.service.driver.Impl.DriverServiceImpl;
 import fu.se184491.loadmaster_be.service.monitoring.TripLookupHelper;
-import fu.se184491.loadmaster_be.service.pickup.PickupDriverService;
 import org.junit.jupiter.api.*;
 import org.springframework.context.annotation.*;
 import org.springframework.context.annotation.AnnotationConfigApplicationContext;
@@ -92,7 +91,6 @@ class DriverDeparturePostgresTest {
         @Bean UnloadConfirmationRepository unloaded() { return mock(UnloadConfirmationRepository.class); }
         @Bean DeliveryIssueRepository issues() { return mock(DeliveryIssueRepository.class); }
         @Bean ManualUnloadConfirmationRepository manual() { return mock(ManualUnloadConfirmationRepository.class); }
-        @Bean PickupDriverService pickups() { return mock(PickupDriverService.class); }
         @Bean TripPackageResolver packageResolver() { return mock(TripPackageResolver.class); }
         @Bean TripLookupHelper tripLookup() { return mock(TripLookupHelper.class); }
         @Bean RoutePlanRepository routes() { return mock(RoutePlanRepository.class); }

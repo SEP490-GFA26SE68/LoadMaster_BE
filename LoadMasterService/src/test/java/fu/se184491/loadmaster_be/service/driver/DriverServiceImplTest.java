@@ -40,7 +40,6 @@ import fu.se184491.loadmaster_be.repository.trip.TripRepository;
 import fu.se184491.loadmaster_be.repository.warehouse.LoadingExecutionRepository;
 import fu.se184491.loadmaster_be.service.driver.Impl.DriverServiceImpl;
 import fu.se184491.loadmaster_be.service.monitoring.TripLookupHelper;
-import fu.se184491.loadmaster_be.service.pickup.PickupDriverService;
 import fu.se184491.loadmaster_be.service.trip.TripPackageResolver;
 import fu.se184491.loadmaster_be.service.trip.TripStatusService;
 import org.junit.jupiter.api.BeforeEach;
@@ -88,7 +87,6 @@ class DriverServiceImplTest {
     @Mock private TripLookupHelper tripLookupHelper;
     @Mock private DeliveryIssueRepository deliveryIssueRepository;
     @Mock private ManualUnloadConfirmationRepository manualConfirmationRepository;
-    @Mock private PickupDriverService pickupDriverService;
     @Mock private RoutePlanRepository routePlanRepository;
 
     @InjectMocks
@@ -330,8 +328,6 @@ class DriverServiceImplTest {
         assertEquals(DeliveryStopStatus.COMPLETED, stop.getStatus());
         assertNotNull(stop.getCompletedAt());
         assertNotNull(trip.getCompletedAt());
-        verify(pickupDriverService).requireComplete(stop);
-        verify(pickupDriverService).onStopCompleted(stop, driver);
     }
 
     @Test
@@ -373,6 +369,38 @@ class DriverServiceImplTest {
         assertEquals(31L, response.getNextStopId());
         assertEquals(DeliveryStopStatus.PENDING, next.getStatus());
         assertNull(next.getActualArrival());
+    }
+
+    @Test
+    void legacyPickupStopWithoutPackagesCanStillBeArrivedAndCompleted() {
+        // Nhận hàng dọc đường đã bỏ: điểm PICKUP chưa hoàn tất của chuyến cũ là điểm không có kiện, tài xế vẫn đi tiếp được
+        trip.setStatus(TripStatus.IN_TRANSIT);
+        DeliveryStop legacy = DeliveryStop.builder().id(30L).trip(trip).stopSequence(1).stopName("Điểm nhận cũ")
+                .stopType(fu.se184491.loadmaster_be.constant.trip.DeliveryStopType.PICKUP)
+                .status(DeliveryStopStatus.PENDING).build();
+        DeliveryStop next = DeliveryStop.builder().id(31L).trip(trip).stopSequence(2)
+                .status(DeliveryStopStatus.PENDING).build();
+        when(deliveryStopRepository.findById(30L)).thenReturn(Optional.of(legacy));
+        when(deliveryStopRepository.findFirstByTripIdAndStatusNotOrderByStopSequenceAsc(10L, DeliveryStopStatus.COMPLETED))
+                .thenReturn(Optional.of(legacy));
+        when(tripPackageResolver.packagesOfStop(30L)).thenReturn(List.of());
+
+        ArriveStopResponse arrived = service.arriveAtStop(30L);
+        assertEquals("ARRIVED", arrived.getStatus());
+
+        var current = service.getCurrentStop(10L);
+        assertEquals(30L, current.getStopId());
+        assertEquals("PICKUP", current.getStopType());
+        assertTrue(current.getPackages().isEmpty());
+
+        when(deliveryStopRepository.findFirstByTripIdAndStatusNotOrderByStopSequenceAsc(10L, DeliveryStopStatus.COMPLETED))
+                .thenReturn(Optional.of(next));
+        CompleteStopResponse completed = service.completeStop(30L, 8L);
+
+        assertEquals(DeliveryStopStatus.COMPLETED, legacy.getStatus());
+        assertNotNull(legacy.getCompletedAt());
+        assertEquals(31L, completed.getNextStopId());
+        assertFalse(completed.getTripCompleted());
     }
 
     @Test

@@ -19,18 +19,15 @@ public final class StopReorderRules {
     private StopReorderRules() {
     }
 
-    public record PickupPair(Long pickupStopId, Long deliveryStopId) {
-    }
-
     /** Lỗi thứ tự: {@code code} là tên mã lỗi, {@code stopIds} là các điểm liên quan. */
     public record Violation(String code, List<Long> stopIds) {
     }
 
     /**
-     * Lỗi đầu tiên của thứ tự đề xuất, theo thứ tự: không phải hoán vị (hoặc không đổi gì) → điểm cố định bị dời → điểm nhận đứng sau
-     * điểm giao của nó; null khi hợp lệ. {@code fixedCount}: số điểm đầu danh sách phải đứng nguyên (đã hoàn tất hoặc xe đã tới).
+     * Lỗi đầu tiên của thứ tự đề xuất, theo thứ tự: không phải hoán vị (hoặc không đổi gì) → điểm cố định bị dời; null khi hợp lệ.
+     * {@code fixedCount}: số điểm đầu danh sách phải đứng nguyên (đã hoàn tất hoặc xe đã tới).
      */
-    public static Violation checkProposedOrder(List<Long> current, List<Long> proposed, int fixedCount, List<PickupPair> pickups) {
+    public static Violation checkProposedOrder(List<Long> current, List<Long> proposed, int fixedCount) {
         boolean sameSet = proposed.size() == current.size()
                 && new HashSet<>(proposed).size() == current.size()
                 && current.containsAll(proposed);
@@ -45,13 +42,6 @@ public final class StopReorderRules {
         }
         if (!moved.isEmpty()) {
             return new Violation("STOP_NOT_MOVABLE", moved);
-        }
-        for (PickupPair pair : pickups) {
-            int pickupIndex = proposed.indexOf(pair.pickupStopId());
-            int deliveryIndex = proposed.indexOf(pair.deliveryStopId());
-            if (pickupIndex >= 0 && deliveryIndex >= 0 && pickupIndex > deliveryIndex) {
-                return new Violation("PICKUP_AFTER_DELIVERY", List.of(pair.pickupStopId(), pair.deliveryStopId()));
-            }
         }
         return null;
     }

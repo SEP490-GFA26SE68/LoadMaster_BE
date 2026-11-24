@@ -10,7 +10,6 @@ import fu.se184491.loadmaster_be.entity.cargo.CargoPackage;
 import fu.se184491.loadmaster_be.entity.driver.ManualUnloadConfirmation;
 import fu.se184491.loadmaster_be.entity.driver.UnloadConfirmation;
 import fu.se184491.loadmaster_be.entity.optimization.PackagePlacement;
-import fu.se184491.loadmaster_be.entity.pickup.PickupRequestPackage;
 import fu.se184491.loadmaster_be.entity.trip.Trip;
 import fu.se184491.loadmaster_be.entity.warehouse.PlacementConfirmation;
 import fu.se184491.loadmaster_be.entity.warehouse.StagingConfirmation;
@@ -67,7 +66,7 @@ class TripReportServiceTest {
     }
 
     @Test
-    void verificationMethodsSplitScanTypedCodeAndManualIncludingPickup() {
+    void verificationMethodsSplitScanTypedCodeAndManual() {
         CargoPackage first = CargoPackage.builder().id(1L).build();
         CargoPackage second = CargoPackage.builder().id(2L).build();
         CargoPackage third = CargoPackage.builder().id(3L).build();
@@ -90,20 +89,13 @@ class TripReportServiceTest {
         List<ManualUnloadConfirmation> manuals = List.of(
                 ManualUnloadConfirmation.builder().step(ManualConfirmStep.LOADING).placement(placedThird)
                         .status(ManualConfirmStatus.PENDING).build());
-        List<PickupRequestPackage> picked = List.of(
-                PickupRequestPackage.builder().pickedAt(LocalDateTime.of(2026, 11, 6, 10, 0)).pickMethod(LabelMethod.CODE).build(),
-                PickupRequestPackage.builder().pickedAt(LocalDateTime.of(2026, 11, 6, 10, 1)).build(),
-                // Kiện chưa nhận lên xe không tính
-                PickupRequestPackage.builder().build());
-
         List<TripReportResponse.VerificationMethods> rows =
-                TripReportService.verificationMethods(staged, placed, unloads, manuals, picked);
+                TripReportService.verificationMethods(staged, placed, unloads, manuals);
 
         assertThat(rows).containsExactly(
                 new TripReportResponse.VerificationMethods("STAGING", 1, 1, 1),
                 new TripReportResponse.VerificationMethods("LOADING", 1, 1, 1),
-                new TripReportResponse.VerificationMethods("UNLOADING", 1, 1, 0),
-                new TripReportResponse.VerificationMethods("PICKUP", 1, 1, 0));
+                new TripReportResponse.VerificationMethods("UNLOADING", 1, 1, 0));
     }
 
     @Test

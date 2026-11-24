@@ -71,7 +71,7 @@ public class TripsTool implements AssistantTool {
                            Integer planCount, List<Plan> plans) {
     }
 
-    /** Điểm theo thứ tự đi; {@code type} là DELIVERY hoặc PICKUP (nhận hàng dọc đường). */
+    /** Điểm theo thứ tự đi; {@code type} là DELIVERY; PICKUP chỉ còn ở điểm nhận cũ. */
     @JsonInclude(JsonInclude.Include.NON_NULL)
     public record Stop(Integer sequence, String name, String address, String type, DeliveryStopStatus status,
                        LocalDateTime deadline, LocalDateTime plannedArrival, LocalDateTime actualArrival) {

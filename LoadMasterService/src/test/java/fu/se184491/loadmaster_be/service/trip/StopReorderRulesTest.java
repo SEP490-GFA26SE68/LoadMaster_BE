@@ -13,34 +13,22 @@ class StopReorderRulesTest {
 
     @Test
     void proposedOrderMustBeADifferentPermutation() {
-        assertThat(StopReorderRules.checkProposedOrder(CURRENT, CURRENT, 0, List.of()).code())
+        assertThat(StopReorderRules.checkProposedOrder(CURRENT, CURRENT, 0).code())
                 .isEqualTo("STOP_ORDER_INVALID");
-        assertThat(StopReorderRules.checkProposedOrder(CURRENT, List.of(1L, 2L, 3L), 0, List.of()).code())
+        assertThat(StopReorderRules.checkProposedOrder(CURRENT, List.of(1L, 2L, 3L), 0).code())
                 .isEqualTo("STOP_ORDER_INVALID");
-        assertThat(StopReorderRules.checkProposedOrder(CURRENT, List.of(1L, 2L, 3L, 3L), 0, List.of()).code())
+        assertThat(StopReorderRules.checkProposedOrder(CURRENT, List.of(1L, 2L, 3L, 3L), 0).code())
                 .isEqualTo("STOP_ORDER_INVALID");
-        assertThat(StopReorderRules.checkProposedOrder(CURRENT, List.of(1L, 2L, 4L, 3L), 1, List.of())).isNull();
+        assertThat(StopReorderRules.checkProposedOrder(CURRENT, List.of(1L, 2L, 4L, 3L), 1)).isNull();
     }
 
     @Test
     void finishedOrReachedStopsStayInPlace() {
         StopReorderRules.Violation moved =
-                StopReorderRules.checkProposedOrder(CURRENT, List.of(2L, 1L, 3L, 4L), 1, List.of());
+                StopReorderRules.checkProposedOrder(CURRENT, List.of(2L, 1L, 3L, 4L), 1);
 
         assertThat(moved.code()).isEqualTo("STOP_NOT_MOVABLE");
         assertThat(moved.stopIds()).containsExactly(1L);
-    }
-
-    @Test
-    void pickupMustStayBeforeItsDelivery() {
-        List<StopReorderRules.PickupPair> pickups = List.of(new StopReorderRules.PickupPair(2L, 3L));
-
-        StopReorderRules.Violation late =
-                StopReorderRules.checkProposedOrder(CURRENT, List.of(1L, 3L, 2L, 4L), 1, pickups);
-
-        assertThat(late.code()).isEqualTo("PICKUP_AFTER_DELIVERY");
-        assertThat(late.stopIds()).containsExactly(2L, 3L);
-        assertThat(StopReorderRules.checkProposedOrder(CURRENT, List.of(1L, 2L, 4L, 3L), 1, pickups)).isNull();
     }
 
     @Test

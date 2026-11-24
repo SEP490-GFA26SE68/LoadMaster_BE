@@ -31,7 +31,8 @@ class AssistantPromptBuilderTest {
                 .contains("# KIẾN THỨC")
                 .doesNotContain("KIẾN THỨC TRONG ỨNG DỤNG")
                 .doesNotContain("dọc đường");
-        assertThat(appText).startsWith(publicText).contains("KIẾN THỨC TRONG ỨNG DỤNG");
+        assertThat(appText).startsWith(publicText).contains("KIẾN THỨC TRONG ỨNG DỤNG")
+                .as("nhận hàng dọc đường đã bỏ").doesNotContain("dọc đường");
     }
 
     @Test
