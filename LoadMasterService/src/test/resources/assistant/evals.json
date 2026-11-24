@@ -28,6 +28,14 @@
       "expectHandoffOffered": false
     },
     {
+      "id": "A-K5", "group": "A-kiến thức", "role": "DISPATCHER",
+      "message": "Bấm Chạy lại giữ ghim thì tốn mấy credit?",
+      "mustCallTool": ["get_pricing_plans"],
+      "mustNotCallTool": ["request_human_support"],
+      "mustContainAny": ["2 credit", "hai credit"],
+      "mustNotContain": ["1 credit", "một credit"]
+    },
+    {
       "id": "A-D1", "group": "A-dữ liệu", "role": "DISPATCHER",
       "message": "Chuyến TRIP-2026-1101 đang ở trạng thái gì?",
       "mustCallTool": ["get_trip"],

@@ -33,6 +33,7 @@ Nhân viên kho dùng trên máy tính bảng, tài xế dùng trên điện tho
 ## Gói cước và credit
 
 Mỗi gói tính theo tháng và kèm credit để chạy tối ưu xếp hàng 3D. Có ba hạng gói: Basic, Pro, Ultimate. Giá, số credit của từng gói và số credit một lần chạy luôn đọc từ công cụ bảng giá; không có công cụ thì nói người dùng xem Bảng giá.
+- "Chạy lại giữ ghim" (chạy lại tối ưu mà giữ nguyên các kiện đã ghim) là một lần tối ưu xếp hàng như mọi lần khác: vẫn ra ba phương án và tốn đúng số credit của một lần tối ưu. Không có giá riêng cho chạy lại.
 - Tối ưu thứ tự điểm giao (tối ưu tuyến) không tốn credit.
 - Credit còn thừa cuối kỳ không cộng dồn sang kỳ sau: mỗi kỳ mới số dư đặt lại theo credit tháng của gói.
 - Quản trị công ty nạp thêm credit và gia hạn gói ở mục "Gói và credit".

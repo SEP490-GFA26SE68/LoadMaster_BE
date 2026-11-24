@@ -34,8 +34,13 @@ public class PricingPlansTool implements AssistantTool {
                        boolean unlimitedCredits, BillingCycle billingCycle) {
     }
 
-    /** Credit một lần tối ưu, một lần chạy lại giữ ghim, giá một credit khi nạp thêm theo hạng gói, số nạp ít nhất. */
-    public record Pricing(List<Plan> plans, int creditsPerOptimization, int creditsPerRerun,
+    /**
+     * Credit một lần tối ưu, giá một credit khi nạp thêm theo hạng gói, số nạp ít nhất. Không có số riêng cho chạy lại:
+     * "Chạy lại giữ ghim" của web và app gửi lại {@code optimize-loading} kèm {@code keepPinsFromPlanId} — một lần chạy
+     * ba phương án, trừ đúng {@code creditsPerOptimization}. Đường chạy lại một phương án
+     * ({@code POST /api/load-plans/{id}/rerun}) không có lối vào trên màn nào nên số của nó không đưa cho mô hình.
+     */
+    public record Pricing(List<Plan> plans, int creditsPerOptimization,
                           Map<SubscriptionTier, BigDecimal> pricePerCreditVnd, int minTopUpCredits) {
     }
 
@@ -51,8 +56,9 @@ public class PricingPlansTool implements AssistantTool {
 
     @Tool(name = "get_pricing_plans", description = """
             Các gói cước LoadMaster đang bán: tên, hạng, giá (VND), credit mỗi tháng (null là không giới hạn), chu \
-            kỳ thanh toán; số credit của một lần tối ưu xếp hàng và một lần chạy lại; giá một credit khi nạp thêm \
-            theo hạng gói. Dùng khi hỏi về giá, gói, credit hay chọn gói.""")
+            kỳ thanh toán; số credit của một lần tối ưu xếp hàng (một lần chạy ra ba phương án A, B, C; "Chạy lại \
+            giữ ghim" cũng là một lần tối ưu như vậy và tốn đúng số credit này); giá một credit khi nạp thêm theo \
+            hạng gói. Dùng khi hỏi về giá, gói, credit hay chọn gói.""")
     public Pricing getPricingPlans() {
         List<Plan> rows = plans.getActivePlans().stream()
                 .sorted(Comparator.comparing(SubscriptionPlanResponse::getPriceVnd,
@@ -63,8 +69,8 @@ public class PricingPlansTool implements AssistantTool {
         for (SubscriptionTier tier : SubscriptionTier.values()) {
             perCredit.put(tier, CreditServiceImpl.pricePerCredit(tier));
         }
-        return new Pricing(rows, CreditServiceImpl.INITIAL_OPTIMIZATION_CREDIT_COST,
-                CreditServiceImpl.RERUN_OPTIMIZATION_CREDIT_COST, perCredit, CreditServiceImpl.MIN_TOPUP_CREDITS);
+        return new Pricing(rows, CreditServiceImpl.INITIAL_OPTIMIZATION_CREDIT_COST, perCredit,
+                CreditServiceImpl.MIN_TOPUP_CREDITS);
     }
 
     private static Plan planOf(SubscriptionPlanResponse plan) {
