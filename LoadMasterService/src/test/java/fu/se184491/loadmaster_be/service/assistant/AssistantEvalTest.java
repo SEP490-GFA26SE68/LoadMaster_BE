@@ -7,6 +7,29 @@ import fu.se184491.loadmaster_be.constant.assistant.AssistantMessageRole;
 import fu.se184491.loadmaster_be.constant.company.CompanyStatus;
 import fu.se184491.loadmaster_be.constant.optimization.UnplacedReason;
 import fu.se184491.loadmaster_be.constant.trip.DeliveryStopStatus;
+import fu.se184491.loadmaster_be.constant.cargo.PackageFlag;
+import fu.se184491.loadmaster_be.constant.cargo.PackageStatus;
+import fu.se184491.loadmaster_be.constant.monitoring.TripExceptionStatus;
+import fu.se184491.loadmaster_be.constant.monitoring.TripExceptionType;
+import fu.se184491.loadmaster_be.constant.order.OrderStatus;
+import fu.se184491.loadmaster_be.constant.planning.DeliveryRequirementPriority;
+import fu.se184491.loadmaster_be.constant.planning.DeliveryRequirementStatus;
+import fu.se184491.loadmaster_be.constant.support.AiPrecheckStatus;
+import fu.se184491.loadmaster_be.constant.support.ContactRequestType;
+import fu.se184491.loadmaster_be.constant.support.ContactStatus;
+import fu.se184491.loadmaster_be.constant.support.TicketCategory;
+import fu.se184491.loadmaster_be.constant.support.TicketPriority;
+import fu.se184491.loadmaster_be.constant.support.TicketStatus;
+import fu.se184491.loadmaster_be.constant.support.TrialRequestStatus;
+import fu.se184491.loadmaster_be.constant.vehicle.VehicleStatus;
+import fu.se184491.loadmaster_be.entity.Customer;
+import fu.se184491.loadmaster_be.entity.monitoring.TripException;
+import fu.se184491.loadmaster_be.entity.order.TransportOrder;
+import fu.se184491.loadmaster_be.entity.planning.DeliveryRequirement;
+import fu.se184491.loadmaster_be.entity.support.ContactOfGuest;
+import fu.se184491.loadmaster_be.entity.support.SupportTicket;
+import fu.se184491.loadmaster_be.entity.support.TrialAccountRequest;
+import fu.se184491.loadmaster_be.service.vehicle.VehiclePresenceStore;
 import fu.se184491.loadmaster_be.entity.cargo.CargoPackage;
 import fu.se184491.loadmaster_be.entity.optimization.LoadPlan;
 import fu.se184491.loadmaster_be.entity.optimization.OptimizationJob;
@@ -119,6 +142,7 @@ class AssistantEvalTest {
     private static final String[] CARTON_FIELDS = {"lengthCm", "widthCm", "heightCm", "weightKg", "quantity", "stop"};
     private static final Path REPORT_C = Path.of("target", "assistant-eval-report-c.md");
     private static final String VIEWER_TRIP = "TRIP-2026-1104";
+    private static final String WAREHOUSE_TRIP = "TRIP-2026-1106";
 
     /** Mã phương án của chuyến {@value #VIEWER_TRIP} theo nhãn A · B · C; {@code null} khi chưa dựng fixture. */
     private static Map<String, Long> viewerPlans;
@@ -132,7 +156,10 @@ class AssistantEvalTest {
             "DISPATCHER", "ev-dispatcher",
             "MANAGER", "ev-manager",
             "DRIVER", "ev-driver-khoa",
-            "WAREHOUSE_WORKER", "ev-warehouse");
+            "WAREHOUSE_WORKER", "ev-warehouse",
+            "SYSTEM_ADMIN", "ev-sysadmin",
+            "SYSTEM_MANAGER", "ev-platform",
+            "SYSTEM_SUPPORTER", "ev-support");
 
     @Autowired private AssistantService service;
     @Autowired private TryExtractService tryExtract;
@@ -151,6 +178,8 @@ class AssistantEvalTest {
 
     @MockitoBean private JwtDecoder jwtDecoder;
     @MockitoBean private BriefingFactsCollector briefingFacts;
+    /** SQL của nó chỉ chạy trên PostgreSQL; xe nào cũng chưa có vị trí ở kho (trả {@code null}). */
+    @MockitoBean private VehiclePresenceStore presenceStore;
 
     record Outcome(JsonNode testCase, String reply, List<String> tools, List<AssistantLink> links,
                    List<UiAction> actions, boolean offered, int inputTokens, int outputTokens, List<String> failures) {
@@ -407,7 +436,8 @@ class AssistantEvalTest {
             SecurityContextHolder.clearContext();
             AssistantCaller caller = null;
             if (!guest) {
-                signIn(SIGN_IN.get(role));
+                String keycloakId = text(testCase, "signIn");
+                signIn(keycloakId != null ? keycloakId : SIGN_IN.get(role));
                 caller = withEntityManager(callers::current);
             }
             ViewerContext viewer = viewerOf(testCase);
@@ -762,8 +792,10 @@ class AssistantEvalTest {
 
     /**
      * Long Bình: bốn chuyến (một của Khoa, hai của Tuấn — một mang câu lệnh giả trong tên —, một chuyến nháp chưa có
-     * tài xế TRIP-2026-1105) và chuyến có phương án 3D của
-     * nhóm C ({@link #seedViewerTrip}). Phương Nam: một chuyến. Trả mã phương án của chuyến nhóm C theo nhãn.
+     * tài xế TRIP-2026-1105), chuyến đã duyệt chờ kho soạn ({@link #seedWarehouseTask}) và chuyến có phương án 3D của
+     * nhóm C ({@link #seedViewerTrip}); dữ liệu của các màn danh sách và Giám sát ({@link #seedOperations}). Phương Nam:
+     * một chuyến. Nền tảng: ba tài khoản và dữ liệu của họ ({@link #seedPlatform}). Trả mã phương án của chuyến nhóm C
+     * theo nhãn.
      */
     private Map<String, Long> seed() {
         Company longBinh = company("EV-LB", "Vận tải Long Bình");
@@ -799,7 +831,94 @@ class AssistantEvalTest {
         stop(other, 1, "Chợ nổi Cái Răng", "Cái Răng, Cần Thơ", LocalDateTime.of(2026, 11, 21, 7, 0));
         stop(other, 2, "Kho Sóc Trăng", "Phường 2, Sóc Trăng", LocalDateTime.of(2026, 11, 21, 10, 0));
 
+        seedWarehouseTask(longBinh, dispatcher, khoa);
+        seedOperations(longBinh, phuongNam, running, tuan, dispatcher);
+        seedPlatform(dispatcher, otherDispatcher);
         return seedViewerTrip(longBinh, dispatcher, khoa);
+    }
+
+    /**
+     * Chuyến {@value #WAREHOUSE_TRIP} đã duyệt phương án, kho chưa mở phiên: màn Kho thấy nó ở "Chờ soạn". Các chuyến
+     * Đã lập kế hoạch khác chưa có bản duyệt nên không phải việc của kho.
+     */
+    private void seedWarehouseTask(Company company, User dispatcher, User driver) {
+        Vehicle truck = vehicle(company, "Xe tải 2,5 tấn", "51C-310.20");
+        Trip trip = trip(company, truck, dispatcher, driver, WAREHOUSE_TRIP, "Tân Uyên — Thủ Dầu Một",
+                TripStatus.PLANNED);
+        stop(trip, 1, "Cửa hàng Thủ Dầu Một", "Phú Cường, Thủ Dầu Một, Bình Dương",
+                LocalDateTime.of(2026, 11, 25, 9, 0));
+        OptimizationJob job = OptimizationJob.builder().trip(trip).jobUuid("eval-job-1106").build();
+        entityManager.persist(job);
+        entityManager.persist(LoadPlan.builder().job(job).planName("Phương án C").candidateLabel("C")
+                .objective("MIN_REHANDLING").approved(true).stale(false).manuallyEdited(false).packedItemsCount(24)
+                .volumeUtilization(new BigDecimal("0.4100")).weightUtilization(new BigDecimal("0.3800")).build());
+    }
+
+    /**
+     * Dữ liệu của các màn danh sách và Giám sát ở Long Bình: một sự cố kẹt xe đang mở trên chuyến đang chạy, hai yêu
+     * cầu giao còn chờ, một kiện mang cờ hỏng, một xe đang bảo dưỡng. Phương Nam có một kiện hỏng và một yêu cầu
+     * giao riêng — không được lọt sang Long Bình.
+     */
+    private void seedOperations(Company longBinh, Company phuongNam, Trip running, User driver, User dispatcher) {
+        entityManager.persist(TripException.builder().trip(running).type(TripExceptionType.TRAFFIC)
+                .description("Kẹt xe trên cầu Đồng Nai").delayMinutes(40).status(TripExceptionStatus.OPEN)
+                .stopNumber(1).reportedAt(LocalDateTime.of(2026, 11, 20, 13, 30)).reportedBy(driver).build());
+
+        requirement(longBinh, dispatcher, "Siêu thị Co.op Biên Hoà", "Biên Hoà, Đồng Nai",
+                DeliveryRequirementPriority.URGENT, LocalDateTime.of(2026, 11, 26, 9, 0), 12);
+        requirement(longBinh, dispatcher, "Điện máy Xanh Dĩ An", "Dĩ An, Bình Dương",
+                DeliveryRequirementPriority.NORMAL, LocalDateTime.of(2026, 11, 27, 14, 0), 6);
+        requirement(phuongNam, null, "Chợ đầu mối Cái Răng", "Cái Răng, Cần Thơ",
+                DeliveryRequirementPriority.HIGH, LocalDateTime.of(2026, 11, 26, 7, 0), 20);
+
+        CargoPackage broken = cargo(longBinh, "PK-EV-H01", 22);
+        broken.setFlag(PackageFlag.DAMAGED);
+        CargoPackage otherBroken = cargo(phuongNam, "PK-PN-H01", 18);
+        otherBroken.setFlag(PackageFlag.DAMAGED);
+
+        Vehicle repair = vehicle(longBinh, "Xe tải 1,5 tấn", "51C-909.09");
+        repair.setStatus(VehicleStatus.MAINTENANCE);
+        repair.setMaintenanceNote("Thay má phanh");
+        repair.setMaintenanceSince(LocalDateTime.of(2026, 11, 23, 7, 0));
+    }
+
+    /**
+     * Ba tài khoản nền tảng (không thuộc công ty nào), hai yêu cầu hỗ trợ của hai công ty, một yêu cầu liên hệ của
+     * khách và một đơn dùng thử chờ quản lý nền tảng thẩm định.
+     */
+    private void seedPlatform(User dispatcher, User otherDispatcher) {
+        user(null, "ev-sysadmin", UserRole.SYSTEM_ADMIN, "Quản trị Hệ Thống");
+        user(null, "ev-platform", UserRole.SYSTEM_MANAGER, "Ngô Nền Tảng");
+        User supporter = user(null, "ev-support", UserRole.SYSTEM_SUPPORTER, "Trần Hỗ Trợ");
+        LocalDateTime at = LocalDateTime.of(2026, 11, 23, 8, 0);
+        entityManager.persist(SupportTicket.builder().ticketCode("TKT-EV-001").requester(dispatcher)
+                .category(TicketCategory.BILLING).priority(TicketPriority.MEDIUM).status(TicketStatus.OPEN)
+                .subject("Không nạp được credit").description("Bấm Nạp credit thì báo lỗi thanh toán.")
+                .createdAt(at).updatedAt(at).build());
+        entityManager.persist(SupportTicket.builder().ticketCode("TKT-EV-002").requester(otherDispatcher)
+                .assignedTo(supporter).category(TicketCategory.SYSTEM_BUG).priority(TicketPriority.HIGH)
+                .status(TicketStatus.IN_PROGRESS).subject("Không in được nhãn QR")
+                .description("Trang in nhãn trắng trơn khi chọn chuyến.").createdAt(at.plusHours(1))
+                .updatedAt(at.plusHours(1)).build());
+        entityManager.persist(ContactOfGuest.builder().fullName("Ngô Khách Hàng").email("khach@ankhang.test")
+                .companyName("Kho vận An Khang").requestType(ContactRequestType.DEMO_REQUEST)
+                .status(ContactStatus.NEW).message("Muốn xem thử phần xếp hàng 3D cho 5 xe tải.")
+                .createdAt(Instant.parse("2026-11-23T02:00:00Z")).build());
+        entityManager.persist(TrialAccountRequest.builder().fullName("Phan Sao Mai").email("saomai@saomai.test")
+                .companyName("Logistics Sao Mai").status(TrialRequestStatus.PENDING)
+                .aiPrecheckStatus(AiPrecheckStatus.PASSED).aiPrecheckReason("Mã số thuế hợp lệ").trialDays(14)
+                .trialCredits(100).createdAt(at).build());
+    }
+
+    private void requirement(Company company, User createdBy, String customerName, String destination,
+                             DeliveryRequirementPriority priority, LocalDateTime deadline, int packages) {
+        Customer customer = Customer.builder().company(company).name(customerName).contactPhone("0900000000")
+                .address(destination).build();
+        entityManager.persist(customer);
+        entityManager.persist(DeliveryRequirement.builder().company(company).customer(customer)
+                .destination(destination).deadline(deadline).priority(priority)
+                .status(DeliveryRequirementStatus.PENDING).createdBy(createdBy).expectedPackageCount(packages)
+                .createdAt(LocalDateTime.of(2026, 11, 22, 8, 0)).build());
     }
 
     /**
@@ -821,7 +940,13 @@ class AssistantEvalTest {
         plans.put("B", loadPlan(job, "B", "AXLE_BALANCE").getId());
         LoadPlan c = loadPlan(job, "C", "MIN_REHANDLING");
         plans.put("C", c.getId());
-        place(c, cargo(company, "PK-C01", 40), second, 0, 0, 0, 60, 40, 40, 1, false);
+        CargoPackage first01 = cargo(company, "PK-C01", 40);
+        TransportOrder order = TransportOrder.builder().company(company).deliveryStop(second).orderCode("ORD-EV-1104")
+                .status(OrderStatus.ASSIGNED).build();
+        entityManager.persist(order);
+        first01.setOrder(order);
+        first01.setStatus(PackageStatus.PLANNED);
+        place(c, first01, second, 0, 0, 0, 60, 40, 40, 1, false);
         place(c, cargo(company, "PK-C02", 10), second, 10, 0, 40, 40, 40, 30, 2, false);
         place(c, cargo(company, "PK-C03", 120), second, 60, 0, 0, 60, 40, 40, 3, false);
         place(c, cargo(company, "PK-C04", 25), first, 400, 0, 0, 60, 40, 40, 4, true);
@@ -848,7 +973,7 @@ class AssistantEvalTest {
         CargoPackage cargo = CargoPackage.builder().company(company).packageCode(code)
                 .qrToken("eval-qr-" + code.toLowerCase(Locale.ROOT)).actualLength(new BigDecimal("60"))
                 .actualWidth(new BigDecimal("40")).actualHeight(new BigDecimal("40"))
-                .actualWeightKg(BigDecimal.valueOf(weightKg)).build();
+                .actualWeightKg(BigDecimal.valueOf(weightKg)).status(PackageStatus.PENDING).build();
         entityManager.persist(cargo);
         return cargo;
     }

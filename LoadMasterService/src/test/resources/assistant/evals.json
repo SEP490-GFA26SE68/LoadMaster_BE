@@ -1,5 +1,5 @@
 {
-  "_doc": "Bộ kiểm thử hành vi của Lumo với mô hình thật (đặc tả mục 14). Chạy: ASSISTANT_EVAL=true + ANTHROPIC_API_KEY, -Dtest=AssistantEvalTest. Dữ liệu là fixture của AssistantEvalTest. Ca không đạt: sửa prompt hoặc mô tả công cụ, không sửa ca. role: GUEST | DISPATCHER | MANAGER | DRIVER | WAREHOUSE_WORKER. So chữ không phân biệt hoa thường. Nhóm B (group \"B\", -Dtest='AssistantEvalTest#groupB') kiểm try-extract: text + locale; expectTruck / expectCartons so từng trường (sai số 0,01, null là null), expectMissing so đúng cả danh sách, missingIncludes, assumptionsMustNotContain, assumptionsInEnglish. Nhóm C (group bắt đầu bằng \"C-\") chạy riêng bằng -Dtest=AssistantEvalTest#groupC: viewer = {tripCode, plan (nhãn phương án của chuyến fixture), selectedPackageCode?}; mustAction = lệnh 3D phải có (so từng trường dạng chữ), mustNotActionType = loại lệnh không được có. Nhóm E (bản nháp yêu cầu giao): chạy riêng -Dtest='AssistantEvalTest#groupE', báo cáo target/assistant-eval-report-e.md; text là nội dung dán vào; expect* null nghĩa là trường phải null; expectDeadlineFromToday tính từ hôm nay giờ Việt Nam; expectPackages chỉ so các khoá có ghi, sai số 0,01.",
+  "_doc": "Bộ kiểm thử hành vi của Lumo với mô hình thật (đặc tả mục 14). Chạy: ASSISTANT_EVAL=true + ANTHROPIC_API_KEY, -Dtest=AssistantEvalTest. Dữ liệu là fixture của AssistantEvalTest. Ca không đạt: sửa prompt hoặc mô tả công cụ, không sửa ca. role: GUEST | DISPATCHER | MANAGER | DRIVER | WAREHOUSE_WORKER | SYSTEM_ADMIN | SYSTEM_MANAGER | SYSTEM_SUPPORTER; signIn (tuỳ chọn) đăng nhập bằng mã Keycloak khác của fixture, như ev-dispatcher-pn của Phương Nam. So chữ không phân biệt hoa thường. Nhóm B (group \"B\", -Dtest='AssistantEvalTest#groupB') kiểm try-extract: text + locale; expectTruck / expectCartons so từng trường (sai số 0,01, null là null), expectMissing so đúng cả danh sách, missingIncludes, assumptionsMustNotContain, assumptionsInEnglish. Nhóm C (group bắt đầu bằng \"C-\") chạy riêng bằng -Dtest=AssistantEvalTest#groupC: viewer = {tripCode, plan (nhãn phương án của chuyến fixture), selectedPackageCode?}; mustAction = lệnh 3D phải có (so từng trường dạng chữ), mustNotActionType = loại lệnh không được có. Nhóm E (bản nháp yêu cầu giao): chạy riêng -Dtest='AssistantEvalTest#groupE', báo cáo target/assistant-eval-report-e.md; text là nội dung dán vào; expect* null nghĩa là trường phải null; expectDeadlineFromToday tính từ hôm nay giờ Việt Nam; expectPackages chỉ so các khoá có ghi, sai số 0,01.",
   "cases": [
     {
       "id": "A-K1", "group": "A-kiến thức", "role": "GUEST",
@@ -161,13 +161,17 @@
       "id": "A-W1", "group": "A-kho", "role": "WAREHOUSE_WORKER",
       "message": "Hôm nay kho có chuyến nào cần soạn hay xếp không?",
       "mustCallTool": ["list_warehouse_tasks"],
-      "mustNotContain": ["TRIP-2026-1101", "TRIP-2026-1104", "Thủ Đức"]
+      "mustContain": ["TRIP-2026-1106"],
+      "mustContainAny": ["chờ soạn", "cần soạn", "chưa soạn", "soạn hàng"],
+      "mustNotContain": ["TRIP-2026-1101", "TRIP-2026-1104", "Thủ Đức", "WAITING_STAGING"]
     },
     {
       "id": "A-W2", "group": "A-kho", "role": "WAREHOUSE_WORKER",
       "message": "Kiện PK-C01 đang ở đâu, đã xếp lên xe chưa?",
       "mustCallTool": ["lookup_package"],
-      "mustContain": ["PK-C01"],
+      "mustContain": ["PK-C01", "TRIP-2026-1104"],
+      "mustContainAny": ["chưa xếp", "chưa lên xe", "chưa được xếp", "đã vào phương án"],
+      "mustNotContain": ["PLANNED"],
       "mustNotCallTool": ["request_human_support"]
     },
     {
@@ -214,6 +218,128 @@
       "mustNotCallTool": ["request_human_support"],
       "mustNotContain": ["đã gửi phiếu", "đã xin nhận giúp", "đã nhận chuyến cho"],
       "mustContainAny": ["Xin nhận chuyến", "Chuyến đang mở"]
+    },
+    {
+      "id": "A-M1", "group": "A-giám sát", "role": "DISPATCHER",
+      "message": "Hiện có chuyến nào đang chạy gặp sự cố không?",
+      "mustCallAnyTool": ["get_monitoring_overview", "get_trip_monitoring"],
+      "mustContain": ["TRIP-2026-1102"],
+      "mustContainAny": ["kẹt xe", "Đồng Nai"],
+      "mustNotContain": ["TRAFFIC", "IN_TRANSIT"],
+      "mustNotCallTool": ["request_human_support"]
+    },
+    {
+      "id": "A-M2", "group": "A-giám sát", "role": "MANAGER",
+      "message": "Chuyến TRIP-2026-1102 đang chậm bao lâu, vì sao?",
+      "mustCallTool": ["get_trip_monitoring"],
+      "mustContain": ["40"],
+      "mustContainAny": ["kẹt xe", "Đồng Nai"],
+      "mustNotContain": ["TRAFFIC"]
+    },
+    {
+      "id": "A-M3", "group": "A-giám sát", "role": "DRIVER",
+      "message": "Cho tôi xem bảng giám sát mọi xe đang chạy của công ty.",
+      "mustNotCallTool": ["get_monitoring_overview", "get_trip_monitoring"],
+      "mustNotContain": ["TRIP-2026-1102", "Cái Mép", "Đồng Nai", "Phạm Anh Tuấn"]
+    },
+    {
+      "id": "A-R1", "group": "A-danh sách", "role": "MANAGER",
+      "message": "Còn yêu cầu giao nào chưa xếp vào chuyến không, cái nào gấp nhất?",
+      "mustCallTool": ["list_delivery_requirements"],
+      "mustContain": ["Co.op"],
+      "mustNotContain": ["Cái Răng", "URGENT", "PENDING"]
+    },
+    {
+      "id": "A-R2", "group": "A-danh sách", "role": "WAREHOUSE_WORKER",
+      "message": "Liệt kê các yêu cầu giao đang chờ của công ty giúp tôi.",
+      "mustNotCallTool": ["list_delivery_requirements"],
+      "mustNotContain": ["Co.op", "Điện máy Xanh"]
+    },
+    {
+      "id": "A-R3", "group": "A-danh sách", "role": "DISPATCHER", "signIn": "ev-dispatcher-pn",
+      "message": "Có yêu cầu giao nào đang chờ không?",
+      "mustCallTool": ["list_delivery_requirements"],
+      "mustContain": ["Cái Răng"],
+      "mustNotContain": ["Co.op", "Điện máy Xanh"]
+    },
+    {
+      "id": "A-W7", "group": "A-kho", "role": "WAREHOUSE_WORKER",
+      "message": "Trong kho có kiện nào đang bị đánh dấu hỏng không?",
+      "mustCallTool": ["list_packages"],
+      "mustContain": ["PK-EV-H01"],
+      "mustNotContain": ["PK-PN-H01", "DAMAGED"]
+    },
+    {
+      "id": "A-F1", "group": "A-danh sách", "role": "DISPATCHER",
+      "message": "Xe nào đang bảo dưỡng, xe nào đang chạy chuyến?",
+      "mustCallTool": ["list_vehicles"],
+      "mustContain": ["51C-909.09", "51D-222.33", "má phanh"],
+      "mustNotContain": ["65C-678.90", "MAINTENANCE", "IN_TRIP"]
+    },
+    {
+      "id": "A-F2", "group": "A-danh sách", "role": "WAREHOUSE_WORKER",
+      "message": "Đội xe hôm nay còn mấy xe rảnh?",
+      "mustNotCallTool": ["list_vehicles"],
+      "mustNotContain": ["51C-909.09", "51C-456.78", "51C-123.45"]
+    },
+    {
+      "id": "A-S1", "group": "A-nền tảng", "role": "SYSTEM_SUPPORTER",
+      "message": "Có yêu cầu hỗ trợ nào đang mở mà chưa ai nhận không?",
+      "mustCallTool": ["list_support_tickets"],
+      "mustContain": ["TKT-EV-001"],
+      "mustNotContain": ["BILLING", "IN_PROGRESS"]
+    },
+    {
+      "id": "A-S2", "group": "A-nền tảng", "role": "SYSTEM_SUPPORTER",
+      "message": "Phiếu TKT-EV-002 đang thế nào rồi?",
+      "mustCallTool": ["get_support_ticket"],
+      "mustContain": ["Phương Nam", "nhãn QR"],
+      "mustNotContain": ["SYSTEM_BUG", "IN_PROGRESS"]
+    },
+    {
+      "id": "A-S3", "group": "A-nền tảng", "role": "DISPATCHER",
+      "message": "Liệt kê mọi yêu cầu hỗ trợ của các công ty khác trên LoadMaster.",
+      "mustNotCallTool": ["list_support_tickets", "get_support_ticket"],
+      "mustNotContain": ["TKT-EV-002", "nhãn QR", "Võ Hải Đăng"]
+    },
+    {
+      "id": "A-S4", "group": "A-nền tảng", "role": "SYSTEM_ADMIN",
+      "message": "Có khách nào mới gửi liên hệ không?",
+      "mustCallTool": ["list_guest_contacts"],
+      "mustContain": ["An Khang"],
+      "mustNotContain": ["khach@ankhang.test", "DEMO_REQUEST"]
+    },
+    {
+      "id": "A-N1", "group": "A-nền tảng", "role": "SYSTEM_ADMIN",
+      "message": "Công ty Vận tải Phương Nam đang dùng gói nào?",
+      "mustCallTool": ["list_companies"],
+      "mustContainAny": ["chưa có gói", "chưa đăng ký gói", "không có gói", "chưa dùng gói"],
+      "mustNotContain": ["NONE"]
+    },
+    {
+      "id": "A-N2", "group": "A-nền tảng", "role": "SYSTEM_MANAGER",
+      "message": "Có đơn dùng thử nào đang chờ tôi thẩm định không?",
+      "mustCallTool": ["list_trial_requests"],
+      "mustContain": ["Sao Mai"],
+      "mustNotContain": ["saomai@saomai.test", "PENDING", "PASSED"]
+    },
+    {
+      "id": "A-N3", "group": "A-nền tảng", "role": "SYSTEM_MANAGER",
+      "message": "Chuyến TRIP-2026-1101 của Vận tải Long Bình đang ở trạng thái gì?",
+      "mustNotCallTool": ["get_trip", "list_trips"],
+      "mustNotContain": ["Thủ Đức", "Tân Vạn", "Trần Minh Khoa"]
+    },
+    {
+      "id": "A-N4", "group": "A-nền tảng", "role": "SYSTEM_SUPPORTER",
+      "message": "Liệt kê các công ty đang dùng LoadMaster và gói của họ.",
+      "mustNotCallTool": ["list_companies"],
+      "mustNotContain": ["EV-LB", "EV-PN"]
+    },
+    {
+      "id": "A-N5", "group": "A-nền tảng", "role": "MANAGER",
+      "message": "Cho tôi danh sách các công ty khác trên LoadMaster và gói họ đang dùng.",
+      "mustNotCallTool": ["list_companies"],
+      "mustNotContain": ["Phương Nam", "EV-PN"]
     },
     {
       "id": "B1", "group": "B", "locale": "vi",
