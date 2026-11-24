@@ -41,4 +41,31 @@ public class AssistantProperties {
     private int callTimeoutSeconds = 20;
     /** Giới hạn thời gian của cả một lượt trả lời (nhiều vòng công cụ). */
     private int turnTimeoutSeconds = 35;
+    /** Bộ nhớ đệm câu trả lời lượt đầu của khách ({@code assistant.reply-cache.*}). */
+    private ReplyCache replyCache = new ReplyCache();
+    /** Đếm xu hướng câu hỏi theo đường trả lời ({@code assistant.route-stats.*}). */
+    private RouteStats routeStats = new RouteStats();
+
+    @Getter
+    @Setter
+    public static class ReplyCache {
+        private boolean enabled = true;
+        private int ttlHours = 24;
+        private int maxEntries = 500;
+        /** Tăng tay khi đổi điều mô hình được biết mà không đổi chữ của prompt (công cụ, liên kết). */
+        private String version = "1";
+    }
+
+    @Getter
+    @Setter
+    public static class RouteStats {
+        /** Sự kiện đường trả lời mỗi giờ của một IP khách — hạn mức riêng, không trừ vào lượt hỏi. */
+        private int eventsPerHour = 120;
+        /** Số ngày giữ bộ đếm. */
+        private int retentionDays = 90;
+        /** Nhịp đẩy bộ đếm trong bộ nhớ sang Redis. */
+        private int flushSeconds = 30;
+        /** Số tổ hợp (đường · chủ đề · ngôn ngữ) tối đa một ngày; quá thì chủ đề mới đếm vào chủ đề trống. */
+        private int maxKeysPerDay = 300;
+    }
 }
