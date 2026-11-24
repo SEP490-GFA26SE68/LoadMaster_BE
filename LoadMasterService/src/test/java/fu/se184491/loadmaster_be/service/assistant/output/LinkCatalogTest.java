@@ -53,13 +53,39 @@ class LinkCatalogTest {
         assertThat(link(LinkTarget.TRIAL_SIGNUP, null, ToolScope.of(UserRole.ADMIN))).isEmpty();
     }
 
+    /** Ba vai trò nền tảng chỉ mở màn của nền tảng theo {@code nav-items.ts} của web, không màn vận hành nào. */
     @Test
-    void platformRolesOnlyGetPricingAndProfile() {
-        for (UserRole role : List.of(UserRole.SYSTEM_ADMIN, UserRole.SYSTEM_MANAGER, UserRole.SYSTEM_SUPPORTER)) {
-            List<LinkTarget> open = Arrays.stream(LinkTarget.values())
-                    .filter(target -> link(target, "TRIP-2026-0914", ToolScope.of(role)).isPresent()).toList();
-            assertThat(open).as(role.name()).containsExactlyInAnyOrder(LinkTarget.PRICING, LinkTarget.PROFILE);
+    void platformRolesOnlyGetTheirPlatformScreens() {
+        assertThat(openFor(UserRole.SYSTEM_ADMIN)).containsExactlyInAnyOrder(LinkTarget.PRICING, LinkTarget.PROFILE,
+                LinkTarget.COMPANIES, LinkTarget.GUEST_CONTACTS, LinkTarget.TRIAL_REQUESTS);
+        assertThat(openFor(UserRole.SYSTEM_MANAGER)).containsExactlyInAnyOrder(LinkTarget.PRICING, LinkTarget.PROFILE,
+                LinkTarget.COMPANIES, LinkTarget.TRIAL_REQUESTS);
+        assertThat(openFor(UserRole.SYSTEM_SUPPORTER)).containsExactlyInAnyOrder(LinkTarget.PRICING,
+                LinkTarget.PROFILE, LinkTarget.SUPPORT_DESK, LinkTarget.GUEST_CONTACTS);
+        assertThat(link(LinkTarget.COMPANIES, null, ToolScope.of(UserRole.SYSTEM_ADMIN)))
+                .contains(new AssistantLink("Công ty", "/nen-tang/cong-ty"));
+        assertThat(LinkCatalog.resolve(LinkTarget.SUPPORT_DESK, null, ToolScope.of(UserRole.SYSTEM_SUPPORTER), "en"))
+                .contains(new AssistantLink("Support", "/ho-tro"));
+    }
+
+    /** Màn nền tảng không mở cho vai trò của công ty; Đội xe chỉ cho quản lý công ty và điều phối viên. */
+    @Test
+    void companyRolesDoNotGetPlatformScreensAndFleetIsForTripViewers() {
+        for (UserRole role : List.of(UserRole.ADMIN, UserRole.MANAGER, UserRole.DISPATCHER, UserRole.DRIVER,
+                UserRole.WAREHOUSE_WORKER)) {
+            assertThat(openFor(role)).as(role.name()).doesNotContain(LinkTarget.COMPANIES, LinkTarget.SUPPORT_DESK,
+                    LinkTarget.GUEST_CONTACTS, LinkTarget.TRIAL_REQUESTS);
         }
+        assertThat(link(LinkTarget.FLEET, null, ToolScope.of(UserRole.DISPATCHER))).map(AssistantLink::to)
+                .contains("/doi-xe");
+        assertThat(link(LinkTarget.FLEET, null, ToolScope.of(UserRole.MANAGER))).isPresent();
+        assertThat(link(LinkTarget.FLEET, null, ToolScope.of(UserRole.WAREHOUSE_WORKER))).isEmpty();
+        assertThat(link(LinkTarget.MONITORING, null, ToolScope.of(UserRole.DRIVER))).isEmpty();
+    }
+
+    private static List<LinkTarget> openFor(UserRole role) {
+        return Arrays.stream(LinkTarget.values())
+                .filter(target -> link(target, "TRIP-2026-0914", ToolScope.of(role)).isPresent()).toList();
     }
 
     @Test

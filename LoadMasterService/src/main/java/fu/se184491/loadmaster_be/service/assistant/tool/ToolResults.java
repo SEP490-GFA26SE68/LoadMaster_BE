@@ -18,6 +18,10 @@ public final class ToolResults {
 
     public static final int MAX_CHARS = 6000;
     public static final int MAX_ROWS = 20;
+    /** Số dòng tối đa của một công cụ đọc màn danh sách ({@link #list}). */
+    public static final int LIST_ROWS = 30;
+    /** Bộ lọc mô hình đưa không đúng giá trị cho phép (trạng thái, ngày…). */
+    public static final String INVALID_FILTER = "INVALID_FILTER";
     public static final String TOOL_FAILED = "TOOL_FAILED";
 
     /** Bộ chuyển kết quả của mọi công cụ: chuỗi giữ nguyên (đã là JSON, như {@link #error}), còn lại qua {@link #json}. */
@@ -52,6 +56,18 @@ public final class ToolResults {
         int cap = limit <= 0 ? MAX_ROWS : Math.min(limit, MAX_ROWS);
         List<T> shown = List.copyOf(all.subList(0, Math.min(cap, all.size())));
         return new ToolPage<>(all.size(), shown.size(), shown, false);
+    }
+
+    /**
+     * Dòng đầu của một màn danh sách (yêu cầu giao, kho kiện, đội xe, công ty…): tối đa {@value #LIST_ROWS} dòng;
+     * {@code total} là số dòng thật của bộ lọc (thường đếm ở cơ sở dữ liệu, nên lớn hơn số dòng đã đọc). Quá
+     * {@link #MAX_CHARS} thì {@link #json} vẫn bỏ bớt dòng cuối.
+     */
+    public static <T> ToolPage<T> list(List<T> rows, long total) {
+        List<T> all = rows == null ? List.of() : rows;
+        List<T> shown = List.copyOf(all.subList(0, Math.min(LIST_ROWS, all.size())));
+        int count = (int) Math.min(Integer.MAX_VALUE, Math.max(total, all.size()));
+        return new ToolPage<>(count, shown.size(), shown, false);
     }
 
     public static String error(AppException exception) {

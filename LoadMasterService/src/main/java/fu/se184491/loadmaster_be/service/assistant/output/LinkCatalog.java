@@ -17,6 +17,9 @@ import static fu.se184491.loadmaster_be.constant.account.UserRole.ADMIN;
 import static fu.se184491.loadmaster_be.constant.account.UserRole.DISPATCHER;
 import static fu.se184491.loadmaster_be.constant.account.UserRole.DRIVER;
 import static fu.se184491.loadmaster_be.constant.account.UserRole.MANAGER;
+import static fu.se184491.loadmaster_be.constant.account.UserRole.SYSTEM_ADMIN;
+import static fu.se184491.loadmaster_be.constant.account.UserRole.SYSTEM_MANAGER;
+import static fu.se184491.loadmaster_be.constant.account.UserRole.SYSTEM_SUPPORTER;
 import static fu.se184491.loadmaster_be.constant.account.UserRole.WAREHOUSE_WORKER;
 
 /**
@@ -70,6 +73,14 @@ public final class LinkCatalog {
                 "Tra cứu kiện", "Package lookup");
         // Phiếu xin nhận chuyến của tài xế; tài xế xin nhận ở tab "Chuyến đang mở" của app di động
         put(LinkTarget.TRIP_CLAIMS, "/phieu-xin-chuyen", TRIP_VIEWERS, false, "Phiếu xin chuyến", "Trip claims");
+        put(LinkTarget.FLEET, "/doi-xe", TRIP_VIEWERS, false, "Đội xe", "Fleet");
+        put(LinkTarget.SUPPORT_DESK, "/ho-tro", EnumSet.of(SYSTEM_SUPPORTER), false, "Hỗ trợ", "Support");
+        put(LinkTarget.GUEST_CONTACTS, "/lien-he-khach", EnumSet.of(SYSTEM_ADMIN, SYSTEM_SUPPORTER), false,
+                "Liên hệ của khách", "Guest contacts");
+        put(LinkTarget.COMPANIES, "/nen-tang/cong-ty", EnumSet.of(SYSTEM_ADMIN, SYSTEM_MANAGER), false, "Công ty",
+                "Companies");
+        put(LinkTarget.TRIAL_REQUESTS, "/nen-tang/yeu-cau-dung-thu", EnumSet.of(SYSTEM_ADMIN, SYSTEM_MANAGER), false,
+                "Đơn dùng thử", "Trial requests");
         if (ENTRIES.size() != LinkTarget.values().length) {
             throw new IllegalStateException("Thiếu đích liên kết trong LinkCatalog");
         }

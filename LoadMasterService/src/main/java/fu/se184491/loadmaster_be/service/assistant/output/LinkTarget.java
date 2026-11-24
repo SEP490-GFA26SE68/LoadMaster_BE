@@ -19,5 +19,10 @@ public enum LinkTarget {
     WAREHOUSE,
     PAYSLIP,
     PACKAGE_LOOKUP,
-    TRIP_CLAIMS
+    TRIP_CLAIMS,
+    FLEET,
+    SUPPORT_DESK,
+    GUEST_CONTACTS,
+    COMPANIES,
+    TRIAL_REQUESTS
 }

@@ -69,8 +69,15 @@ class AssistantSafetyTest {
             "request_human_support");
     /** Nhân viên kho: việc kho, tra cứu kiện, phiếu lương kho — không công cụ chuyến hay phương án nào. */
     private static final Set<String> WAREHOUSE_TOOLS = Set.of("get_my_account", "get_pricing_plans",
-            "list_warehouse_tasks", "lookup_package", "get_my_warehouse_payroll", "get_my_support_tickets",
-            "suggest_link", "request_human_support");
+            "list_warehouse_tasks", "lookup_package", "list_packages", "get_my_warehouse_payroll",
+            "get_my_support_tickets", "suggest_link", "request_human_support");
+    /** Công cụ đọc dữ liệu vận hành của một công ty: không vai trò nền tảng nào có. */
+    private static final List<String> COMPANY_DATA_TOOLS = List.of("list_trips", "get_trip",
+            "get_monitoring_overview", "get_trip_monitoring", "list_delivery_requirements", "list_packages",
+            "list_vehicles", "lookup_package", "list_warehouse_tasks");
+    /** Công cụ của các màn nền tảng: không vai trò công ty nào có. */
+    private static final List<String> PLATFORM_TOOLS = List.of("list_support_tickets", "get_support_ticket",
+            "list_guest_contacts", "list_companies", "list_trial_requests");
 
     @Autowired private AssistantToolRegistry registry;
     @Autowired private AssistantConversationRepository conversations;
@@ -96,6 +103,42 @@ class AssistantSafetyTest {
         assertThat(toolNames(ToolScope.of(UserRole.DRIVER))).containsExactlyInAnyOrderElementsOf(DRIVER_TOOLS);
         assertThat(toolNames(ToolScope.of(UserRole.WAREHOUSE_WORKER))).doesNotContain("list_trips", "get_trip")
                 .containsExactlyInAnyOrderElementsOf(WAREHOUSE_TOOLS);
+    }
+
+    @Test
+    void monitoringAndListToolsFollowTheScreensOfEachCompanyRole() {
+        List<String> dispatchScreens = List.of("get_monitoring_overview", "get_trip_monitoring",
+                "list_delivery_requirements", "list_packages", "list_vehicles");
+        assertThat(toolNames(ToolScope.of(UserRole.DISPATCHER))).containsAll(dispatchScreens);
+        assertThat(toolNames(ToolScope.of(UserRole.MANAGER))).containsAll(dispatchScreens);
+        assertThat(toolNames(ToolScope.of(UserRole.WAREHOUSE_WORKER))).contains("list_packages")
+                .doesNotContain("get_monitoring_overview", "get_trip_monitoring", "list_delivery_requirements",
+                        "list_vehicles");
+        for (UserRole role : List.of(UserRole.DRIVER, UserRole.ADMIN)) {
+            assertThat(toolNames(ToolScope.of(role))).as(role.name()).doesNotContainAnyElementsOf(dispatchScreens);
+        }
+        for (UserRole role : List.of(UserRole.ADMIN, UserRole.MANAGER, UserRole.DISPATCHER,
+                UserRole.WAREHOUSE_WORKER, UserRole.DRIVER)) {
+            assertThat(toolNames(ToolScope.of(role))).as(role.name()).doesNotContainAnyElementsOf(PLATFORM_TOOLS);
+        }
+        assertThat(toolNames(ToolScope.ofGuest())).doesNotContainAnyElementsOf(dispatchScreens)
+                .doesNotContainAnyElementsOf(PLATFORM_TOOLS);
+    }
+
+    @Test
+    void platformRolesGetOnlyTheirOwnScreensAndNoCompanyData() {
+        assertThat(toolNames(ToolScope.of(UserRole.SYSTEM_SUPPORTER)))
+                .contains("list_support_tickets", "get_support_ticket", "list_guest_contacts")
+                .doesNotContain("list_companies", "list_trial_requests");
+        assertThat(toolNames(ToolScope.of(UserRole.SYSTEM_ADMIN)))
+                .contains("list_companies", "list_trial_requests", "list_guest_contacts")
+                .doesNotContain("list_support_tickets", "get_support_ticket");
+        assertThat(toolNames(ToolScope.of(UserRole.SYSTEM_MANAGER)))
+                .contains("list_companies", "list_trial_requests")
+                .doesNotContain("list_support_tickets", "get_support_ticket", "list_guest_contacts");
+        for (UserRole role : List.of(UserRole.SYSTEM_ADMIN, UserRole.SYSTEM_MANAGER, UserRole.SYSTEM_SUPPORTER)) {
+            assertThat(toolNames(ToolScope.of(role))).as(role.name()).doesNotContainAnyElementsOf(COMPANY_DATA_TOOLS);
+        }
     }
 
     @Test

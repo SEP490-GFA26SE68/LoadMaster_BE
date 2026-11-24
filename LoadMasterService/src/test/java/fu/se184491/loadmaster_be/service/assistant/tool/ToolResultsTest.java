@@ -37,6 +37,19 @@ class ToolResultsTest {
     }
 
     @Test
+    void listKeepsThirtyRowsAndTheTotalCountedByTheDatabase() {
+        List<Row> rows = IntStream.range(0, 35).mapToObj(i -> new Row(i, "xe " + i)).toList();
+
+        ToolPage<Row> page = ToolResults.list(rows, 412);
+        ToolPage<Row> small = ToolResults.list(rows.subList(0, 3), 0);
+
+        assertThat(page.shown()).isEqualTo(ToolResults.LIST_ROWS);
+        assertThat(page.total()).isEqualTo(412);
+        assertThat(small.total()).as("total never below the rows read").isEqualTo(3);
+        assertThat(ToolResults.list(null, 0).rows()).isEmpty();
+    }
+
+    @Test
     void limitBelowTheCapIsKeptAndNonPositiveMeansTheCap() {
         List<Integer> rows = IntStream.range(0, 30).boxed().toList();
 
