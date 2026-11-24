@@ -80,6 +80,7 @@ public class AssistantLoop {
         List<Message> history = new ArrayList<>(prompt.getInstructions());
         List<Said> said = new ArrayList<>();
         TokenUsage spent = TokenUsage.ZERO;
+        boolean answeredWithLink = false;
 
         for (int round = 0; ; round++) {
             if (round > 0 && clock.instant().isAfter(deadline)) {
@@ -97,9 +98,11 @@ public class AssistantLoop {
             }
             AssistantMessage output = step.output();
             boolean done = lastRound || !TOOL_USE.equals(step.stopReason()) || !output.hasToolCalls();
-            if (StringUtils.hasText(output.getText())) {
-                said.add(new Said(output.getText().strip(), !done && !onlyLinks(output.getToolCalls())));
+            boolean wrote = StringUtils.hasText(output.getText());
+            if (wrote) {
+                said.add(new Said(output.getText().strip(), !done && !onlyLinks(output.getToolCalls()), answeredWithLink));
             }
+            answeredWithLink = !done && onlyLinks(output.getToolCalls()) && (wrote || answeredWithLink);
             if (done) {
                 return new LoopResult(answer(said), spent, step.stopReason(), step.model());
             }
@@ -112,10 +115,16 @@ public class AssistantLoop {
         return calls.stream().allMatch(call -> LinkTool.NAME.equals(call.name()));
     }
 
-    /** Câu dẫn chỉ còn lại khi là chữ cuối cùng của lượt (vòng sau không viết gì). */
+    /**
+     * Câu dẫn chỉ còn lại khi là chữ cuối cùng của lượt (vòng sau không viết gì). Chữ viết sau một vòng đã trả lời
+     * rồi gắn liên kết là câu nhắc lại liên kết đó ("Bạn có thể mở màn Kho…"), nên bỏ.
+     */
     private static String answer(List<Said> said) {
         List<String> kept = new ArrayList<>();
         for (int i = 0; i < said.size(); i++) {
+            if (said.get(i).afterLinkedAnswer()) {
+                continue;
+            }
             if (!said.get(i).preamble() || i == said.size() - 1) {
                 kept.add(said.get(i).text());
             }
@@ -231,7 +240,10 @@ public class AssistantLoop {
     private record Step(AssistantMessage output, TokenUsage usage, String stopReason, String model) {
     }
 
-    /** Chữ của một vòng; {@code preamble}: viết cùng tin với lời gọi một công cụ khác {@code suggest_link}. */
-    private record Said(String text, boolean preamble) {
+    /**
+     * Chữ của một vòng; {@code preamble}: viết cùng tin với lời gọi một công cụ khác {@code suggest_link};
+     * {@code afterLinkedAnswer}: viết ngay sau vòng đã có chữ trả lời và chỉ gọi {@code suggest_link}.
+     */
+    private record Said(String text, boolean preamble, boolean afterLinkedAnswer) {
     }
 }

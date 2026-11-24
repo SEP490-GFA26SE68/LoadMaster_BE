@@ -52,8 +52,10 @@ public class LinkTool implements AssistantTool {
                     danh sách chuyến; TRIP_DETAIL chi tiết một chuyến; OPTIMIZATION_SETUP thiết lập tối ưu xếp hàng \
                     của một chuyến; PLANNER phương án xếp hàng 3D của một chuyến; COMPARE so sánh ba phương án của \
                     một chuyến; MONITORING giám sát xe đang chạy; REQUIREMENTS yêu cầu giao; PACKAGES kho kiện; \
-                    BILLING gói và credit của công ty; PAYROLL bảng lương tài xế; PROFILE hồ sơ cá nhân; \
-                    DRIVER_TRIPS chuyến của tài xế; WAREHOUSE màn làm việc của nhân viên kho""")
+                    BILLING gói và credit của công ty; PAYROLL bảng lương của công ty (quản lý tính và chốt); \
+                    PAYSLIP phiếu lương của chính người hỏi (điều phối viên, nhân viên kho); PROFILE hồ sơ cá nhân; \
+                    DRIVER_TRIPS chuyến của tài xế; WAREHOUSE màn làm việc của nhân viên kho; PACKAGE_LOOKUP tra \
+                    cứu kiện theo mã; TRIP_CLAIMS phiếu tài xế xin nhận chuyến (điều phối viên duyệt)""")
             LinkTarget target,
             @ToolParam(required = false, description = """
                     Mã chuyến dạng TRIP-…, bắt buộc với TRIP_DETAIL, OPTIMIZATION_SETUP, PLANNER, COMPARE; lấy từ \

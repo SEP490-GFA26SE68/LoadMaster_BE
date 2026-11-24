@@ -7,10 +7,12 @@ import fu.se184491.loadmaster_be.dto.response.subscription.SubscriptionPlanRespo
 import fu.se184491.loadmaster_be.service.assistant.tool.ToolResults;
 import fu.se184491.loadmaster_be.service.subscription.SubscriptionPlanService;
 import org.junit.jupiter.api.Test;
+import org.springframework.ai.tool.annotation.Tool;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
 import java.math.BigDecimal;
+import java.util.ArrayList;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -60,10 +62,29 @@ class PricingPlansToolTest {
         JsonNode out = JSON.readTree(ToolResults.json(tool.getPricingPlans()));
 
         assertThat(out.get("creditsPerOptimization").asInt()).isEqualTo(2);
-        assertThat(out.get("creditsPerRerun").asInt()).isEqualTo(1);
         assertThat(out.get("minTopUpCredits").asInt()).isEqualTo(1);
         assertThat(out.get("pricePerCreditVnd").get("BASIC").decimalValue()).isEqualByComparingTo("400");
         assertThat(out.get("pricePerCreditVnd").get("PRO").decimalValue()).isEqualByComparingTo("326");
         assertThat(out.get("pricePerCreditVnd").get("ULTIMATE").decimalValue()).isEqualByComparingTo("263");
+    }
+
+    /**
+     * "Chạy lại giữ ghim" trên web và app là {@code optimize-loading} kèm {@code keepPinsFromPlanId}: một lần tối ưu ba
+     * phương án, trừ đúng credit của một lần tối ưu. Số của đường chạy lại một phương án không được tới tay mô hình,
+     * kẻo Lumo nói "chạy lại tốn 1 credit".
+     */
+    @Test
+    void thereIsNoSeparateRerunPrice() throws NoSuchMethodException {
+        when(plans.getActivePlans()).thenReturn(List.of());
+
+        String json = ToolResults.json(tool.getPricingPlans());
+        List<String> fields = new ArrayList<>();
+        JSON.readTree(json).properties().forEach(field -> fields.add(field.getKey()));
+
+        assertThat(json).doesNotContainIgnoringCase("rerun");
+        assertThat(fields).containsExactlyInAnyOrder("plans", "creditsPerOptimization", "pricePerCreditVnd",
+                "minTopUpCredits");
+        String description = PricingPlansTool.class.getMethod("getPricingPlans").getAnnotation(Tool.class).description();
+        assertThat(description).contains("Chạy lại").contains("giữ ghim").contains("tốn đúng số credit này");
     }
 }

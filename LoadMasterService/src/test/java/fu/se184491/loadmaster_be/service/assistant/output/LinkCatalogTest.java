@@ -77,6 +77,31 @@ class LinkCatalogTest {
                 .contains("/goi-cuoc");
     }
 
+    /** {@code /phieu-luong} và {@code /tra-cuu-kien} của web theo {@code payroll.viewOwn}, {@code packages.lookup}. */
+    @Test
+    void payslipAndPackageLookupAreForDispatchersAndWarehouseWorkers() {
+        for (UserRole role : List.of(UserRole.DISPATCHER, UserRole.WAREHOUSE_WORKER)) {
+            assertThat(link(LinkTarget.PAYSLIP, null, ToolScope.of(role))).as(role.name())
+                    .contains(new AssistantLink("Phiếu lương", "/phieu-luong"));
+            assertThat(link(LinkTarget.PACKAGE_LOOKUP, null, ToolScope.of(role))).as(role.name())
+                    .map(AssistantLink::to).contains("/tra-cuu-kien");
+        }
+        for (UserRole role : List.of(UserRole.DRIVER, UserRole.MANAGER, UserRole.ADMIN)) {
+            assertThat(link(LinkTarget.PAYSLIP, null, ToolScope.of(role))).as(role.name()).isEmpty();
+            assertThat(link(LinkTarget.PACKAGE_LOOKUP, null, ToolScope.of(role))).as(role.name()).isEmpty();
+        }
+    }
+
+    /** Tài xế xin nhận chuyến ở app di động; web chỉ có màn duyệt phiếu ({@code /phieu-xin-chuyen}, {@code trips.view}). */
+    @Test
+    void tripClaimsScreenIsForDispatchersAndManagersOnly() {
+        assertThat(link(LinkTarget.TRIP_CLAIMS, null, ToolScope.of(UserRole.DISPATCHER))).map(AssistantLink::to)
+                .contains("/phieu-xin-chuyen");
+        assertThat(link(LinkTarget.TRIP_CLAIMS, null, ToolScope.of(UserRole.MANAGER))).isPresent();
+        assertThat(link(LinkTarget.TRIP_CLAIMS, null, ToolScope.of(UserRole.DRIVER))).isEmpty();
+        assertThat(link(LinkTarget.TRIP_CLAIMS, null, ToolScope.of(UserRole.WAREHOUSE_WORKER))).isEmpty();
+    }
+
     @Test
     void everyTargetOpensForSomeone() {
         for (LinkTarget target : LinkTarget.values()) {

@@ -63,6 +63,13 @@ public final class LinkCatalog {
         put(LinkTarget.PROFILE, "/ho-so", EVERYONE, false, "Hồ sơ cá nhân", "My profile");
         put(LinkTarget.DRIVER_TRIPS, "/tai-xe", EnumSet.of(DRIVER), false, "Chuyến của tôi", "My trips");
         put(LinkTarget.WAREHOUSE, "/kho", EnumSet.of(WAREHOUSE_WORKER), false, "Kho", "Warehouse");
+        // Phiếu lương của chính mình (payroll.viewOwn): điều phối viên và nhân viên kho; tài xế xem ở app di động
+        put(LinkTarget.PAYSLIP, "/phieu-luong", EnumSet.of(DISPATCHER, WAREHOUSE_WORKER), false, "Phiếu lương",
+                "My payslip");
+        put(LinkTarget.PACKAGE_LOOKUP, "/tra-cuu-kien", EnumSet.of(DISPATCHER, WAREHOUSE_WORKER), false,
+                "Tra cứu kiện", "Package lookup");
+        // Phiếu xin nhận chuyến của tài xế; tài xế xin nhận ở tab "Chuyến đang mở" của app di động
+        put(LinkTarget.TRIP_CLAIMS, "/phieu-xin-chuyen", TRIP_VIEWERS, false, "Phiếu xin chuyến", "Trip claims");
         if (ENTRIES.size() != LinkTarget.values().length) {
             throw new IllegalStateException("Thiếu đích liên kết trong LinkCatalog");
         }
