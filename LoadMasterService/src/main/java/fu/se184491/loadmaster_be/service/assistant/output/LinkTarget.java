@@ -16,5 +16,8 @@ public enum LinkTarget {
     PAYROLL,
     PROFILE,
     DRIVER_TRIPS,
-    WAREHOUSE
+    WAREHOUSE,
+    PAYSLIP,
+    PACKAGE_LOOKUP,
+    TRIP_CLAIMS
 }

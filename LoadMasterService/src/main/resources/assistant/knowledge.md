@@ -10,7 +10,7 @@ LoadMaster giúp doanh nghiệp vận tải lập chuyến hàng, tối ưu các
 2. Soạn và xếp ở kho — nhân viên kho: soạn đủ kiện của chuyến rồi xếp lên xe theo thứ tự của phương án đã duyệt, đối chiếu từng kiện.
 3. Trên đường — điều phối viên: theo dõi vị trí xe, giờ đến dự kiến và cảnh báo nguy cơ trễ hạn ở màn Giám sát, xử lý sự cố trên đường.
 4. Tại điểm giao — tài xế: báo đã đến, dỡ và đối chiếu từng kiện, báo sự cố nếu có, rồi hoàn tất điểm giao.
-5. Giao xong, báo cáo và tính lương — quản lý công ty: xem báo cáo chuyến, bảng điều khiển, xuất báo cáo và bảng lương tài xế.
+5. Giao xong, báo cáo và tính lương — quản lý công ty: xem báo cáo chuyến, bảng điều khiển, xuất báo cáo, tính và chốt bảng lương tài xế, điều phối viên và nhân viên kho.
 
 ## Vai trò
 
@@ -19,10 +19,10 @@ Mỗi người dùng LoadMaster theo vai trò của mình. Năm vai trò thuộc
 | Vai trò | Thiết bị | Việc chính |
 |---|---|---|
 | Quản trị công ty | máy tính | tạo tài khoản và giao vai trò cho nhân viên, nhật ký, gói cước và credit, thông tin công ty |
-| Quản lý công ty | máy tính hoặc máy tính bảng | bảng điều khiển, báo cáo, kho bãi, bảng lương tài xế; xem chuyến và phương án chỉ đọc |
-| Điều phối viên | máy tính | yêu cầu giao, lập chuyến, tối ưu tuyến và xếp hàng, duyệt phương án, giám sát, in nhãn QR |
-| Nhân viên kho | máy tính bảng tại kho | quản lý kho kiện, nhập kiện, soạn và xếp hàng lên xe |
-| Tài xế | điện thoại | xem chuyến của mình, xuất phát, giao từng điểm, xem vị trí kiện trên xe bằng hình 3D |
+| Quản lý công ty | máy tính hoặc máy tính bảng | bảng điều khiển, báo cáo, kho bãi, bảng lương; xem chuyến và phương án chỉ đọc |
+| Điều phối viên | máy tính | yêu cầu giao, lập chuyến, tối ưu tuyến và xếp hàng, duyệt phương án, duyệt phiếu tài xế xin nhận chuyến, giám sát, in nhãn QR, xem phiếu lương của mình |
+| Nhân viên kho | máy tính bảng tại kho | quản lý kho kiện, nhập kiện, soạn và xếp hàng lên xe, tra cứu kiện, xem phiếu lương của mình |
+| Tài xế | điện thoại | xem chuyến của mình, xin nhận chuyến đang mở, xuất phát, giao từng điểm, xem vị trí kiện trên xe bằng hình 3D, xem phiếu lương của mình |
 
 Ba vai trò còn lại thuộc đội LoadMaster (quản trị hệ thống, quản lý nền tảng, hỗ trợ khách hàng): họ quản lý công ty, gói cước và yêu cầu hỗ trợ, không làm việc vận hành của công ty khách hàng.
 
@@ -58,6 +58,28 @@ Mỗi lần chạy tối ưu cho ra ba phương án để so sánh: A — tối 
 ## Tải trục
 
 LoadMaster ước lượng tải trục trước và sau của phương án và báo rõ khi vượt giới hạn, khi xe đã khai vị trí và giới hạn của các trục. Xe chưa khai trục thì không có số tải trục. Phương án vượt tải trục không duyệt được.
+
+## Việc của nhân viên kho
+
+- Màn Kho chia chuyến theo việc: chờ soạn (đã có phương án duyệt), đang soạn và xếp, xếp xong chờ tài xế xuất phát, và chờ điều phối viên tối ưu lại.
+- Bước soạn: đối chiếu từng kiện của chuyến vào khu chờ, không cần theo thứ tự. Kiện không có ở kho thì bấm "Báo thiếu"; điều phối viên quyết tìm tiếp hay bỏ kiện. Soạn đủ mới sang bước xếp.
+- Bước xếp: xếp lên xe theo thứ tự của phương án đã duyệt, đối chiếu từng kiện. Kiện hỏng thì báo "Kiện hỏng": không kiện nào tựa lên nó thì kiện bị bỏ lại kho và kho xếp tiếp; có kiện tựa lên thì chuyến quay về chờ điều phối viên tối ưu lại.
+- Còn xác nhận tay chờ điều phối viên duyệt thì chưa hoàn tất xếp được.
+- Tra cứu kiện: quét mã QR hoặc gõ mã in trên nhãn để xem kiện đang ở trạng thái nào, có cờ "Không tìm thấy" hay "Hỏng" không, thuộc chuyến và điểm giao nào.
+
+## Tài xế xin nhận chuyến
+
+- Chuyến chưa có tài xế, còn Nháp hoặc Đã lập kế hoạch, hiện ở tab "Chuyến đang mở" của app di động cho tài xế cùng công ty.
+- Tài xế bấm "Xin nhận chuyến" để gửi phiếu xin nhận; phiếu chờ điều phối viên duyệt. Trong lúc chờ, tài xế rút phiếu được bằng "Rút phiếu".
+- Điều phối viên duyệt hoặc từ chối phiếu ở màn "Phiếu xin chuyến"; từ chối thì tài xế thấy lý do. Duyệt thì chuyến giao cho tài xế đó và hiện ở "Chuyến của tôi"; các phiếu khác đang chờ cho chuyến đó bị từ chối.
+- Lumo không xin nhận hay rút phiếu thay tài xế; tài xế tự bấm trong app.
+
+## Lương
+
+Quản lý công ty tính bảng lương theo tháng ở màn Bảng lương rồi chốt kỳ. Mỗi người chỉ xem được phiếu lương của chính mình.
+- Tài xế: lương cứng, tiền theo kg hàng đã chở, tiền bốc dỡ, thưởng KPI nếu công ty dùng KPI. Xem ở tab "Lương" của app di động. Kỳ chưa chốt chỉ hiện lương cứng.
+- Nhân viên kho: lương cứng + số kg kiện mình đã xếp lên xe trong tháng × đơn giá theo kg + thưởng KPI khi tổng kg đạt chỉ tiêu (nếu công ty dùng KPI). Chỉ tính kiện mình đã đối chiếu xếp; xác nhận tay còn chờ duyệt hay bị từ chối không tính. Kỳ chưa chốt chỉ hiện lương cứng. Xem ở màn "Phiếu lương".
+- Điều phối viên: lương cứng + tiền tăng ca (đơn giá mỗi giờ × số giờ mỗi ngày × số ngày tăng ca) + tiền KPI quản lý ghi cho kỳ. Phiếu có số khi quản lý đã tính kỳ; bảng còn nháp thì quản lý còn sửa được. Xem ở màn "Phiếu lương".
 
 ## Tuyến đường và giám sát
 
