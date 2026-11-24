@@ -18,7 +18,6 @@ import fu.se184491.loadmaster_be.entity.driver.UnloadConfirmation;
 import fu.se184491.loadmaster_be.entity.monitoring.TripException;
 import fu.se184491.loadmaster_be.entity.monitoring.TripReroute;
 import fu.se184491.loadmaster_be.entity.optimization.LoadingExecution;
-import fu.se184491.loadmaster_be.entity.pickup.PickupRequestPackage;
 import fu.se184491.loadmaster_be.entity.trip.DeliveryStop;
 import fu.se184491.loadmaster_be.entity.trip.Trip;
 import fu.se184491.loadmaster_be.entity.warehouse.PlacementConfirmation;
@@ -31,7 +30,6 @@ import fu.se184491.loadmaster_be.repository.driver.ManualUnloadConfirmationRepos
 import fu.se184491.loadmaster_be.repository.driver.UnloadConfirmationRepository;
 import fu.se184491.loadmaster_be.repository.monitoring.TripExceptionRepository;
 import fu.se184491.loadmaster_be.repository.monitoring.TripRerouteRepository;
-import fu.se184491.loadmaster_be.repository.pickup.PickupRequestRepository;
 import fu.se184491.loadmaster_be.repository.trip.DeliveryStopRepository;
 import fu.se184491.loadmaster_be.repository.warehouse.LoadingDamageRepository;
 import fu.se184491.loadmaster_be.repository.warehouse.LoadingExecutionRepository;
@@ -74,10 +72,7 @@ public class TripReportService {
     private final LoadingDamageRepository loadingDamageRepository;
     private final TripExceptionRepository tripExceptionRepository;
     private final TripRerouteRepository tripRerouteRepository;
-    private final PickupRequestRepository pickupRequestRepository;
 
-    /** Bước nhận dọc đường ở {@code verificationMethods}; xác nhận tay không có bước này. */
-    static final String PICKUP_STEP = "PICKUP";
     private static final int QR = 0;
     private static final int CODE = 1;
     private static final int MANUAL = 2;
@@ -145,10 +140,6 @@ public class TripReportService {
                     .completed(settled)
                     .build());
         }
-        List<PickupRequestPackage> picked = pickupRequestRepository.findByTripIdOrderByIdAsc(trip.getId()).stream()
-                .flatMap(request -> request.getPackages().stream())
-                .toList();
-
         List<StagingConfirmation> staged = stagingConfirmationRepository.findByTripId(trip.getId());
         List<PlacementConfirmation> placed = execution == null
                 ? List.of()
@@ -189,7 +180,7 @@ public class TripReportService {
                         .withIssue(withIssue.size())
                         .build())
                 .verifications(verifications(staged, placed, unloads, manuals))
-                .verificationMethods(verificationMethods(staged, placed, unloads, manuals, picked))
+                .verificationMethods(verificationMethods(staged, placed, unloads, manuals))
                 .manualConfirmations(manuals.stream().map(TripReportService::manualRow).toList())
                 .exceptions(tripExceptionRepository.findByTripIdOrderByReportedAtAsc(trip.getId()).stream()
                         .map(TripReportService::exceptionRow).toList())
@@ -216,22 +207,19 @@ public class TripReportService {
             List<UnloadConfirmation> unloads,
             List<ManualUnloadConfirmation> manuals
     ) {
-        return verificationMethods(staged, placed, unloads, manuals, List.of()).stream()
-                .filter(row -> !PICKUP_STEP.equals(row.step()))
+        return verificationMethods(staged, placed, unloads, manuals).stream()
                 .map(row -> new TripReportResponse.Verification(row.step(), row.qr() + row.code(), row.manual()))
                 .toList();
     }
 
     /**
-     * Như {@link #verifications} nhưng tách đối chiếu bằng nhãn theo cách: quét QR hay gõ mã (bản ghi cũ không ghi cách là QR), và thêm
-     * bước nhận dọc đường (máy chủ chưa có xác nhận tay ở điểm nhận nên {@code manual} luôn là 0).
+     * Như {@link #verifications} nhưng tách đối chiếu bằng nhãn theo cách: quét QR hay gõ mã (bản ghi cũ không ghi cách là QR).
      */
     static List<TripReportResponse.VerificationMethods> verificationMethods(
             List<StagingConfirmation> staged,
             List<PlacementConfirmation> placed,
             List<UnloadConfirmation> unloads,
-            List<ManualUnloadConfirmation> manuals,
-            List<PickupRequestPackage> picked
+            List<ManualUnloadConfirmation> manuals
     ) {
         int[] staging = new int[3];
         for (StagingConfirmation item : staged) {
@@ -261,18 +249,11 @@ public class TripReportService {
             boolean manual = item.getCargoPackage() != null && manualUnloads.contains(item.getCargoPackage().getId());
             unloading[manual ? MANUAL : labelIndex(item.getMethod())]++;
         }
-        int[] pickup = new int[3];
-        for (PickupRequestPackage line : picked) {
-            if (line.getPickedAt() != null) {
-                pickup[labelIndex(line.getPickMethod())]++;
-            }
-        }
 
         return List.of(
                 methodsRow(ManualConfirmStep.STAGING.name(), staging),
                 methodsRow(ManualConfirmStep.LOADING.name(), loading),
-                methodsRow(ManualConfirmStep.UNLOADING.name(), unloading),
-                methodsRow(PICKUP_STEP, pickup)
+                methodsRow(ManualConfirmStep.UNLOADING.name(), unloading)
         );
     }
 

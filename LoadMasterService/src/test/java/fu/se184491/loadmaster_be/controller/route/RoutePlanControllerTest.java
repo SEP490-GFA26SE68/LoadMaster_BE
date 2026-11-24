@@ -230,7 +230,7 @@ public class RoutePlanControllerTest {
     }
 
     @Test
-    @DisplayName("GET /api/places/autocomplete: tài xế tìm được địa chỉ (hộp nhận hàng dọc đường)")
+    @DisplayName("GET /api/places/autocomplete: tài xế tìm được địa chỉ")
     @WithMockUser(roles = "DRIVER")
     void autocompletePlaces_asDriver_isOk() throws Exception {
         when(goongMapsClient.getPlaceAutocomplete("Le Loi")).thenReturn(new PlaceAutocompleteResponse());

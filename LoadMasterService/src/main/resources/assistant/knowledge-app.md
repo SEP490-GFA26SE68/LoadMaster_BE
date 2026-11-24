@@ -17,4 +17,3 @@ Người dùng đang đăng nhập trong ứng dụng. Chỉ chỉ đường t�
 - Phương án lỗi thời: xe, kiện hay yêu cầu giao của chuyến đã đổi sau lần tối ưu. Điều phối viên chạy tối ưu lại ở Thiết lập tối ưu của chuyến rồi duyệt.
 - Nút Duyệt mờ: lý do nằm ngay trên nút (kiện bắt buộc chưa xếp đủ, vượt tải trục, lỗi ràng buộc, phương án lỗi thời).
 - Không đủ credit: điều phối viên báo quản trị công ty nạp thêm ở "Gói và credit".
-- Nhận hàng dọc đường: điều phối viên hoặc tài xế tạo yêu cầu nhận khi xe đang chạy; hệ thống kiểm mười luật rồi điều phối viên duyệt hoặc từ chối.

@@ -37,7 +37,6 @@ class OptimizationReadSecurityTest {
  @MockitoBean LoadingOptimizationService loading;
  @MockitoBean LoadPlanQueryService plans;
  @MockitoBean fu.se184491.loadmaster_be.service.driver.DriverDeliveryService driverDelivery;
- @MockitoBean fu.se184491.loadmaster_be.service.pickup.PickupDriverService pickup;
  @MockitoBean OptimizationSubmissionService submission;
  @MockitoBean OptimizationClient client;
  @MockitoBean UserRepository users;

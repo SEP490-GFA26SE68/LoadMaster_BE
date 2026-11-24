@@ -26,7 +26,7 @@ public class DeliveryStop {
     /**
      * Yêu cầu giao sinh ra điểm dừng này.
      * null nếu đây là điểm giao được thêm thủ công
-     * hoặc điểm nhận hàng dọc đường.
+     * hoặc điểm nhận hàng dọc đường cũ.
      */
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "delivery_requirement_id")
@@ -62,7 +62,8 @@ public class DeliveryStop {
     private LocalDateTime completedAt;
 
     /**
-     * Điểm giao hàng, hoặc điểm nhận hàng dọc đường (chèn khi điều phối viên duyệt một yêu cầu nhận). Dòng cũ để trống là điểm giao.
+     * Loại điểm. Dòng cũ để trống là điểm giao; {@code PICKUP} chỉ còn ở dữ liệu cũ của tính năng nhận hàng dọc đường đã bỏ:
+     * điểm đó không có kiện, tài xế vẫn đến và hoàn tất như điểm giao rỗng.
      */
     @Enumerated(EnumType.STRING) @Column(name = "stop_type", length = 20)
     private DeliveryStopType stopType;

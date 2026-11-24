@@ -20,12 +20,10 @@ import java.util.Set;
  *   <li>Quản trị công ty: việc trên tài khoản của công ty mình, sắp hết credit.</li>
  *   <li>Quản lý công ty: chuyến hoàn thành, bị huỷ, sự cố giao, sự cố cấp chuyến chuyển lên quản lý.</li>
  *   <li>Điều phối viên: đồng nghiệp duyệt phương án, kho xếp xong, sự cố giao, nguy cơ trễ hạn, chuyến hoàn thành,
- *       bị huỷ, xác nhận tay chờ duyệt, tài xế báo sự cố, sự cố chuyển quản lý, quản lý đã nhập hạn mới, yêu cầu
- *       nhận hàng dọc đường mới gửi.</li>
+ *       bị huỷ, xác nhận tay chờ duyệt, tài xế báo sự cố, sự cố chuyển quản lý, quản lý đã nhập hạn mới.</li>
  *   <li>Nhân viên kho: chuyến bị huỷ lúc đang xếp hàng.</li>
  *   <li>Tài xế: việc của chuyến mình từ lúc kho bắt đầu xếp (kho bắt đầu xếp, xếp xong, chuyến bị huỷ lúc đang
- *       xếp, đổi tài xế khi chuyến đã ở kho), yêu cầu nhận dọc đường của chuyến mình được duyệt / bị từ chối, và xác
- *       nhận tay của chính mình bị từ chối.</li>
+ *       xếp, đổi tài xế khi chuyến đã ở kho), và xác nhận tay của chính mình bị từ chối.</li>
  *   <li>Mọi vai trò công ty: yêu cầu hỗ trợ của chính mình được hỗ trợ khách hàng cập nhật.</li>
  * </ul>
  * Sự kiện của luồng mới thêm vào {@link #ACTIONS} và {@link #concerns} ở việc của luồng đó.
@@ -53,11 +51,10 @@ public final class NotificationRules {
         ACTIONS.put(UserRole.DISPATCHER, Set.of(
                 "PLAN_APPROVED", "LOADING_COMPLETED", "DELIVERY_ISSUE_REPORTED", "DELIVERY_ETA_RISK", "TRIP_COMPLETED",
                 "TRIP_CANCELLED", "MANUAL_CONFIRM_REQUESTED", "TRIP_EXCEPTION_REPORTED", "TRIP_EXCEPTION_ESCALATED",
-                "DEADLINE_RENEGOTIATED", "PICKUP_REQUESTED", TICKET_UPDATED));
+                "DEADLINE_RENEGOTIATED", TICKET_UPDATED));
         ACTIONS.put(UserRole.WAREHOUSE_WORKER, Set.of("TRIP_CANCELLED", TICKET_UPDATED));
         ACTIONS.put(UserRole.DRIVER, Set.of(
                 "MANUAL_CONFIRM_REJECTED", "TRIP_STATUS_TRANSITION", "LOADING_COMPLETED", "TRIP_CANCELLED", "TRIP_UPDATED",
-                "PICKUP_APPROVED", "PICKUP_REJECTED",
                 "TRIP_STOPS_REORDERED",
                 TICKET_UPDATED));
     }
@@ -130,8 +127,6 @@ public final class NotificationRules {
             case "LOADING_COMPLETED" -> sameId(driverOf(event), driverId);
             // Huỷ lúc kho đang xếp, hoặc lúc xe đang chạy (có sự cố chưa xử lý): tài xế của chuyến đã biết chuyến
             case "TRIP_CANCELLED" -> (wasLoading(event) || cancelledInTransit(event)) && sameId(driverOf(event), driverId);
-            // Quyết định về yêu cầu nhận dọc đường: tài xế của chuyến lúc quyết định
-            case "PICKUP_APPROVED", "PICKUP_REJECTED" -> sameId(value(event.newValues(), "driverId"), driverId);
             // Điều phối viên đổi thứ tự điểm khi xe đang chạy: tài xế của chuyến lúc đổi
             case "TRIP_STOPS_REORDERED" -> sameId(value(event.newValues(), "driverId"), driverId);
             // Chuyến tạm dừng chờ điều phối lập lại phương án: kiện hỏng có kiện tựa lên, kiện báo thiếu bị bỏ

@@ -7,7 +7,6 @@ import fu.se184491.loadmaster_be.service.driver.DriverDeliveryService;
 import fu.se184491.loadmaster_be.service.driver.DriverService;
 import fu.se184491.loadmaster_be.service.monitoring.GpsTrackingService;
 import fu.se184491.loadmaster_be.service.monitoring.TripExceptionService;
-import fu.se184491.loadmaster_be.service.pickup.PickupDriverService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
@@ -47,9 +46,6 @@ class DriverControllerTest {
 
     @MockitoBean
     private TripExceptionService tripExceptionService;
-
-    @MockitoBean
-    private PickupDriverService pickupDriverService;
 
     @MockitoBean
     private CurrentUserService currentUserService;

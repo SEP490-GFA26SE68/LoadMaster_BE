@@ -11,13 +11,6 @@ import fu.se184491.loadmaster_be.constant.trip.DeliveryStopStatus;
 import fu.se184491.loadmaster_be.constant.trip.TripStatus;
 import fu.se184491.loadmaster_be.constant.vehicle.VehicleStatus;
 import fu.se184491.loadmaster_be.repository.monitoring.TripExceptionRepository;
-import fu.se184491.loadmaster_be.repository.cargo.CargoPackageRepository;
-import fu.se184491.loadmaster_be.service.monitoring.MonitoringTime;
-import fu.se184491.loadmaster_be.repository.pickup.PickupRequestRepository;
-import fu.se184491.loadmaster_be.constant.pickup.PickupRequestStatus;
-import fu.se184491.loadmaster_be.constant.trip.DeliveryStopType;
-import fu.se184491.loadmaster_be.entity.pickup.PickupRequest;
-import fu.se184491.loadmaster_be.entity.pickup.PickupRequestPackage;
 import fu.se184491.loadmaster_be.dto.request.trip.TripUpdateRequest;
 import fu.se184491.loadmaster_be.entity.account.User;
 import fu.se184491.loadmaster_be.entity.cargo.CargoPackage;
@@ -66,7 +59,6 @@ public class TripLifecycleService {
     private static final Set<TripStatus> CANCELLABLE =
             EnumSet.of(TripStatus.DRAFT, TripStatus.PLANNED, TripStatus.LOADING);
     private static final Set<TripStatus> VEHICLE_BUSY = EnumSet.of(TripStatus.LOADING, TripStatus.IN_TRANSIT);
-    private static final String PICKUP_CANCEL_REASON = "Chuyến đã huỷ";
     /** Sự cố trên đường chưa xử lý: cho phép huỷ chuyến Đang vận chuyển. */
     private static final Set<TripExceptionStatus> UNRESOLVED_EXCEPTIONS =
             EnumSet.of(TripExceptionStatus.OPEN, TripExceptionStatus.ESCALATED);
@@ -85,8 +77,6 @@ public class TripLifecycleService {
     private final LoadPlanRepository loadPlanRepository;
     private final TripPackageResolver tripPackageResolver;
     private final TripExceptionRepository tripExceptionRepository;
-    private final PickupRequestRepository pickupRequestRepository;
-    private final CargoPackageRepository cargoPackageRepository;
 
     /**
      * Sửa tên, giờ xuất phát, xe, tài xế, kho xuất phát của chuyến Nháp / Đã lập kế hoạch.
@@ -254,8 +244,7 @@ public class TripLifecycleService {
 
     /**
      * Huỷ chuyến Đang vận chuyển: kiện của mọi điểm chưa hoàn tất (còn trên xe, hoặc đã dỡ mà điểm chưa hoàn tất) thành
-     * Hoàn trả và vẫn gắn với chuyến; kiện nhận dọc đường đã lên xe ở điểm nhận chưa hoàn tất cũng thành Hoàn trả; yêu cầu giao
-     * giữ chuyến nên đọc ra là giao thiếu; sự cố chưa xử lý ở lại như đã ghi.
+     * Hoàn trả và vẫn gắn với chuyến; yêu cầu giao giữ chuyến nên đọc ra là giao thiếu; sự cố chưa xử lý ở lại như đã ghi.
      * Xe hết bận khi chuyến không còn Đang vận chuyển.
      */
     private void cancelInTransit(Trip trip, User actor, String reason) {
@@ -272,9 +261,6 @@ public class TripLifecycleService {
                     returnedIds.add(cargoPackage.getId());
                 }
             }
-            if (stop.kind() == DeliveryStopType.PICKUP) {
-                settlePickupsAtOpenStop(trip, actor, stop, returnedIds);
-            }
         }
         trip.setCancelReturnedCount(returnedIds.size());
 
@@ -288,66 +274,6 @@ public class TripLifecycleService {
             after.put("driverId", trip.getDriver().getId());
         }
         audit("TRIP_CANCELLED", trip, actor, Map.of("status", TripStatus.IN_TRANSIT.name()), after);
-    }
-
-    /**
-     * Yêu cầu nhận còn APPROVED ở điểm nhận chưa hoàn tất: kiện đã lên xe thành Hoàn trả; kiện chưa nhận bị xoá khỏi kho kiện vì
-     * hàng chưa từng vào tay. Không kiện nào lên xe thì yêu cầu thành Từ chối "Chuyến đã huỷ".
-     */
-    private void settlePickupsAtOpenStop(Trip trip, User actor, DeliveryStop stop, Set<Long> returnedIds) {
-        for (PickupRequest request : pickupRequestRepository.findByPickupStopId(stop.getId())) {
-            if (request.getStatus() != PickupRequestStatus.APPROVED) {
-                continue;
-            }
-            int picked = 0;
-            List<CargoPackage> dropped = new ArrayList<>();
-            for (PickupRequestPackage line : request.getPackages()) {
-                CargoPackage cargoPackage = line.getCargoPackage();
-                if (cargoPackage == null) {
-                    continue;
-                }
-                if (line.getPickedAt() != null) {
-                    picked++;
-                    if (cargoPackage.getStatus() == PackageStatus.LOADED) {
-                        cargoPackage.setStatus(PackageStatus.RETURNED);
-                        returnedIds.add(cargoPackage.getId());
-                    }
-                } else {
-                    line.setCargoPackage(null);
-                    dropped.add(cargoPackage);
-                }
-            }
-            if (picked == 0) {
-                // APPROVED -> REJECTED chỉ có ở đây; bảng chuyển trạng thái của yêu cầu nhận không cho lối này
-                request.setStatus(PickupRequestStatus.REJECTED);
-                request.setRejectReason(PICKUP_CANCEL_REASON);
-                request.setRejectedBy(actor);
-                request.setRejectedAt(MonitoringTime.now());
-            }
-            pickupRequestRepository.save(request);
-            cargoPackageRepository.deleteAll(dropped);
-            if (picked == 0 || !dropped.isEmpty()) {
-                auditPickupOnCancel(trip, actor, request, picked == 0, dropped.size());
-            }
-        }
-    }
-
-    private void auditPickupOnCancel(Trip trip, User actor, PickupRequest request, boolean rejected, int droppedCount) {
-        Map<String, Object> values = new HashMap<>();
-        values.put("pickupId", request.getId());
-        values.put("tripId", trip.getId());
-        values.put("reason", PICKUP_CANCEL_REASON);
-        values.put("droppedPackages", droppedCount);
-        values.put("tripCancelled", true);
-        auditLogRepository.save(AuditLog.builder()
-                .companyId(AuditCompany.ofTrip(trip))
-                .actionType(rejected ? "PICKUP_REJECTED" : "PICKUP_PACKAGES_DROPPED")
-                .entityName("PickupRequest")
-                .entityId(String.valueOf(request.getId()))
-                .user(actor)
-                .newValues(values)
-                .createdAt(Instant.now())
-                .build());
     }
 
     /**

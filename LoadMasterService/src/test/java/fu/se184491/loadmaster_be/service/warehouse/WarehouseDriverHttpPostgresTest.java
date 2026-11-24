@@ -11,7 +11,6 @@ import fu.se184491.loadmaster_be.exception.GlobalExceptionHandler;
 import fu.se184491.loadmaster_be.helpers.CurrentUserService;
 import fu.se184491.loadmaster_be.repository.optimization.*;
 import fu.se184491.loadmaster_be.repository.trip.*;
-import fu.se184491.loadmaster_be.repository.pickup.PickupRequestPackageRepository;
 import fu.se184491.loadmaster_be.service.warehouse.Impl.*;
 import fu.se184491.loadmaster_be.service.driver.Impl.*;
 import fu.se184491.loadmaster_be.service.trip.*;
@@ -19,7 +18,6 @@ import fu.se184491.loadmaster_be.service.monitoring.*;
 import fu.se184491.loadmaster_be.service.optimization.*;
 import fu.se184491.loadmaster_be.service.optimization.Impl.LoadPlanQueryServiceImpl;
 import fu.se184491.loadmaster_be.service.optimization.manual.StopZoneResolver;
-import fu.se184491.loadmaster_be.service.pickup.PickupDriverService;
 import fu.se184491.loadmaster_be.security.TestJwtSupport;
 import jakarta.persistence.EntityManagerFactory;
 import org.apache.catalina.startup.Tomcat;
@@ -112,8 +110,6 @@ class WarehouseDriverHttpPostgresTest {
             when(qr.decrypt(any())).thenAnswer(a->a.getArgument(0));
             return qr;
         }
-        @Bean PickupRequestPackageRepository pickupPackages(){return mock(PickupRequestPackageRepository.class);}
-        @Bean PickupDriverService pickups(){return mock(PickupDriverService.class);}
         @Bean GpsTrackingService gps(){return mock(GpsTrackingService.class);}
         @Bean TripExceptionService tripExceptions(){return mock(TripExceptionService.class);}
         @Bean EtaCalculationService eta(){return mock(EtaCalculationService.class);}
