@@ -149,7 +149,9 @@ public class MonitoringTool implements AssistantTool {
             trễ hạn dự kiến), số sự cố chưa xử lý (openExceptions, gồm cả sự cố đã chuyển quản lý) và đã chuyển quản \
             lý (escalatedExceptions), và vị trí mới nhất (nguồn GPS hay mô phỏng, lúc ghi) cho tối đa 10 chuyến. \
             Chuyến cần chú ý đứng trước. Không có toạ độ. Dùng khi hỏi xe nào đang chạy, chuyến nào có sự cố hay \
-            nguy cơ trễ; hỏi chi tiết một chuyến thì gọi get_trip_monitoring.""")
+            nguy cơ trễ; hỏi chi tiết một chuyến thì gọi get_trip_monitoring. Công cụ này chỉ đếm sự cố: có chuyến \
+            mang sự cố chưa xử lý thì gọi tiếp get_trip_monitoring cho chuyến đó để nói sự cố gì, ở đâu, chậm bao \
+            lâu.""")
     public ToolPage<TripRow> getMonitoringOverview() {
         Long companyId = currentUser.getCurrentCompanyId();
         MonitoringBoardResponse board = monitoring.getDashboard(companyId);
