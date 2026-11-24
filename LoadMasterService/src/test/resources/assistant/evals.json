@@ -187,7 +187,7 @@
       "message": "Lương tháng 11/2026 của tôi được bao nhiêu?",
       "mustCallTool": ["get_my_warehouse_payroll"],
       "mustNotCallTool": ["request_human_support"],
-      "mustContainAny": ["chưa chốt", "chưa tính", "chưa có"]
+      "mustContainAny": ["chưa chốt", "chưa được chốt", "chưa tính", "chưa có"]
     },
     {
       "id": "A-W6", "group": "A-lương", "role": "WAREHOUSE_WORKER",

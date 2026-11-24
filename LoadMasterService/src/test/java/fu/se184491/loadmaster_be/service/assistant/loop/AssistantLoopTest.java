@@ -57,7 +57,7 @@ class AssistantLoopTest {
     }
 
     @Test
-    void textWrittenBeforeAToolCallIsKeptAheadOfTheFinalText() {
+    void answerWrittenWithALinkIsKeptAndTheLinkEchoAfterItIsDropped() {
         FakeTool link = FakeTool.returning("suggest_link", "{\"status\":\"ADDED\"}");
         model.textThenToolCall("Gói Pro giá 3.500.000 đ mỗi tháng.", "suggest_link", "{\"target\":\"PRICING\"}", 1000, 40)
                 .textThenToolCall("  ", "suggest_link", "{\"target\":\"PRICING\"}", 1000, 5)
@@ -65,8 +65,17 @@ class AssistantLoopTest {
 
         LoopResult result = run(List.of(link));
 
-        assertThat(result.text()).isEqualTo("Gói Pro giá 3.500.000 đ mỗi tháng.\n\nBạn xem thêm ở Bảng giá.");
+        assertThat(result.text()).isEqualTo("Gói Pro giá 3.500.000 đ mỗi tháng.");
         assertThat(link.calls()).hasSize(2);
+    }
+
+    @Test
+    void textWrittenAfterALinkRoundWithoutAnAnswerIsKept() {
+        FakeTool link = FakeTool.returning("suggest_link", "{\"status\":\"ADDED\"}");
+        model.textThenToolCall("", "suggest_link", "{\"target\":\"PRICING\"}", 1000, 5)
+                .reply("Gói Pro giá 3.500.000 đ mỗi tháng.", 1100, 20);
+
+        assertThat(run(List.of(link)).text()).isEqualTo("Gói Pro giá 3.500.000 đ mỗi tháng.");
     }
 
     @Test
@@ -77,8 +86,7 @@ class AssistantLoopTest {
                 .textThenToolCall("Chuyến đã lập kế hoạch.", "suggest_link", "{\"target\":\"TRIP\"}", 1100, 20)
                 .reply("Bạn mở chuyến ở liên kết bên dưới.", 1200, 10);
 
-        assertThat(run(List.of(getTrip, link)).text())
-                .isEqualTo("Chuyến đã lập kế hoạch.\n\nBạn mở chuyến ở liên kết bên dưới.");
+        assertThat(run(List.of(getTrip, link)).text()).isEqualTo("Chuyến đã lập kế hoạch.");
     }
 
     @Test
