@@ -6,6 +6,7 @@ import fu.se184491.loadmaster_be.dto.request.assistant.AssistantMessageRequest;
 import fu.se184491.loadmaster_be.dto.request.assistant.RequirementDraftRequest;
 import fu.se184491.loadmaster_be.dto.response.assistant.AssistantBriefingResponse;
 import fu.se184491.loadmaster_be.dto.response.assistant.AssistantConversationResponse;
+import fu.se184491.loadmaster_be.dto.response.assistant.AssistantRouteStatsResponse;
 import fu.se184491.loadmaster_be.dto.response.assistant.RequirementDraftResponse;
 import fu.se184491.loadmaster_be.service.assistant.AssistantCallerResolver;
 import fu.se184491.loadmaster_be.service.assistant.AssistantService;
@@ -15,8 +16,10 @@ import fu.se184491.loadmaster_be.service.assistant.model.AssistantAskCommand;
 import fu.se184491.loadmaster_be.service.assistant.model.AssistantReply;
 import fu.se184491.loadmaster_be.service.assistant.model.PageContext;
 import fu.se184491.loadmaster_be.service.assistant.model.ViewerContext;
+import fu.se184491.loadmaster_be.service.assistant.stats.RouteStatsService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -26,12 +29,14 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.time.LocalDate;
+
 /**
  * Trợ lý trong ứng dụng, mọi vai trò đã đăng nhập. Người hỏi luôn đọc từ token; công ty bị khoá gói thì bộ lọc chặn
  * trước khi tới đây.
  *
  * <p>POST /api/assistant/messages · GET /api/assistant/conversations/{id} · POST /api/assistant/requirement-draft
- * · GET /api/assistant/briefing
+ * · GET /api/assistant/briefing · GET /api/assistant/route-stats
  */
 @RestController
 @RequestMapping("/api/assistant")
@@ -43,6 +48,7 @@ public class AssistantController {
     private final AssistantCallerResolver callerResolver;
     private final RequirementDraftService requirementDraftService;
     private final BriefingService briefingService;
+    private final RouteStatsService routeStatsService;
 
     // POST /api/assistant/messages
     @PostMapping("/messages")
@@ -78,5 +84,17 @@ public class AssistantController {
     @PreAuthorize("hasAnyRole('DISPATCHER', 'MANAGER')")
     public ApiResponse<AssistantBriefingResponse> briefing(@RequestParam(required = false) String locale) {
         return ApiResponse.success(briefingService.briefing(callerResolver.current(), locale));
+    }
+
+    // GET /api/assistant/route-stats?from=&to=
+    // Bộ đếm xu hướng của trợ lý trang công khai, cho hai vai trò nền tảng. Mặc định 30 ngày tới hôm nay; tối đa 90 ngày.
+    @GetMapping("/route-stats")
+    @PreAuthorize("hasAnyRole('SYSTEM_ADMIN', 'SYSTEM_MANAGER')")
+    public ApiResponse<AssistantRouteStatsResponse> routeStats(
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to) {
+        LocalDate end = to != null ? to : routeStatsService.today();
+        LocalDate start = from != null ? from : end.minusDays(29);
+        return ApiResponse.success(routeStatsService.stats(start, end));
     }
 }

@@ -175,7 +175,8 @@ class AssistantLabelsTest {
     private static String read(String path) throws IOException {
         try (InputStream in = AssistantLabelsTest.class.getClassLoader().getResourceAsStream(path)) {
             assertThat(in).as(path).isNotNull();
-            return new String(in.readAllBytes(), StandardCharsets.UTF_8);
+            // Checkout trên Windows (core.autocrlf) đổi file thành CRLF: bỏ CR để phép khớp từng dòng không trượt
+            return new String(in.readAllBytes(), StandardCharsets.UTF_8).replace("\r", "");
         }
     }
 }

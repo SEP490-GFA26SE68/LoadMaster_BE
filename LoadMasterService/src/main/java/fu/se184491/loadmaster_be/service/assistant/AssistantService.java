@@ -4,6 +4,7 @@ import fu.se184491.loadmaster_be.config.assistant.AssistantModelConfig;
 import fu.se184491.loadmaster_be.config.assistant.AssistantProperties;
 import fu.se184491.loadmaster_be.constant.assistant.AssistantChannel;
 import fu.se184491.loadmaster_be.constant.assistant.AssistantMessageRole;
+import fu.se184491.loadmaster_be.constant.assistant.AssistantRoute;
 import fu.se184491.loadmaster_be.dto.response.assistant.AssistantConversationResponse;
 import fu.se184491.loadmaster_be.entity.assistant.AssistantConversation;
 import fu.se184491.loadmaster_be.entity.assistant.AssistantMessage;
@@ -11,6 +12,7 @@ import fu.se184491.loadmaster_be.exception.AppException;
 import fu.se184491.loadmaster_be.exception.ErrorCode;
 import fu.se184491.loadmaster_be.repository.assistant.AssistantConversationRepository;
 import fu.se184491.loadmaster_be.repository.assistant.AssistantMessageRepository;
+import fu.se184491.loadmaster_be.service.assistant.cache.GuestReplyCache;
 import fu.se184491.loadmaster_be.service.assistant.gate.AssistantBudget;
 import fu.se184491.loadmaster_be.service.assistant.gate.AssistantRateLimiter;
 import fu.se184491.loadmaster_be.service.assistant.loop.AssistantLoop;
@@ -20,10 +22,12 @@ import fu.se184491.loadmaster_be.service.assistant.model.AssistantAskCommand;
 import fu.se184491.loadmaster_be.service.assistant.model.AssistantCaller;
 import fu.se184491.loadmaster_be.service.assistant.model.AssistantReply;
 import fu.se184491.loadmaster_be.service.assistant.model.Handoff;
+import fu.se184491.loadmaster_be.service.assistant.model.TokenUsage;
 import fu.se184491.loadmaster_be.service.assistant.model.UiAction;
 import fu.se184491.loadmaster_be.service.assistant.model.ViewerContext;
 import fu.se184491.loadmaster_be.service.assistant.output.UiActionValidator;
 import fu.se184491.loadmaster_be.service.assistant.prompt.AssistantPromptBuilder;
+import fu.se184491.loadmaster_be.service.assistant.stats.RouteStatsService;
 import fu.se184491.loadmaster_be.service.assistant.tool.AssistantToolRegistry;
 import fu.se184491.loadmaster_be.service.assistant.tool.AssistantTurn;
 import fu.se184491.loadmaster_be.service.assistant.tool.ToolCallLog;
@@ -51,18 +55,30 @@ import java.util.Base64;
 import java.util.Collections;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
+import java.util.Set;
 import java.util.regex.Pattern;
 
 /**
  * Một lượt hỏi: cờ → độ dài → giới hạn lượt → ngân sách → hội thoại → mô hình → lưu. Mô hình được gọi ngoài giao dịch;
  * hội thoại mới chỉ được lưu khi mô hình trả lời được, nên lượt lỗi không để lại gì.
+ *
+ * <p>Lượt đầu của khách ở trang công khai đi qua {@link GuestReplyCache} sau giới hạn lượt: trúng đệm thì không chạm
+ * ngân sách, không gọi mô hình, vẫn mở hội thoại mới và lưu cặp hỏi / đáp. Lượt khách nào cũng được đếm vào
+ * {@link RouteStatsService} ({@code MODEL} hoặc {@code CACHED}), không kèm gì nhận diện người hỏi.
  */
 @Service
 public class AssistantService {
 
     private static final Pattern CONVERSATION_ID = Pattern.compile("^c_[A-Za-z0-9_-]{8,38}$");
     private static final Pattern PLAN_ID = Pattern.compile("^[0-9]{1,19}$");
+    /** Lý do dừng của lượt trúng đệm, chỉ dùng trong bộ nhớ. */
+    private static final String CACHED_STOP = "cached";
+    private static final Set<String> UNCACHEABLE_STOPS = Set.of("refusal", "max_tokens");
+    /** Công cụ nói rõ chủ đề (mã chủ đề trùng với bộ câu soạn sẵn của trang công khai). */
+    private static final Map<String, String> TOOL_TOPICS = Map.of("get_pricing_plans", "plans");
 
     private final ObjectProvider<ChatModel> chatModels;
     private final AssistantProperties properties;
@@ -75,6 +91,10 @@ public class AssistantService {
     private final AssistantMessageRepository messages;
     private final TransactionTemplate transactions;
     private final Clock clock;
+    /** {@code null}: không dùng đệm (test dựng tay). */
+    private final GuestReplyCache replyCache;
+    /** {@code null}: không đếm (test dựng tay). */
+    private final RouteStatsService routeStats;
     private final SecureRandom random = new SecureRandom();
 
     @Autowired
@@ -82,15 +102,27 @@ public class AssistantService {
                             AssistantProperties properties, AssistantRateLimiter rateLimiter, AssistantBudget budget,
                             AssistantPromptBuilder promptBuilder, AssistantLoop loop, AssistantToolRegistry tools,
                             AssistantConversationRepository conversations, AssistantMessageRepository messages,
-                            PlatformTransactionManager transactionManager) {
+                            PlatformTransactionManager transactionManager, GuestReplyCache replyCache,
+                            RouteStatsService routeStats) {
         this(chatModels, properties, rateLimiter, budget, promptBuilder, loop, tools, conversations, messages,
-                transactionManager, Clock.systemUTC());
+                transactionManager, Clock.systemUTC(), replyCache, routeStats);
     }
 
     AssistantService(ObjectProvider<ChatModel> chatModels, AssistantProperties properties,
                      AssistantRateLimiter rateLimiter, AssistantBudget budget, AssistantPromptBuilder promptBuilder,
                      AssistantLoop loop, AssistantToolRegistry tools, AssistantConversationRepository conversations,
                      AssistantMessageRepository messages, PlatformTransactionManager transactionManager, Clock clock) {
+        this(chatModels, properties, rateLimiter, budget, promptBuilder, loop, tools, conversations, messages,
+                transactionManager, clock, null, null);
+    }
+
+    AssistantService(ObjectProvider<ChatModel> chatModels, AssistantProperties properties,
+                     AssistantRateLimiter rateLimiter, AssistantBudget budget, AssistantPromptBuilder promptBuilder,
+                     AssistantLoop loop, AssistantToolRegistry tools, AssistantConversationRepository conversations,
+                     AssistantMessageRepository messages, PlatformTransactionManager transactionManager, Clock clock,
+                     GuestReplyCache replyCache, RouteStatsService routeStats) {
+        this.replyCache = replyCache;
+        this.routeStats = routeStats;
         this.chatModels = chatModels;
         this.properties = properties;
         this.rateLimiter = rateLimiter;
@@ -126,10 +158,19 @@ public class AssistantService {
             rateLimiter.check("ip:" + Objects.requireNonNullElse(command.clientIp(), "unknown"),
                     properties.getGuestPerHour());
         }
+        String locale = AssistantPromptBuilder.normalizeLocale(command.locale());
+        boolean guestTurn = caller == null && command.channel() == AssistantChannel.PUBLIC;
+        Optional<String> cacheKey = replyCache == null ? Optional.empty()
+                : replyCache.keyFor(command, question, locale);
+        if (cacheKey.isPresent()) {
+            Optional<GuestReplyCache.Entry> hit = replyCache.get(cacheKey.get());
+            if (hit.isPresent()) {
+                return replay(command, question, locale, hit.get());
+            }
+        }
         budget.ensureAvailable();
 
         AssistantConversation conversation = ownedConversation(command);
-        String locale = AssistantPromptBuilder.normalizeLocale(command.locale());
         Instant askedAt = clock.instant();
         List<AssistantMessage> latest = latestMessages(conversation);
         Prompt prompt = new Prompt(promptMessages(command, latest, question, locale, askedAt));
@@ -157,8 +198,55 @@ public class AssistantService {
         List<UiAction> uiActions = UiActionValidator.filter(turn.uiActions(), turn.loadedViewerPlan().orElse(null));
         AssistantConversation saved = transactions.execute(status ->
                 save(command, conversation, question, result, modelName, askedAt, toolLog, turn, uiActions));
+        String topicId = guestTurn ? topicOf(toolLog) : null;
+        if (guestTurn && routeStats != null) {
+            routeStats.record(AssistantRoute.MODEL, topicId, locale);
+        }
+        if (cacheKey.isPresent() && cacheable(result, turn, toolLog, uiActions)) {
+            replyCache.put(cacheKey.get(), new GuestReplyCache.Entry(result.text(), turn.links(), modelName, topicId));
+        }
         return new AssistantReply(Objects.requireNonNull(saved).getPublicId(), result.text(), uiActions, turn.links(),
                 new Handoff(turn.handoffOffered(), turn.reportedTicketCode()), result.usage());
+    }
+
+    /**
+     * Lượt trúng đệm: không ngân sách, không mô hình. Vẫn mở hội thoại mới và lưu cặp hỏi / đáp (token 0) để câu hỏi tiếp
+     * theo có ngữ cảnh như lượt gốc.
+     */
+    private AssistantReply replay(AssistantAskCommand command, String question, String locale,
+                                  GuestReplyCache.Entry cached) {
+        Instant askedAt = clock.instant();
+        LoopResult result = new LoopResult(cached.text(), TokenUsage.ZERO, CACHED_STOP, cached.model());
+        AssistantTurn turn = new AssistantTurn(ToolScope.ofGuest(), locale, null, false, null, List.of());
+        AssistantConversation saved = transactions.execute(status -> save(command, null, question, result,
+                cached.model(), askedAt, new ToolCallLog(), turn, List.of()));
+        if (routeStats != null) {
+            routeStats.record(AssistantRoute.CACHED, cached.topicId(), locale);
+        }
+        return new AssistantReply(Objects.requireNonNull(saved).getPublicId(), cached.text(), List.of(),
+                cached.links(), Handoff.none(), TokenUsage.ZERO);
+    }
+
+    /**
+     * Chỉ đệm câu trả lời trọn vẹn của lượt bình thường: không từ chối, không bị cắt vì {@code max_tokens}, không mời
+     * chuyển nhân viên hay tạo yêu cầu hỗ trợ, không lệnh khung 3D, không công cụ nào lỗi.
+     */
+    private static boolean cacheable(LoopResult result, AssistantTurn turn, ToolCallLog toolLog,
+                                     List<UiAction> uiActions) {
+        return StringUtils.hasText(result.text()) && !UNCACHEABLE_STOPS.contains(result.stopReason())
+                && !turn.handoffOffered() && turn.reportedTicketCode() == null && uiActions.isEmpty()
+                && toolLog.entries().stream().allMatch(ToolCallLog.Entry::ok);
+    }
+
+    /** Chủ đề suy được không tốn gì: từ công cụ mô hình đã gọi. Không có thì {@code null}. */
+    private static String topicOf(ToolCallLog toolLog) {
+        for (String name : toolLog.toolNames()) {
+            String topic = TOOL_TOPICS.get(name);
+            if (topic != null) {
+                return topic;
+            }
+        }
+        return null;
     }
 
     /** Đọc lại một hội thoại trong ứng dụng của chính người gọi; của người khác, của khách hay mã sai dạng thì như không có. */

@@ -34,8 +34,9 @@ import static org.mockito.Mockito.when;
 /**
  * Hai endpoint gọi qua chuỗi bảo mật thật (JWT, bộ lọc khoá gói, @PreAuthorize), giới hạn lượt và DB thật (H2);
  * chỉ mô hình là giả. Người đăng nhập và gói của công ty do test đặt. Hai lớp test dùng chung một ngữ cảnh Spring.
+ * Bộ nhớ đệm câu trả lời của khách tắt sẵn (các lớp hỏi lại cùng một câu và đếm lần gọi mô hình); lớp cần nó tự bật.
  */
-@SpringBootTest(properties = "assistant.enabled=true")
+@SpringBootTest(properties = {"assistant.enabled=true", "assistant.reply-cache.enabled=false"})
 @AutoConfigureMockMvc
 @Import(AssistantWebTestBase.FakeModelConfig.class)
 abstract class AssistantWebTestBase {
