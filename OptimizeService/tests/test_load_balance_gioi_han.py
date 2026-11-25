@@ -119,3 +119,39 @@ def test_unbounded_search_does_not_cap_unload_checks(monkeypatch):
     monkeypatch.setattr(lbs_module, "validate_plan", spy)
     search._consider(initial)
     assert budgets == [None]
+
+
+def test_bounded_search_checks_the_initial_plan_without_the_unload_cap(monkeypatch, bounded):
+    """Phương án lớn hợp lệ cần lâu hơn trần để chứng minh dỡ được — không được loại nó chỉ vì hết trần (NB, M8a)."""
+    monkeypatch.setattr(settings, "LOAD_BALANCE_UNLOAD_CHECK_SEC", 0.0)  # trần 0 s: lần kiểm nào bị trần đều trượt
+    request = problem([package("A")], time_limit_sec=40)
+    initial = [placement(request.packages[0], 290, 105)]
+    budgets = []
+    real = lbs_module.validate_plan
+
+    def spy(*args, **kwargs):
+        budgets.append(kwargs.get("unload_budget_sec"))
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(lbs_module, "validate_plan", spy)
+    result = LoadBalanceSearch(request, time.monotonic() + 100).improve(initial, {})
+    assert [p.package_id for p in result] == ["A"]
+    assert budgets[0] is None
+
+
+def test_bounded_search_budget_starts_after_the_initial_check(monkeypatch, bounded):
+    request, initial = _partial_start()
+    real = lbs_module.validate_plan
+
+    def slow_initial(*args, **kwargs):
+        if kwargs.get("unload_budget_sec") is None:
+            time.sleep(0.3)
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(lbs_module, "validate_plan", slow_initial)
+    monkeypatch.setattr(settings, "LOAD_BALANCE_BUDGET_RATIO", 0.01)  # 0,4 s
+    seen = []
+    monkeypatch.setattr(LoadBalanceSearch, "_repack", lambda self, *args: seen.append(self.deadline) or [])
+    started = time.monotonic()
+    LoadBalanceSearch(request, time.monotonic() + 100).improve(initial, {})
+    assert seen and min(seen) >= started + 0.3 + 0.4 - 0.05

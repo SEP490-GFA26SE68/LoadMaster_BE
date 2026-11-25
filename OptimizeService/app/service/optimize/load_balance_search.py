@@ -98,14 +98,17 @@ class LoadBalanceSearch:
     def _bounded():
         return bool(settings.LOAD_BALANCE_BOUNDED_ENABLED)
 
-    def _validate(self, placements, *, balance=True):
-        budget = float(settings.LOAD_BALANCE_UNLOAD_CHECK_SEC) if self._bounded() else None
+    def _validate(self, placements, *, balance=True, capped=True):
+        budget = float(settings.LOAD_BALANCE_UNLOAD_CHECK_SEC) if capped and self._bounded() else None
         return validate_plan(placements, self.vehicle, self.packages, self.deadline,
                              balance=balance, unload_budget_sec=budget)
 
-    def _consider(self, placements):
-        """Only fully validated plans may be ranked or retained, including partial plans."""
-        codes = self._validate(placements)
+    def _consider(self, placements, *, capped=True):
+        """Only fully validated plans may be ranked or retained, including partial plans.
+
+        capped=False: no per-check unload cap (used for the constructor's own plan, which may be large).
+        """
+        codes = self._validate(placements, capped=capped)
         if codes:
             self.last_violations = codes
             return False
@@ -162,19 +165,22 @@ class LoadBalanceSearch:
 
     def improve(self, initial, zones):
         bounded = self._bounded()
-        if bounded:
-            # Own share of the job; the pass deadline still applies (min).
-            budget = max(float(self.problem.time_limit_sec or 60), 1) * float(settings.LOAD_BALANCE_BUDGET_RATIO)
-            self.deadline = min(self.deadline, time.monotonic() + max(0.0, budget))
         patience = max(1, int(settings.LOAD_BALANCE_PATIENCE)) if bounded else None
         if time.monotonic() >= self.deadline:
             self._log("time budget exhausted before improvement", ["OPTIMIZATION_TIME_LIMIT_REACHED"])
             return self.best_plan_copy()
-        initial_valid = self._consider(initial)
+        # The constructor's plan is checked in full against the pass deadline, never under the per-check unload cap:
+        # a large valid plan can need far longer than the cap to prove unloadable, and rejecting it for time alone
+        # would throw away the best plan of the pass.
+        initial_valid = self._consider(initial, capped=False)
         initial_codes = self.last_violations
         if initial_valid and len(initial) == len(self.packages):
             self._log("initial plan already satisfies all hard constraints", [])
             return initial
+        if bounded:
+            # Own share of the job for the search itself (starts after the initial check); pass deadline still applies.
+            budget = max(float(self.problem.time_limit_sec or 60), 1) * float(settings.LOAD_BALANCE_BUDGET_RATIO)
+            self.deadline = min(self.deadline, time.monotonic() + max(0.0, budget))
 
         # Rigid translation retains geometry, but the entire trial must still be validated.
         initial_cog = center_of_mass(initial, self.packages) if initial else None
