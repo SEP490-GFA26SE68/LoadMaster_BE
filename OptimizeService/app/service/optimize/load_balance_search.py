@@ -98,17 +98,24 @@ class LoadBalanceSearch:
     def _bounded():
         return bool(settings.LOAD_BALANCE_BOUNDED_ENABLED)
 
-    def _validate(self, placements, *, balance=True, capped=True):
-        budget = float(settings.LOAD_BALANCE_UNLOAD_CHECK_SEC) if capped and self._bounded() else None
+    def _validate(self, placements, *, balance=True, unload_budget_sec=None):
+        if unload_budget_sec is None and self._bounded():
+            unload_budget_sec = float(settings.LOAD_BALANCE_UNLOAD_CHECK_SEC)
         return validate_plan(placements, self.vehicle, self.packages, self.deadline,
-                             balance=balance, unload_budget_sec=budget)
+                             balance=balance, unload_budget_sec=unload_budget_sec)
 
-    def _consider(self, placements, *, capped=True):
-        """Only fully validated plans may be ranked or retained, including partial plans.
+    def _initial_unload_budget(self):
+        """Bounded mode: the constructor's plan may use a share of the pass time left (never less than the per-check
+        cap). A large valid plan can need tens of seconds to prove unloadable, but so can an invalid one to prove it
+        is not — an uncapped check would leave no time to repack."""
+        if not self._bounded():
+            return None
+        left = max(0.0, self.deadline - time.monotonic())
+        return max(float(settings.LOAD_BALANCE_UNLOAD_CHECK_SEC), left * float(settings.LOAD_BALANCE_INITIAL_CHECK_RATIO))
 
-        capped=False: no per-check unload cap (used for the constructor's own plan, which may be large).
-        """
-        codes = self._validate(placements, capped=capped)
+    def _consider(self, placements, *, unload_budget_sec=None):
+        """Only fully validated plans may be ranked or retained, including partial plans."""
+        codes = self._validate(placements, unload_budget_sec=unload_budget_sec)
         if codes:
             self.last_violations = codes
             return False
@@ -169,10 +176,7 @@ class LoadBalanceSearch:
         if time.monotonic() >= self.deadline:
             self._log("time budget exhausted before improvement", ["OPTIMIZATION_TIME_LIMIT_REACHED"])
             return self.best_plan_copy()
-        # The constructor's plan is checked in full against the pass deadline, never under the per-check unload cap:
-        # a large valid plan can need far longer than the cap to prove unloadable, and rejecting it for time alone
-        # would throw away the best plan of the pass.
-        initial_valid = self._consider(initial, capped=False)
+        initial_valid = self._consider(initial, unload_budget_sec=self._initial_unload_budget())
         initial_codes = self.last_violations
         if initial_valid and len(initial) == len(self.packages):
             self._log("initial plan already satisfies all hard constraints", [])

@@ -121,9 +121,11 @@ def test_unbounded_search_does_not_cap_unload_checks(monkeypatch):
     assert budgets == [None]
 
 
-def test_bounded_search_checks_the_initial_plan_without_the_unload_cap(monkeypatch, bounded):
-    """Phương án lớn hợp lệ cần lâu hơn trần để chứng minh dỡ được — không được loại nó chỉ vì hết trần (NB, M8a)."""
+def test_bounded_search_gives_the_initial_plan_a_share_of_the_time_left(monkeypatch, bounded):
+    """Phương án lớn hợp lệ cần lâu hơn trần mỗi lần kiểm để chứng minh dỡ được — không được loại nó chỉ vì hết trần
+    (NB, M8a); nhưng cũng không được để nó ăn hết lượt (phương án sai cũng có thể cần rất lâu mới chứng minh là sai)."""
     monkeypatch.setattr(settings, "LOAD_BALANCE_UNLOAD_CHECK_SEC", 0.0)  # trần 0 s: lần kiểm nào bị trần đều trượt
+    monkeypatch.setattr(settings, "LOAD_BALANCE_INITIAL_CHECK_RATIO", 0.5)
     request = problem([package("A")], time_limit_sec=40)
     initial = [placement(request.packages[0], 290, 105)]
     budgets = []
@@ -136,7 +138,7 @@ def test_bounded_search_checks_the_initial_plan_without_the_unload_cap(monkeypat
     monkeypatch.setattr(lbs_module, "validate_plan", spy)
     result = LoadBalanceSearch(request, time.monotonic() + 100).improve(initial, {})
     assert [p.package_id for p in result] == ["A"]
-    assert budgets[0] is None
+    assert budgets[0] == pytest.approx(50, abs=1)
 
 
 def test_bounded_search_budget_starts_after_the_initial_check(monkeypatch, bounded):
@@ -144,7 +146,7 @@ def test_bounded_search_budget_starts_after_the_initial_check(monkeypatch, bound
     real = lbs_module.validate_plan
 
     def slow_initial(*args, **kwargs):
-        if kwargs.get("unload_budget_sec") is None:
+        if kwargs.get("unload_budget_sec", 0) > 10:  # chỉ lần kiểm phương án ban đầu
             time.sleep(0.3)
         return real(*args, **kwargs)
 
@@ -155,3 +157,8 @@ def test_bounded_search_budget_starts_after_the_initial_check(monkeypatch, bound
     started = time.monotonic()
     LoadBalanceSearch(request, time.monotonic() + 100).improve(initial, {})
     assert seen and min(seen) >= started + 0.3 + 0.4 - 0.05
+
+
+def test_initial_check_ratio_default():
+    from app.config.settings import Settings
+    assert Settings(_env_file=None, KEYCLOAK_CLIENT_SECRET="x").LOAD_BALANCE_INITIAL_CHECK_RATIO == 0.5

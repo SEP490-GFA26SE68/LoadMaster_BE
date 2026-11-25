@@ -69,6 +69,9 @@ class Settings(BaseSettings):
     LOAD_BALANCE_BUDGET_RATIO: float = 0.25
     LOAD_BALANCE_PATIENCE: int = 4
     LOAD_BALANCE_UNLOAD_CHECK_SEC: float = 3.0
+    # Phương án của bộ dựng được kiểm dỡ hàng trong tối đa INITIAL_CHECK_RATIO × thời gian còn lại của lượt
+    # (không dưới UNLOAD_CHECK_SEC): đủ cho phương án lớn hợp lệ, mà phương án sai khó chứng minh không ăn hết lượt.
+    LOAD_BALANCE_INITIAL_CHECK_RATIO: float = 0.5
 
     LOADMASTER_SERVICE_URL: str = "http://localhost:8080"
     REDIS_URL: str = "redis://localhost:6379"
