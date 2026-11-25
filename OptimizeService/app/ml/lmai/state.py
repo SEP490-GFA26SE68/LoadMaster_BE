@@ -10,6 +10,7 @@ ngược lên). Luật này chỉ loại bớt vài chỗ đặt hiếm gặp, �
 from __future__ import annotations
 
 import math
+import os
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Sequence, Tuple
 
@@ -19,6 +20,17 @@ from .problem import Package, Placement, Problem, Vehicle
 
 EPS = 1e-4
 SUPPORT_RATIO = 0.70
+# P18 (KE-HOACH-TOI-UU M2 mục 3, thí nghiệm): cho đặt kiện ngoài khung cửa (theo Y). Dỡ được nhờ dịch ngang vào khung
+# rồi kéo +X — như UnloadFeasibilityValidator của backend (b0f79a4). Tắt (mặc định) = chỉ đặt trong khung cửa như cũ.
+OUTSIDE_DOOR_FRAME = os.environ.get("LMAI_NGOAI_KHUNG_CUA", "0") == "1"
+
+
+def exit_corridor(y, w, dy0: float, dy1: float):
+    """Dải Y mà kiện [y, y + w] quét qua khi dỡ: tự nó nếu đã trong khung cửa; ngoài khung thì thêm đoạn dịch ngang tới
+    vị trí gần nhất trong khung (một trong các đích Y của validator). Chạy được với số hoặc mảng numpy."""
+    lo = np.where(y < dy0 - EPS, y, np.minimum(y, dy1 - w))
+    hi = np.where(y < dy0 - EPS, np.maximum(y + w, dy0 + w), y + w)
+    return lo, hi
 
 
 def union_area(rects: Sequence[Tuple[float, float, float, float]]) -> float:
@@ -179,7 +191,8 @@ class LoadState:
         if points.size == 0:
             return []
         px, py, pz = points[:, 0], points[:, 1], points[:, 2]
-        ymin, ymax = v.door_y_min, v.door_y_max
+        dy0, dy1 = v.door_y_min, v.door_y_max
+        ymin, ymax = (0.0, v.inner_w) if OUTSIDE_DOOR_FRAME else (dy0, dy1)
         ztop = min(v.inner_h, v.door_h)
         ok = (px >= xlo - EPS) & (px + l <= xhi + EPS) & (py >= ymin - EPS) & (py + w <= ymax + EPS) & (pz >= -EPS) & (pz + h <= ztop + EPS)
         if not ok.any():
@@ -205,7 +218,16 @@ class LoadState:
             yz = (ovy > EPS) & (ovz > EPS)
             placed_later = sb > s   # kiện đã xếp giao sau, kiện mới giao trước
             placed_earlier = sb < s
-            bad = (placed_later & yz & (bx >= X + l - EPS)) | (placed_earlier & yz & (X >= bx + bl - EPS))
+            if OUTSIDE_DOOR_FRAME:
+                # hành lang dỡ của kiện giao trước (gồm đoạn dịch ngang vào khung cửa); kiện giao sau không được nằm
+                # trong hành lang đó ở phía cửa, hay ngay cạnh nó (cùng đoạn X) trên đường dịch ngang
+                nlo, nhi = exit_corridor(Y, w, dy0, dy1)          # kiện mới là kiện giao trước
+                blo, bhi = exit_corridor(by, bw, dy0, dy1)        # kiện đã xếp là kiện giao trước
+                in_new = (np.minimum(nhi, by + bw) - np.maximum(nlo, by) > EPS) & (ovz > EPS)
+                in_old = (np.minimum(bhi, Y + w) - np.maximum(blo, Y) > EPS) & (ovz > EPS)
+                bad = (placed_later & in_new & ((bx >= X + l - EPS) | (ovx > EPS))) |                       (placed_earlier & in_old & ((X >= bx + bl - EPS) | (ovx > EPS)))
+            else:
+                bad = (placed_later & yz & (bx >= X + l - EPS)) | (placed_earlier & yz & (X >= bx + bl - EPS))
             bad |= placed_earlier & (ovx > EPS) & (ovy > EPS) & (np.abs(Z - (bz + bh)) <= EPS)
             keep &= ~bad.any(axis=1)
             # mặt đỡ trực tiếp
