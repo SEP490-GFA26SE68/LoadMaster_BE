@@ -221,9 +221,11 @@ class OptimizationClient:
         from app.dto.optimization.engine.rotation_contract import validate_result_rotations
         validate_result_rotations(problem, result)
         metadata = {str(p.id): p for p in problem.packages}
-        ids = [str(p.package_id) for p in result.placements] + [str(p.package_id) for p in result.unplaced]
-        if len(ids) != len(set(ids)) or set(ids) != set(metadata):
-            raise ValueError("Remote result has invalid package partition")
+        for plan_result in [result, *[candidate.result for candidate in result.candidates]]:
+            ids = ([str(p.package_id) for p in plan_result.placements]
+                   + [str(p.package_id) for p in plan_result.unplaced])
+            if len(ids) != len(set(ids)) or set(ids) != set(metadata):
+                raise ValueError("Remote result has invalid package partition")
         for placements in [result.placements, *[candidate.result.placements for candidate in result.candidates]]:
             violations = validate_plan(placements, problem.vehicle, metadata,
                                        time.monotonic() + max(float(problem.time_limit_sec or 60), 1))
