@@ -172,9 +172,9 @@ class TestSolveCandidates:
         calls = []
         original = client.solve_in_process
 
-        def counting(problem, strategy=LayoutStrategy.CENTER_FIRST):
+        def counting(problem, strategy=LayoutStrategy.CENTER_FIRST, **kwargs):
             calls.append(strategy)
-            return original(problem, strategy=strategy)
+            return original(problem, strategy=strategy, **kwargs)
 
         monkeypatch.setattr(client, "solve_in_process", counting)
         ticks = __import__("itertools").chain([0.0], __import__("itertools").repeat(999.0))  # lúc bắt đầu, rồi đã quá giờ
