@@ -1,6 +1,7 @@
 import logging
 
 from fastapi import FastAPI, Request
+from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
 from starlette.exceptions import HTTPException as StarletteHTTPException
@@ -56,7 +57,8 @@ def register_exception_handlers(app: FastAPI):
             content=ApiResponse.error(
                 code="VALIDATION_ERROR",
                 message="Dữ liệu đầu vào không hợp lệ",
-                errors=exc.errors(),
+                # exc.errors() có ctx.error là đối tượng ValueError (từ validator tự viết) -> không ra JSON được, 500.
+                errors=jsonable_encoder(exc.errors()),
             ).model_dump(),
         )
 
