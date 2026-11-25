@@ -100,8 +100,15 @@ def test_ultimate_solver_loads_lumo(monkeypatch):
         return scorer
 
     monkeypatch.setattr("app.service.optimize.optimization_client.get_lumo_scorer", fake_get)
+    # Xe khai đủ cửa + 6 thông số trục: thiếu cấu hình xe thì kiểm đầu vào chặn trước khi nạp Lumo.
     problem = ProblemRequest(
-        vehicle=VehicleData(inner_l=6000.0, inner_w=2400.0, inner_h=2400.0, max_payload_kg=5000.0),
+        vehicle=VehicleData(
+            inner_l=6000.0, inner_w=2400.0, inner_h=2400.0, max_payload_kg=5000.0,
+            door_w=2400.0, door_h=2400.0,
+            front_axle_x=-100.0, rear_axle_x=4500.0,
+            front_axle_limit_kg=6000.0, rear_axle_limit_kg=10000.0,
+            empty_front_axle_load_kg=2000.0, empty_rear_axle_load_kg=2000.0,
+        ),
         packages=[
             PackageData(id=uuid.uuid4(), l=1000.0, w=800.0, h=600.0, weight=50.0, allowed_rotations=[0]),
         ],
