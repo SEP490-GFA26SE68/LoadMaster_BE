@@ -182,3 +182,16 @@ def test_empty_whitelist_keeps_other_packages_as_safe_partial():
     assert [p.package_id for p in result.placements] == ['A']
     assert [p.package_id for p in result.unplaced] == ['B']
     assert_safe(result,req)
+
+
+@pytest.mark.parametrize('value', [6, -1, 9, 'abc', 'LWH', 1.5, True, '01', None])
+def test_pinned_rotation_outside_whitelist_is_rejected(value):
+    from app.dto.optimization.engine.problem_request import PinnedData
+    with pytest.raises(ValidationError):
+        PinnedData(package_id='A', pos_x=0, pos_y=0, pos_z=0, rotation_type=value)
+
+
+@pytest.mark.parametrize('value, code', [(0, 0), (5, 5), ('3', 3)])
+def test_pinned_rotation_accepts_codes_and_canonical_strings(value, code):
+    from app.dto.optimization.engine.problem_request import PinnedData
+    assert PinnedData(package_id='A', pos_x=0, pos_y=0, pos_z=0, rotation_type=value).rotation_type == code

@@ -145,6 +145,21 @@ class TestRerunApi:
         response = TestClient(app).post("/api/v1/optimize/rerun", json={"tripId": 5})
         assert response.status_code == 401
 
+    def test_rerun_rejects_pinned_rotation_outside_whitelist(self):
+        runner = FakeRunner()
+        app.dependency_overrides[get_db] = lambda: None
+        app.dependency_overrides[require_optimization_service] = lambda: SERVICE_CLAIMS
+        app.dependency_overrides[rerun_router.get_runner] = lambda: runner
+        app.dependency_overrides[rerun_router.get_solver] = lambda: OptimizationClient(engine_url="")
+
+        response = TestClient(app).post("/api/v1/optimize/rerun", json={
+            "tripId": 5,
+            "pinnedPlacements": [{"packageId": 2, "posX": 250, "posY": 70, "posZ": 0, "rotationType": 9}],
+        })
+
+        assert response.status_code == 422
+        assert runner.calls == []
+
     def test_rerun_builds_from_trip_keeps_pins_and_returns_java_fields(self):
         runner = FakeRunner()
         app.dependency_overrides[get_db] = lambda: None

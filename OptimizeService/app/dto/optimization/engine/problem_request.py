@@ -104,7 +104,6 @@ class PinnedData(BaseModel):
     pos_y: float
     pos_z: float
     rotation_type: RotationCode = 0
-    rotation_type: Union[int, str] = 0
     # Kích thước đã áp hướng xoay (cm). Vắng thì suy từ kích thước kiện và rotation_type.
     packed_l: Optional[float] = None
     packed_w: Optional[float] = None
