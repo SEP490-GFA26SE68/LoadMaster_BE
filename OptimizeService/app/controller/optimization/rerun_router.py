@@ -19,6 +19,7 @@ from app.config.database import get_db
 from app.dto.api_response import ApiResponse
 from app.dto.optimization.engine.engine_response import EngineOptimizationResponse
 from app.dto.optimization.engine.problem_request import PinnedData
+from app.dto.optimization.engine.rotation_contract import RotationCode
 from app.service.auth.auth_dependency import require_optimization_service
 from app.service.optimize.algorithm_tier_service import AlgorithmTierService
 from app.service.optimize.async_optimization_runner import AsyncOptimizationRunner
@@ -40,7 +41,7 @@ class PinnedPlacementIn(_CamelModel):
     packed_length: Optional[float] = None
     packed_width: Optional[float] = None
     packed_height: Optional[float] = None
-    rotation_type: int = 0
+    rotation_type: RotationCode = 0  # 0..5; sai thì trả 422 ngay ở cửa vào
     step_sequence: Optional[int] = None
 
 
