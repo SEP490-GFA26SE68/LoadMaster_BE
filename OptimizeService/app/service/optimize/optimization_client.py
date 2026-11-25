@@ -100,7 +100,7 @@ class OptimizationClient:
         for strategy in layout_strategies_for(problem.vehicle):
             if layouts and time.monotonic() >= deadline:
                 break
-            layout = self.solve_in_process(problem, strategy=strategy, **ep_kwargs)
+            layout = self.solve_in_process(problem, strategy=strategy, job_deadline=deadline, **ep_kwargs)
             layout = layout.model_copy(update={"algorithm_name": PlanAlgorithm.EP_DBLF.value})
             layouts.append(layout)
             ep_runs.append((strategy, layout))
@@ -163,7 +163,7 @@ class OptimizationClient:
                 logger.warning("EP_LUMO_R1_1 skipped: %s", exc)
             if scorer is not None:
                 layout = self.solve_in_process(problem, strategy=LayoutStrategy.CENTER_FIRST,
-                                               use_lumo_scorer=True, quiet=True)
+                                               use_lumo_scorer=True, quiet=True, job_deadline=deadline)
                 layouts.append(layout.model_copy(update={"algorithm_name": P.EP_LUMO_R1_1.value}))
                 tried.append(P.EP_LUMO_R1_1.value)
             else:
@@ -241,6 +241,7 @@ class OptimizationClient:
         orientation_pref: Optional[dict[str, int]] = None,
         use_lumo_scorer: Optional[bool] = None,
         quiet: bool = False,
+        job_deadline: Optional[float] = None,
     ) -> EngineOptimizationResponse:
         """
         Nâng cấp S5b-04: Zone-aware 3D Packing Heuristic với Extreme Points (EP)
@@ -257,9 +258,13 @@ class OptimizationClient:
                             Vắng hoặc âm: không ưu tiên.
         use_lumo_scorer: True thì Lumo-R1.1 chọn trong các chỗ đặt hợp lệ (nếu nạp được trọng số);
         None giữ cách cũ (theo algorithm_name của job). quiet: tắt bản ghi gỡ lỗi trước HC-11 / HC-12.
+        job_deadline: hạn chót của cả job (time.monotonic()). Chỉ có hiệu lực khi bật
+        OPTIMIZATION_SHARED_DEADLINE_ENABLED; tắt thì lượt này nhận hạn riêng = time_limit_sec như cũ.
         """
         start_time = time.time()
         deadline = time.monotonic() + max(float(problem.time_limit_sec or 60), 1)
+        if job_deadline is not None and settings.OPTIMIZATION_SHARED_DEADLINE_ENABLED:
+            deadline = min(deadline, job_deadline)
         ids = [str(p.id) for p in problem.packages]
         if len(ids) != len(set(ids)): raise ValueError("Duplicate package identity")
         stop_ids = [str(stop.id) for stop in problem.stops]

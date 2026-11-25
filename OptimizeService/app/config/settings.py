@@ -59,6 +59,10 @@ class Settings(BaseSettings):
     # Ngân sách GA + SA được nới tới đủ chừng này lần giải mã khi chuyến lớn (giải mã chậm).
     METAHEURISTIC_MIN_DECODES: int = 5
 
+    # Một hạn chót cho cả job: mọi lượt EP, lần giải mã GA / SA và bước sửa cân bằng dùng chung hạn của request
+    # (tắt: mỗi lượt EP nhận hạn mới = time_limit_sec, job có thể chạy gần gấp đôi giới hạn).
+    OPTIMIZATION_SHARED_DEADLINE_ENABLED: bool = False
+
     LOADMASTER_SERVICE_URL: str = "http://localhost:8080"
     REDIS_URL: str = "redis://localhost:6379"
 
