@@ -15,6 +15,10 @@ from app.service.optimize.optimization_job_service import JobAlreadyFinishedErro
 logger = logging.getLogger(__name__)
 
 
+class TerminalStatusPersistenceError(RuntimeError):
+    """Terminal commit is unconfirmed; do not report success or infer refund eligibility."""
+
+
 class EngineExceptionHandler:
     """
     Handler xử lý tất cả ngoại lệ phát sinh từ Optimization Engine (S3-07).
@@ -193,7 +197,9 @@ class EngineExceptionHandler:
             # Kết quả đến muộn: update_status đã rollback phương án vừa ghi; nơi gọi quyết phần credit.
             raise
         except Exception as db_exc:
-            logger.error(f"Failed to update job status in DB for {job_uuid_str}: {db_exc}")
+            logger.error("Terminal status persistence unconfirmed: job=%s exception_type=%s",
+                         job_uuid_str, type(db_exc).__name__)
+            raise TerminalStatusPersistenceError("Terminal status persistence was not confirmed") from db_exc
 
         self._notify_status(job_uuid_str, status, computation_ms=comp_ms)
         return status

@@ -19,7 +19,7 @@ from app.dto.optimization.engine.problem_request import (
 from app.exception.app_exception import AppException
 from app.exception.error_code import ErrorCode
 from app.dto.optimization.engine.packing_profile_orientation import parse_profile_orientation
-from app.service.optimize.engine_exception_handler import EngineExceptionHandler
+from app.service.optimize.engine_exception_handler import EngineExceptionHandler, TerminalStatusPersistenceError
 from app.service.optimize.optimization_client import OptimizationClient
 from app.service.optimize.optimization_job_service import JobAlreadyFinishedError, OptimizationJobService
 
@@ -532,6 +532,17 @@ class AsyncOptimizationRunner:
             if is_credit_deducted and company_id:
                 await self._refund(company_id, job_uuid_str)
                 is_credit_deducted = False
+
+        except TerminalStatusPersistenceError:
+            # Commit may have succeeded before refresh failed. Never infer solver failure,
+            # retry execution, or refund a possibly committed result from this uncertainty.
+            if session is not None:
+                try:
+                    session.rollback()
+                except Exception as rollback_exc:
+                    logger.error("Terminal cleanup failed: job=%s exception_type=%s",
+                                 job_uuid_str, type(rollback_exc).__name__)
+            logger.error("Terminal persistence requires reconciliation: job=%s", job_uuid_str)
 
         except Exception as exc:
             logger.error(f"Error executing async optimization job {job_uuid_str}: {exc}")
