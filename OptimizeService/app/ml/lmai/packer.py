@@ -7,6 +7,7 @@ Không đặt được trong vùng thì thử cả thùng (vẫn giữ luật d�
 """
 from __future__ import annotations
 
+import os
 from collections import deque
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Tuple
@@ -16,6 +17,11 @@ import numpy as np
 from .problem import Problem
 from .state import EPS, Candidate, LoadState, OUTSIDE_DOOR_FRAME
 from .zones import Zone, compute_zones
+
+# Bộ dựng biết H13 (sau M5, 26/11/2026): luật mới + bài có kiện must_load → hai lượt: lượt 0 đặt kiện must_load của MỌI
+# vùng (vùng sâu trước) khi thùng còn trống, lượt 1 xếp phần còn lại như cũ — để hàng tràn từ vùng sâu không chiếm chỗ của
+# kiện bắt buộc ở vùng sát cửa. Bài không có must_load: y hệt trước. LMAI_H13_HAI_LUOT=0 để tắt (đo so sánh).
+H13_TWO_PASS = os.environ.get("LMAI_H13_HAI_LUOT", "1") == "1"
 
 
 @dataclass
@@ -36,6 +42,9 @@ class Packer:
         # vùng Y được đặt: khung cửa, hoặc cả bề rộng thùng khi bật thí nghiệm P18 (state.OUTSIDE_DOOR_FRAME)
         self.dy0, self.dy1 = (0.0, v.inner_w) if OUTSIDE_DOOR_FRAME else (v.door_y_min, v.door_y_max)
         self.zone_i = 0
+        # lượt 0 = chỉ kiện must_load (khi bật bộ dựng biết H13), lượt 1 = phần còn lại / mọi kiện
+        self.phase = 0 if (H13_TWO_PASS and problem.physics_v2 and any(p.must_load for p in problem.packages)) else 1
+        self.two_pass = self.phase == 0   # → result.finish đánh lại step_sequence theo thứ tự bốc (load_order)
         self.queue: deque = deque()
         self.buffer: List[int] = []
         self.unplaced: List[int] = []
@@ -50,14 +59,25 @@ class Packer:
 
     # ---------------------------------------------------------------- hàng chờ
     def _load_zone(self) -> None:
+        if self.phase == 0 and self.zone_i >= len(self.zones):   # hết lượt kiện bắt buộc → lượt phần còn lại
+            self.phase, self.zone_i = 1, 0
         while self.zone_i < len(self.zones):
             s = self.zones[self.zone_i].stop_index
             idx = [i for i, p in enumerate(self.problem.packages) if p.stop_index == s]
+            if self.phase == 0:
+                idx = [i for i in idx if self.problem.packages[i].must_load]
+            elif self.problem.physics_v2 and H13_TWO_PASS:
+                idx = [i for i in idx if not self.problem.packages[i].must_load]
             idx.sort(key=lambda i: (self.problem.packages[i].volume, self.problem.packages[i].weight), reverse=True)
+            if self.problem.physics_v2:
+                # H13 (như backend solve_in_process): kiện must_load xét trước, giữ thứ tự còn lại
+                idx.sort(key=lambda i: not self.problem.packages[i].must_load)
             if idx:
                 self.queue = deque(idx)
                 return
             self.zone_i += 1
+            if self.phase == 0 and self.zone_i >= len(self.zones):
+                self.phase, self.zone_i = 1, 0
         self.queue = deque()
 
     def _fill_buffer(self) -> None:

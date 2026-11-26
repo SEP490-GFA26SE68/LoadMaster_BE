@@ -178,6 +178,28 @@ class TestTierRouting:
         assert run.layouts == [] and run.tried == []
         assert set(run.skipped.values()) == {"PINNED"}
 
+    @pytest.mark.parametrize("v2", [False, True])
+    def test_lumo_models_follow_physics_rules_flag(self, monkeypatch, v2):
+        """lmai xếp theo cờ PHYSICS_RULES_V2 của service (tắt: luật cũ như trước khi đồng bộ bản chép)."""
+        pytest.importorskip("torch")
+        if not lumo_models.model_path("LUMO_R1_1").is_file():
+            pytest.skip("thiếu trọng số LUMO_R1_1")
+        from app.ml.lmai import problem as lm_problem_module
+
+        monkeypatch.setattr(settings, "PHYSICS_RULES_V2", v2)
+        seen = []
+        original = lm_problem_module.Problem.from_request
+
+        def spy(d, physics_v2=False):
+            seen.append(physics_v2)
+            return original(d, physics_v2=physics_v2)
+
+        monkeypatch.setattr(lm_problem_module.Problem, "from_request", staticmethod(spy))
+        run = lumo_models.run_lumo_models(_problem("EP_DBLF_GA_AI"), ["LUMO_R1_1"], OptimizationClient(engine_url=""),
+                                          samples=0)
+        assert seen == [v2]
+        assert run.tried == ["LUMO_R1_1"]
+
     def test_lumo_models_without_torch_warn_with_install_hint(self, monkeypatch, caplog):
         monkeypatch.setattr(lumo_models, "torch_available", lambda: False)
         with caplog.at_level("WARNING", logger="app.ml.lumo_models"):

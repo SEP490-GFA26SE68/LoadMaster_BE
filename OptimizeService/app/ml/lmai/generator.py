@@ -5,6 +5,10 @@
 - Kiện: mỗi điểm giao gồm vài "mã hàng" lặp lại (giống lô hàng thật), kích thước co giãn để tổng thể tích
   đạt một tỉ lệ lấp đầy mục tiêu; cân nặng chia theo thể tích x mật độ ngẫu nhiên.
 - GenConfig(kind="real"): bài từ đơn hàng thật BED-BPP trên xe Van (xem generate_real, lmai/real_data.py).
+- GenConfig(v3=True) — sinh bài v3 cho luật mới (M5, HUONG-DAN-TRAIN-LUMO-R3 mục 2.8): bài chấm theo luật mới
+  (`Problem.physics_v2`), có σ, `must_load`, `priority`, `packing_group`, q_sàn, đuôi mật độ; xe Van khai trục.
+  Phần v3 dùng bộ số ngẫu nhiên RIÊNG (seed, 3): cùng seed thì kích thước, số kiện, điểm giao, xe… y hệt bài cũ; chỉ
+  khối lượng đổi (đuôi mật độ) và thêm trường mới.
 """
 from __future__ import annotations
 
@@ -37,12 +41,21 @@ VAN_VEHICLES = [
     ("Van 500 kg", 160, 120, 120, 500),
     ("Van 1000 kg", 200, 150, 150, 1000),
 ]
+# Số trục xe Van (Q-D17, M5): lấy từ bảng `vehicle_types` thật của LoadMaster (DB dùng chung, đọc 26/11/2026:
+# "Xe Van 500 kg" id 10, "Xe Van 1.000 kg" id 11 — cùng lòng thùng và cửa với VAN_VEHICLES). Chỉ dùng cho bài v3;
+# bộ `thuc-v1` (luật cũ) giữ xe Van không khai trục như cũ.
+# (x trục trước, x trục sau, tối đa trục trước, tối đa trục sau, rỗng trục trước, rỗng trục sau)
+VAN_AXLES = [(-60.0, 120.0, 750.0, 900.0, 520.0, 380.0), (-80.0, 150.0, 1150.0, 1500.0, 760.0, 540.0)]
 
 
-def van_vehicle(i: int) -> Vehicle:
+def van_vehicle(i: int, axles: bool = False) -> Vehicle:
     n, L, W, H, pay = VAN_VEHICLES[i]
-    return Vehicle(inner_l=L, inner_w=W, inner_h=H, max_payload_kg=pay, door_w=W, door_h=H,
-                   max_cog_offset_ratio=0.15, name=n)
+    v = Vehicle(inner_l=L, inner_w=W, inner_h=H, max_payload_kg=pay, door_w=W, door_h=H,
+                max_cog_offset_ratio=0.15, name=n)
+    if axles:
+        (v.front_axle_x, v.rear_axle_x, v.front_axle_limit_kg, v.rear_axle_limit_kg, v.empty_front_axle_load_kg,
+         v.empty_rear_axle_load_kg) = VAN_AXLES[i]
+    return v
 
 
 def seed_vehicle(i: int) -> Vehicle:
@@ -71,6 +84,20 @@ class GenConfig:
     orders: Tuple[int, int] = (1, 3)            # số đơn mỗi chuyến (mỗi đơn = 1 điểm giao)
     max_fill: float = 0.85                      # tổng thể tích hàng ≤ max_fill × thể tích thùng
     vehicle_pool: str = "van"                   # chỉ "van" (đơn BED-BPP ~1 m³ — quá nhỏ cho xe tải 20–40 m³)
+    # --- v3: luật vật lý mới (M5). Các số dưới đây là GIẢ ĐỊNH để mô hình gặp đủ trường hợp, không phải số xe / hàng thật.
+    v3: bool = False
+    p_sigma_missing: float = 0.05               # mã hàng không khai σ lẫn tải chồng → không nhận tải (như backend)
+    p_must_load: float = 0.10                   # chỉ khi fill ≤ must_load_max_fill
+    must_load_max_fill: float = 0.85
+    must_load_max_vol: float = 0.50             # tổng thể tích kiện must_load ≤ 50 % thùng
+    p_priority: float = 0.10                    # priority ∈ {1, 2, 3} (thang chưa chốt — dùng ở J, M6)
+    p_floor: float = 0.30                       # tỉ lệ bài có tải trọng sàn
+    # q_sàn kg/m². 300–900 từ rb-v2 (26/11): khoảng cũ 800–3.000 cao hơn áp lực sàn thật của bài sinh (EP-DBLF: p50
+    # 230–480, p90 520–960 kg/m²) nên H10 gần như không bao giờ chặn. Thấp hơn sàn xe tải thật — GIẢ ĐỊNH để mô hình
+    # gặp H10, không phải số xe thật. rb-v1 dùng (800, 3000).
+    floor_range: Tuple[float, float] = (300.0, 900.0)
+    p_dense_sku: float = 0.05                   # mã hàng có mật độ × dense_factor (để H7 / H10 thật sự chặn)
+    dense_factor: float = 3.0
 
 
 def _fit_door(dims: List[float], veh: Vehicle) -> bool:
@@ -151,6 +178,11 @@ def generate(seed: int, cfg: GenConfig = GenConfig()) -> Problem:
     raw = [(scaled[r[2]],) + tuple(r[1:]) for r in raw]
     vols = np.array([d[0] * d[1] * d[2] for d, *_ in raw])
     dens = {sku: float(np.exp(rng.normal(0, 0.45))) for sku in sorted({r[2] for r in raw})}
+    rng3 = np.random.default_rng([int(seed), 3]) if cfg.v3 else None
+    if cfg.v3:   # đuôi mật độ: vài mã hàng nặng gấp dense_factor
+        for sku in sorted(dens):
+            if rng3.random() < cfg.p_dense_sku:
+                dens[sku] *= cfg.dense_factor
     wraw = np.array([vols[i] * dens[r[2]] for i, r in enumerate(raw)])
     total_w = float(rng.uniform(*cfg.weight_frac)) * veh.max_payload_kg
     wts = np.maximum(1.0, wraw / wraw.sum() * total_w)
@@ -168,11 +200,51 @@ def generate(seed: int, cfg: GenConfig = GenConfig()) -> Problem:
         pkgs.append(Package(id=f"P{i + 1:04d}", l=dims[0], w=dims[1], h=dims[2], weight=w, stop_index=stop,
                             allowed_rotations=allowed, max_stack_weight_kg=stack, fragile=bool(fragile),
                             rotation_allowed=rot_allowed))
+    if cfg.v3:
+        _apply_v3(pkgs, [r[2] for r in raw], veh, fill, cfg, rng3)
     # trộn thứ tự đầu vào (thứ tự xếp do thuật toán quyết định)
     order = rng.permutation(len(pkgs))
     pkgs = [pkgs[i] for i in order]
     stops = [Stop(id=str(s + 1), sequence=s + 1) for s in range(s_count)]
-    return Problem(veh, pkgs, stops, seed=int(seed))
+    return Problem(veh, pkgs, stops, seed=int(seed), physics_v2=cfg.v3)
+
+
+def _apply_v3(pkgs: List[Package], skus: Sequence, veh: Vehicle, fill: float, cfg: GenConfig,
+              rng: np.random.Generator) -> None:
+    """Thêm trường của luật mới (mục 2.8) vào kiện đã sinh; `skus[i]` = mã hàng của pkgs[i]."""
+    # q_sàn theo bài (giả định)
+    if rng.random() < cfg.p_floor:
+        veh.floor_load_capacity_kg_m2 = round(float(rng.uniform(*cfg.floor_range)), 1)
+    # σ theo mã hàng: giữ phân bố cũ — σ = tải chồng cũ K / A_top (hướng gốc); không chồng / dễ vỡ → 0;
+    # p_sigma_missing: không khai gì (kiện không nhận tải, như backend khi trống)
+    missing = {}
+    for sku in dict.fromkeys(skus):
+        missing[sku] = rng.random() < cfg.p_sigma_missing
+    for p, sku in zip(pkgs, skus):
+        if missing[sku]:
+            p.top_load_capacity_kg_m2 = None
+            p.max_stack_weight_kg = None
+        elif p.fragile or not p.max_stack_weight_kg:
+            p.top_load_capacity_kg_m2 = 0.0
+        else:
+            p.top_load_capacity_kg_m2 = round(float(p.max_stack_weight_kg) / (p.l * p.w / 1e4), 1)
+        p.packing_group = f"G{sku}"
+    # must_load — ràng buộc sinh bài để bài LUÔN có lời giải (rủi ro M5): chỉ bài chưa quá đầy; xếp thử bằng EP-DBLF
+    # theo luật mới (chưa có kiện bắt buộc); chỉ khi phương án thử hợp lệ mới chọn, và chỉ chọn trong số kiện nó đã xếp
+    # → phương án thử là một lời giải hợp lệ chứa đủ kiện must_load. Tổng thể tích kiện bắt buộc ≤ must_load_max_vol.
+    if fill <= cfg.must_load_max_fill:
+        from .heuristics import ep_dblf   # tránh import vòng
+        ref = ep_dblf(Problem(veh, pkgs, [], physics_v2=True))
+        placed = {pl.package_id for pl in ref.placements} if ref.verdict.valid else set()
+        budget = cfg.must_load_max_vol * veh.volume
+        for p in pkgs:
+            pick = rng.random() < cfg.p_must_load
+            if pick and p.id in placed and p.volume <= budget:
+                p.must_load = True
+                budget -= p.volume
+    for p in pkgs:
+        if rng.random() < cfg.p_priority:
+            p.priority = int(rng.integers(1, 4))
 
 
 def generate_real(seed: int, cfg: GenConfig = GenConfig(kind="real")) -> Problem:
@@ -208,8 +280,11 @@ def generate_real(seed: int, cfg: GenConfig = GenConfig(kind="real")) -> Problem
     if not chosen:
         raise RuntimeError("Không chọn được đơn nào vừa xe Van")
     veh = next(v for v in vans if kg <= v.max_payload_kg and vol <= cfg.max_fill * v.volume)
+    if cfg.v3:   # luật mới: mọi xe phải khai trục (Q-D7) — số trục Van từ DB (Q-D17)
+        veh = van_vehicle(vans.index(veh), axles=True)
 
     pkgs: List[Package] = []
+    skus: List[str] = []
     for s, o in enumerate(chosen):
         for j in range(o.n):
             l, w, h = (float(x) for x in o.dims[j])
@@ -218,11 +293,15 @@ def generate_real(seed: int, cfg: GenConfig = GenConfig(kind="real")) -> Problem
             pkgs.append(Package(id=f"P{len(pkgs) + 1:04d}", l=l, w=w, h=h, weight=wt, stop_index=s + 1,
                                 allowed_rotations=rots, max_stack_weight_kg=stack, fragile=fragile,
                                 rotation_allowed=True))
+            skus.append(o.article[j])
+    if cfg.v3:   # σ = (3–8 × khối lượng) / A_top theo mã hàng = tải chồng giả định của item_attrs / A_top
+        _apply_v3(pkgs, skus, veh, vol / veh.volume, cfg, np.random.default_rng([int(seed), 3]))
     order = rng.permutation(len(pkgs))
     pkgs = [pkgs[i] for i in order]
     stops = [Stop(id=str(s + 1), sequence=s + 1) for s in range(len(chosen))]
     return Problem(veh, pkgs, stops, seed=int(seed),
-                   source={"dataset": "bed-bpp", "split": cfg.split, "orders": [o.id for o in chosen]})
+                   source={"dataset": "bed-bpp", "split": cfg.split, "orders": [o.id for o in chosen]},
+                   physics_v2=cfg.v3)
 
 
 def dataset(seeds: Sequence[int], cfg: GenConfig = GenConfig()) -> List[Problem]:
