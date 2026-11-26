@@ -258,8 +258,12 @@ def run_ga_sa(
     max_evaluations: int,
     run_sa: bool = True,
     seed: Optional[int] = None,
+    run_ga: bool = True,
 ) -> MetaResult:
-    """Chạy GA rồi SA trong `budget_sec` giây và tối đa `max_evaluations` lần giải mã."""
+    """Chạy GA rồi SA trong `budget_sec` giây và tối đa `max_evaluations` lần giải mã.
+
+    run_ga = False (gói đang bán từ D2, 26/11/2026): bỏ GA; SA bắt đầu từ cách xếp EP tốt nhất (các lượt EP của job,
+    không giải mã lại) và nhận cả ngân sách."""
     out = MetaResult()
     search_start = time.monotonic()
     end = search_start + max(budget_sec, 0.0)
@@ -272,8 +276,9 @@ def run_ga_sa(
         logger.info("GA/SA skipped: mọi kiện đều đã ghim")
         return out
 
-    ga_end = search_start + budget_sec * (GA_SHARE if run_sa else 1.0)
-    ga_limit = max(1, int(max_evaluations * (GA_SHARE if run_sa else 1.0)))
+    share = (GA_SHARE if run_sa else 1.0) if run_ga else 0.0
+    ga_end = search_start + budget_sec * share
+    ga_limit = max(1, int(max_evaluations * share)) if run_ga else 0
     sa_limit = max(0, max_evaluations - ga_limit) if run_sa else 0
 
     # ---------------------------------------------------------------- GA

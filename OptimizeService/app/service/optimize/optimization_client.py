@@ -92,9 +92,10 @@ class OptimizationClient:
         theo chỉ số của chính nó. Các cách được thử theo hạng thuật toán của job
         (AlgorithmTierService.plan_algorithms_for):
           BASIC    EP + DBLF, bốn chiến lược.
-          PRO      + GA và SA (metaheuristic.py), giải mã bằng chính bộ dựng EP + DBLF.
-          ULTIMATE + EP có Lumo-R1.1 chấm chỗ đặt, + ba mô hình Lumo tự xếp (lumo_models.py),
+          PRO      + SA (metaheuristic.py) từ cách xếp EP tốt nhất, giải mã bằng chính bộ dựng EP + DBLF.
+          ULTIMATE + mô hình Lumo-R1 và Lumo-R1.1 tự xếp (lumo_models.py),
                    mọi chỗ đặt của AI được kiểm lại bằng ConstraintEngine.
+        (D2, 26/11/2026: GA, EP_LUMO_R1_1, LUMO_R2 chỉ chạy khi TIER_LEGACY_ALGORITHMS_ENABLED bật.)
         Mỗi cách xếp mang mã thuật toán đã sinh ra nó (`algorithm_name`). Giới hạn thời gian
         của job áp cho cả lượt: hết giờ thì dừng thử cách mới, cách đầu luôn được chạy.
         Kết quả trả về là phương án A, kèm cả ba ở `candidates`.
@@ -186,7 +187,7 @@ class OptimizationClient:
             else:
                 logger.info("EP_LUMO_R1_1 skipped: Lumo-R1.1 scorer unavailable (torch or weights missing)")
 
-        if P.GA.value in allowed and time.monotonic() < deadline:
+        if (P.GA.value in allowed or P.SA.value in allowed) and time.monotonic() < deadline:
             # Chuyến lớn: một lần giải mã (một lượt EP + DBLF) có thể mất vài giây, nên ngân sách
             # được nới tới đủ METAHEURISTIC_MIN_DECODES lần giải mã — vẫn trong giới hạn của request.
             decode_sec = max(((r.metrics.computation_ms or 0) / 1000.0 for _, r in ep_runs), default=0.0)
@@ -198,7 +199,7 @@ class OptimizationClient:
             if budget > 0:
                 meta = run_ga_sa(self, problem, ep_runs, budget_sec=budget,
                                  max_evaluations=int(settings.METAHEURISTIC_MAX_EVALUATIONS),
-                                 run_sa=P.SA.value in allowed)
+                                 run_sa=P.SA.value in allowed, run_ga=P.GA.value in allowed)
                 tried.extend(meta.tried)
                 layouts += meta.layouts
         return layouts

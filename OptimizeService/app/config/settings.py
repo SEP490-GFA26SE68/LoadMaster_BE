@@ -70,6 +70,8 @@ class Settings(BaseSettings):
     METAHEURISTIC_MAX_EVALUATIONS: int = 60
     # Ngân sách GA + SA được nới tới đủ chừng này lần giải mã khi chuyến lớn (giải mã chậm).
     METAHEURISTIC_MIN_DECODES: int = 5
+    # D2 (26/11/2026): gói đang bán không còn GA, EP_LUMO_R1_1, LUMO_R2. Bật để chạy lại danh sách cũ (thí nghiệm R9).
+    TIER_LEGACY_ALGORITHMS_ENABLED: bool = False
 
     # Một hạn chót cho cả job: mọi lượt EP, lần giải mã GA / SA và bước sửa cân bằng dùng chung hạn của request
     # (tắt: mỗi lượt EP nhận hạn mới = time_limit_sec, job có thể chạy gần gấp đôi giới hạn).
