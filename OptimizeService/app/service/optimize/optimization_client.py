@@ -122,7 +122,25 @@ class OptimizationClient:
         # (Lumo-R1.1 chấm chỗ đặt là một cách xếp riêng, EP_LUMO_R1_1).
         ep_kwargs = {"use_lumo_scorer": False} if uses_lumo(problem.algorithm_name) else {}
         reserve = check_reserve_sec(problem)
+        lmai_built = False
+        if settings.OPTIMIZATION_LMAI_BUILDER_ENABLED:
+            # M9 (D1): bộ dựng chung của LoadMaster_AI; không ra cách xếp nào qua kiểm thì chạy bộ dựng cũ bên dưới.
+            from app.service.optimize.lmai_builder import build_layouts
+
+            try:
+                built = build_layouts(problem, self, deadline - reserve)
+            except Exception as exc:  # bộ dựng mới hỏng không được làm hỏng job
+                logger.warning("lmai builder failed, falling back to EP: %s", exc)
+                built = None
+            if built is not None and built.layouts:
+                layouts += built.layouts
+                ep_runs += built.ep_runs
+                lmai_built = True
+            elif built is not None:
+                logger.info("lmai builder: no layout (%s %s), falling back to EP", built.skipped, built.rejected)
         for strategy in layout_strategies_for(problem.vehicle):
+            if lmai_built:   # M9: đã có cách xếp từ bộ dựng lmai
+                break
             # M8: không mở lượt mới khi phần còn lại chỉ đủ cho bước kiểm của lượt đó.
             if layouts and time.monotonic() >= deadline - reserve:
                 break
@@ -890,6 +908,7 @@ class OptimizationClient:
         placements_in: Sequence[PlacementData],
         algorithm_name: str,
         started_at: Optional[float] = None,
+        deadline: Optional[float] = None,
     ) -> tuple[Optional[EngineOptimizationResponse], Optional[str]]:
         """
         Kiểm lại một cách xếp do bộ giải khác (mô hình AI) dựng, bằng đúng các luật và cách tính
@@ -897,6 +916,8 @@ class OptimizationClient:
         (mỗi kiện so với các kiện đặt trước nó), rồi HC-11 / HC-12 trên cả phương án và
         UnloadFeasibilityValidator. Không sửa chỗ đặt nào (không dời khối cân trọng tâm).
         Trả (cách xếp, None) khi đạt; (None, lý do) khi vi phạm ràng buộc cứng — cả cách xếp bị bỏ.
+        `deadline` (time.monotonic): giới hạn cho bước kiểm dỡ hàng; hết giờ = chưa chứng minh được → bỏ
+        (UNLOAD_TIME_LIMIT_REACHED, fail-closed). None = không giới hạn (như trước).
         """
         start_time = started_at if started_at is not None else time.time()
         vt = problem.vehicle
@@ -939,7 +960,7 @@ class OptimizationClient:
                 if not check.passed:
                     return None, check.violation_code
             unload = UnloadFeasibilityValidator.validate(
-                placements=placements, packages_map=packages_map, vehicle=vt
+                placements=placements, packages_map=packages_map, vehicle=vt, deadline=deadline
             )
             if not unload.passed:
                 return None, unload.violation_code or _lifo_code()
