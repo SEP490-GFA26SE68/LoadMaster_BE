@@ -64,6 +64,10 @@ class VehicleType(Base):
         nullable=True,
     )
 
+    # Spec ràng buộc vật lý (V55): H11 lệch trọng tâm ngang (trống = max_cog_offset_ratio), H10 tải trọng sàn kg/m².
+    max_cog_offset_ratio_y = Column(Numeric(5, 4), nullable=True)
+    floor_load_capacity_kg_m2 = Column(Numeric(12, 2), nullable=True)
+
 
     obstacles = relationship("VehicleTypeObstacle", back_populates="vehicle_type")
     vehicles = relationship("Vehicle", back_populates="vehicle_type")
@@ -207,6 +211,10 @@ class PackageType(Base):
 
     is_fragile = Column(Boolean, default=False)
 
+    # Spec ràng buộc vật lý (V55): σ sức chịu nén mặt trên kg/m² (H7), ρ tỉ lệ đáy được đỡ (H8). Trống = chưa khai.
+    top_load_capacity_kg_m2 = Column(Numeric(12, 2), nullable=True)
+    min_support_ratio = Column(Numeric(5, 4), nullable=True)
+
 
     packages = relationship("CargoPackage", back_populates="package_type")
 
@@ -233,12 +241,20 @@ class CargoPackage(Base):
 
 
 class CargoPackagePackingProfile(Base):
-    """Read the existing per-package rotation restrictions; no schema creation here."""
+    """Read the existing per-package packing profile; no schema creation here."""
     __tablename__ = "cargo_package_packing_profiles"
     id = pk_id()
     package_id = fk_id("packages.id", nullable=False)
     orientation = Column(String(100), nullable=True)
     upright_only = Column(Boolean, nullable=True)
+    stackable = Column(Boolean, nullable=True)
+    max_top_load_kg = Column(Numeric(10, 2), nullable=True)
+    min_support_ratio = Column(Numeric(5, 4), nullable=True)
+    priority = Column(Integer, nullable=True)
+    must_load = Column(Boolean, nullable=True)
+    packing_group = Column(String(100), nullable=True)
+    # σ riêng của kiện (V55), ghi đè σ của loại kiện.
+    top_load_capacity_kg_m2 = Column(Numeric(12, 2), nullable=True)
 
 
 CargoPackage.packing_profile = relationship(

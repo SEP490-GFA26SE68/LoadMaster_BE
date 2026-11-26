@@ -64,6 +64,11 @@ class VehicleData(BaseModel):
 
     max_cog_offset_ratio: float = Field(default=0.15, ge=0, le=0.5)
 
+    # Spec ràng buộc vật lý (dữ liệu M3; ConstraintEngine CHƯA đọc): H11 lệch ngang (trống = max_cog_offset_ratio),
+    # H10 tải trọng sàn kg/m² (trống = không kiểm).
+    max_cog_offset_ratio_y: Optional[float] = Field(default=None, ge=0, le=0.5)
+    floor_load_capacity_kg_m2: Optional[float] = Field(default=None, gt=0)
+
 
     @model_validator(mode="after")
     def validate_obstacles(self):
@@ -89,6 +94,19 @@ class PackageData(BaseModel):
     max_stack_weight_kg: Optional[float] = None
     fragile: bool = False
     rotation_allowed: bool = True
+
+    # Spec ràng buộc vật lý (dữ liệu M3; ConstraintEngine CHƯA đọc). Giá trị: hồ sơ kiện > loại kiện > trống.
+    top_load_capacity_kg_m2: Optional[float] = Field(default=None, ge=0)  # σ, kg/m² (H7); trống = chưa khai
+    min_support_ratio: Optional[float] = Field(default=None, ge=0, le=1)  # ρ (H8); trống = mặc định của bộ kiểm
+    must_load: bool = False  # H13
+    priority: Optional[int] = None
+    packing_group: Optional[str] = None
+
+
+class DataWarningData(BaseModel):
+    """Cảnh báo dữ liệu đầu vào của lần chạy (không chặn job): mã + các kiện liên quan."""
+    code: str  # TOP_LOAD_CAPACITY_MISSING | PACKAGE_TYPE_MISSING
+    package_ids: List[str] = Field(default_factory=list)
 
 
 class StopData(BaseModel):
@@ -121,3 +139,5 @@ class ProblemRequest(BaseModel):
     seed: Optional[int] = None
     # EP_DBLF | EP_DBLF_GA | EP_DBLF_GA_AI — ULTIMATE dùng Lumo khi có trọng số
     algorithm_name: Optional[str] = None
+    # Cảnh báo dữ liệu do bước dựng bài từ DB tìm ra; bộ giải không đọc, chỉ lưu vào optimization_jobs.data_warnings.
+    data_warnings: List[DataWarningData] = Field(default_factory=list)

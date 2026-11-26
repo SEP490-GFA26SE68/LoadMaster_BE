@@ -15,6 +15,7 @@ from app.dto.optimization.engine.problem_request import (
     ObstacleData,
     PackageData,
     StopData,
+    DataWarningData,
 )
 from app.exception.app_exception import AppException
 from app.exception.error_code import ErrorCode
@@ -210,6 +211,9 @@ class AsyncOptimizationRunner:
                 if getattr(vt, "max_cog_offset_ratio", None) is not None
                 else 0.15
             ),
+            # Spec ràng buộc vật lý (V55) — chỉ truyền, ConstraintEngine chưa đọc.
+            max_cog_offset_ratio_y=_opt_float(getattr(vt, "max_cog_offset_ratio_y", None)),
+            floor_load_capacity_kg_m2=_opt_float(getattr(vt, "floor_load_capacity_kg_m2", None)),
         )
 
 
@@ -294,6 +298,8 @@ class AsyncOptimizationRunner:
 
 
         package_items: list[PackageData] = []
+        missing_sigma: list[str] = []
+        missing_type: list[str] = []
         for pkg, requirement, stop in packages_query:
             w = float(pkg.actual_weight_kg or 0)
             pt = pkg.package_type
@@ -420,6 +426,17 @@ class AsyncOptimizationRunner:
 
             allowed_rotations = self.restrict_profile_rotations(allowed_rotations, pkg.packing_profile)
 
+            # Spec ràng buộc vật lý 8.1: hồ sơ kiện > loại kiện > trống (không mặc định ngầm — Q-D2).
+            profile = pkg.packing_profile
+            sigma = _first_float(getattr(profile, "top_load_capacity_kg_m2", None),
+                                 getattr(pt, "top_load_capacity_kg_m2", None) if pt else None)
+            support = _first_float(getattr(profile, "min_support_ratio", None),
+                                   getattr(pt, "min_support_ratio", None) if pt else None)
+            if sigma is None:
+                missing_sigma.append(str(pkg.id))
+            if pt is None:
+                missing_type.append(str(pkg.id))
+
             package_items.append(
                 PackageData(
                     id=str(pkg.id),
@@ -441,8 +458,19 @@ class AsyncOptimizationRunner:
                         else None
                     ),
 
+                    top_load_capacity_kg_m2=sigma,
+                    min_support_ratio=support,
+                    must_load=getattr(profile, "must_load", None) is True,
+                    priority=getattr(profile, "priority", None),
+                    packing_group=getattr(profile, "packing_group", None),
                 )
             )
+
+        data_warnings = []
+        if missing_sigma:
+            data_warnings.append(DataWarningData(code="TOP_LOAD_CAPACITY_MISSING", package_ids=missing_sigma))
+        if missing_type:
+            data_warnings.append(DataWarningData(code="PACKAGE_TYPE_MISSING", package_ids=missing_type))
 
         return ProblemRequest(
             vehicle=vehicle_data,
@@ -451,6 +479,7 @@ class AsyncOptimizationRunner:
             objective=job.objective or "MAX_VOLUME_UTIL",
             time_limit_sec=job.time_limit_sec or 60,
             algorithm_name=job.algorithm_name,
+            data_warnings=data_warnings,
         )
 
     async def run(
@@ -512,6 +541,7 @@ class AsyncOptimizationRunner:
 
             if self.persistence_service is not None and hasattr(self.persistence_service, "save"):
                 self.persistence_service.save(job_uuid_str, result, session)
+            save_data_warnings(job_uuid_str, problem, session)
 
             status = self.engine_exception_handler.handle_result(result, job_uuid_str, session)
             if _status_value(status) == OptimizationJobStatus.NO_SOLUTION.value and is_credit_deducted:
@@ -600,8 +630,10 @@ class AsyncOptimizationRunner:
                 return
             status = _status_value(self.engine_exception_handler.classify_result(result))
             ms = result.metrics.computation_ms if result.metrics else None
-            protocol.finalize(uuid, generation, status,
-                write_result=lambda db: self.persistence_service.save(uuid, result, db), computation_ms=ms)
+            def write_result(db):
+                self.persistence_service.save(uuid, result, db)
+                save_data_warnings(uuid, problem, db)
+            protocol.finalize(uuid, generation, status, write_result=write_result, computation_ms=ms)
         except OwnershipLost:
             logger.warning("optimization_execution job_uuid=%s stage=ownership_lost", uuid)
         except Exception as exc:
@@ -630,3 +662,26 @@ class AsyncOptimizationRunner:
 
 def _status_value(status) -> Optional[str]:
     return getattr(status, "value", status)
+
+
+def _opt_float(value) -> Optional[float]:
+    return float(value) if value is not None else None
+
+
+def _first_float(*values) -> Optional[float]:
+    for value in values:
+        if value is not None:
+            return float(value)
+    return None
+
+
+def save_data_warnings(job_uuid: str, problem: ProblemRequest, db) -> None:
+    """Ghi cảnh báo dữ liệu của bài vào job (cùng giao dịch với kết quả). Không có job / không có cảnh báo: bỏ qua."""
+    warnings = getattr(problem, "data_warnings", None)
+    if db is None or not warnings:
+        return
+    from app.entity.optimization.optimization_job import OptimizationJob
+    db.query(OptimizationJob).filter(OptimizationJob.job_uuid == str(job_uuid)).update(
+        {OptimizationJob.data_warnings: [w.model_dump() if hasattr(w, "model_dump") else dict(w) for w in warnings]},
+        synchronize_session=False,
+    )

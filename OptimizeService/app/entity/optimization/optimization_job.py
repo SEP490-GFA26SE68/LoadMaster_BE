@@ -1,5 +1,6 @@
 from app.config.clock import vietnam_now
-from sqlalchemy import Column, Integer, BigInteger, String, ForeignKey, DateTime
+from sqlalchemy import Column, Integer, BigInteger, String, ForeignKey, DateTime, JSON
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import relationship
 
 from app.config.database import Base
@@ -28,6 +29,8 @@ class OptimizationJob(Base):
     subscription_tier = Column(String(50), nullable=True, default="BASIC")
     algorithm_tier = Column(String(50), nullable=True)
     created_at = Column(DateTime, default=vietnam_now)
+    # Cảnh báo dữ liệu đầu vào của lần chạy (V55): [{"code": ..., "package_ids": [...]}]. Không chặn job.
+    data_warnings = Column(JSON().with_variant(JSONB(), "postgresql"), nullable=False, default=list)
 
     failure_code = Column(String(64), nullable=True)
     execution_generation = Column(BigInteger, nullable=True)
