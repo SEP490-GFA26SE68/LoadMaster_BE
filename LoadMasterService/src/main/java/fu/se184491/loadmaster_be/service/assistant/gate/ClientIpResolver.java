@@ -40,6 +40,20 @@ public class ClientIpResolver {
         return peer;
     }
 
+    public String resolveIpv4(HttpServletRequest request) {
+        String ip = resolve(request);
+        if (ip == null || ip.isBlank()) {
+            return "127.0.0.1";
+        }
+        if ("0:0:0:0:0:0:0:1".equals(ip) || "::1".equals(ip)) {
+            return "127.0.0.1";
+        }
+        if (ip.startsWith("::ffff:")) {
+            ip = ip.substring(7);
+        }
+        return ip;
+    }
+
     private static boolean isLocalProxy(String peer) {
         if (peer == null || !isIpLiteral(peer)) {
             return false;

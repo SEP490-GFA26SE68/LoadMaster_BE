@@ -26,6 +26,7 @@ public record CompanyAgreementResponse(
         String signerEmail,
         String signerPhone,
         String ipAddress,
+        String signerDevice,
         boolean isExpired,
         long hoursRemaining,
         Instant createdAt

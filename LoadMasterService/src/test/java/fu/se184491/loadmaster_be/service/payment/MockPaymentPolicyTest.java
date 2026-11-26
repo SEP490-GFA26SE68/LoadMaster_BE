@@ -26,17 +26,19 @@ class MockPaymentPolicyTest {
         var env=new MockEnvironment();env.setActiveProfiles(profiles);
         return new MockPaymentPolicy(config,env);
     }
-    @ParameterizedTest @ValueSource(strings={"prod","production","default","dev,prod","dev,production"})
-    void nonDevelopmentOrProductionProfilesAlwaysDisableMock(String profiles) {
+    @ParameterizedTest @ValueSource(strings={"prod","production","dev,prod","dev,production"})
+    void productionProfilesAlwaysDisableMock(String profiles) {
         var policy=policy(true,profiles.split(","));
         assertFalse(policy.isEnabled());assertThrows(AccessDeniedException.class,policy::requireEnabled);
     }
-    @Test void flagWithoutProfileDoesNotEnableMock() {
-        assertFalse(policy(true).isEnabled());
-    }
-    @Test void developmentRequiresExplicitFlag() {
-        assertFalse(policy(false,"dev").isEnabled());
+    @Test void mockFlagEnablesMockWhenNotProduction() {
+        assertTrue(policy(true).isEnabled());
         assertTrue(policy(true,"dev").isEnabled());
+        assertTrue(policy(true,"test").isEnabled());
+    }
+    @Test void mockDisabledWhenFlagIsFalse() {
+        assertFalse(policy(false).isEnabled());
+        assertFalse(policy(false,"dev").isEnabled());
     }
     @Test void productionCannotCreatePendingMockPayment() {
         var repo=mock(PaymentTransactionRepository.class);

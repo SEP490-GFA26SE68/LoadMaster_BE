@@ -88,6 +88,9 @@ public class CompanyAgreement {
     @Column(name = "ip_address", length = 100)
     private String ipAddress;
 
+    @Column(name = "signer_device", length = 255)
+    private String signerDevice;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 

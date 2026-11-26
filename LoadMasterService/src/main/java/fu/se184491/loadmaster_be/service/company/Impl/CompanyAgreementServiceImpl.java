@@ -93,7 +93,7 @@ public class CompanyAgreementServiceImpl implements CompanyAgreementService {
     }
 
     @Override
-    public CompanyAgreementResponse signAgreement(User currentUser, SignAgreementRequest request, String clientIp) {
+    public CompanyAgreementResponse signAgreement(User currentUser, SignAgreementRequest request, String clientIp, String signerDevice) {
         if (currentUser.getCompany() == null || currentUser.getCompany().getId() == null) {
             throw new AppException(ErrorCode.AGREEMENT_NOT_FOUND, "Người dùng chưa thuộc doanh nghiệp nào");
         }
@@ -156,6 +156,9 @@ public class CompanyAgreementServiceImpl implements CompanyAgreementService {
             agreement.setSignerEmail(currentUser.getEmail());
         }
         agreement.setIpAddress(clientIp);
+        if (signerDevice != null && !signerDevice.isBlank()) {
+            agreement.setSignerDevice(signerDevice.trim());
+        }
 
         CompanyAgreement saved = agreementRepository.save(agreement);
         log.info("Agreement {} signed successfully by user {} for company {}", saved.getId(), currentUser.getId(), currentUser.getCompany().getId());
@@ -199,6 +202,7 @@ public class CompanyAgreementServiceImpl implements CompanyAgreementService {
                 .signerEmail(a.getSignerEmail())
                 .signerPhone(a.getSignerPhone())
                 .ipAddress(a.getIpAddress())
+                .signerDevice(a.getSignerDevice())
                 .isExpired(isExpired)
                 .hoursRemaining(hoursRemaining)
                 .createdAt(a.getCreatedAt())

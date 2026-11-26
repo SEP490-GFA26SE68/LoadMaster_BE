@@ -13,6 +13,6 @@ public class VnPayConfig {
     private String tmnCode = "DEMOTMN1";
     private String hashSecret = "DEMOHASHSECRET1234567890ABCDEF";
     private String vnpUrl = "https://sandbox.vnpayment.vn/paymentv2/vpcpay.html";
-    private String returnUrl = "http://localhost:3000/payment/vnpay-return";
+    private String returnUrl = "http://localhost:8080/webhook/vnpay-return";
     private boolean mock = false;
 }

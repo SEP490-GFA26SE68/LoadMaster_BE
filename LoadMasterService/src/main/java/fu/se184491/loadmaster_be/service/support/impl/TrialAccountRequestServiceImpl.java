@@ -289,7 +289,7 @@ public class TrialAccountRequestServiceImpl implements TrialAccountRequestServic
         try {
             // Dùng lại tài khoản Keycloak mồ côi cùng email; rollback thì người dùng Keycloak vừa tạo bị xoá lại
             keycloakUserId = KeycloakAccounts.provision(keycloakAdminClient, userRepository, trial.getEmail(),
-                    trial.getFullName(), temporaryPassword, false, UserRole.ADMIN, true);
+                    trial.getFullName(), temporaryPassword, true, UserRole.ADMIN, true);
         } catch (AppException ex) {
             throw ex;
         } catch (HttpStatusCodeException ex) {
@@ -359,56 +359,49 @@ public class TrialAccountRequestServiceImpl implements TrialAccountRequestServic
         companyAgreementService.createTrialAgreement(savedCompany, savedUser, now);
 
         // 8. Gửi email bàn giao tài khoản trực tiếp đến khách hàng
-        String planName = plan != null ? plan.getName() : "Gói dùng thử";
-        String emailContent = """
-                Xin chào %s,
+        String planName = plan != null ? plan.getName() : "Gói dùng thử / Trial Plan";
+        String loginUrl = FrontendUrls.join(frontendUrl, "/dang-nhap");
 
-                Yêu cầu đăng ký trải nghiệm giải pháp LoadMaster của bạn đã được phê duyệt thành công!
+        var items = java.util.List.of(
+                new fu.se184491.loadmaster_be.helpers.EmailTemplateBuilder.AccountProvisionItem("Tên công ty", "Company Name", savedCompany.getCompanyName()),
+                new fu.se184491.loadmaster_be.helpers.EmailTemplateBuilder.AccountProvisionItem("Mã công ty", "Company Code", savedCompany.getCompanyCode()),
+                new fu.se184491.loadmaster_be.helpers.EmailTemplateBuilder.AccountProvisionItem("Mã số thuế", "Tax Code", savedCompany.getTaxCode()),
+                new fu.se184491.loadmaster_be.helpers.EmailTemplateBuilder.AccountProvisionItem("Tên đăng nhập (Email)", "Login Email", trial.getEmail()),
+                new fu.se184491.loadmaster_be.helpers.EmailTemplateBuilder.AccountProvisionItem("Mật khẩu tạm thời", "Temporary Password", temporaryPassword),
+                new fu.se184491.loadmaster_be.helpers.EmailTemplateBuilder.AccountProvisionItem("Vai trò tài khoản", "Account Role", "Quản trị viên Doanh nghiệp (Company Admin)"),
+                new fu.se184491.loadmaster_be.helpers.EmailTemplateBuilder.AccountProvisionItem("Gói trải nghiệm", "Trial Plan", planName),
+                new fu.se184491.loadmaster_be.helpers.EmailTemplateBuilder.AccountProvisionItem("Thời hạn dùng thử", "Trial Duration", trialDays + " ngày / days (Hiệu lực đến / Until " + expiresAt.toLocalDate() + ")"),
+                new fu.se184491.loadmaster_be.helpers.EmailTemplateBuilder.AccountProvisionItem("Hạn mức tối ưu (Credits)", "Optimization Credits", credits + " credits")
+        );
 
-                THÔNG TIN DOANH NGHIỆP:
-                • Tên công ty: %s
-                • Mã công ty: %s
-                • Mã số thuế: %s
+        var noticesVi = java.util.List.of(
+                "Đây là mật khẩu tạm thời. Bạn bắt buộc phải đổi mật khẩu ngay trong lần đăng nhập đầu tiên.",
+                "Bạn vui lòng đăng nhập và thực hiện ký Thỏa thuận dịch vụ thử nghiệm trong vòng 3 ngày kể từ khi nhận được email này.",
+                "Sau 3 ngày, nếu chưa hoàn tất ký thỏa thuận điện tử, tài khoản quản trị sẽ tự động bị tạm khóa theo quy định bảo mật của nền tảng.",
+                "Tuyệt đối không chia sẻ thông tin đăng nhập này cho bất kỳ ai."
+        );
+        var noticesEn = java.util.List.of(
+                "This is a temporary password. You are required to change your password upon your first login.",
+                "Please log in and sign the electronic Trial Service Agreement within 3 days of receiving this email.",
+                "After 3 days, unsigned accounts will be automatically suspended in accordance with platform security policy.",
+                "Never share these credentials with anyone to protect your organization access."
+        );
 
-                THÔNG TIN TÀI KHOẢN ĐĂNG NHẬP:
-                • Tên đăng nhập / Email: %s
-                • Mật khẩu tạm thời: %s
-                • Vai trò tài khoản: Quản trị viên Doanh nghiệp (Company Admin)
-
-                THÔNG TIN GÓI TRẢI NGHIỆM:
-                • Gói dịch vụ: %s
-                • Thời hạn dùng thử: %d ngày (Có hiệu lực đến %s)
-                • Hạn mức tối ưu (Credits): %d credits
-
-                LƯU Ý QUAN TRỌNG VỀ THỎA THUẬN DỊCH VỤ:
-                • Bạn vui lòng đăng nhập và thực hiện ký Thỏa thuận dịch vụ thử nghiệm trong vòng 3 ngày kể từ khi nhận được email này.
-                • Sau 3 ngày, nếu chưa hoàn tất ký thỏa thuận điện tử, tài khoản quản trị sẽ tự động bị tạm khóa theo quy định bảo mật của nền tảng (kể cả khi thời gian thử nghiệm vẫn còn hiệu lực).
-
-                HƯỚNG DẪN BẮT ĐẦU:
-                Vui lòng truy cập hệ thống để đăng nhập và tiến hành đổi mật khẩu ở lần đầu tiên.
-                Đường dẫn truy cập: %s
-
-                Nếu cần hỗ trợ kỹ thuật trong quá trình trải nghiệm, vui lòng liên hệ đội ngũ hỗ trợ của chúng tôi.
-
-                Trân trọng,
-                Đội ngũ Quản lý Nền tảng LoadMaster
-                """.formatted(
+        String emailContent = fu.se184491.loadmaster_be.helpers.EmailTemplateBuilder.buildAccountProvisionEmailHtml(
                 trial.getFullName(),
-                savedCompany.getCompanyName(),
-                savedCompany.getCompanyCode(),
-                savedCompany.getTaxCode(),
-                trial.getEmail(),
-                temporaryPassword,
-                planName,
-                trialDays,
-                expiresAt.toLocalDate(),
-                credits,
-                FrontendUrls.join(frontendUrl, "/dang-nhap")
+                "Thông tin tài khoản trải nghiệm dịch vụ",
+                "Trial Account Credentials & Access Information",
+                "Yêu cầu đăng ký trải nghiệm giải pháp LoadMaster của bạn đã được phê duyệt thành công! Dưới đây là thông tin đăng nhập của bạn:",
+                "Your request for the LoadMaster trial has been approved! Here are your login credentials:",
+                items,
+                loginUrl,
+                noticesVi,
+                noticesEn
         );
 
         String trialEmail = trial.getEmail();
         AfterCommit.run("email tài khoản dùng thử",
-                () -> brevoClient.sendEmail(trialEmail, "LoadMaster - Thông tin tài khoản trải nghiệm dịch vụ", emailContent));
+                () -> brevoClient.sendEmail(trialEmail, "[LoadMaster] Thông tin tài khoản trải nghiệm dịch vụ / Trial Account Information", emailContent));
 
         // 8. Cập nhật trạng thái TrialAccountRequest & ContactOfGuest
         trial.setStatus(TrialRequestStatus.APPROVED);
