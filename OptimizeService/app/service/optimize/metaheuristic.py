@@ -114,6 +114,7 @@ class _Search:
         self.problem = problem
         self.rng = random.Random(seed)
         self.decode_estimate = decode_estimate
+        self.deadline: Optional[float] = None  # hết ngân sách GA + SA: lần giải mã đang chạy cũng dừng (cờ hạn chung)
         self.cache: dict[tuple, EngineOptimizationResponse] = {}
         self.total = len(problem.packages)
         pinned = {str(p.package_id) for p in problem.pinned or []}
@@ -143,6 +144,7 @@ class _Search:
             orientation_pref=genome.orient,
             use_lumo_scorer=False,
             quiet=True,
+            job_deadline=self.deadline,
         )
         # Ước lượng thời gian giải mã theo lần chậm nhất gần đây (không để vượt hạn chót).
         self.decode_estimate = max(self.decode_estimate * 0.8, time.monotonic() - t0)
@@ -259,6 +261,7 @@ def run_ga_sa(
         return out
     estimate = max((r.metrics.computation_ms or 0) / 1000.0 for _, r in ep_runs) if ep_runs else 0.0
     search = _Search(client, problem, problem_seed(problem) if seed is None else seed, estimate)
+    search.deadline = end
     if not search.package_ids:
         logger.info("GA/SA skipped: mọi kiện đều đã ghim")
         return out

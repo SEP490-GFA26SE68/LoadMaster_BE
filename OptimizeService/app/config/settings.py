@@ -59,6 +59,20 @@ class Settings(BaseSettings):
     # Ngân sách GA + SA được nới tới đủ chừng này lần giải mã khi chuyến lớn (giải mã chậm).
     METAHEURISTIC_MIN_DECODES: int = 5
 
+    # Một hạn chót cho cả job: mọi lượt EP, lần giải mã GA / SA và bước sửa cân bằng dùng chung hạn của request
+    # (tắt: mỗi lượt EP nhận hạn mới = time_limit_sec, job có thể chạy gần gấp đôi giới hạn).
+    OPTIMIZATION_SHARED_DEADLINE_ENABLED: bool = False
+    # Bước sửa cân bằng (LoadBalanceSearch) có giới hạn: ngân sách = phần của time_limit_sec cho mỗi lần sửa,
+    # dừng sau PATIENCE lần xếp lại liên tiếp không hơn, và mỗi lần kiểm dỡ hàng trong bước sửa tối đa
+    # UNLOAD_CHECK_SEC giây (quá thì coi như chưa chứng minh được → không nhận, vẫn fail-closed).
+    LOAD_BALANCE_BOUNDED_ENABLED: bool = False
+    LOAD_BALANCE_BUDGET_RATIO: float = 0.25
+    LOAD_BALANCE_PATIENCE: int = 4
+    LOAD_BALANCE_UNLOAD_CHECK_SEC: float = 3.0
+    # Phương án của bộ dựng được kiểm dỡ hàng trong tối đa INITIAL_CHECK_RATIO × thời gian còn lại của lượt
+    # (không dưới UNLOAD_CHECK_SEC): đủ cho phương án lớn hợp lệ, mà phương án sai khó chứng minh không ăn hết lượt.
+    LOAD_BALANCE_INITIAL_CHECK_RATIO: float = 0.5
+
     LOADMASTER_SERVICE_URL: str = "http://localhost:8080"
     REDIS_URL: str = "redis://localhost:6379"
 
