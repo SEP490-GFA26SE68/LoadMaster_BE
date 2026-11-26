@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import json
 import logging
-from typing import Optional, Union, List
+import math
+from typing import Any, Optional, Union, List
 from uuid import UUID
 from sqlalchemy.orm import Session
 
@@ -15,6 +17,28 @@ from app.repository.optimization.unplaced_package_repository import UnplacedPack
 from app.service.optimize.optimization_job_service import OptimizationJobService
 
 logger = logging.getLogger(__name__)
+
+
+def _plan_score_json(score) -> Optional[dict]:
+    """PlanScoreData → dict cho cột jsonb (khoá snake_case). Số không hữu hạn thành null: jsonb không nhận NaN."""
+    if score is None:
+        return None
+    return json.loads(score.model_dump_json())
+
+
+def _reason_codes(codes) -> Optional[List[str]]:
+    """Mã lý do đặt; trống (cờ tắt) thì để trống, không ghi [] cho khỏi lẫn với "đã tính, không có lý do"."""
+    if codes is None:
+        return None
+    return [str(code).strip() for code in codes if str(code).strip()]
+
+
+def _finite(value: Any) -> Optional[float]:
+    """Số đo của chỗ đặt để ghi cột NUMERIC: trống hoặc không hữu hạn (inf, nan) thì để trống."""
+    if value is None:
+        return None
+    number = float(value)
+    return number if math.isfinite(number) else None
 
 
 class OptimizationResultPersistenceService:
@@ -48,6 +72,8 @@ class OptimizationResultPersistenceService:
             lưu mỗi phương án một LoadPlan cùng job, theo thứ tự A, B, C, kèm mục tiêu và nhãn.
           - Ngược lại (engine ngoài, hoặc cả ba không xếp được kiện nào): một LoadPlan như cũ,
             không nhãn, giữ lý do của các kiện không xếp được.
+        Cờ PLAN_SCORE_J bật thì kèm điểm J, hồ sơ, nhãn trùng của phương án và lý do đặt của từng kiện
+        (V57); cờ tắt thì các cột đó để trống.
         Trả LoadPlan đầu tiên đã lưu.
         """
         job = self.job_service.get_job(str(job_uuid), db)
@@ -58,16 +84,16 @@ class OptimizationResultPersistenceService:
         candidates = list(result.candidates or [])
         if candidates and any(c.result.placements for c in candidates):
             entries = [
-                (c.result, f"{base_name}_{c.label}", c.objective, c.label)
+                (c.result, f"{base_name}_{c.label}", c.objective, c.label, c.profile, c.duplicate_of)
                 for c in candidates
             ]
         else:
-            entries = [(result, base_name, None, None)]
+            entries = [(result, base_name, None, None, None, None)]
 
         savepoint = db.begin_nested()
         try:
             plans: List[LoadPlan] = []
-            for index, (plan_result, name, objective, label) in enumerate(entries):
+            for index, (plan_result, name, objective, label, profile, duplicate_of) in enumerate(entries):
                 plans.append(
                     self._write_plan(
                         job,
@@ -77,6 +103,8 @@ class OptimizationResultPersistenceService:
                         objective=objective,
                         candidate_label=label,
                         reuse_empty=index == 0,
+                        candidate_profile=profile,
+                        duplicate_of=duplicate_of,
                     )
                 )
             savepoint.commit()
@@ -102,6 +130,8 @@ class OptimizationResultPersistenceService:
             objective: Optional[str],
             candidate_label: Optional[str],
             reuse_empty: bool,
+            candidate_profile: Optional[str] = None,
+            duplicate_of: Optional[str] = None,
     ) -> LoadPlan:
         """Ghi một LoadPlan kèm kiện đã xếp và kiện không xếp được (trong savepoint của save)."""
         logger.info(
@@ -185,6 +215,10 @@ class OptimizationResultPersistenceService:
         plan.front_axle_load = front_axle_load
         plan.rear_axle_load = rear_axle_load
         plan.rehandling_count = rehandling_count
+        # Cờ PLAN_SCORE_J (V57): tắt cờ thì solver không điền, các cột để trống (kể cả khi tái sử dụng plan rỗng).
+        plan.plan_score = _plan_score_json(getattr(result, "plan_score", None))
+        plan.candidate_profile = candidate_profile
+        plan.duplicate_of = duplicate_of
 
         self.load_plan_repository.update(plan, db)
 
@@ -220,6 +254,11 @@ class OptimizationResultPersistenceService:
                         step_sequence=p.step_sequence or 1,
                         pinned=bool(getattr(p, "pinned", False)),
                         stop_zone_id=zone_id_val,
+                        reason_codes=_reason_codes(getattr(p, "reason_codes", None)),
+                        stack_pressure_kg_m2=_finite(getattr(p, "stack_pressure_kg_m2", None)),
+                        top_load_capacity_kg_m2=_finite(getattr(p, "top_load_capacity_kg_m2", None)),
+                        support_ratio=_finite(getattr(p, "support_ratio", None)),
+                        distance_to_door_cm=_finite(getattr(p, "distance_to_door_cm", None)),
                     )
                 )
             self.package_placement_repository.create_all(placement_entities, db)

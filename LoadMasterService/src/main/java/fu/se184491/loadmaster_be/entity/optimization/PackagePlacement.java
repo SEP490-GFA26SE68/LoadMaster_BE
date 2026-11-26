@@ -10,6 +10,8 @@ import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import lombok.*;
 
+import java.math.BigDecimal;
+
 @Entity
 @Table(name = "package_placements", uniqueConstraints = @UniqueConstraint(
         name = "uk_placement_plan_package", columnNames = {"load_plan_id", "package_id"}))
@@ -43,6 +45,29 @@ public class PackagePlacement {
 
     @Builder.Default @Column(name = "pinned")
     private Boolean pinned = false;
+
+    /**
+     * Lý do đặt (JSON array mã: ZONE_STOP_2, HEAVY_LOW, …) và số đo của chỗ đặt (V57). Dịch vụ tối ưu ghi khi cờ PLAN_SCORE_J
+     * bật; Java chỉ đọc: ghim / bỏ ghim giữ nguyên, chỗ xếp của bản chỉnh tay để trống.
+     */
+    @Column(name = "reason_codes", columnDefinition = "jsonb", insertable = false, updatable = false)
+    private String reasonCodes;
+
+    /** Áp lực trên mặt trên của kiện [kg/m²] (H7); 0 khi không có gì đè. */
+    @Column(name = "stack_pressure_kg_m2", precision = 16, scale = 3, insertable = false, updatable = false)
+    private BigDecimal stackPressureKgM2;
+
+    /** σ dùng khi kiểm H7 [kg/m²]; trống = kiện không nhận tải. */
+    @Column(name = "top_load_capacity_kg_m2", precision = 16, scale = 3, insertable = false, updatable = false)
+    private BigDecimal topLoadCapacityKgM2;
+
+    /** Diện tích đáy được đỡ / diện tích đáy (H8); 1 trên sàn. */
+    @Column(name = "support_ratio", precision = 5, scale = 4, insertable = false, updatable = false)
+    private BigDecimal supportRatio;
+
+    /** Khoảng cách từ mặt sau kiện tới cửa [cm]. */
+    @Column(name = "distance_to_door_cm", precision = 10, scale = 3, insertable = false, updatable = false)
+    private BigDecimal distanceToDoorCm;
 
     public Long getStopZoneId() {
         return stopZone != null ? stopZone.getId() : null;

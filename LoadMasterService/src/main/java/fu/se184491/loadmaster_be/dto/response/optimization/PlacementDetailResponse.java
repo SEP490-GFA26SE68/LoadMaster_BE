@@ -47,4 +47,17 @@ public class PlacementDetailResponse {
      * dỡ-xếp lại. Null khi phương án không trả vùng.
      */
     private String stopZoneId;
+    /**
+     * Lý do dịch vụ tối ưu đặt kiện ở đây (mã: ZONE_STOP_2, HEAVY_LOW, PINNED, …) và bốn số đo của chỗ đặt. Null khi cờ
+     * PLAN_SCORE_J tắt lúc chạy, phương án cũ, bản dựng từ chỉnh tay hay bản chạy lại.
+     */
+    private List<String> reasonCodes;
+    /** Áp lực trên mặt trên của kiện [kg/m²]; 0 khi không có gì đè. */
+    private BigDecimal stackPressureKgM2;
+    /** Tải đè tối đa σ của kiện [kg/m²]; null cũng khi kiện không nhận tải. */
+    private BigDecimal topLoadCapacityKgM2;
+    /** Diện tích đáy được đỡ / diện tích đáy (0..1); 1 trên sàn. */
+    private BigDecimal supportRatio;
+    /** Khoảng cách từ mặt sau kiện tới cửa [cm]. */
+    private BigDecimal distanceToDoorCm;
 }

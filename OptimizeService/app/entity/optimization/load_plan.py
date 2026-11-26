@@ -1,4 +1,5 @@
-from sqlalchemy import Column, Integer, BigInteger, String, ForeignKey, Numeric, Boolean
+from sqlalchemy import Column, Integer, BigInteger, String, ForeignKey, Numeric, Boolean, JSON
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import relationship
 
 from app.config.database import Base
@@ -28,6 +29,11 @@ class LoadPlan(Base):
     # Thuật toán đã thật sự sinh ra phương án (EP_DBLF | GA | SA | EP_LUMO_R1_1 | LUMO_R1 | LUMO_R1_1 | LUMO_R2).
     # Khác optimization_jobs.algorithm_name (hạng của gói). Phương án cũ / engine ngoài để trống.
     algorithm_name = Column(String(60), nullable=True)
+    # Điểm J + phân rã theo hồ sơ (PlanScoreData, khoá snake_case), hồ sơ đã chọn phương án (A | B | C) và nhãn phương án
+    # trước đã chọn trùng cách xếp (V57). Chỉ có khi cờ PLAN_SCORE_J bật; phương án cũ và bản chỉnh tay để trống.
+    plan_score = Column(JSON().with_variant(JSONB(), "postgresql"), nullable=True)
+    candidate_profile = Column(String(20), nullable=True)
+    duplicate_of = Column(String(1), nullable=True)
 
     job = relationship("OptimizationJob")
     placements = relationship("PackagePlacement", back_populates="load_plan", cascade="all, delete-orphan")
