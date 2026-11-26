@@ -35,6 +35,7 @@ from typing import Optional
 from app.constant.optimization.plan_algorithm import PlanAlgorithm
 from app.dto.optimization.engine.engine_response import EngineOptimizationResponse
 from app.dto.optimization.engine.problem_request import ProblemRequest
+from app.service.optimize import plan_score
 from app.service.optimize.candidate_plans import (
     LayoutStrategy,
     axle_imbalance,
@@ -112,6 +113,7 @@ class _Search:
     def __init__(self, client, problem: ProblemRequest, seed: int, decode_estimate: float):
         self.client = client
         self.problem = problem
+        self.profile = plan_score.resolve_profile(problem.plan_profile) if plan_score.enabled() else None
         self.rng = random.Random(seed)
         self.decode_estimate = decode_estimate
         self.deadline: Optional[float] = None  # hết ngân sách GA + SA: lần giải mã đang chạy cũng dừng (cờ hạn chung)
@@ -152,6 +154,10 @@ class _Search:
         return result, True
 
     def score(self, result: EngineOptimizationResponse) -> float:
+        if plan_score.enabled():
+            # M6: J theo hồ sơ của lần chạy; phương án rỗng (vi phạm ràng buộc cứng) không có J → dưới mọi J.
+            rehandling = result.metrics.rehandling_count if result.metrics else None
+            return plan_score.selection_scalar(self.problem, result.placements, self.profile, rehandling)
         return fitness(result, self.problem.vehicle, self.total)
 
     # ------------------------------------------------------------------ cá thể

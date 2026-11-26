@@ -23,6 +23,9 @@ class Settings(BaseSettings):
     # lại hai lượt — lượt 1 đặt kiện bắt buộc của mọi vùng (vùng sâu trước), lượt 2 xếp phần còn lại — giữ khi đủ kiện bắt
     # buộc và hợp lệ, rồi đánh lại step_sequence theo thứ tự bốc lên xe. Tắt = như M4.
     H13_TWO_PASS: bool = True
+    # Hàm điểm J + hồ sơ ưu tiên (spec mục 6; KE-HOACH-TOI-UU M6): mọi chỗ chọn phương án (GA / SA, LBS, Lumo,
+    # A/B/C) chấm bằng J; kết quả mang J + phân rã + lý do đặt. Tắt = cách chấm cũ, kết quả y hệt bản trước.
+    PLAN_SCORE_J: bool = False
 
     APP_NAME: str = "OptimizeService"
     APP_ENV: str = "development"

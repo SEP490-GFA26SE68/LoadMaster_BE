@@ -9,6 +9,7 @@ from itertools import product
 from app.config.settings import settings
 from app.dto.optimization.engine.engine_response import PlacementData
 from app.dto.optimization.engine.problem_request import ProblemRequest
+from app.service.optimize import plan_score
 from app.service.optimize.constraint_engine import ConstraintEngine
 from app.service.optimize.unload_feasibility_validator import UnloadFeasibilityValidator
 
@@ -84,6 +85,7 @@ class LoadBalanceSearch:
         self.best_plan = []
         self.best_rank = None
         self.last_violations = []
+        self.profile = None
 
     def best_plan_copy(self):
         """Return an isolated snapshot; callers cannot mutate the validated incumbent."""
@@ -130,6 +132,11 @@ class LoadBalanceSearch:
         error += ((cog[1] - self.vehicle.inner_w / 2) / self.vehicle.inner_w) ** 2
         volume = sum(p.packed_l * p.packed_w * p.packed_h for p in placements)
         rank = (len(placements), volume, -error)
+        if plan_score.enabled():
+            # M6: hạng theo khoá chọn của J (hồ sơ lần chạy); J đã gồm thể tích, lệch trọng tâm / trục.
+            if self.profile is None:
+                self.profile = plan_score.resolve_profile(self.problem.plan_profile)
+            rank = (*plan_score.selection_key(self.problem, placements, self.profile), -error)
         if ConstraintEngine.physics_v2():
             # H13: không đổi kiện bắt buộc lấy kiện khác — số kiện must_load được xếp đứng đầu hạng.
             rank = (sum(1 for p in placements if self.packages[str(p.package_id)].must_load), *rank)

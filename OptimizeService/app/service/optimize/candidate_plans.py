@@ -131,13 +131,48 @@ def _best(indexes: list[int], key) -> int:
     return min(indexes, key=lambda i: (key(i), i))
 
 
+def pick_candidates_by_j(layouts: list[EngineOptimizationResponse], problem) -> list[CandidatePlanData]:
+    """
+    Cờ PLAN_SCORE_J (spec 6.3): A / B / C = cách xếp có J cao nhất theo hồ sơ mẫu A / B / C (phương án rỗng — vi
+    phạm ràng buộc cứng — đứng sau mọi phương án có kiện; `pack_count_first`: so số kiện trước; hoà thì cách đứng
+    trước). Hai hồ sơ chọn trùng một cách
+    xếp thì nhãn sau ghi `duplicate_of` = nhãn trước, không sửa số cho khác đi.
+    """
+    from app.service.optimize import plan_score
+
+    known = plan_score.profiles()
+    indexes = list(range(len(layouts)))
+    chosen: dict[str, int] = {}
+    scores: dict[str, plan_score.PlanScore] = {}
+    for label in plan_score.CANDIDATE_PROFILES:
+        profile = known[label]
+        per = {i: plan_score.score(problem, layouts[i].placements, profile) for i in indexes}
+        count_first = plan_score.pack_count_first()
+        chosen[label] = _best(indexes, lambda i: (not layouts[i].placements,
+                                                  -len(layouts[i].placements) if count_first else 0, -per[i].j))
+        scores[label] = per[chosen[label]]
+    out: list[CandidatePlanData] = []
+    for label, objective in CANDIDATE_OBJECTIVES:
+        index = chosen[label]
+        duplicate = next((prev.label for prev in out if chosen[prev.label] == index), None)
+        result = layouts[index].model_copy(update={"plan_score": plan_score.to_data(scores[label])})
+        out.append(CandidatePlanData(label=label, objective=objective, result=result, profile=label,
+                                     duplicate_of=duplicate))
+    return out
+
+
 def pick_candidates(
     layouts: list[EngineOptimizationResponse],
     vehicle,
+    problem=None,
 ) -> list[CandidatePlanData]:
     """Chọn phương án A, B, C từ các cách xếp đã thử. Luôn trả đúng ba, theo thứ tự A, B, C."""
     if not layouts:
         raise ValueError("Cần ít nhất một cách xếp để chọn phương án")
+    from app.service.optimize import plan_score
+
+    if problem is not None and plan_score.enabled():
+        return pick_candidates_by_j(layouts, problem)
 
     indexes = list(range(len(layouts)))
     best_volume = _best(indexes, lambda i: (-_volume(layouts[i]), -_packed(layouts[i])))
