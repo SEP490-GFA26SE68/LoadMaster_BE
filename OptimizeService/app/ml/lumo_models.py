@@ -26,6 +26,7 @@ from app.constant.optimization.plan_algorithm import PlanAlgorithm
 from app.dto.optimization.engine.engine_response import EngineOptimizationResponse, PlacementData
 from app.dto.optimization.engine.problem_request import ProblemRequest
 from app.service.optimize import plan_score
+from app.service.optimize.constraint_engine import ConstraintEngine
 
 logger = logging.getLogger(__name__)
 
@@ -166,7 +167,8 @@ def run_lumo_models(
     if deadline is not None:
         end = min(end, deadline)
     samples = int(settings.LUMO_SAMPLES) if samples is None else samples
-    lm_problem = Problem.from_request(problem.model_dump(mode="json"))
+    # Luật ràng buộc của lmai theo cờ PHYSICS_RULES_V2 của service (tắt: luật cũ, như trước khi đồng bộ).
+    lm_problem = Problem.from_request(problem.model_dump(mode="json"), physics_v2=ConstraintEngine.physics_v2())
 
     # Lượt 1: greedy cho từng mô hình (mỗi mô hình có ít nhất một lượt trước khi lượt nào lấy mẫu).
     best: dict[str, object] = {}

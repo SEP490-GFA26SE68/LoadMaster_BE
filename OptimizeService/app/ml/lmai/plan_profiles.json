@@ -1,0 +1,29 @@
+{
+  "_ghi_chu": "Hồ sơ ưu tiên của hàm điểm J (spec 'Ràng buộc vật lý và điểm phương án' mục 6). MỌI SỐ Ở ĐÂY LÀ GIẢ ĐỊNH (Q-D4 chưa chốt): default theo số đề xuất của spec; A/B/C nâng trọng số của nhóm thành phần mà hồ sơ đề cao. Bản sao ở LoadMaster_AI/lmai/plan_profiles.json phải giống hệt (test_parity_j kiểm).",
+  "assumed": true,
+  "pack_count_first": true,
+  "high_priority_min": 2,
+  "adjacent_gap_cm": 1.0,
+  "profiles": {
+    "default": {
+      "name": "Mặc định",
+      "w_vol": 1.0, "w_n": 0.5,
+      "w": {"S1": 1.0, "S2": 0.2, "S3": 0.3, "S4": 0.1, "S5": 0.2, "S6": 0.2, "S7": 0.0, "S8": 0.0}
+    },
+    "A": {
+      "name": "Chở nhiều",
+      "w_vol": 2.0, "w_n": 0.5,
+      "w": {"S1": 0.5, "S2": 0.1, "S3": 0.15, "S4": 0.05, "S5": 0.1, "S6": 0.1, "S7": 0.0, "S8": 0.0}
+    },
+    "B": {
+      "name": "An toàn tải",
+      "w_vol": 1.0, "w_n": 0.5,
+      "w": {"S1": 1.0, "S2": 1.0, "S3": 1.0, "S4": 0.5, "S5": 0.2, "S6": 0.2, "S7": 0.0, "S8": 0.0}
+    },
+    "C": {
+      "name": "Dỡ nhanh",
+      "w_vol": 1.0, "w_n": 0.5,
+      "w": {"S1": 3.0, "S2": 0.2, "S3": 0.3, "S4": 0.1, "S5": 1.0, "S6": 0.5, "S7": 0.0, "S8": 0.0}
+    }
+  }
+}

@@ -87,11 +87,17 @@ class PackingEnv:
             if not res.verdict.valid:
                 ver = res.verdict
                 v = self.problem.vehicle
-                excess = max(0.0, ver.cog_x - v.max_cog_offset_ratio) / v.max_cog_offset_ratio + \
-                    max(0.0, ver.cog_y - v.max_cog_offset_ratio) / v.max_cog_offset_ratio
+                if self.problem.physics_v2:   # H11 chỉ trọng tâm ngang theo r_y
+                    ry = max(1e-6, v.cog_limit_y)
+                    excess = max(0.0, ver.cog_y - ry) / ry
+                else:
+                    excess = max(0.0, ver.cog_x - v.max_cog_offset_ratio) / v.max_cog_offset_ratio + \
+                        max(0.0, ver.cog_y - v.max_cog_offset_ratio) / v.max_cog_offset_ratio
                 if not ver.axle_ok:
                     excess += 0.5
                 if not ver.unload_ok:
+                    excess += 1.0
+                if ver.must_load_missing:   # H13
                     excess += 1.0
                 r -= (self.ret + r) + self.cfg.invalid_penalty * min(1.0, 0.25 + excess)
         self.ret += r
@@ -119,22 +125,33 @@ class PackingEnv:
             centre = (zx0 + zx1) / 2
             dist = np.abs(b[:, 0] + b[:, 3] / 2 - centre)
             sel = np.argsort(dist, kind="stable")[: cfg.max_placed]
-            lim = st.limit[sel]
-            cap = np.where(lim > 0, np.clip((lim - st.received[sel]) / np.maximum(lim, 1e-6), 0, 1), 0)
+            if self.problem.physics_v2:
+                chain, cap = self._load_columns_v2(st)
+                chain, cap = chain[sel], cap[sel]
+            else:
+                lim = st.limit[sel]
+                cap = np.where(lim > 0, np.clip((lim - st.received[sel]) / np.maximum(lim, 1e-6), 0, 1), 0)
+                chain = st.chain_fragile[sel].astype(float)
             cur = zone.stop_index if zone else -1
             placed[: len(sel)] = np.stack([
                 b[sel, 0] / L, b[sel, 1] / W, b[sel, 2] / H, b[sel, 3] / L, b[sel, 4] / W, b[sel, 5] / H,
-                st.weight[sel] / self.wscale, st.chain_fragile[sel].astype(float), cap, (st.stop[sel] == cur).astype(float),
+                st.weight[sel] / self.wscale, chain, cap, (st.stop[sel] == cur).astype(float),
             ], axis=1)
             pmask[: len(sel)] = True
 
         cand = np.zeros((cfg.max_candidates, FC), np.float32)
         cmask = np.zeros(cfg.max_candidates, bool)
         has_ax = v.has_axles
+        v2 = self.problem.physics_v2
         zcargo = self.zone_cargo.get(zone.stop_index, 1.0) if zone else 1.0
         for i, c in enumerate(pk.candidates[: cfg.max_candidates]):
             pkg = self.problem.packages[c.pkg_idx]
             m = pkg.weight
+            if v2:   # cột 11 / 12 đổi nghĩa (HUONG-DAN-TRAIN-LUMO-R3 mục 2.5): σ = 0; σ > 0
+                sig = pkg.sigma
+                f11, f12 = float(sig == 0.0), float(sig is not None and sig > 0)
+            else:
+                f11, f12 = float(pkg.fragile), float(pkg.stack_limit > 0)
             ex = (m, c.x + c.l / 2, c.y + c.w / 2, c.z + c.h / 2)
             w2 = st.total_weight + m
             cxs = ((st.mx + m * ex[1]) / w2 - L / 2) / L / ratio
@@ -145,7 +162,7 @@ class PackingEnv:
             else:
                 fa = ra = 0.0
             cand[i] = (c.l / L, c.w / W, c.h / H, c.x / L, c.y / W, c.z / H, (c.x - zx0) / zlen, (c.x + c.l - zx0) / zlen,
-                       (c.z + c.h) / H, c.support_ratio, m / self.wscale, float(pkg.fragile), float(pkg.stack_limit > 0),
+                       (c.z + c.h) / H, c.support_ratio, m / self.wscale, f11, f12,
                        c.l * c.w * c.h / zcargo, c.slot / max(1, cfg.buffer_k), float(c.rot in (0, 1)),
                        np.clip(cxs, -3, 3), np.clip(cys, -3, 3), fa, ra, float(pk.cand_oz[i]),
                        float(abs(c.y - pk.dy0) < 1e-3 or abs(c.y + c.w - pk.dy1) < 1e-3))
@@ -171,6 +188,25 @@ class PackingEnv:
         if cfg.obs_v2:
             self._observe_v2(obs)
         return obs
+
+    @staticmethod
+    def _load_columns_v2(st) -> Tuple[np.ndarray, np.ndarray]:
+        """Cột 7 / 8 của kiện đã xếp dưới luật mới (mục 2.5), giữ cùng hướng nghĩa với cột cũ:
+        - cột 7 "không nhận thêm tải" (cũ `chain_fragile`): σ = 0 / trống, hoặc đã kịch p = σ, hoặc một kiện bên dưới
+          (trực tiếp / gián tiếp) đã như vậy;
+        - cột 8 "phần tải còn lại" (cũ (K − tải) / K): 1 − p / σ, 0 khi σ = 0 / trống."""
+        n = st.n
+        sig = st.sigma[:n]
+        p = np.array([st.pressure(i) for i in range(n)])
+        ok = ~np.isnan(sig) & (sig > 0)
+        cap = np.zeros(n)
+        cap[ok] = np.clip(1.0 - p[ok] / sig[ok], 0.0, 1.0)
+        full = ~ok | (cap <= 1e-9)
+        chain = full.copy()
+        for i in range(n):   # kiện đỡ luôn được xếp trước kiện nó đỡ
+            if not chain[i] and any(chain[j] for j, _ in st.supporters[i]):
+                chain[i] = True
+        return chain.astype(float), cap
 
     # ---------------------------------------------------------------- CP2: đầu vào v2
     def _observe_v2(self, obs: Dict[str, np.ndarray]) -> None:

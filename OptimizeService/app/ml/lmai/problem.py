@@ -7,6 +7,12 @@ Quy ước (giống OptimizeService):
 - Y theo chiều rộng, Z theo chiều cao.
 - stop_index nhỏ hơn = giao trước → nằm gần cửa.
 - rotation_type 0..5 = LWH, WLH, LHW, WHL, HLW, HWL (kích thước sau xoay = packed_l, packed_w, packed_h).
+
+Luật ràng buộc theo từng bài (`Problem.physics_v2`), như cờ PHYSICS_RULES_V2 của backend (M4, PR #123):
+- False (mặc định, luật cũ): HC-07 tải chồng kg, HC-08 dễ vỡ, HC-05 ρ = 0,70, HC-11 trọng tâm dọc + ngang.
+- True (luật mới, spec mục 5): H7 áp lực σ kg/m², H8 ρ theo kiện, H10 tải sàn, H11 chỉ trọng tâm ngang (r_y), H12 mã
+  `LIFO_BLOCKED`, H13 `must_load`. Cách lấy σ / ρ / r_y chép đúng `ConstraintEngine.top_load_capacity`,
+  `support_ratio_for`, `cog_offset_limit_y` của backend.
 """
 from __future__ import annotations
 
@@ -24,6 +30,7 @@ ROTATIONS = {
 }
 ROTATION_NAMES = {0: "LWH", 1: "WLH", 2: "LHW", 3: "WHL", 4: "HLW", 5: "HWL"}
 UPRIGHT = (0, 1)
+DEFAULT_SUPPORT_RATIO = 0.70   # H8: ρ khi kiện không khai (= hằng HC-05 cũ)
 
 
 @dataclass
@@ -42,6 +49,9 @@ class Vehicle:
     empty_rear_axle_load_kg: Optional[float] = None
     max_cog_offset_ratio: float = 0.15
     name: str = ""
+    # luật mới (M3 / M4 backend): r_y (trống = max_cog_offset_ratio) và tải trọng sàn q_sàn kg/m² (trống = không kiểm)
+    max_cog_offset_ratio_y: Optional[float] = None
+    floor_load_capacity_kg_m2: Optional[float] = None
     # False: request không khai cửa → backend chặn mọi kiện (DOOR_CONFIG_MISSING). Hình học cửa vẫn điền bằng thùng
     # để bộ dựng không vỡ, nhưng validate.input_violations coi mọi phương án là không hợp lệ.
     door_declared: bool = True
@@ -58,6 +68,11 @@ class Vehicle:
     @property
     def door_y_max(self) -> float:
         return self.door_y_min + self.door_w
+
+    @property
+    def cog_limit_y(self) -> float:
+        """H11: r_y; trống thì dùng max_cog_offset_ratio (backend `cog_offset_limit_y`)."""
+        return float(self.max_cog_offset_ratio_y if self.max_cog_offset_ratio_y is not None else self.max_cog_offset_ratio)
 
     @property
     def has_axles(self) -> bool:
@@ -77,6 +92,12 @@ class Package:
     max_stack_weight_kg: Optional[float] = None  # None = không được đặt gì lên (HC-07 phương án A)
     fragile: bool = False
     rotation_allowed: bool = True
+    # luật mới (M3 / M4 backend). Trống / False = như dữ liệu cũ.
+    top_load_capacity_kg_m2: Optional[float] = None  # σ đã khai (kg/m²)
+    min_support_ratio: Optional[float] = None        # ρ đã khai
+    must_load: bool = False                          # H13
+    priority: Optional[int] = None
+    packing_group: Optional[str] = None
 
     @property
     def volume(self) -> float:
@@ -102,6 +123,24 @@ class Package:
             return 0.0
         return max(0.0, float(self.max_stack_weight_kg))
 
+    @property
+    def sigma(self) -> Optional[float]:
+        """H7: σ [kg/m²] như backend `top_load_capacity`: đã khai > dễ vỡ 0 > K / A_top (A_top = l × w gốc / 10⁴) >
+        None = không nhận tải nào (như HC-07 cũ khi trống; backend cảnh báo TOP_LOAD_CAPACITY_MISSING)."""
+        if self.top_load_capacity_kg_m2 is not None:
+            return float(self.top_load_capacity_kg_m2)
+        if self.fragile:
+            return 0.0
+        if self.max_stack_weight_kg is not None and self.l > 0 and self.w > 0:
+            return float(self.max_stack_weight_kg) / (float(self.l) * float(self.w) / 1e4)
+        return None
+
+    def support_ratio(self, physics_v2: bool) -> float:
+        """H8: ρ của kiện (luật mới) hoặc 0,70 (luật cũ) — backend `support_ratio_for`."""
+        if not physics_v2 or self.min_support_ratio is None:
+            return DEFAULT_SUPPORT_RATIO
+        return float(self.min_support_ratio)
+
 
 @dataclass
 class Stop:
@@ -118,6 +157,9 @@ class Problem:
     time_limit_sec: int = 60
     seed: Optional[int] = None
     source: Optional[dict] = None  # nguồn bài (vd. mã đơn BED-BPP) — chỉ để báo cáo / kiểm tra, không gửi cho service
+    # Luật ràng buộc dùng để dựng / chấm bài này (= cờ PHYSICS_RULES_V2 của backend). Không gửi cho service: backend dùng
+    # cờ của nó — khi so với backend phải đặt cờ backend cùng giá trị (tests/test_parity_v2.py).
+    physics_v2: bool = False
 
     @property
     def cargo_volume(self) -> float:
@@ -130,7 +172,7 @@ class Problem:
 
     # ---- chuyển đổi với JSON của OptimizeService ----
     @staticmethod
-    def from_request(d: dict) -> "Problem":
+    def from_request(d: dict, physics_v2: bool = False) -> "Problem":
         v = d["vehicle"]
         if v.get("obstacles"):
             # lmai chưa mô hình vật cản trong thùng (bộ dựng lẫn bộ kiểm) → không xếp sai âm thầm.
@@ -148,9 +190,15 @@ class Problem:
                         stop_index=int(p.get("stop_index") or 0),  # giữ nguyên như OptimizeService (mặc định 0)
                         allowed_rotations=[int(r) for r in (p.get("allowed_rotations") or [])],
                         max_stack_weight_kg=p.get("max_stack_weight_kg"), fragile=bool(p.get("fragile", False)),
-                        rotation_allowed=bool(p.get("rotation_allowed", True))) for p in d["packages"]]
+                        rotation_allowed=bool(p.get("rotation_allowed", True)),
+                        top_load_capacity_kg_m2=_opt_float(p.get("top_load_capacity_kg_m2")),
+                        min_support_ratio=_opt_float(p.get("min_support_ratio")), must_load=bool(p.get("must_load", False)),
+                        priority=None if p.get("priority") is None else int(p["priority"]),
+                        packing_group=None if p.get("packing_group") is None else str(p["packing_group"]))
+                for p in d["packages"]]
         stops = [Stop(id=str(s["id"]), sequence=int(s["sequence"])) for s in d.get("stops", [])]
-        return Problem(veh, pkgs, stops, d.get("objective", "MAX_VOLUME_UTIL"), int(d.get("time_limit_sec", 60)), d.get("seed"))
+        return Problem(veh, pkgs, stops, d.get("objective", "MAX_VOLUME_UTIL"), int(d.get("time_limit_sec", 60)), d.get("seed"),
+                       physics_v2=bool(physics_v2))
 
     def to_request(self) -> dict:
         v = asdict(self.vehicle)
@@ -166,6 +214,10 @@ class Problem:
             "time_limit_sec": self.time_limit_sec,
             "seed": self.seed,
         }
+
+
+def _opt_float(x) -> Optional[float]:
+    return None if x is None else float(x)
 
 
 @dataclass

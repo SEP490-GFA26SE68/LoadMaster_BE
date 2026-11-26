@@ -6,6 +6,14 @@ nếu có mã nguồn OptimizeService, bằng chính ConstraintEngine (xem tests
 
 Một luật chặt hơn bản gốc: không cho đặt kiện mới chui xuống dưới đáy kiện đã có (kiện mới sẽ phải đỡ tải
 ngược lên). Luật này chỉ loại bớt vài chỗ đặt hiếm gặp, đổi lại tải chồng/dễ vỡ tính tăng dần được và luôn hợp lệ.
+
+Luật mới (`Problem.physics_v2`, M5 — như backend PHYSICS_RULES_V2):
+- H7: (received_j + d_j) / A_c,j ≤ σ_j, A_c,j = tổng diện tích tiếp xúc trên mặt trên của j SAU khi đặt (sổ
+  `contact_top`): kiện đỡ trực tiếp có thêm mặt tiếp xúc, kiện sâu hơn chỉ thêm tải. σ trống = không nhận tải.
+  Thay HC-07 (kg) và HC-08 (`chain_fragile` không dùng nữa).
+- H10: kiện nằm sàn (gồm chính kiện mới): (mᵢ + receivedᵢ) / (lᵢwᵢ / 10⁴) ≤ q_sàn; xe không khai q_sàn → bỏ qua.
+- H8: ρ theo kiện. Cùng sai số so sánh với backend (`_check_pressure`: limit·(1 + 1e-9) + 1e-6).
+Nhờ "luật chặt hơn", tải và diện tích của mọi kiện cũ chỉ tăng → kiểm từng bước vẫn đúng cho cả phương án.
 """
 from __future__ import annotations
 
@@ -19,10 +27,15 @@ import numpy as np
 from .problem import Package, Placement, Problem, Vehicle
 
 EPS = 1e-4
-SUPPORT_RATIO = 0.70
+SUPPORT_RATIO = 0.70   # luật cũ (HC-05); luật mới: Package.support_ratio(True)
 # P18 (KE-HOACH-TOI-UU M2 mục 3, thí nghiệm): cho đặt kiện ngoài khung cửa (theo Y). Dỡ được nhờ dịch ngang vào khung
 # rồi kéo +X — như UnloadFeasibilityValidator của backend (b0f79a4). Tắt (mặc định) = chỉ đặt trong khung cửa như cũ.
 OUTSIDE_DOOR_FRAME = os.environ.get("LMAI_NGOAI_KHUNG_CUA", "0") == "1"
+
+
+def over_limit(value: float, limit: float) -> bool:
+    """So sánh vượt giới hạn H7 / H10, đúng như `ConstraintEngine._check_pressure` của backend."""
+    return value > limit * (1 + 1e-9) + 1e-6
 
 
 def exit_corridor(y, w, dy0: float, dy1: float):
@@ -122,7 +135,16 @@ class LoadState:
         self.weight = np.zeros(n)
         self.limit = np.zeros(n)
         self.received = np.zeros(n)
-        self.chain_fragile = np.zeros(n, dtype=bool)  # chính nó hoặc bên dưới có hàng dễ vỡ
+        self.chain_fragile = np.zeros(n, dtype=bool)  # chính nó hoặc bên dưới có hàng dễ vỡ (luật cũ)
+        # luật mới: σ (nan = trống → không nhận tải) và diện tích tiếp xúc trên mặt trên (cm²)
+        self.v2 = bool(problem.physics_v2)
+        self.sigma = np.full(n, np.nan)
+        self.contact_top = np.zeros(n)
+        q = self.veh.floor_load_capacity_kg_m2
+        self.floor_q: Optional[float] = float(q) if (self.v2 and q is not None) else None
+        # chỉ để ĐO (benchmark.blocked_by_rules): tạm bỏ H7 / H10 xem kiện có chỗ đặt không. Không dùng khi xếp.
+        self.skip_h7 = False
+        self.skip_h10 = False
         self.stop = np.zeros(n, dtype=np.int64)
         self.pkg_of = np.zeros(n, dtype=np.int64)
         self.rot_of = np.zeros(n, dtype=np.int64)
@@ -190,6 +212,10 @@ class LoadState:
             return []
         if points.size == 0:
             return []
+        rho = pkg.support_ratio(self.v2)
+        # H10 cho chính kiện mới khi nằm sàn (chỉ phụ thuộc hướng xoay)
+        floor_ok_self = (self.floor_q is None or self.skip_h10
+                         or not over_limit(pkg.weight / (l * w / 1e4), self.floor_q))
         px, py, pz = points[:, 0], points[:, 1], points[:, 2]
         dy0, dy1 = v.door_y_min, v.door_y_max
         ymin, ymax = (0.0, v.inner_w) if OUTSIDE_DOOR_FRAME else (dy0, dy1)
@@ -239,7 +265,8 @@ class LoadState:
         for k in np.nonzero(keep)[0]:
             x, y, z = float(px[k]), float(py[k]), float(pz[k])
             if z <= EPS:
-                out.append(Candidate(-1, -1, rot, x, y, 0.0, l, w, h, 1.0, []))
+                if floor_ok_self:
+                    out.append(Candidate(-1, -1, rot, x, y, 0.0, l, w, h, 1.0, []))
                 continue
             sup = np.nonzero(touch[k])[0]
             if sup.size == 0:
@@ -252,14 +279,18 @@ class LoadState:
                 rects.append((x1, x2, y1, y2))
                 sups.append((int(j), (x2 - x1) * (y2 - y1)))
             ratio = min(1.0, union_area(rects) / (l * w))
-            if ratio < SUPPORT_RATIO - 1e-9:  # HC-05
+            if ratio < rho - 1e-9:  # HC-05 / H8
                 continue
             if not center_in_hull(x + l / 2, y + w / 2, rects):  # HC-06
                 continue
-            if any(self.chain_fragile[j] for j, _ in sups):  # HC-08
-                continue
-            if not self._stack_ok(sups, pkg.weight):  # HC-07
-                continue
+            if self.v2:
+                if not self._pressure_ok(sups, pkg.weight):  # H7 + H10
+                    continue
+            else:
+                if any(self.chain_fragile[j] for j, _ in sups):  # HC-08
+                    continue
+                if not self._stack_ok(sups, pkg.weight):  # HC-07
+                    continue
             out.append(Candidate(-1, -1, rot, x, y, z, l, w, h, ratio, sups))
         return out
 
@@ -285,6 +316,28 @@ class LoadState:
                 return False
         return True
 
+    def _pressure_ok(self, sups: List[Tuple[int, float]], load: float) -> bool:
+        """H7 + H10 sau khi đặt một kiện nặng `load` lên các kiện đỡ `sups` (luật mới)."""
+        direct = dict(sups)
+        for j, d in self._stack_deltas(sups, load).items():
+            recv = self.received[j] + d
+            if recv > EPS and not self.skip_h7:
+                sig = self.sigma[j]
+                if np.isnan(sig):
+                    return False
+                area = (self.contact_top[j] + direct.get(j, 0.0)) / 1e4
+                if over_limit(recv / area, sig):
+                    return False
+            if self.floor_q is not None and not self.skip_h10 and self.box[j, 2] <= EPS:
+                if over_limit((self.weight[j] + recv) / (self.box[j, 3] * self.box[j, 4] / 1e4), self.floor_q):
+                    return False
+        return True
+
+    def pressure(self, i: int) -> float:
+        """Áp lực hiện tại trên mặt trên kiện thứ i [kg/m²] (0 nếu chưa có gì đè)."""
+        a = self.contact_top[i]
+        return float(self.received[i] / (a / 1e4)) if a > 0 else 0.0
+
     # ---------------------------------------------------------------- đặt kiện
     def place(self, pkg_idx: int, c: Candidate) -> None:
         pkg = self.problem.packages[pkg_idx]
@@ -297,6 +350,10 @@ class LoadState:
         self.rot_of[i] = c.rot
         self.supporters.append(list(c.supporters))
         self.chain_fragile[i] = pkg.fragile or any(self.chain_fragile[j] for j, _ in c.supporters)
+        sig = pkg.sigma
+        self.sigma[i] = np.nan if sig is None else sig
+        for j, a in c.supporters:
+            self.contact_top[j] += a
         for j, d in self._stack_deltas(c.supporters, pkg.weight).items():
             self.received[j] += d
         self.n += 1
@@ -312,6 +369,25 @@ class LoadState:
                 dz = self._drop_z(x, y, z)
                 if dz < z - EPS:
                     self.eps.add((round(x, 4), round(y, 4), round(dz, 4)))
+
+    @classmethod
+    def from_placements(cls, problem: Problem, pls: Sequence[Placement]) -> "LoadState":
+        """Dựng lại sổ sách từ một phương án (theo thứ tự đặt; kiện đỡ phải đứng trước kiện nó đỡ, như bộ dựng lmai)."""
+        st = cls(problem)
+        idx = {p.id: i for i, p in enumerate(problem.packages)}
+        for p in pls:
+            sups = []
+            for j in range(st.n):
+                bj = st.box[j]
+                if abs(bj[2] + bj[5] - p.z) > EPS:
+                    continue
+                ox = min(p.x + p.packed_l, bj[0] + bj[3]) - max(p.x, bj[0])
+                oy = min(p.y + p.packed_w, bj[1] + bj[4]) - max(p.y, bj[1])
+                if ox > EPS and oy > EPS:
+                    sups.append((j, ox * oy))
+            c = Candidate(-1, -1, int(p.rotation_type), p.x, p.y, p.z, p.packed_l, p.packed_w, p.packed_h, 1.0, sups)
+            st.place(idx[p.package_id], c)
+        return st
 
     def placements(self) -> List[Placement]:
         out = []
