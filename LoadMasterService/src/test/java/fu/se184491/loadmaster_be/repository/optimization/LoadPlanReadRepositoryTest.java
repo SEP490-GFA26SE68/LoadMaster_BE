@@ -1,6 +1,7 @@
 package fu.se184491.loadmaster_be.repository.optimization;
 
 import fu.se184491.loadmaster_be.dto.response.optimization.LoadPlanDetailResponse;
+import fu.se184491.loadmaster_be.dto.response.optimization.DataWarningResponse;
 import fu.se184491.loadmaster_be.dto.response.optimization.OptimizationJobStatusResponse;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -164,6 +165,36 @@ class LoadPlanReadRepositoryTest {
         when(rs.getBoolean("allow_rotate_y")).thenReturn(y);
         when(rs.getBoolean("allow_rotate_z")).thenReturn(z);
         return rs;
+    }
+
+    @Test
+    void jobStatusCarriesDataWarningsWrittenByTheOptimizer() throws SQLException {
+        ResultSet rs = mock(ResultSet.class);
+        when(rs.getLong("id")).thenReturn(42L);
+        when(rs.getString("data_warnings")).thenReturn(
+                "[{\"code\": \"TOP_LOAD_CAPACITY_MISSING\", \"package_ids\": [\"3\", \"4\"]},"
+                        + " {\"code\": \"PACKAGE_TYPE_MISSING\", \"package_ids\": [\"4\"]}, {\"no_code\": true}]");
+        rows(rs);
+
+        assertThat(repository.findJobStatus(42L)).hasValueSatisfying(job -> assertThat(job.getDataWarnings())
+                .containsExactly(new DataWarningResponse("TOP_LOAD_CAPACITY_MISSING", List.of("3", "4")),
+                        new DataWarningResponse("PACKAGE_TYPE_MISSING", List.of("4"))));
+    }
+
+    @Test
+    void jobStatusWithoutWarningsOrBrokenJsonHasAnEmptyList() throws SQLException {
+        ResultSet empty = mock(ResultSet.class);
+        when(empty.getString("data_warnings")).thenReturn("[]");
+        rows(empty);
+        assertThat(repository.findJobStatus(1L)).hasValueSatisfying(job -> assertThat(job.getDataWarnings()).isEmpty());
+    }
+
+    @Test
+    void jobStatusWithBrokenWarningJsonHasAnEmptyList() throws SQLException {
+        ResultSet broken = mock(ResultSet.class);
+        when(broken.getString("data_warnings")).thenReturn("{not json");
+        rows(broken);
+        assertThat(repository.findJobStatus(1L)).hasValueSatisfying(job -> assertThat(job.getDataWarnings()).isEmpty());
     }
 
     @Test

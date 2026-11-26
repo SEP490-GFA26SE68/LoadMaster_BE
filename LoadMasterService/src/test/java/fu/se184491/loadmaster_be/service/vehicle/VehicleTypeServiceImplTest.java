@@ -63,7 +63,7 @@ class VehicleTypeServiceImplTest {
 
     private static CreateVehicleTypeRequest request(String name, int length, String payload) {
         return new CreateVehicleTypeRequest(name, length, 235, 240, 230, 230, new BigDecimal(payload),
-                null, null, null, null, null, null, null, null, null);
+                null, null, null, null, null, null, null, null, null, null, null);
     }
 
     /** Sáu thông số trục theo thứ tự: giới hạn trước, giới hạn sau, vị trí trước, vị trí sau, tải rỗng trước, tải rỗng sau. */
@@ -71,7 +71,12 @@ class VehicleTypeServiceImplTest {
                                                       String emptyFront, String emptyRear) {
         return new CreateVehicleTypeRequest("Thùng 6 m", 600, 235, 240, 230, 230, new BigDecimal("5000"),
                 dec(frontLimit), dec(rearLimit), dec(frontX), dec(rearX), dec(emptyFront), dec(emptyRear),
-                null, null, null);
+                null, null, null, null, null);
+    }
+
+    private static CreateVehicleTypeRequest withPhysics(String cogY, String floorLoad) {
+        return new CreateVehicleTypeRequest("Thùng 6 m", 600, 235, 240, 230, 230, new BigDecimal("5000"),
+                null, null, null, null, null, null, null, dec(cogY), dec(floorLoad), null, null);
     }
 
     private static BigDecimal dec(String value) {
@@ -130,6 +135,28 @@ class VehicleTypeServiceImplTest {
         service.updateVehicleType(3L, request("Thùng 6 m (mới)", 600, "5000"));
 
         assertEquals("Thùng 6 m (mới)", type.getName());
+        verify(loadPlanRepository, never()).markStaleByTripId(anyLong());
+    }
+
+    @Test
+    void floorLoadAndLateralCogLimitAreStoredAndChangingThemMarksPlansStale() {
+        var response = service.updateVehicleType(3L, withPhysics("0.10", "2500"));
+
+        assertEquals(new BigDecimal("0.10"), type.getMaxCogOffsetRatioY());
+        assertEquals(new BigDecimal("2500"), type.getFloorLoadCapacityKgM2());
+        assertEquals(new BigDecimal("2500"), response.floorLoadCapacityKgM2());
+        verify(loadPlanRepository).markStaleByTripId(40L);
+    }
+
+    @Test
+    void oldClientsThatDoNotSendThePhysicsNumbersKeepThem() {
+        type.setMaxCogOffsetRatioY(new BigDecimal("0.10"));
+        type.setFloorLoadCapacityKgM2(new BigDecimal("2500"));
+
+        service.updateVehicleType(3L, request("Thùng 6 m", 600, "5000"));
+
+        assertEquals(new BigDecimal("0.10"), type.getMaxCogOffsetRatioY());
+        assertEquals(new BigDecimal("2500"), type.getFloorLoadCapacityKgM2());
         verify(loadPlanRepository, never()).markStaleByTripId(anyLong());
     }
 

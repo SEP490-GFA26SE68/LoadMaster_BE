@@ -107,6 +107,7 @@ public class PackageServiceImpl implements PackageService {
                     .fragilityLevel(profile.getFragilityLevel())
                     .stackable(profile.getStackable())
                     .maxTopLoadKg(profile.getMaxTopLoadKg())
+                    .topLoadCapacityKgM2(profile.getTopLoadCapacityKgM2())
                     .maxLayers(profile.getMaxLayers())
                     .minSupportRatio(profile.getMinSupportRatio())
                     .priority(profile.getPriority())
@@ -353,6 +354,7 @@ public class PackageServiceImpl implements PackageService {
                         .fragilityLevel(request.getFragilityLevel())
                         .stackable(request.getStackable())
                         .maxTopLoadKg(request.getMaxTopLoadKg())
+                        .topLoadCapacityKgM2(request.getTopLoadCapacityKgM2())
                         .maxLayers(request.getMaxLayers())
                         .minSupportRatio(request.getMinSupportRatio())
                         .priority(request.getPriority())
@@ -512,6 +514,7 @@ public class PackageServiceImpl implements PackageService {
                             .fragilityLevel(request.getFragilityLevel())
                             .stackable(request.getStackable())
                             .maxTopLoadKg(request.getMaxTopLoadKg())
+                            .topLoadCapacityKgM2(request.getTopLoadCapacityKgM2())
                             .maxLayers(request.getMaxLayers())
                             .minSupportRatio(request.getMinSupportRatio())
                             .priority(request.getPriority())
@@ -672,6 +675,10 @@ public class PackageServiceImpl implements PackageService {
 
             if (request.getMaxTopLoadKg() != null) {
                 profile.setMaxTopLoadKg(request.getMaxTopLoadKg());
+            }
+
+            if (request.getTopLoadCapacityKgM2() != null) {
+                profile.setTopLoadCapacityKgM2(request.getTopLoadCapacityKgM2());
             }
 
             if (request.getMaxLayers() != null) {

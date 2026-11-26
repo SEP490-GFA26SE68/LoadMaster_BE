@@ -28,6 +28,8 @@ public record VehicleTypeResponse(
         BigDecimal emptyFrontAxleLoadKg,
         BigDecimal emptyRearAxleLoadKg,
         BigDecimal maxCogOffsetRatio,
+        BigDecimal maxCogOffsetRatioY,
+        BigDecimal floorLoadCapacityKgM2,
         Boolean hazardousCapable,
 
         List<VehicleTypeObstacleResponse> obstacles,

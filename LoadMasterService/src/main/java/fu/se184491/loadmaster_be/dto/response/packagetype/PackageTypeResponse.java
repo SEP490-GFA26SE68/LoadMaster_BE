@@ -23,6 +23,8 @@ public class PackageTypeResponse {
 
     private BigDecimal weightKg;
     private BigDecimal maxStackingWeightKg;
+    private BigDecimal topLoadCapacityKgM2;
+    private BigDecimal minSupportRatio;
 
     private Boolean isFragile;
 
