@@ -77,13 +77,17 @@ def pinned_set_issues(problem: ProblemRequest) -> list[PinnedIssue]:
         key = str(placement.package_id)
         others = placements[:index] + placements[index + 1:]
         below = placements[:index]
+        v2 = ConstraintEngine.physics_v2()  # luật mới: ρ theo kiện (H8), bỏ HC-08, có tải sàn (H10)
         checks = [
             ConstraintEngine.check_boundary(placement, vehicle),
             ConstraintEngine.check_non_overlap(placement, others),
-            ConstraintEngine.check_support_area(placement, others),
+            ConstraintEngine.check_support_area(
+                placement, others, required_ratio=ConstraintEngine.support_ratio_for(packages[key])),
             ConstraintEngine.check_rotation_allowed(packages[key], placement),
-            ConstraintEngine.check_fragility(placement, others, packages),
-            ConstraintEngine.check_stacking(placement, others, packages),
+            *([] if v2 else [ConstraintEngine.check_fragility(placement, others, packages)]),
+            ConstraintEngine.check_stacking(
+                placement, others, packages,
+                floor_load_capacity_kg_m2=vehicle.floor_load_capacity_kg_m2 if v2 else None),
             ConstraintEngine.check_payload(placement, below, vehicle, packages),
         ]
         for result in checks:

@@ -26,6 +26,7 @@ from app.service.optimize.candidate_plans import (
     pick_candidates,
 )
 from app.service.optimize.stop_zone_calculator import StopZoneCalculator
+from app.constant.optimization.violation_codes import LIFO_BLOCKED, MUST_LOAD_UNPLACED
 from app.service.optimize.load_balance_search import LoadBalanceSearch, validate_plan
 from app.service.optimize.constraint_engine import ConstraintEngine
 from app.service.optimize.unload_feasibility_validator import (
@@ -37,6 +38,16 @@ logger = logging.getLogger(__name__)
 
 def _debug_log(*parts) -> None:
     logger.debug(" ".join(str(part) for part in parts).strip())
+
+
+def must_load_missing(problem: ProblemRequest, placements) -> list[str]:
+    """H13: mã các kiện must_load không có trong phương án (rỗng = đạt)."""
+    placed = {str(p.package_id) for p in placements}
+    return [str(p.id) for p in problem.packages if p.must_load and str(p.id) not in placed]
+
+
+def _lifo_code() -> str:
+    return LIFO_BLOCKED if ConstraintEngine.physics_v2() else "MULTI_DROP_LIFO_VIOLATION"
 
 
 class OptimizationClient:
@@ -231,6 +242,8 @@ class OptimizationClient:
                                        time.monotonic() + max(float(problem.time_limit_sec or 60), 1))
             if violations:
                 raise ValueError("Remote result violates hard constraints: " + ",".join(violations))
+            if placements and ConstraintEngine.physics_v2() and must_load_missing(problem, placements):
+                raise ValueError("Remote result violates hard constraints: " + MUST_LOAD_UNPLACED)
         return result
 
     def solve_in_process(
@@ -290,6 +303,7 @@ class OptimizationClient:
         if use_lumo_scorer:
             lumo = get_lumo_scorer()
         rank = {str(pid): i for i, pid in enumerate(order)} if order is not None else None
+        physics_v2 = ConstraintEngine.physics_v2()
         vt = problem.vehicle
         placements: list[PlacementData] = []
         unplaced: list[UnplacedData] = []
@@ -400,6 +414,9 @@ class OptimizationClient:
                 sorted_pkgs = sorted(zone_pkgs, key=lambda p: (p.weight, p.l * p.w * p.h), reverse=True)
             else:
                 sorted_pkgs = sorted(zone_pkgs, key=lambda p: (p.l * p.w * p.h, p.weight), reverse=True)
+            if physics_v2:
+                # H13 (spec 7.1 bước 3.1): kiện bắt buộc xét trước; sắp xếp ổn định giữ nguyên thứ tự còn lại.
+                sorted_pkgs = sorted(sorted_pkgs, key=lambda p: not p.must_load)
 
 
             # Các vị trí ứng viên ban đầu trong stop zone.
@@ -737,8 +754,18 @@ class OptimizationClient:
                 codes = validate_plan(placements, vt, packages_map, deadline)
                 if codes: placements = search.best_plan_copy()
         logger.info("[FINAL VALIDATION] Placed=%d Violations=%s",len(placements),codes)
-        placed_ids = {str(p.package_id) for p in placements}
         previous = {str(p.package_id): p for p in unplaced}
+        missing_must = must_load_missing(problem, placements) if physics_v2 else []
+        if missing_must:
+            # H13: thiếu kiện bắt buộc → cả phương án không hợp lệ (0 kiện); kiện bắt buộc giữ lý do riêng + mã H13.
+            logger.info("[H13] must_load packages not placed: %s", missing_must)
+            placements, codes = [], [MUST_LOAD_UNPLACED]
+            for key in missing_must:
+                old = previous.get(key)
+                previous[key] = UnplacedData(
+                    package_id=packages_map[key].id, reason="CONSTRAINT_VIOLATED",
+                    violated_constraints=[*(old.violated_constraints if old else []), MUST_LOAD_UNPLACED])
+        placed_ids = {str(p.package_id) for p in placements}
         expired = time.monotonic() >= deadline
         fallback_codes = ["OPTIMIZATION_TIME_LIMIT_REACHED"] if expired else codes or search.last_violations or ["NO_FEASIBLE_SPACE"]
         unplaced = [previous.get(str(pkg.id),UnplacedData(package_id=pkg.id,
@@ -811,7 +838,9 @@ class OptimizationClient:
                 placements=placements, packages_map=packages_map, vehicle=vt
             )
             if not unload.passed:
-                return None, unload.violation_code or "MULTI_DROP_LIFO_VIOLATION"
+                return None, unload.violation_code or _lifo_code()
+        if ConstraintEngine.physics_v2() and must_load_missing(problem, placements):
+            return None, MUST_LOAD_UNPLACED
 
         unplaced = [
             UnplacedData(package_id=p.id, reason="CONSTRAINT_VIOLATED", violated_constraints=["NO_FEASIBLE_SPACE"])

@@ -15,6 +15,11 @@ class Settings(BaseSettings):
     OPTIMIZATION_HEARTBEAT_SECONDS: int = 5
     OPTIMIZATION_EXECUTION_GRACE_SECONDS: int = 300
 
+    # Luật ràng buộc vật lý mới (spec "Ràng buộc vật lý và điểm phương án" mục 5; KE-HOACH-TOI-UU M4):
+    # H7 áp lực chồng kg/m² (thay HC-07 + HC-08), H8 ρ theo kiện, H10 tải sàn, H11 chỉ trọng tâm ngang,
+    # H12 mã LIFO_BLOCKED, H13 kiện bắt buộc. Tắt = luật cũ, kết quả y hệt bản trước.
+    PHYSICS_RULES_V2: bool = False
+
     APP_NAME: str = "OptimizeService"
     APP_ENV: str = "development"
     APP_PORT: int = 8000

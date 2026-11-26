@@ -1,0 +1,255 @@
+{
+ "vehicle": {
+  "inner_l": 620,
+  "inner_w": 240,
+  "inner_h": 250,
+  "door_w": 230,
+  "door_h": 240,
+  "max_payload_kg": 5000,
+  "max_cog_offset_ratio": 0.15,
+  "max_cog_offset_ratio_y": 0.15,
+  "floor_load_capacity_kg_m2": 2500,
+  "front_axle_x": 100,
+  "rear_axle_x": 420,
+  "front_axle_limit_kg": 2600,
+  "rear_axle_limit_kg": 4200,
+  "empty_front_axle_load_kg": 1500,
+  "empty_rear_axle_load_kg": 1600
+ },
+ "packages": [
+  {
+   "id": "H0",
+   "l": 60,
+   "w": 60,
+   "h": 60,
+   "weight": 300,
+   "stop_index": 1,
+   "rotation_allowed": true,
+   "allowed_rotations": [
+    0,
+    1
+   ],
+   "top_load_capacity_kg_m2": 5000
+  },
+  {
+   "id": "H1",
+   "l": 60,
+   "w": 60,
+   "h": 60,
+   "weight": 300,
+   "stop_index": 1,
+   "rotation_allowed": true,
+   "allowed_rotations": [
+    0,
+    1
+   ],
+   "top_load_capacity_kg_m2": 5000
+  },
+  {
+   "id": "H2",
+   "l": 60,
+   "w": 60,
+   "h": 60,
+   "weight": 300,
+   "stop_index": 1,
+   "rotation_allowed": true,
+   "allowed_rotations": [
+    0,
+    1
+   ],
+   "top_load_capacity_kg_m2": 5000
+  },
+  {
+   "id": "H3",
+   "l": 60,
+   "w": 60,
+   "h": 60,
+   "weight": 300,
+   "stop_index": 1,
+   "rotation_allowed": true,
+   "allowed_rotations": [
+    0,
+    1
+   ],
+   "top_load_capacity_kg_m2": 5000
+  },
+  {
+   "id": "H4",
+   "l": 60,
+   "w": 60,
+   "h": 60,
+   "weight": 300,
+   "stop_index": 1,
+   "rotation_allowed": true,
+   "allowed_rotations": [
+    0,
+    1
+   ],
+   "top_load_capacity_kg_m2": 5000
+  },
+  {
+   "id": "H5",
+   "l": 60,
+   "w": 60,
+   "h": 60,
+   "weight": 300,
+   "stop_index": 1,
+   "rotation_allowed": true,
+   "allowed_rotations": [
+    0,
+    1
+   ],
+   "top_load_capacity_kg_m2": 5000
+  },
+  {
+   "id": "L0",
+   "l": 50,
+   "w": 40,
+   "h": 40,
+   "weight": 6,
+   "stop_index": 1,
+   "rotation_allowed": true,
+   "allowed_rotations": [
+    0,
+    1
+   ],
+   "top_load_capacity_kg_m2": 3000.0
+  },
+  {
+   "id": "L1",
+   "l": 50,
+   "w": 40,
+   "h": 40,
+   "weight": 6,
+   "stop_index": 1,
+   "rotation_allowed": true,
+   "allowed_rotations": [
+    0,
+    1
+   ],
+   "top_load_capacity_kg_m2": 3000.0
+  },
+  {
+   "id": "L2",
+   "l": 50,
+   "w": 40,
+   "h": 40,
+   "weight": 6,
+   "stop_index": 1,
+   "rotation_allowed": true,
+   "allowed_rotations": [
+    0,
+    1
+   ],
+   "top_load_capacity_kg_m2": 3000.0
+  },
+  {
+   "id": "L3",
+   "l": 50,
+   "w": 40,
+   "h": 40,
+   "weight": 6,
+   "stop_index": 1,
+   "rotation_allowed": true,
+   "allowed_rotations": [
+    0,
+    1
+   ],
+   "top_load_capacity_kg_m2": 3000.0
+  },
+  {
+   "id": "L4",
+   "l": 50,
+   "w": 40,
+   "h": 40,
+   "weight": 6,
+   "stop_index": 1,
+   "rotation_allowed": true,
+   "allowed_rotations": [
+    0,
+    1
+   ],
+   "top_load_capacity_kg_m2": 3000.0
+  },
+  {
+   "id": "L5",
+   "l": 50,
+   "w": 40,
+   "h": 40,
+   "weight": 6,
+   "stop_index": 1,
+   "rotation_allowed": true,
+   "allowed_rotations": [
+    0,
+    1
+   ],
+   "top_load_capacity_kg_m2": 3000.0
+  },
+  {
+   "id": "L6",
+   "l": 50,
+   "w": 40,
+   "h": 40,
+   "weight": 6,
+   "stop_index": 1,
+   "rotation_allowed": true,
+   "allowed_rotations": [
+    0,
+    1
+   ],
+   "top_load_capacity_kg_m2": 3000.0
+  },
+  {
+   "id": "L7",
+   "l": 50,
+   "w": 40,
+   "h": 40,
+   "weight": 6,
+   "stop_index": 1,
+   "rotation_allowed": true,
+   "allowed_rotations": [
+    0,
+    1
+   ],
+   "top_load_capacity_kg_m2": 3000.0
+  },
+  {
+   "id": "L8",
+   "l": 50,
+   "w": 40,
+   "h": 40,
+   "weight": 6,
+   "stop_index": 1,
+   "rotation_allowed": true,
+   "allowed_rotations": [
+    0,
+    1
+   ],
+   "top_load_capacity_kg_m2": 3000.0
+  },
+  {
+   "id": "L9",
+   "l": 50,
+   "w": 40,
+   "h": 40,
+   "weight": 6,
+   "stop_index": 1,
+   "rotation_allowed": true,
+   "allowed_rotations": [
+    0,
+    1
+   ],
+   "top_load_capacity_kg_m2": 3000.0
+  }
+ ],
+ "stops": [
+  {
+   "id": "S1",
+   "sequence": 1
+  }
+ ],
+ "time_limit_sec": 60,
+ "algorithm_name": "BASIC",
+ "objective": "MAX_VOLUME",
+ "_ghi_chu": "6 thùng 300 kg + 10 thùng 6 kg; mong đợi: phương án hợp lệ, trọng tâm ngang ≤ 15 % bề rộng, tải trục trong giới hạn (cách xếp dồn hết thùng nặng sang một bên bị H11 chặn)."
+}
