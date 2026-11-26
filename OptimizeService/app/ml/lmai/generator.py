@@ -4,6 +4,7 @@
 - Xe: 7 xe tải thật trong dữ liệu mẫu của frontend (kích thước thùng, cửa, tải trọng, hai trục — số ước lượng).
 - Kiện: mỗi điểm giao gồm vài "mã hàng" lặp lại (giống lô hàng thật), kích thước co giãn để tổng thể tích
   đạt một tỉ lệ lấp đầy mục tiêu; cân nặng chia theo thể tích x mật độ ngẫu nhiên.
+- GenConfig(kind="real"): bài từ đơn hàng thật BED-BPP trên xe Van (xem generate_real, lmai/real_data.py).
 """
 from __future__ import annotations
 
@@ -28,6 +29,22 @@ SEED_VEHICLES = [
 ]
 
 
+# Xe Van chở hàng nội thành — lòng thùng & tải trọng theo GrabExpress (nguồn: datasets/README.md).
+# Cửa: chưa có nguồn → bằng mặt cắt lòng thùng. Trục: KHÔNG khai (None) — chưa có số liệu, không bịa.
+# Lưu ý: OptimizeService chặn xe thiếu dữ liệu trục (AXLE_CONFIG_MISSING, cố ý — Q-D7, 25/11/2026) và từ M2 bộ kiểm
+# lmai cũng vậy → mọi phương án trên xe Van này đều KHÔNG hợp lệ cho tới khi có số trục (Q-D17, M5).
+VAN_VEHICLES = [
+    ("Van 500 kg", 160, 120, 120, 500),
+    ("Van 1000 kg", 200, 150, 150, 1000),
+]
+
+
+def van_vehicle(i: int) -> Vehicle:
+    n, L, W, H, pay = VAN_VEHICLES[i]
+    return Vehicle(inner_l=L, inner_w=W, inner_h=H, max_payload_kg=pay, door_w=W, door_h=H,
+                   max_cog_offset_ratio=0.15, name=n)
+
+
 def seed_vehicle(i: int) -> Vehicle:
     n, L, W, H, pay, dw, dh, rx, (fe, fm), (re, rm) = SEED_VEHICLES[i]
     return Vehicle(inner_l=L, inner_w=W, inner_h=H, max_payload_kg=pay, door_w=dw, door_h=dh,
@@ -48,6 +65,12 @@ class GenConfig:
     p_norot: float = 0.10
     min_edge: float = 15.0
     vehicles: Optional[Sequence[int]] = None    # None = cả 7 xe
+    # --- dữ liệu thật (kind="real"): các trường trên không dùng, trừ khi ghi rõ
+    kind: str = "synthetic"                     # "synthetic" | "real"
+    split: str = "train"                        # tập đơn hàng BED-BPP: train | val | test
+    orders: Tuple[int, int] = (1, 3)            # số đơn mỗi chuyến (mỗi đơn = 1 điểm giao)
+    max_fill: float = 0.85                      # tổng thể tích hàng ≤ max_fill × thể tích thùng
+    vehicle_pool: str = "van"                   # chỉ "van" (đơn BED-BPP ~1 m³ — quá nhỏ cho xe tải 20–40 m³)
 
 
 def _fit_door(dims: List[float], veh: Vehicle) -> bool:
@@ -60,6 +83,10 @@ def _fit_door(dims: List[float], veh: Vehicle) -> bool:
 
 
 def generate(seed: int, cfg: GenConfig = GenConfig()) -> Problem:
+    if cfg.kind == "real":
+        return generate_real(seed, cfg)
+    if cfg.kind != "synthetic":
+        raise ValueError(f"GenConfig.kind không hợp lệ: {cfg.kind!r}")
     rng = np.random.default_rng(seed)
     vids = list(cfg.vehicles) if cfg.vehicles is not None else list(range(len(SEED_VEHICLES)))
     veh = seed_vehicle(int(rng.choice(vids)))
@@ -146,6 +173,56 @@ def generate(seed: int, cfg: GenConfig = GenConfig()) -> Problem:
     pkgs = [pkgs[i] for i in order]
     stops = [Stop(id=str(s + 1), sequence=s + 1) for s in range(s_count)]
     return Problem(veh, pkgs, stops, seed=int(seed))
+
+
+def generate_real(seed: int, cfg: GenConfig = GenConfig(kind="real")) -> Problem:
+    """Một chuyến xe Van từ đơn hàng thật BED-BPP (tập cfg.split).
+
+    - Bốc ngẫu nhiên (theo seed) các đơn của tập; nhận đơn nếu tổng khối lượng ≤ tải trọng và tổng thể tích
+      ≤ max_fill × thể tích của Van lớn nhất; dừng khi đủ số đơn đã bốc (cfg.orders) hoặc thử quá nhiều đơn.
+      Mỗi đơn là một điểm giao, giữ nguyên kích thước / khối lượng từng kiện (không co giãn như generate).
+    - Chọn Van nhỏ nhất chở được (khối lượng ≤ tải trọng, thể tích ≤ max_fill × thùng).
+    - Hướng xoay / chịu tải / dễ vỡ: GIẢ ĐỊNH theo mã hàng — xem lmai/real_data.item_attrs.
+    """
+    from .real_data import item_attrs, load_bedbpp
+
+    if cfg.vehicle_pool != "van":
+        raise ValueError("Dữ liệu thật chỉ hỗ trợ vehicle_pool='van' (một đơn BED-BPP ~1 m³, xe tải cần 14–34 đơn)")
+    db = load_bedbpp()
+    pool = db.by_split[cfg.split]
+    rng = np.random.default_rng(seed)
+    vans = [van_vehicle(i) for i in range(len(VAN_VEHICLES))]
+    big = vans[-1]
+    want = int(rng.integers(cfg.orders[0], cfg.orders[1] + 1))
+    chosen, vol, kg = [], 0.0, 0.0
+    for t in range(max(20, 10 * want)):
+        o = db.orders[pool[int(rng.integers(len(pool)))]]
+        if any(o.id == c.id for c in chosen):
+            continue
+        if kg + o.total_weight <= big.max_payload_kg and vol + o.volume <= cfg.max_fill * big.volume:
+            chosen.append(o)
+            vol += o.volume
+            kg += o.total_weight
+            if len(chosen) >= want:
+                break
+    if not chosen:
+        raise RuntimeError("Không chọn được đơn nào vừa xe Van")
+    veh = next(v for v in vans if kg <= v.max_payload_kg and vol <= cfg.max_fill * v.volume)
+
+    pkgs: List[Package] = []
+    for s, o in enumerate(chosen):
+        for j in range(o.n):
+            l, w, h = (float(x) for x in o.dims[j])
+            wt = round(float(o.weight[j]), 2)
+            rots, stack, fragile = item_attrs(o.article[j], wt)
+            pkgs.append(Package(id=f"P{len(pkgs) + 1:04d}", l=l, w=w, h=h, weight=wt, stop_index=s + 1,
+                                allowed_rotations=rots, max_stack_weight_kg=stack, fragile=fragile,
+                                rotation_allowed=True))
+    order = rng.permutation(len(pkgs))
+    pkgs = [pkgs[i] for i in order]
+    stops = [Stop(id=str(s + 1), sequence=s + 1) for s in range(len(chosen))]
+    return Problem(veh, pkgs, stops, seed=int(seed),
+                   source={"dataset": "bed-bpp", "split": cfg.split, "orders": [o.id for o in chosen]})
 
 
 def dataset(seeds: Sequence[int], cfg: GenConfig = GenConfig()) -> List[Problem]:

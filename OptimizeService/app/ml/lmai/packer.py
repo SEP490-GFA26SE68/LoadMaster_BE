@@ -14,7 +14,7 @@ from typing import Dict, List, Optional, Tuple
 import numpy as np
 
 from .problem import Problem
-from .state import EPS, Candidate, LoadState
+from .state import EPS, Candidate, LoadState, OUTSIDE_DOOR_FRAME
 from .zones import Zone, compute_zones
 
 
@@ -33,7 +33,8 @@ class Packer:
         self.zones: List[Zone] = compute_zones(problem)
         self.zone_of_stop: Dict[int, Zone] = {z.stop_index: z for z in self.zones}
         v = problem.vehicle
-        self.dy0, self.dy1 = v.door_y_min, v.door_y_max
+        # vùng Y được đặt: khung cửa, hoặc cả bề rộng thùng khi bật thí nghiệm P18 (state.OUTSIDE_DOOR_FRAME)
+        self.dy0, self.dy1 = (0.0, v.inner_w) if OUTSIDE_DOOR_FRAME else (v.door_y_min, v.door_y_max)
         self.zone_i = 0
         self.queue: deque = deque()
         self.buffer: List[int] = []

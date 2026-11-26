@@ -42,6 +42,9 @@ class Vehicle:
     empty_rear_axle_load_kg: Optional[float] = None
     max_cog_offset_ratio: float = 0.15
     name: str = ""
+    # False: request không khai cửa → backend chặn mọi kiện (DOOR_CONFIG_MISSING). Hình học cửa vẫn điền bằng thùng
+    # để bộ dựng không vỡ, nhưng validate.input_violations coi mọi phương án là không hợp lệ.
+    door_declared: bool = True
 
     @property
     def volume(self) -> float:
@@ -114,6 +117,7 @@ class Problem:
     objective: str = "MAX_VOLUME_UTIL"
     time_limit_sec: int = 60
     seed: Optional[int] = None
+    source: Optional[dict] = None  # nguồn bài (vd. mã đơn BED-BPP) — chỉ để báo cáo / kiểm tra, không gửi cho service
 
     @property
     def cargo_volume(self) -> float:
@@ -128,7 +132,12 @@ class Problem:
     @staticmethod
     def from_request(d: dict) -> "Problem":
         v = d["vehicle"]
-        veh = Vehicle(**{k: v.get(k) for k in Vehicle.__dataclass_fields__ if k in v})
+        if v.get("obstacles"):
+            # lmai chưa mô hình vật cản trong thùng (bộ dựng lẫn bộ kiểm) → không xếp sai âm thầm.
+            raise ValueError("lmai chưa hỗ trợ vehicle.obstacles (vật cản trong thùng)")
+        veh = Vehicle(**{k: v.get(k) for k in Vehicle.__dataclass_fields__ if k in v and k != "door_declared"})
+        if veh.door_w is None or veh.door_h is None:
+            veh.door_declared = False
         if veh.door_w is None:
             veh.door_w = veh.inner_w
         if veh.door_h is None:
@@ -146,6 +155,8 @@ class Problem:
     def to_request(self) -> dict:
         v = asdict(self.vehicle)
         v.pop("name", None)
+        if not v.pop("door_declared", True):
+            v["door_w"] = v["door_h"] = None
         return {
             "vehicle": v,
             "packages": [asdict(p) for p in self.packages],
