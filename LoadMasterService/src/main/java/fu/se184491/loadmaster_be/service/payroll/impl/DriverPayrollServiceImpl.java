@@ -387,8 +387,12 @@ public class DriverPayrollServiceImpl implements DriverPayrollService {
 
     @Override
     public PayrollPeriodResponse lockPeriod(Long companyId, String period) {
+        YearMonth month = parsePeriod(period);
+        if (month.isAfter(YearMonth.now(VIETNAM_TIME_ZONE))) {
+            throw new AppException(ErrorCode.PAYROLL_FUTURE_PERIOD_CANNOT_LOCK);
+        }
         lockCompanyForPayrollUpdate(companyId);
-        PayrollPeriod payrollPeriod = findPeriodForUpdate(companyId, parsePeriod(period).atDay(1));
+        PayrollPeriod payrollPeriod = findPeriodForUpdate(companyId, month.atDay(1));
         lockPeriodNow(payrollPeriod);
         return periodResponse(payrollPeriod);
     }

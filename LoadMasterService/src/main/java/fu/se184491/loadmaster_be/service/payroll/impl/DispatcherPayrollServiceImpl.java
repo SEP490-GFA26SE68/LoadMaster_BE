@@ -229,8 +229,12 @@ public class DispatcherPayrollServiceImpl implements DispatcherPayrollService {
 
     @Override
     public DispatcherPayrollPeriodResponse lockPeriod(Long companyId, String period) {
+        YearMonth month = parsePeriod(period);
+        if (month.isAfter(YearMonth.now(VIETNAM_TIME_ZONE))) {
+            throw new AppException(ErrorCode.PAYROLL_FUTURE_PERIOD_CANNOT_LOCK);
+        }
         lockCompanyForPayrollUpdate(companyId);
-        DispatcherPayrollPeriod payrollPeriod = findPeriodForUpdate(companyId, parsePeriod(period).atDay(1));
+        DispatcherPayrollPeriod payrollPeriod = findPeriodForUpdate(companyId, month.atDay(1));
         becomeSoleLockedPeriod(companyId, payrollPeriod);
         return periodResponse(payrollPeriod);
     }
