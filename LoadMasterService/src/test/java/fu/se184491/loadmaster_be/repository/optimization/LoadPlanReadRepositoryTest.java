@@ -2,6 +2,7 @@ package fu.se184491.loadmaster_be.repository.optimization;
 
 import fu.se184491.loadmaster_be.dto.response.optimization.LoadPlanDetailResponse;
 import fu.se184491.loadmaster_be.dto.response.optimization.DataWarningResponse;
+import fu.se184491.loadmaster_be.dto.response.optimization.OptimizationJobProgressResponse;
 import fu.se184491.loadmaster_be.dto.response.optimization.OptimizationJobStatusResponse;
 import fu.se184491.loadmaster_be.dto.response.optimization.PlacementDetailResponse;
 import fu.se184491.loadmaster_be.dto.response.optimization.PlanScoreComponentResponse;
@@ -215,6 +216,62 @@ class LoadPlanReadRepositoryTest {
         when(broken.getString("data_warnings")).thenReturn("{not json");
         rows(broken);
         assertThat(repository.findJobStatus(1L)).hasValueSatisfying(job -> assertThat(job.getDataWarnings()).isEmpty());
+    }
+
+    @Test
+    void runningJobCarriesLiveProgressAndElapsedTimeFromThePostgresClock() throws SQLException {
+        ResultSet rs = mock(ResultSet.class);
+        when(rs.getString("status")).thenReturn("RUNNING");
+        when(rs.getLong("elapsed_ms")).thenReturn(23150L);
+        when(rs.getString("progress")).thenReturn("""
+                {"stage": "BUILDING", "algorithm": "EP_DBLF", "layouts_tried": 3, "total_packages": 97,
+                 "best_placed_count": 87, "best_volume_percent": 54.5, "updated_at": "2026-11-27T01:15:02Z"}""");
+        rows(rs);
+
+        assertThat(repository.findJobStatus(42L)).hasValueSatisfying(job -> {
+            assertThat(job.getElapsedMs()).isEqualTo(23150L);
+            assertThat(job.getProgress()).isEqualTo(new OptimizationJobProgressResponse("BUILDING", "EP_DBLF", 3, 97, 87,
+                    54.5, Instant.parse("2026-11-27T01:15:02Z")));
+        });
+        ArgumentCaptor<String> sql = ArgumentCaptor.forClass(String.class);
+        verify(jdbc).query(sql.capture(), eq(Map.of("id", 42L)), any(RowMapper.class));
+        assertThat(sql.getValue()).contains("j.progress")
+                .contains("CASE WHEN j.status = 'RUNNING' AND j.execution_started_at IS NOT NULL")
+                .contains("clock_timestamp() - j.execution_started_at");
+    }
+
+    @Test
+    void progressBeforeTheFirstLayoutHasNoBestNumbersAndSelectingHasNoAlgorithm() throws SQLException {
+        ResultSet rs = mock(ResultSet.class);
+        when(rs.getString("progress")).thenReturn("""
+                {"stage": "SELECTING", "algorithm": null, "layouts_tried": 0, "total_packages": 4,
+                 "best_placed_count": null, "best_volume_percent": null, "updated_at": "not a time"}""");
+        rows(rs);
+        assertThat(repository.findJobStatus(1L)).hasValueSatisfying(job -> assertThat(job.getProgress())
+                .isEqualTo(new OptimizationJobProgressResponse("SELECTING", null, 0, 4, null, null, null)));
+    }
+
+    @Test
+    void jobWithoutProgressOrBrokenProgressHasNoProgressAndNoElapsedTime() throws SQLException {
+        ResultSet none = mock(ResultSet.class);
+        when(none.getString("progress")).thenReturn(null);
+        when(none.wasNull()).thenReturn(true);   // elapsed_ms NULL: chưa bắt đầu / đã kết thúc
+        ResultSet broken = mock(ResultSet.class);
+        when(broken.getString("progress")).thenReturn("{not json");
+        ResultSet unknownStage = mock(ResultSet.class);
+        when(unknownStage.getString("progress")).thenReturn("{\"stage\": \"DANCING\", \"layouts_tried\": 1}");
+        ResultSet array = mock(ResultSet.class);
+        when(array.getString("progress")).thenReturn("[1, 2]");
+        rows(none);
+        assertThat(repository.findJobStatus(1L)).hasValueSatisfying(job -> {
+            assertThat(job.getProgress()).isNull();
+            assertThat(job.getElapsedMs()).isNull();
+        });
+        for (ResultSet rs : List.of(broken, unknownStage, array)) {
+            org.mockito.Mockito.reset(jdbc);
+            rows(rs);
+            assertThat(repository.findJobStatus(1L)).hasValueSatisfying(job -> assertThat(job.getProgress()).isNull());
+        }
     }
 
     @Test

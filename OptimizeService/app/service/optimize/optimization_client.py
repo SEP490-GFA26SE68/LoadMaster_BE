@@ -30,6 +30,7 @@ from app.constant.optimization.violation_codes import LIFO_BLOCKED, MUST_LOAD_UN
 from app.service.optimize.load_balance_search import LoadBalanceSearch, validate_plan
 from app.service.optimize.load_order import loading_order
 from app.service.optimize import plan_score
+from app.service.optimize import job_progress
 from app.service.optimize.placement_facts import annotate_result
 from app.service.optimize.constraint_engine import ConstraintEngine
 from app.service.optimize.unload_feasibility_validator import (
@@ -111,18 +112,21 @@ class OptimizationClient:
         # Cách xếp mang nhãn EP_DBLF phải là EP thuần: gói có Lumo chấm điểm thì tắt nó ở đây
         # (Lumo-R1.1 chấm chỗ đặt là một cách xếp riêng, EP_LUMO_R1_1).
         ep_kwargs = {"use_lumo_scorer": False} if uses_lumo(problem.algorithm_name) else {}
+        job_progress.stage(job_progress.BUILDING, PlanAlgorithm.EP_DBLF.value)
         for strategy in layout_strategies_for(problem.vehicle):
             if layouts and time.monotonic() >= deadline:
                 break
             layout = self.solve_in_process(problem, strategy=strategy, job_deadline=deadline, **ep_kwargs)
             layout = layout.model_copy(update={"algorithm_name": PlanAlgorithm.EP_DBLF.value})
             layouts.append(layout)
+            job_progress.layout_done(layout)
             ep_runs.append((strategy, layout))
         tried.append(PlanAlgorithm.EP_DBLF.value)
 
         if len(allowed) > 1:
             layouts += self._advanced_layouts(problem, allowed, ep_runs, start, deadline, tried)
 
+        job_progress.stage(job_progress.SELECTING)
         candidates = pick_candidates(layouts, problem.vehicle, problem)
         if plan_score.enabled():
             candidates = [c.model_copy(update={"result": annotate_result(problem, c.result, score_data=c.result.plan_score)})
@@ -179,9 +183,11 @@ class OptimizationClient:
             except Exception as exc:
                 logger.warning("EP_LUMO_R1_1 skipped: %s", exc)
             if scorer is not None:
+                job_progress.stage(job_progress.IMPROVING, P.EP_LUMO_R1_1.value)
                 layout = self.solve_in_process(problem, strategy=LayoutStrategy.CENTER_FIRST,
                                                use_lumo_scorer=True, quiet=True, job_deadline=deadline)
                 layouts.append(layout.model_copy(update={"algorithm_name": P.EP_LUMO_R1_1.value}))
+                job_progress.layout_done(layout)
                 tried.append(P.EP_LUMO_R1_1.value)
             else:
                 logger.info("EP_LUMO_R1_1 skipped: Lumo-R1.1 scorer unavailable (torch or weights missing)")
