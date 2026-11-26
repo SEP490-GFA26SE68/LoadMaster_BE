@@ -87,9 +87,11 @@ def test_warnings_survive_json_dispatch_and_are_saved_on_the_job(trip_db):
                                  {"code": "PACKAGE_TYPE_MISSING", "package_ids": ["4"]}]
 
 
-def test_solver_ignores_new_fields_for_now(trip_db):
-    """M3 không đổi hành vi xếp: bỏ hết số mới → phương án giống hệt."""
+def test_solver_ignores_new_fields_for_now(trip_db, monkeypatch):
+    """Cờ PHYSICS_RULES_V2 tắt (mặc định): bộ giải không đọc số mới — bỏ hết số mới → phương án giống hệt."""
+    from app.config.settings import settings
     from app.service.optimize.optimization_client import OptimizationClient
+    monkeypatch.setattr(settings, "PHYSICS_RULES_V2", False)
     runner, db = trip_db
     req = runner.build_problem_request("job-m3", db)
     plain = req.model_copy(deep=True, update={"data_warnings": []})

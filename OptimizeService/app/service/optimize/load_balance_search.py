@@ -65,7 +65,8 @@ def validate_plan(placements, vehicle, packages_map, deadline, *, balance=True, 
     result = UnloadFeasibilityValidator.validate(placements, packages_map, vehicle, deadline=unload_deadline)
     if time.monotonic() >= deadline:
         return ["OPTIMIZATION_TIME_LIMIT_REACHED"]
-    return [] if result.passed else [result.violation_code or "MULTI_DROP_LIFO_VIOLATION"]
+    lifo = "LIFO_BLOCKED" if ConstraintEngine.physics_v2() else "MULTI_DROP_LIFO_VIOLATION"
+    return [] if result.passed else [result.violation_code or lifo]
 
 
 class LoadBalanceSearch:
@@ -129,6 +130,9 @@ class LoadBalanceSearch:
         error += ((cog[1] - self.vehicle.inner_w / 2) / self.vehicle.inner_w) ** 2
         volume = sum(p.packed_l * p.packed_w * p.packed_h for p in placements)
         rank = (len(placements), volume, -error)
+        if ConstraintEngine.physics_v2():
+            # H13: không đổi kiện bắt buộc lấy kiện khác — số kiện must_load được xếp đứng đầu hạng.
+            rank = (sum(1 for p in placements if self.packages[str(p.package_id)].must_load), *rank)
         if self.best_rank is None or rank > self.best_rank:
             self.best_plan = [p.model_copy(deep=True) for p in placements]
             self.best_rank, self.best_cog = rank, cog

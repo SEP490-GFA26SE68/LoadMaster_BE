@@ -191,6 +191,7 @@ class UnloadFeasibilityValidator:
 
         # 3. Kiểm tra toàn bộ load plan ban đầu hợp lệ
         # về va chạm và hỗ trợ hình học.
+        from app.constant.optimization.violation_codes import LIFO_BLOCKED
         from app.service.optimize.constraint_engine import ConstraintEngine
 
         for i, p in enumerate(placements):
@@ -230,7 +231,9 @@ class UnloadFeasibilityValidator:
                 ]
 
                 if not ConstraintEngine.check_support_area(
-                        p, others, obstacles=vehicle.obstacles
+                        p, others, obstacles=vehicle.obstacles,
+                        required_ratio=ConstraintEngine.support_ratio_for(
+                            packages_map.get(str(p.package_id))),
                 ).passed:
                     return False
 
@@ -497,7 +500,8 @@ class UnloadFeasibilityValidator:
                 )
 
             return fail(
-                "MULTI_DROP_LIFO_VIOLATION",
+                # H12: luật mới ghi mã mới; mã cũ là bí danh (violation_codes.canonical).
+                LIFO_BLOCKED if ConstraintEngine.physics_v2() else "MULTI_DROP_LIFO_VIOLATION",
                 (
                     "No feasible straight-X unloading sequence "
                     "exists for the delivery stop order"

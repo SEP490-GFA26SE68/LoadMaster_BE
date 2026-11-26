@@ -1,0 +1,455 @@
+{
+ "vehicle": {
+  "inner_l": 620,
+  "inner_w": 240,
+  "inner_h": 250,
+  "door_w": 230,
+  "door_h": 240,
+  "max_payload_kg": 5000,
+  "max_cog_offset_ratio": 0.15,
+  "max_cog_offset_ratio_y": 0.15,
+  "floor_load_capacity_kg_m2": 2500,
+  "front_axle_x": 100,
+  "rear_axle_x": 420,
+  "front_axle_limit_kg": 2600,
+  "rear_axle_limit_kg": 4200,
+  "empty_front_axle_load_kg": 1500,
+  "empty_rear_axle_load_kg": 1600
+ },
+ "packages": [
+  {
+   "id": "M00",
+   "l": 60,
+   "w": 40,
+   "h": 40,
+   "weight": 18,
+   "stop_index": 1,
+   "rotation_allowed": true,
+   "allowed_rotations": [
+    0,
+    1
+   ],
+   "top_load_capacity_kg_m2": 3000
+  },
+  {
+   "id": "M01",
+   "l": 40,
+   "w": 30,
+   "h": 30,
+   "weight": 8,
+   "stop_index": 2,
+   "rotation_allowed": true,
+   "allowed_rotations": [
+    0,
+    1
+   ],
+   "top_load_capacity_kg_m2": 2500
+  },
+  {
+   "id": "M02",
+   "l": 80,
+   "w": 60,
+   "h": 50,
+   "weight": 30,
+   "stop_index": 1,
+   "rotation_allowed": true,
+   "allowed_rotations": [
+    0,
+    1
+   ],
+   "top_load_capacity_kg_m2": 4000
+  },
+  {
+   "id": "M03",
+   "l": 50,
+   "w": 50,
+   "h": 60,
+   "weight": 22,
+   "stop_index": 2,
+   "rotation_allowed": true,
+   "allowed_rotations": [
+    0,
+    1
+   ],
+   "top_load_capacity_kg_m2": 3500
+  },
+  {
+   "id": "M04",
+   "l": 100,
+   "w": 80,
+   "h": 40,
+   "weight": 45,
+   "stop_index": 1,
+   "rotation_allowed": true,
+   "allowed_rotations": [
+    0,
+    1
+   ],
+   "top_load_capacity_kg_m2": 5000
+  },
+  {
+   "id": "M05",
+   "l": 60,
+   "w": 40,
+   "h": 40,
+   "weight": 18,
+   "stop_index": 2,
+   "rotation_allowed": true,
+   "allowed_rotations": [
+    0,
+    1
+   ],
+   "top_load_capacity_kg_m2": 3000
+  },
+  {
+   "id": "M06",
+   "l": 40,
+   "w": 30,
+   "h": 30,
+   "weight": 8,
+   "stop_index": 1,
+   "rotation_allowed": true,
+   "allowed_rotations": [
+    0,
+    1
+   ],
+   "top_load_capacity_kg_m2": 2500
+  },
+  {
+   "id": "M07",
+   "l": 80,
+   "w": 60,
+   "h": 50,
+   "weight": 30,
+   "stop_index": 2,
+   "rotation_allowed": true,
+   "allowed_rotations": [
+    0,
+    1
+   ],
+   "top_load_capacity_kg_m2": 4000
+  },
+  {
+   "id": "M08",
+   "l": 50,
+   "w": 50,
+   "h": 60,
+   "weight": 22,
+   "stop_index": 1,
+   "rotation_allowed": true,
+   "allowed_rotations": [
+    0,
+    1
+   ],
+   "top_load_capacity_kg_m2": 3500
+  },
+  {
+   "id": "M09",
+   "l": 100,
+   "w": 80,
+   "h": 40,
+   "weight": 45,
+   "stop_index": 2,
+   "rotation_allowed": true,
+   "allowed_rotations": [
+    0,
+    1
+   ],
+   "top_load_capacity_kg_m2": 5000
+  },
+  {
+   "id": "M10",
+   "l": 60,
+   "w": 40,
+   "h": 40,
+   "weight": 18,
+   "stop_index": 1,
+   "rotation_allowed": true,
+   "allowed_rotations": [
+    0,
+    1
+   ],
+   "top_load_capacity_kg_m2": 3000
+  },
+  {
+   "id": "M11",
+   "l": 40,
+   "w": 30,
+   "h": 30,
+   "weight": 8,
+   "stop_index": 2,
+   "rotation_allowed": true,
+   "allowed_rotations": [
+    0,
+    1
+   ],
+   "top_load_capacity_kg_m2": 2500
+  },
+  {
+   "id": "M12",
+   "l": 80,
+   "w": 60,
+   "h": 50,
+   "weight": 30,
+   "stop_index": 1,
+   "rotation_allowed": true,
+   "allowed_rotations": [
+    0,
+    1
+   ],
+   "top_load_capacity_kg_m2": 4000
+  },
+  {
+   "id": "M13",
+   "l": 50,
+   "w": 50,
+   "h": 60,
+   "weight": 22,
+   "stop_index": 2,
+   "rotation_allowed": true,
+   "allowed_rotations": [
+    0,
+    1
+   ],
+   "top_load_capacity_kg_m2": 3500
+  },
+  {
+   "id": "M14",
+   "l": 100,
+   "w": 80,
+   "h": 40,
+   "weight": 45,
+   "stop_index": 1,
+   "rotation_allowed": true,
+   "allowed_rotations": [
+    0,
+    1
+   ],
+   "top_load_capacity_kg_m2": 5000
+  },
+  {
+   "id": "M15",
+   "l": 60,
+   "w": 40,
+   "h": 40,
+   "weight": 18,
+   "stop_index": 2,
+   "rotation_allowed": true,
+   "allowed_rotations": [
+    0,
+    1
+   ],
+   "top_load_capacity_kg_m2": 3000
+  },
+  {
+   "id": "M16",
+   "l": 40,
+   "w": 30,
+   "h": 30,
+   "weight": 8,
+   "stop_index": 1,
+   "rotation_allowed": true,
+   "allowed_rotations": [
+    0,
+    1
+   ],
+   "top_load_capacity_kg_m2": 2500
+  },
+  {
+   "id": "M17",
+   "l": 80,
+   "w": 60,
+   "h": 50,
+   "weight": 30,
+   "stop_index": 2,
+   "rotation_allowed": true,
+   "allowed_rotations": [
+    0,
+    1
+   ],
+   "top_load_capacity_kg_m2": 4000
+  },
+  {
+   "id": "M18",
+   "l": 50,
+   "w": 50,
+   "h": 60,
+   "weight": 22,
+   "stop_index": 1,
+   "rotation_allowed": true,
+   "allowed_rotations": [
+    0,
+    1
+   ],
+   "top_load_capacity_kg_m2": 3500
+  },
+  {
+   "id": "M19",
+   "l": 100,
+   "w": 80,
+   "h": 40,
+   "weight": 45,
+   "stop_index": 2,
+   "rotation_allowed": true,
+   "allowed_rotations": [
+    0,
+    1
+   ],
+   "top_load_capacity_kg_m2": 5000
+  },
+  {
+   "id": "M20",
+   "l": 60,
+   "w": 40,
+   "h": 40,
+   "weight": 18,
+   "stop_index": 1,
+   "rotation_allowed": true,
+   "allowed_rotations": [
+    0,
+    1
+   ],
+   "top_load_capacity_kg_m2": 3000
+  },
+  {
+   "id": "M21",
+   "l": 40,
+   "w": 30,
+   "h": 30,
+   "weight": 8,
+   "stop_index": 2,
+   "rotation_allowed": true,
+   "allowed_rotations": [
+    0,
+    1
+   ],
+   "top_load_capacity_kg_m2": 2500
+  },
+  {
+   "id": "M22",
+   "l": 80,
+   "w": 60,
+   "h": 50,
+   "weight": 30,
+   "stop_index": 1,
+   "rotation_allowed": true,
+   "allowed_rotations": [
+    0,
+    1
+   ],
+   "top_load_capacity_kg_m2": 4000
+  },
+  {
+   "id": "M23",
+   "l": 50,
+   "w": 50,
+   "h": 60,
+   "weight": 22,
+   "stop_index": 2,
+   "rotation_allowed": true,
+   "allowed_rotations": [
+    0,
+    1
+   ],
+   "top_load_capacity_kg_m2": 3500
+  },
+  {
+   "id": "M24",
+   "l": 100,
+   "w": 80,
+   "h": 40,
+   "weight": 45,
+   "stop_index": 1,
+   "rotation_allowed": true,
+   "allowed_rotations": [
+    0,
+    1
+   ],
+   "top_load_capacity_kg_m2": 5000
+  },
+  {
+   "id": "M25",
+   "l": 60,
+   "w": 40,
+   "h": 40,
+   "weight": 18,
+   "stop_index": 2,
+   "rotation_allowed": true,
+   "allowed_rotations": [
+    0,
+    1
+   ],
+   "top_load_capacity_kg_m2": 3000
+  },
+  {
+   "id": "M26",
+   "l": 40,
+   "w": 30,
+   "h": 30,
+   "weight": 8,
+   "stop_index": 1,
+   "rotation_allowed": true,
+   "allowed_rotations": [
+    0,
+    1
+   ],
+   "top_load_capacity_kg_m2": 2500
+  },
+  {
+   "id": "M27",
+   "l": 80,
+   "w": 60,
+   "h": 50,
+   "weight": 30,
+   "stop_index": 2,
+   "rotation_allowed": true,
+   "allowed_rotations": [
+    0,
+    1
+   ],
+   "top_load_capacity_kg_m2": 4000
+  },
+  {
+   "id": "M28",
+   "l": 50,
+   "w": 50,
+   "h": 60,
+   "weight": 22,
+   "stop_index": 1,
+   "rotation_allowed": true,
+   "allowed_rotations": [
+    0,
+    1
+   ],
+   "top_load_capacity_kg_m2": 3500
+  },
+  {
+   "id": "M29",
+   "l": 100,
+   "w": 80,
+   "h": 40,
+   "weight": 45,
+   "stop_index": 2,
+   "rotation_allowed": true,
+   "allowed_rotations": [
+    0,
+    1
+   ],
+   "top_load_capacity_kg_m2": 5000
+  }
+ ],
+ "stops": [
+  {
+   "id": "S1",
+   "sequence": 1
+  },
+  {
+   "id": "S2",
+   "sequence": 2
+  }
+ ],
+ "time_limit_sec": 60,
+ "algorithm_name": "BASIC",
+ "objective": "MAX_VOLUME",
+ "_ghi_chu": "30 thùng 5 cỡ, 2 điểm giao; mong đợi: xếp hết, phương án hợp lệ."
+}

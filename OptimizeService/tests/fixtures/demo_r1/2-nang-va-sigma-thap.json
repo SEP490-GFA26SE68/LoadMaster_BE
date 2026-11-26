@@ -1,0 +1,143 @@
+{
+ "vehicle": {
+  "inner_l": 100,
+  "inner_w": 100,
+  "inner_h": 50,
+  "door_w": 100,
+  "door_h": 50,
+  "max_payload_kg": 5000,
+  "max_cog_offset_ratio": 0.15,
+  "max_cog_offset_ratio_y": 0.15,
+  "floor_load_capacity_kg_m2": null,
+  "front_axle_x": 10,
+  "rear_axle_x": 90,
+  "front_axle_limit_kg": 2600,
+  "rear_axle_limit_kg": 4200,
+  "empty_front_axle_load_kg": 1500,
+  "empty_rear_axle_load_kg": 1600
+ },
+ "packages": [
+  {
+   "id": "N0",
+   "l": 50,
+   "w": 50,
+   "h": 25,
+   "weight": 80,
+   "stop_index": 1,
+   "rotation_allowed": true,
+   "allowed_rotations": [
+    0,
+    1
+   ],
+   "top_load_capacity_kg_m2": 1000
+  },
+  {
+   "id": "N1",
+   "l": 50,
+   "w": 50,
+   "h": 25,
+   "weight": 80,
+   "stop_index": 1,
+   "rotation_allowed": true,
+   "allowed_rotations": [
+    0,
+    1
+   ],
+   "top_load_capacity_kg_m2": 1000
+  },
+  {
+   "id": "N2",
+   "l": 50,
+   "w": 50,
+   "h": 25,
+   "weight": 80,
+   "stop_index": 1,
+   "rotation_allowed": true,
+   "allowed_rotations": [
+    0,
+    1
+   ],
+   "top_load_capacity_kg_m2": 1000
+  },
+  {
+   "id": "N3",
+   "l": 50,
+   "w": 50,
+   "h": 25,
+   "weight": 80,
+   "stop_index": 1,
+   "rotation_allowed": true,
+   "allowed_rotations": [
+    0,
+    1
+   ],
+   "top_load_capacity_kg_m2": 1000
+  },
+  {
+   "id": "T0",
+   "l": 50,
+   "w": 50,
+   "h": 25,
+   "weight": 5,
+   "stop_index": 1,
+   "rotation_allowed": true,
+   "allowed_rotations": [
+    0,
+    1
+   ],
+   "top_load_capacity_kg_m2": 150
+  },
+  {
+   "id": "T1",
+   "l": 50,
+   "w": 50,
+   "h": 25,
+   "weight": 5,
+   "stop_index": 1,
+   "rotation_allowed": true,
+   "allowed_rotations": [
+    0,
+    1
+   ],
+   "top_load_capacity_kg_m2": 150
+  },
+  {
+   "id": "T2",
+   "l": 50,
+   "w": 50,
+   "h": 25,
+   "weight": 5,
+   "stop_index": 1,
+   "rotation_allowed": true,
+   "allowed_rotations": [
+    0,
+    1
+   ],
+   "top_load_capacity_kg_m2": 150
+  },
+  {
+   "id": "T3",
+   "l": 50,
+   "w": 50,
+   "h": 25,
+   "weight": 5,
+   "stop_index": 1,
+   "rotation_allowed": true,
+   "allowed_rotations": [
+    0,
+    1
+   ],
+   "top_load_capacity_kg_m2": 150
+  }
+ ],
+ "stops": [
+  {
+   "id": "S1",
+   "sequence": 1
+  }
+ ],
+ "time_limit_sec": 60,
+ "algorithm_name": "BASIC",
+ "objective": "MAX_VOLUME",
+ "_ghi_chu": "4 thùng 80 kg (σ 1000) + 4 thùng 5 kg σ 150 kg/m², 2 tầng; mong đợi: xếp hết, mọi thùng nặng nằm sàn (đặt thùng nặng lên thùng σ thấp: 320 > 150 kg/m², H7 chặn)."
+}
