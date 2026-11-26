@@ -1,0 +1,65 @@
+"""M8 (KE-HOACH-TOI-UU, D1 26/11/2026): bộ dựng EP chừa thời gian cho bước kiểm phương án.
+
+check_reserve_sec = max(MIN, RATIO × time_limit_sec), không quá nửa giới hạn; RATIO = 0 tắt.
+"""
+import time
+
+import pytest
+
+from app.config.settings import settings
+from app.service.optimize import optimization_client as OC
+from app.service.optimize.optimization_client import OptimizationClient, check_reserve_sec
+from tests.test_load_balance_search import package, problem
+
+
+def test_reserve_defaults():
+    assert settings.OPTIMIZATION_CHECK_RESERVE_RATIO == 0.15
+    assert settings.OPTIMIZATION_CHECK_RESERVE_MIN_SEC == 2.0
+    assert check_reserve_sec(problem([package("A")], time_limit_sec=60)) == pytest.approx(9.0)
+    assert check_reserve_sec(problem([package("A")], time_limit_sec=10)) == pytest.approx(2.0)
+    assert check_reserve_sec(problem([package("A")], time_limit_sec=2)) == pytest.approx(1.0)   # không quá nửa
+
+
+def test_reserve_off_when_ratio_zero(monkeypatch):
+    monkeypatch.setattr(settings, "OPTIMIZATION_CHECK_RESERVE_RATIO", 0.0)
+    assert check_reserve_sec(problem([package("A")], time_limit_sec=60)) == 0.0
+
+
+def test_builder_stops_inside_the_reserve(monkeypatch):
+    """Hạn chót của job còn 1 s < phần giữ lại 9 s: bộ dựng EP không đặt kiện nào (phương án đưa vào bước sửa / kiểm
+    rỗng); tắt phần giữ lại thì bộ dựng đặt đủ. Phần giữ lại vẫn dùng được cho bước sửa (LoadBalanceSearch)."""
+    from app.service.optimize.load_balance_search import LoadBalanceSearch
+    monkeypatch.setattr(settings, "OPTIMIZATION_SHARED_DEADLINE_ENABLED", True)
+    built = []
+    real = LoadBalanceSearch.improve
+
+    def spy(self, initial, zones):
+        built.append(len(initial))
+        return real(self, initial, zones)
+
+    monkeypatch.setattr(LoadBalanceSearch, "improve", spy)
+    request = problem([package("A"), package("B")], time_limit_sec=60)
+    OptimizationClient().solve_in_process(request, job_deadline=time.monotonic() + 1.0)
+    monkeypatch.setattr(settings, "OPTIMIZATION_CHECK_RESERVE_RATIO", 0.0)
+    OptimizationClient().solve_in_process(request, job_deadline=time.monotonic() + 1.0)
+    assert built == [0, 2]
+
+
+@pytest.mark.parametrize("ratio, passes", [(0.5, 1), (0.0, 2)])
+def test_no_new_pass_inside_the_reserve(monkeypatch, ratio, passes):
+    """Lượt EP đầu tốn 1,1 s trên giới hạn 2 s: phần giữ lại 1 s → không mở lượt thứ hai; tắt → mở thêm một lượt."""
+    monkeypatch.setattr(settings, "OPTIMIZATION_CHECK_RESERVE_RATIO", ratio)
+    seen = []
+    real = OptimizationClient.solve_in_process
+
+    def slow(self, request, *args, **kwargs):
+        seen.append(kwargs.get("strategy"))
+        out = real(self, request, *args, **kwargs)
+        time.sleep(1.1)
+        return out
+
+    monkeypatch.setattr(OC.OptimizationClient, "solve_in_process", slow)
+    request = problem([package("A"), package("B")], time_limit_sec=2)
+    request = request.model_copy(update={"algorithm_name": "BASIC"})
+    OptimizationClient().solve_candidates(request)
+    assert len(seen) == passes

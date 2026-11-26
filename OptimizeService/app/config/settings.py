@@ -86,6 +86,10 @@ class Settings(BaseSettings):
     # Phương án của bộ dựng được kiểm dỡ hàng trong tối đa INITIAL_CHECK_RATIO × thời gian còn lại của lượt
     # (không dưới UNLOAD_CHECK_SEC): đủ cho phương án lớn hợp lệ, mà phương án sai khó chứng minh không ăn hết lượt.
     LOAD_BALANCE_INITIAL_CHECK_RATIO: float = 0.5
+    # M8 (26/11/2026, D1): bộ dựng EP dừng sớm hơn hạn chót của lượt một khoảng = max(MIN, RATIO × time_limit_sec)
+    # (không quá nửa giới hạn) để còn thời gian kiểm phương án vừa dựng. RATIO = 0 tắt.
+    OPTIMIZATION_CHECK_RESERVE_RATIO: float = 0.15
+    OPTIMIZATION_CHECK_RESERVE_MIN_SEC: float = 2.0
 
     LOADMASTER_SERVICE_URL: str = "http://localhost:8080"
     REDIS_URL: str = "redis://localhost:6379"
