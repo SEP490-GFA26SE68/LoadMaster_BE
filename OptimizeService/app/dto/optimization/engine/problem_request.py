@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Optional, Union, List
+from typing import Dict, Optional, Union, List
 from uuid import UUID
 from pydantic import BaseModel, Field, model_validator
 from app.dto.optimization.engine.rotation_contract import RotationCode
@@ -128,6 +128,17 @@ class PinnedData(BaseModel):
     packed_h: Optional[float] = None
 
 
+class PlanProfileRequest(BaseModel):
+    """
+    Hồ sơ ưu tiên của hàm điểm J cho một lần chạy (spec mục 6.3; chỉ đọc khi PLAN_SCORE_J bật).
+    code: default | A | B | C (app/config/plan_profiles.json). Trọng số ghi ở đây đè lên hồ sơ đó cho lần chạy này.
+    """
+    code: str = "default"
+    w_vol: Optional[float] = Field(default=None, ge=0)
+    w_n: Optional[float] = Field(default=None, ge=0)
+    weights: Optional[Dict[str, float]] = None  # mã S1…S8 → trọng số ≥ 0
+
+
 class ProblemRequest(BaseModel):
     """Payload gửi tới Optimization Engine để tính toán phương án xếp hàng."""
     vehicle: VehicleData
@@ -141,3 +152,5 @@ class ProblemRequest(BaseModel):
     algorithm_name: Optional[str] = None
     # Cảnh báo dữ liệu do bước dựng bài từ DB tìm ra; bộ giải không đọc, chỉ lưu vào optimization_jobs.data_warnings.
     data_warnings: List[DataWarningData] = Field(default_factory=list)
+    # Hồ sơ ưu tiên của lần chạy (M6, cờ PLAN_SCORE_J). Trống = hồ sơ "default".
+    plan_profile: Optional[PlanProfileRequest] = None

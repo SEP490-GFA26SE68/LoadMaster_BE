@@ -25,6 +25,7 @@ from app.config.settings import settings
 from app.constant.optimization.plan_algorithm import PlanAlgorithm
 from app.dto.optimization.engine.engine_response import EngineOptimizationResponse, PlacementData
 from app.dto.optimization.engine.problem_request import ProblemRequest
+from app.service.optimize import plan_score
 
 logger = logging.getLogger(__name__)
 
@@ -106,8 +107,15 @@ def _rollout(model, env_cfg, lm_problem, generator=None):
                 return info["result"]
 
 
-def _plan_score(result) -> float:
-    """Như AISolver của LoadMaster_AI: hợp lệ trước, rồi tỉ lệ hàng lên xe."""
+def _plan_score(result, problem: Optional[ProblemRequest] = None):
+    """
+    Như AISolver của LoadMaster_AI: hợp lệ trước, rồi tỉ lệ hàng lên xe.
+    Cờ PLAN_SCORE_J (M6): hợp lệ trước, rồi J theo hồ sơ của lần chạy.
+    """
+    if problem is not None and plan_score.enabled():
+        if not result.verdict.valid:
+            return plan_score.selection_key(problem, [])
+        return plan_score.selection_key(problem, _to_placements(result))
     return (10.0 if result.verdict.valid else 0.0) + result.cargo_frac + 0.001 * result.packed_frac_raw
 
 
@@ -197,7 +205,7 @@ def run_lumo_models(
             except Exception as exc:
                 logger.warning("%s: bỏ lượt lấy mẫu lỗi (%s)", code, exc)
                 continue
-            if _plan_score(sampled) > _plan_score(best[code]):
+            if _plan_score(sampled, problem) > _plan_score(best[code], problem):
                 best[code] = sampled
 
     # Kiểm lại bằng luật của service; vi phạm ràng buộc cứng thì bỏ cả cách xếp.

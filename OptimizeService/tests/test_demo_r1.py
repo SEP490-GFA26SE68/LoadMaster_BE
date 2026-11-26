@@ -105,3 +105,32 @@ def test_demo5_over_capacity_reports_the_rule_for_each_package():
     assert reasons and all(codes == ["WEIGHT_LIMIT_EXCEEDED"] for codes in reasons.values())
     total = sum(float(p.weight) for p in request.packages if str(p.id) in {str(x.package_id) for x in result.placements})
     assert total <= request.vehicle.max_payload_kg
+
+
+# ---------------------------------------------------------------------------------------------- J (M6, spec 6 + 11)
+# Số chốt bằng máy trên phương án một lượt ở trên, hồ sơ "default" (trọng số giả định). Đổi bộ dựng thì chạy lại và
+# cập nhật cùng lúc với số kiện ở các test trên.
+DEMO_J = {
+    "1-hon-hop-nhieu-co": (0.0, 0.164005, 52.905534),
+    "2-nang-va-sigma-thap": (0.0, 0.220879, 140.579509),
+    "3-nam-diem-giao": (0.0, 0.172766, 40.172144),
+    "4-don-lech": (0.0, 0.147756, 47.389171),
+    "5-vuot-suc-chua": (0.0, 0.147619, 43.39922),
+}
+
+
+@pytest.mark.parametrize("name", sorted(DEMO_J))
+def test_demo_j_breakdown(name):
+    from app.service.optimize import plan_score as PS
+
+    request = load(name)
+    result = solve(request)
+    s = PS.score(request, result.placements)
+    s1, s3, j = DEMO_J[name]
+    assert s.values["S1"] == pytest.approx(s1, abs=1e-6)
+    assert s.values["S1"] == pytest.approx(result.metrics.rehandling_count / len(request.packages))
+    assert s.computed["S3"] and s.values["S3"] == pytest.approx(s3, abs=1e-6)
+    v = request.vehicle   # S3 khớp tải trục của metrics (làm tròn 0,01 kg)
+    front, rear = result.metrics.front_axle_load, result.metrics.rear_axle_load
+    assert s.values["S3"] == pytest.approx(abs(front / v.front_axle_limit_kg - rear / v.rear_axle_limit_kg), abs=1e-5)
+    assert s.j == pytest.approx(j, abs=1e-6)

@@ -29,6 +29,8 @@ from app.service.optimize.stop_zone_calculator import StopZoneCalculator
 from app.constant.optimization.violation_codes import LIFO_BLOCKED, MUST_LOAD_UNPLACED
 from app.service.optimize.load_balance_search import LoadBalanceSearch, validate_plan
 from app.service.optimize.load_order import loading_order
+from app.service.optimize import plan_score
+from app.service.optimize.placement_facts import annotate_result
 from app.service.optimize.constraint_engine import ConstraintEngine
 from app.service.optimize.unload_feasibility_validator import (
     UnloadFeasibilityValidator,
@@ -121,7 +123,10 @@ class OptimizationClient:
         if len(allowed) > 1:
             layouts += self._advanced_layouts(problem, allowed, ep_runs, start, deadline, tried)
 
-        candidates = pick_candidates(layouts, problem.vehicle)
+        candidates = pick_candidates(layouts, problem.vehicle, problem)
+        if plan_score.enabled():
+            candidates = [c.model_copy(update={"result": annotate_result(problem, c.result, score_data=c.result.plan_score)})
+                          for c in candidates]
         logger.info(
             "Optimization tier=%s tried=%s layouts=%d chosen A/B/C=%s",
             problem.algorithm_name or "EP_DBLF",
@@ -245,6 +250,16 @@ class OptimizationClient:
                 raise ValueError("Remote result violates hard constraints: " + ",".join(violations))
             if placements and ConstraintEngine.physics_v2() and must_load_missing(problem, placements):
                 raise ValueError("Remote result violates hard constraints: " + MUST_LOAD_UNPLACED)
+        if plan_score.enabled():
+            # M6: J + phân rã + lý do đặt do service tính (không tin số của engine ngoài).
+            known = plan_score.profiles()
+            result = annotate_result(problem, result).model_copy(update={"candidates": [
+                c.model_copy(update={
+                    "profile": c.label if c.label in known else None,
+                    "result": annotate_result(problem, c.result, profile=known.get(c.label)),
+                })
+                for c in result.candidates
+            ]})
         return result
 
     def solve_in_process(
