@@ -93,4 +93,18 @@ public class LoadPlan {
      */
     @Column(name = "is_stale")
     private Boolean stale;
+
+    /**
+     * Điểm J + phân rã theo hồ sơ (JSON khoá snake_case, V57), hồ sơ đã chọn phương án ứng viên (A | B | C) và nhãn phương án
+     * trước đã chọn trùng cách xếp. Dịch vụ tối ưu ghi khi cờ PLAN_SCORE_J bật; Java chỉ đọc (không ghi): bản duyệt dựng từ
+     * chỉnh tay và bản chạy lại để trống, vì chỉnh tay làm các số này sai.
+     */
+    @Column(name = "plan_score", columnDefinition = "jsonb", insertable = false, updatable = false)
+    private String planScore;
+
+    @Column(name = "candidate_profile", length = 20, insertable = false, updatable = false)
+    private String candidateProfile;
+
+    @Column(name = "duplicate_of", length = 1, insertable = false, updatable = false)
+    private String duplicateOf;
 }
