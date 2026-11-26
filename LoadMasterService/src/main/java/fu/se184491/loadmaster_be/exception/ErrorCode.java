@@ -99,6 +99,7 @@ public enum ErrorCode {
     PAYROLL_RATE_EFFECTIVE_DATE_TOO_EARLY("Mức lương mới chỉ được áp dụng từ tháng sau", HttpStatus.BAD_REQUEST),
     PAYROLL_PERIOD_NOT_FOUND("Chưa có bảng lương cho kỳ này", HttpStatus.NOT_FOUND),
     PAYROLL_PERIOD_LOCKED("Kỳ lương đã chốt, không thể tính lại hoặc thay đổi phân chia", HttpStatus.CONFLICT),
+    PAYROLL_FUTURE_PERIOD_CANNOT_LOCK("Chỉ được chốt bảng lương từ tháng hiện tại trở về trước", HttpStatus.CONFLICT),
     PAYROLL_DATA_INCOMPLETE("Thiếu dữ liệu phương án cân nặng hoặc quãng đường của chuyến", HttpStatus.BAD_REQUEST),
     PAYROLL_INVALID_PERIOD("Kỳ lương không hợp lệ, yêu cầu định dạng yyyy-MM", HttpStatus.BAD_REQUEST),
     PAYROLL_INVALID_DRIVER_ASSIGNMENT("Danh sách tài xế nhận lương năng suất không hợp lệ", HttpStatus.BAD_REQUEST),

@@ -352,8 +352,12 @@ public class WarehousePayrollServiceImpl implements WarehousePayrollService {
 
     @Override
     public WarehousePayrollPeriodResponse lockPeriod(Long companyId, String period) {
+        YearMonth month = parsePeriod(period);
+        if (month.isAfter(YearMonth.now(VIETNAM_TIME_ZONE))) {
+            throw new AppException(ErrorCode.PAYROLL_FUTURE_PERIOD_CANNOT_LOCK);
+        }
         lockCompanyForPayrollUpdate(companyId);
-        WarehousePayrollPeriod payrollPeriod = findPeriodForUpdate(companyId, parsePeriod(period).atDay(1));
+        WarehousePayrollPeriod payrollPeriod = findPeriodForUpdate(companyId, month.atDay(1));
         // Chỉ chốt kỳ này; các tháng đã chốt trước đó giữ nguyên.
         if (payrollPeriod.getStatus() != PayrollPeriodStatus.LOCKED) {
             payrollPeriod.setStatus(PayrollPeriodStatus.LOCKED);

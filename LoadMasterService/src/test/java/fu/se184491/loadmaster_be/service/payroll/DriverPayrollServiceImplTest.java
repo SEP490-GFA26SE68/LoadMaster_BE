@@ -44,6 +44,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.LocalTime;
 import java.time.YearMonth;
 import java.time.ZoneId;
 import java.util.List;
@@ -544,12 +545,13 @@ class DriverPayrollServiceImplTest {
     }
 
     @Test
-    void calculatePeriodUsesDriverBaseSalaryOverrideInsteadOfCompanyRate() {
-        LocalDate periodStart = LocalDate.of(2026, 11, 1);
+    void calculatesFutureDraftUsingDriverBaseSalaryOverride() {
+        YearMonth futureMonth = YearMonth.now(ZoneId.of("Asia/Ho_Chi_Minh")).plusMonths(1);
+        LocalDate periodStart = futureMonth.atDay(1);
         CompanyPayrollRate rate = CompanyPayrollRate.builder()
                 .company(company)
                 .effectiveFrom(periodStart)
-                .baseSalaryVnd(new BigDecimal("8000000"))
+                .baseSalaryVnd(BigDecimal.ZERO)
                 .rateVndPerKg(new BigDecimal("100"))
                 .commissionPercent(new BigDecimal("15")).handlingFeeVndPerKg(new BigDecimal("150")).handlingDriverPercent(new BigDecimal("85"))
                 .build();
@@ -563,19 +565,26 @@ class DriverPayrollServiceImplTest {
                 .thenReturn(Optional.of(rate));
         when(periodRepository.findByCompanyIdAndPeriodStartForUpdate(10L, periodStart)).thenReturn(Optional.empty());
         when(userRepository.findByCompanyIdAndUserRoleTypeAndStatus(10L, UserRole.DRIVER, UserStatus.ACTIVE))
-                .thenReturn(List.of(driverOne));
+                .thenReturn(List.of(driverOne, driverTwo));
         when(tripRepository.findByCompanyIdAndStatusAndCompletedAtGreaterThanEqualAndCompletedAtLessThan(
                 10L, TripStatus.DELIVERED, periodStart.atStartOfDay(), periodStart.plusMonths(1).atStartOfDay()))
                 .thenReturn(List.of());
         when(baseSalaryOverrideRepository
                 .findFirstByDriverIdAndEffectiveFromLessThanEqualOrderByEffectiveFromDesc(21L, periodStart))
                 .thenReturn(Optional.of(override));
+        when(baseSalaryOverrideRepository
+                .findFirstByDriverIdAndEffectiveFromLessThanEqualOrderByEffectiveFromDesc(22L, periodStart))
+                .thenReturn(Optional.empty());
 
-        PayrollPeriodResponse response = service.calculatePeriod(10L, "2026-11");
+        PayrollPeriodResponse response = service.calculatePeriod(10L, futureMonth.toString());
 
-        assertEquals(1, response.drivers().size());
+        assertEquals(PayrollPeriodStatus.DRAFT, response.status());
+        assertEquals(futureMonth.toString(), response.period());
+        assertEquals(2, response.drivers().size());
         assertEquals(new BigDecimal("12000000"), response.drivers().get(0).baseSalaryVnd());
         assertEquals(new BigDecimal("12000000"), response.drivers().get(0).totalSalaryVnd());
+        assertEquals(BigDecimal.ZERO, response.drivers().get(1).baseSalaryVnd());
+        assertEquals(BigDecimal.ZERO, response.drivers().get(1).totalSalaryVnd());
     }
 
     private PayrollPeriodResponse calculateWithBaseSalaries(String companyBase, String driverRaise) {
@@ -722,7 +731,8 @@ class DriverPayrollServiceImplTest {
 
     @Test
     void lockPeriodSetsLockedAtWithoutFractionalSeconds() {
-        LocalDate periodStart = LocalDate.of(2026, 11, 1);
+        YearMonth month = YearMonth.now(ZoneId.of("Asia/Ho_Chi_Minh"));
+        LocalDate periodStart = month.atDay(1);
         PayrollPeriod period = PayrollPeriod.builder()
                 .id(1L)
                 .periodStart(periodStart)
@@ -733,7 +743,7 @@ class DriverPayrollServiceImplTest {
                 .thenReturn(Optional.of(period));
         when(periodRepository.save(any(PayrollPeriod.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
-        var response = service.lockPeriod(10L, "2026-11");
+        var response = service.lockPeriod(10L, month.toString());
 
         assertNotNull(response);
         assertEquals(PayrollPeriodStatus.LOCKED, response.status());
@@ -744,34 +754,48 @@ class DriverPayrollServiceImplTest {
     }
 
     @Test
+    void cannotLockFuturePayrollPeriod() {
+        String futurePeriod = YearMonth.now(ZoneId.of("Asia/Ho_Chi_Minh")).plusMonths(1).toString();
+
+        AppException error = assertThrows(AppException.class, () -> service.lockPeriod(10L, futurePeriod));
+
+        assertEquals("PAYROLL_FUTURE_PERIOD_CANNOT_LOCK", error.getErrorCode().name());
+        verify(periodRepository, never()).findByCompanyIdAndPeriodStartForUpdate(10L,
+                YearMonth.parse(futurePeriod).atDay(1));
+        verify(periodRepository, never()).save(any(PayrollPeriod.class));
+    }
+
+    @Test
     void lockingAnotherMonthKeepsEarlierLockedMonthsLocked() {
-        LocalDate novemberStart = LocalDate.of(2026, 11, 1);
-        LocalDateTime decemberLockedAt = LocalDateTime.of(2026, 12, 5, 9, 0, 0);
-        PayrollPeriod november = PayrollPeriod.builder()
+        YearMonth currentMonth = YearMonth.now(ZoneId.of("Asia/Ho_Chi_Minh"));
+        LocalDate currentMonthStart = currentMonth.atDay(1);
+        LocalDate previousMonthStart = currentMonth.minusMonths(1).atDay(1);
+        LocalDateTime previousLockedAt = LocalDateTime.of(previousMonthStart.plusDays(4), LocalTime.of(9, 0, 0));
+        PayrollPeriod currentDraft = PayrollPeriod.builder()
                 .id(1L)
-                .periodStart(novemberStart)
+                .periodStart(currentMonthStart)
                 .status(PayrollPeriodStatus.DRAFT)
                 .driverPayrolls(List.of())
                 .build();
-        PayrollPeriod december = PayrollPeriod.builder()
+        PayrollPeriod previousLocked = PayrollPeriod.builder()
                 .id(2L)
-                .periodStart(LocalDate.of(2026, 12, 1))
+                .periodStart(previousMonthStart)
                 .status(PayrollPeriodStatus.LOCKED)
-                .lockedAt(decemberLockedAt)
+                .lockedAt(previousLockedAt)
                 .driverPayrolls(List.of())
                 .build();
-        when(periodRepository.findByCompanyIdAndPeriodStartForUpdate(10L, novemberStart))
-                .thenReturn(Optional.of(november));
+        when(periodRepository.findByCompanyIdAndPeriodStartForUpdate(10L, currentMonthStart))
+                .thenReturn(Optional.of(currentDraft));
         // Chốt một kỳ không được động tới các kỳ khác: lenient để test đỏ vì kết quả sai, không vì stub thừa.
         lenient().when(periodRepository.findByCompanyIdAndStatus(10L, PayrollPeriodStatus.LOCKED))
-                .thenReturn(List.of(december));
+                .thenReturn(List.of(previousLocked));
         when(periodRepository.save(any(PayrollPeriod.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
-        service.lockPeriod(10L, "2026-11");
+        service.lockPeriod(10L, currentMonth.toString());
 
-        assertEquals(PayrollPeriodStatus.LOCKED, november.getStatus());
-        assertEquals(PayrollPeriodStatus.LOCKED, december.getStatus());
-        assertEquals(decemberLockedAt, december.getLockedAt());
+        assertEquals(PayrollPeriodStatus.LOCKED, currentDraft.getStatus());
+        assertEquals(PayrollPeriodStatus.LOCKED, previousLocked.getStatus());
+        assertEquals(previousLockedAt, previousLocked.getLockedAt());
     }
 
     @Test

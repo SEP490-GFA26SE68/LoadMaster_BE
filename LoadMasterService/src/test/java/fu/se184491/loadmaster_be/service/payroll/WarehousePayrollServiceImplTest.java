@@ -319,6 +319,18 @@ class WarehousePayrollServiceImplTest {
     }
 
     @Test
+    void cannotLockFuturePayrollPeriod() {
+        String futurePeriod = YearMonth.now(VN).plusMonths(1).toString();
+
+        AppException error = assertThrows(AppException.class, () -> service.lockPeriod(10L, futurePeriod));
+
+        assertEquals("PAYROLL_FUTURE_PERIOD_CANNOT_LOCK", error.getErrorCode().name());
+        verify(periodRepository, never()).findByCompanyIdAndPeriodStartForUpdate(10L,
+                YearMonth.parse(futurePeriod).atDay(1));
+        verify(periodRepository, never()).save(any(WarehousePayrollPeriod.class));
+    }
+
+    @Test
     void deletingLockedPeriodIsRejected() {
         when(periodRepository.findByCompanyIdAndPeriodStartForUpdate(10L, OCTOBER))
                 .thenReturn(Optional.of(period(PayrollPeriodStatus.LOCKED)));

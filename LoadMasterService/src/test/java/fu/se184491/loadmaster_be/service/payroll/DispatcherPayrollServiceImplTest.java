@@ -42,6 +42,7 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -446,7 +447,8 @@ class DispatcherPayrollServiceImplTest {
 
     @Test
     void lockPeriodSetsLockedStatus() {
-        LocalDate periodStart = LocalDate.of(2026, 11, 1);
+        YearMonth month = YearMonth.now(ZoneId.of("Asia/Ho_Chi_Minh"));
+        LocalDate periodStart = month.atDay(1);
         DispatcherPayrollPeriod draft = DispatcherPayrollPeriod.builder()
                 .id(8L)
                 .company(company)
@@ -458,7 +460,7 @@ class DispatcherPayrollServiceImplTest {
         when(periodRepository.findByCompanyIdAndStatus(10L, PayrollPeriodStatus.LOCKED)).thenReturn(List.of());
         when(periodRepository.save(any(DispatcherPayrollPeriod.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
-        DispatcherPayrollPeriodResponse response = service.lockPeriod(10L, "2026-11");
+        DispatcherPayrollPeriodResponse response = service.lockPeriod(10L, month.toString());
 
         assertEquals(PayrollPeriodStatus.LOCKED, response.status());
         assertNotNull(draft.getLockedAt());
@@ -466,9 +468,22 @@ class DispatcherPayrollServiceImplTest {
     }
 
     @Test
+    void cannotLockFuturePayrollPeriod() {
+        String futurePeriod = YearMonth.now(ZoneId.of("Asia/Ho_Chi_Minh")).plusMonths(1).toString();
+
+        AppException error = assertThrows(AppException.class, () -> service.lockPeriod(10L, futurePeriod));
+
+        assertEquals("PAYROLL_FUTURE_PERIOD_CANNOT_LOCK", error.getErrorCode().name());
+        verify(periodRepository, never()).findByCompanyIdAndPeriodStartForUpdate(10L,
+                YearMonth.parse(futurePeriod).atDay(1));
+        verify(periodRepository, never()).save(any(DispatcherPayrollPeriod.class));
+    }
+
+    @Test
     void lockPeriodTurnsPreviousLockedPeriodBackToDraft() {
-        LocalDate november = LocalDate.of(2026, 11, 1);
-        LocalDate december = LocalDate.of(2026, 12, 1);
+        YearMonth currentMonth = YearMonth.now(ZoneId.of("Asia/Ho_Chi_Minh"));
+        LocalDate november = currentMonth.minusMonths(1).atDay(1);
+        LocalDate december = currentMonth.atDay(1);
         DispatcherPayrollPeriod previous = DispatcherPayrollPeriod.builder()
                 .id(7L)
                 .company(company)
@@ -487,7 +502,7 @@ class DispatcherPayrollServiceImplTest {
         when(periodRepository.findByCompanyIdAndStatus(10L, PayrollPeriodStatus.LOCKED)).thenReturn(List.of(previous));
         when(periodRepository.save(any(DispatcherPayrollPeriod.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
-        DispatcherPayrollPeriodResponse response = service.lockPeriod(10L, "2026-12");
+        DispatcherPayrollPeriodResponse response = service.lockPeriod(10L, currentMonth.toString());
 
         assertEquals(PayrollPeriodStatus.LOCKED, response.status());
         assertEquals(PayrollPeriodStatus.DRAFT, previous.getStatus());
