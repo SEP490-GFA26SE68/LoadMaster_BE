@@ -24,10 +24,11 @@ EPS = 1e-4
 _ACTIVE: Optional[P.PlanProfile] = P.get(os.environ.get("LMAI_HO_SO") or None)
 
 
-def set_profile(code: Optional[str]) -> None:
-    """Đặt hồ sơ cho mọi lần chọn phương án trong tiến trình này (None = cách chấm cũ)."""
+def set_profile(code) -> None:
+    """Đặt hồ sơ cho mọi lần chọn phương án trong tiến trình này (None = cách chấm cũ). Nhận mã (default | A | B | C)
+    hoặc một `PlanProfile` (hồ sơ lấy mẫu khi train Lumo-R3)."""
     global _ACTIVE
-    _ACTIVE = P.get(code)
+    _ACTIVE = code if isinstance(code, P.PlanProfile) else P.get(code)
 
 
 def active_profile() -> Optional[P.PlanProfile]:
@@ -40,6 +41,18 @@ def plan_score(r: PlanResult):
     if not r.verdict.valid or not r.placements:
         return (False, 0, 0.0)
     return (True, len(r.placements) if P.pack_count_first() else 0, score(r.problem, r.placements, _ACTIVE).j)
+
+
+def better(a, b, eps: float = 1e-9) -> bool:
+    """a hơn b rõ ràng (hơn quá `eps` ở phần số thực). Điểm cũ là số thực; điểm theo hồ sơ là bộ (hợp lệ, số kiện, J)."""
+    if isinstance(a, tuple):
+        return a[:-1] > b[:-1] or (a[:-1] == b[:-1] and a[-1] > b[-1] + eps)
+    return a > b + eps
+
+
+def argbest(scores) -> int:
+    """Chỉ số của điểm cao nhất, lấy cái đầu tiên khi bằng nhau (như np.argmax với số thực)."""
+    return max(range(len(scores)), key=lambda k: scores[k])
 
 
 # ------------------------------------------------------------------------------------------------------------ J

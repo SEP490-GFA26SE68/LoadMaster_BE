@@ -124,6 +124,7 @@ class PackingEnv:
                 profile = active_profile() or PF.get(cfg.profile)
         self.profile = profile                                  # hồ sơ sản phẩm (w_n của file) — thầy / chọn phương án
         self.profile_train = PF.with_w_n(profile, cfg.reward_w_n)   # thưởng + quan sát
+        self._v3_cache = None
         v = self.problem.vehicle
         self.v_cont = max(1e-9, float(v.inner_l * v.inner_w * v.inner_h))
         self.n_total = max(1, len(self.problem.packages))
@@ -261,10 +262,13 @@ class PackingEnv:
     def _observe_v3(self, obs: Dict[str, np.ndarray]) -> None:
         from . import profiles as PF
         pk, st, prob = self.packer, self.packer.state, self.problem
-        obs["glob"] = np.concatenate([obs["glob"], np.asarray(PF.glob_features(self.profile_train), np.float32)])
+        if getattr(self, "_v3_cache", None) is None:   # hồ sơ cố định trong một lượt: tính một lần (_set_profile xoá)
+            self._v3_cache = (np.asarray(PF.glob_features(self.profile_train), np.float32),
+                              int(PF.config().get("high_priority_min", 2)))
+        gfeat, hp = self._v3_cache
+        obs["glob"] = np.concatenate([obs["glob"], gfeat])
         C = obs["cand"].shape[0]
         extra = np.zeros((C, FC3), np.float32)
-        hp = int(PF.config().get("high_priority_min", 2))
         fq = st.floor_q if (prob.physics_v2 and not st.skip_h10) else None
         for i, c in enumerate(pk.candidates[:C]):
             pkg = prob.packages[c.pkg_idx]
@@ -283,7 +287,7 @@ class PackingEnv:
                         press = min(press, m)
                     if fq and st.box[j, 2] <= 1e-6:
                         floor = min(floor, 1.0 - ((st.weight[j] + recv) / (st.box[j, 3] * st.box[j, 4] / 1e4)) / fq)
-            extra[i] = (np.clip(press, 0, 1), np.clip(floor, 0, 1), float(bool(pkg.must_load)),
+            extra[i] = (min(max(press, 0.0), 1.0), min(max(floor, 0.0), 1.0), float(bool(pkg.must_load)),
                         float(pkg.priority is not None and int(pkg.priority) >= hp))
         obs["cand"] = np.concatenate([obs["cand"], extra], 1).astype(np.float32)
 
