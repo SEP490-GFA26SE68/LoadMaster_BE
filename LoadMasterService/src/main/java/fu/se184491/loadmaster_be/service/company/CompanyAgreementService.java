@@ -12,6 +12,8 @@ public interface CompanyAgreementService {
 
     CompanyAgreement createTrialAgreement(Company company, User adminUser, LocalDateTime approvedAt);
 
+    CompanyAgreement createOfficialServiceAgreement(Company company, User adminUser, LocalDateTime approvedAt);
+
     CompanyAgreementResponse getMyAgreement(User currentUser);
 
     default CompanyAgreementResponse signAgreement(User currentUser, SignAgreementRequest request, String clientIp) {

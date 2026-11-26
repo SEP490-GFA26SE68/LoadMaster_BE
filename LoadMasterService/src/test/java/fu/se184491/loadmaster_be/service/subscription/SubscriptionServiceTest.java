@@ -1,6 +1,7 @@
 package fu.se184491.loadmaster_be.service.subscription;
 
 import com.fasterxml.jackson.annotation.JsonFormat;
+import fu.se184491.loadmaster_be.client.VnPayClient;
 import fu.se184491.loadmaster_be.constant.billing.AlgorithmTier;
 import fu.se184491.loadmaster_be.constant.billing.BillingCycle;
 import fu.se184491.loadmaster_be.constant.billing.PaymentGateway;
@@ -59,6 +60,18 @@ public class SubscriptionServiceTest {
 
     @Mock
     private PaymentGatewayService paymentGatewayService;
+
+    @Mock
+    private fu.se184491.loadmaster_be.repository.account.UserRepository userRepository;
+
+    @Mock
+    private fu.se184491.loadmaster_be.service.company.CompanyAgreementService companyAgreementService;
+
+    @Mock
+    private fu.se184491.loadmaster_be.client.BrevoClient brevoClient;
+
+    @Mock
+    private VnPayClient vnPayClient;
 
     @InjectMocks
     private SubscriptionServiceImpl subscriptionService;
@@ -869,5 +882,81 @@ public class SubscriptionServiceTest {
 
         verify(creditService).ensureAccount(1L);
         verify(creditService, never()).grantMonthlyCredits(anyLong(), anyInt());
+    }
+
+    @Test
+    @DisplayName("subscribe - Doanh nghiệp dùng thử được phép nâng cấp lên bất kỳ gói nào (kể cả tier thấp hơn)")
+    void testSubscribe_whenCompanyIsTrial_allowsAnyTier() {
+        SubscriptionPlan basicPlan = SubscriptionPlan.builder()
+                .id(1L)
+                .name("Basic Plan")
+                .tier(SubscriptionTier.BASIC)
+                .price(new BigDecimal("990000"))
+                .active(true)
+                .build();
+        CompanySubscription trialSub = CompanySubscription.builder()
+                .id(10L)
+                .company(company)
+                .plan(proPlan)
+                .status(SubscriptionStatus.ACTIVE)
+                .expiresAt(LocalDateTime.now().plusDays(10))
+                .build();
+
+        when(companyRepository.findById(1L)).thenReturn(Optional.of(company));
+        when(companySubscriptionRepository.findByCompanyId(1L)).thenReturn(Optional.of(trialSub));
+        when(subscriptionPlanRepository.findById(1L)).thenReturn(Optional.of(basicPlan));
+        when(userRepository.existsByCompanyIdAndUserType(1L, fu.se184491.loadmaster_be.constant.account.UserType.TRIAL)).thenReturn(true);
+        when(paymentGatewayService.createPayment(any(), any(), any(), any(), any(), any(), any()))
+                .thenReturn(fu.se184491.loadmaster_be.dto.response.payment.PaymentUrlResponse.builder().paymentUrl("http://vnpay.test").build());
+
+        SubscribeRequest req = new SubscribeRequest();
+        req.setPlanId(1L);
+        fu.se184491.loadmaster_be.dto.response.payment.PaymentUrlResponse res = subscriptionService.subscribe(1L, req, "127.0.0.1");
+
+        assertNotNull(res);
+        verify(paymentGatewayService).createPayment(eq(company), eq(PaymentGateway.VNPAY), eq("SUBSCRIPTION"), eq(1L), eq(new BigDecimal("990000")), contains("Basic Plan"), eq("127.0.0.1"));
+    }
+
+    @Test
+    @DisplayName("activateSubscription - Doanh nghiệp dùng thử nâng cấp sẽ chuyển toàn bộ nhân viên sang OFFICIAL và tạo thỏa thuận chính thức")
+    void testActivateSubscription_whenCompanyIsTrial_convertsAllUsersToOfficial() {
+        company.setBillingEmail("billing@acme.com");
+        CompanySubscription trialSub = CompanySubscription.builder()
+                .id(10L)
+                .company(company)
+                .plan(proPlan)
+                .status(SubscriptionStatus.ACTIVE)
+                .expiresAt(LocalDateTime.now().plusDays(10))
+                .build();
+
+        fu.se184491.loadmaster_be.entity.account.User adminUser = fu.se184491.loadmaster_be.entity.account.User.builder()
+                .id(2L)
+                .fullName("Nguyễn Văn Admin")
+                .email("admin@acme.com")
+                .userRoleType(fu.se184491.loadmaster_be.constant.account.UserRole.ADMIN)
+                .userType(fu.se184491.loadmaster_be.constant.account.UserType.TRIAL)
+                .build();
+        fu.se184491.loadmaster_be.entity.account.User driverUser = fu.se184491.loadmaster_be.entity.account.User.builder()
+                .id(3L)
+                .fullName("Trần Văn Tài Xế")
+                .email("driver@acme.com")
+                .userRoleType(fu.se184491.loadmaster_be.constant.account.UserRole.DRIVER)
+                .userType(fu.se184491.loadmaster_be.constant.account.UserType.TRIAL)
+                .build();
+
+        when(companyRepository.findById(1L)).thenReturn(Optional.of(company));
+        when(subscriptionPlanRepository.findById(proPlan.getId())).thenReturn(Optional.of(proPlan));
+        when(companySubscriptionRepository.findByCompanyId(1L)).thenReturn(Optional.of(trialSub));
+        when(userRepository.existsByCompanyIdAndUserType(1L, fu.se184491.loadmaster_be.constant.account.UserType.TRIAL)).thenReturn(true);
+        when(userRepository.findByCompanyId(1L)).thenReturn(java.util.List.of(adminUser, driverUser));
+
+        subscriptionService.activateSubscription(1L, proPlan.getId(), BillingCycle.MONTHLY);
+
+        assertEquals(fu.se184491.loadmaster_be.constant.account.UserType.OFFICIAL, adminUser.getUserType());
+        assertEquals(fu.se184491.loadmaster_be.constant.account.UserType.OFFICIAL, driverUser.getUserType());
+        verify(userRepository).save(adminUser);
+        verify(userRepository).save(driverUser);
+        verify(companyAgreementService).createOfficialServiceAgreement(eq(company), eq(adminUser), any());
+        verify(brevoClient).sendEmail(eq("billing@acme.com"), contains("Chính thức"), any());
     }
 }
