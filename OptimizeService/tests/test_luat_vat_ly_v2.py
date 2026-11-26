@@ -206,6 +206,36 @@ def test_h13_plan_without_a_must_load_package_is_invalid(v2):
     assert reasons["ok"] == [VC.MUST_LOAD_UNPLACED]
 
 
+def test_h13_two_pass_places_must_load_before_deep_overflow(v2, monkeypatch):
+    """
+    Vùng sâu (điểm giao 2) có 4 kiện dễ vỡ không chồng được → tràn sang vùng sát cửa. Một lượt: hàng tràn chiếm chỗ,
+    phương án còn 2 kiện. Hai lượt: kiện bắt buộc của điểm giao 1 đặt trước ở vùng của nó, xếp được 3 kiện;
+    step_sequence đánh lại theo thứ tự bốc lên xe (sâu trước).
+    """
+    vt = vehicle(inner_l=410, inner_w=100, inner_h=100, door_w=100, door_h=100)
+    packages = [pkg(f"d{i}", weight=10, stop=2, fragile=True) for i in range(4)]
+    packages.append(pkg("m", h=100, weight=10, stop=1, must_load=True))
+    monkeypatch.setattr(settings, "H13_TWO_PASS", False)
+    one_pass = OptimizationClient().solve_in_process(problem(packages, vehicle=vt))
+    monkeypatch.setattr(settings, "H13_TWO_PASS", True)
+    two_pass = OptimizationClient().solve_in_process(problem(packages, vehicle=vt))
+    placed = {str(p.package_id) for p in two_pass.placements}
+    assert "m" in placed and len(placed) == 3 > len(one_pass.placements)
+    steps = sorted(two_pass.placements, key=lambda p: p.step_sequence)
+    assert [p.step_sequence for p in steps] == [1, 2, 3]
+    assert [p.x for p in steps] == sorted(p.x for p in steps)
+    assert not validate_plan(two_pass.placements, vt, {str(p.id): p for p in packages}, 1e18)
+
+
+def test_loading_order_puts_supports_first_then_deep_first():
+    from app.service.optimize.load_order import loading_order
+
+    a, b, c = pkg("A"), pkg("B"), pkg("C")
+    # C nằm trên A (giao x 60–110) nhưng sâu hơn A → vẫn phải bốc sau A; B ở sàn, sâu kém C.
+    order = loading_order([at(b, x=160), at(c, x=10, z=50), at(a, x=60)])
+    assert [(str(p.package_id), p.step_sequence) for p in order] == [("A", 1), ("C", 2), ("B", 3)]
+
+
 def test_h13_fixed_layout_from_another_solver_is_rejected(v2):
     vt = vehicle()
     a, b = pkg("a"), pkg("b", must_load=True)

@@ -19,6 +19,10 @@ class Settings(BaseSettings):
     # H7 áp lực chồng kg/m² (thay HC-07 + HC-08), H8 ρ theo kiện, H10 tải sàn, H11 chỉ trọng tâm ngang,
     # H12 mã LIFO_BLOCKED, H13 kiện bắt buộc. Tắt = luật cũ, kết quả y hệt bản trước.
     PHYSICS_RULES_V2: bool = False
+    # Chỉ có tác dụng khi PHYSICS_RULES_V2 bật và bài có kiện must_load: phương án một lượt thiếu kiện bắt buộc thì dựng
+    # lại hai lượt — lượt 1 đặt kiện bắt buộc của mọi vùng (vùng sâu trước), lượt 2 xếp phần còn lại — giữ khi đủ kiện bắt
+    # buộc và hợp lệ, rồi đánh lại step_sequence theo thứ tự bốc lên xe. Tắt = như M4.
+    H13_TWO_PASS: bool = True
 
     APP_NAME: str = "OptimizeService"
     APP_ENV: str = "development"

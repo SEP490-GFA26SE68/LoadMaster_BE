@@ -28,6 +28,7 @@ from app.service.optimize.candidate_plans import (
 from app.service.optimize.stop_zone_calculator import StopZoneCalculator
 from app.constant.optimization.violation_codes import LIFO_BLOCKED, MUST_LOAD_UNPLACED
 from app.service.optimize.load_balance_search import LoadBalanceSearch, validate_plan
+from app.service.optimize.load_order import loading_order
 from app.service.optimize.constraint_engine import ConstraintEngine
 from app.service.optimize.unload_feasibility_validator import (
     UnloadFeasibilityValidator,
@@ -400,12 +401,41 @@ class OptimizationClient:
         pkg = problem.packages[-1] if problem.packages else None
 
 # 2. Xếp hàng theo từng zone
-        for zone in sorted_zones:
+        # H13 dựng lại hai lượt (luật mới + bài có kiện bắt buộc chưa ghim + H13_TWO_PASS): xếp một lượt như cũ; nếu thiếu
+        # kiện bắt buộc thì dựng lại từ đầu bằng hai lượt — lượt 1 chỉ kiện must_load của mọi vùng, lượt 2 phần còn lại —
+        # để hàng tràn từ vùng sâu không chiếm chỗ của kiện bắt buộc ở vùng sát cửa. Bản hai lượt chỉ được giữ khi đủ kiện
+        # bắt buộc và qua validate_plan; không thì giữ bản một lượt. Bài một lượt đã đủ kiện bắt buộc: y hệt trước.
+        two_pass_allowed = bool(
+            physics_v2
+            and settings.H13_TWO_PASS
+            and any(p.must_load and str(p.id) not in pinned_ids for p in problem.packages)
+        )
+        two_pass = False
+        one_pass_state = None
+        base_weight, base_volume = total_placed_weight, total_placed_volume
+        zone_passes = [(zone, None) for zone in sorted_zones]
+        pass_i = 0
+        while True:
+            if pass_i == len(zone_passes):
+                if two_pass_allowed and not two_pass and must_load_missing(problem, placements):
+                    one_pass_state = (placements, unplaced, total_placed_weight, total_placed_volume)
+                    placements, unplaced = list(pinned_placements), []
+                    context["existing_placements"] = placements
+                    total_placed_weight, total_placed_volume = base_weight, base_volume
+                    pkg = problem.packages[-1] if problem.packages else None
+                    zone_passes = [(zone, True) for zone in sorted_zones] + [(zone, False) for zone in sorted_zones]
+                    pass_i, two_pass = 0, True
+                    continue
+                break
+            zone, must_pass = zone_passes[pass_i]
+            pass_i += 1
             if time.monotonic() >= deadline: break
             zone_pkgs = [
                 p for p in stops_dict.get(zone.stop_id, [])
-                if str(p.id) not in pinned_ids
+                if str(p.id) not in pinned_ids and (must_pass is None or bool(p.must_load) == must_pass)
             ]
+            if must_pass is not None and not zone_pkgs:
+                continue
             # Sắp xếp kiện hàng trong zone: giảm dần theo thể tích
             if rank is not None:
                 # Thứ tự do GA / SA đưa vào; kiện không có trong order đứng cuối, giữ thứ tự cũ.
@@ -451,8 +481,15 @@ class OptimizationClient:
                 (zone_mid_x, door_y_min, 0.0),
             ]
 
-            # Điểm ứng viên sát các kiện đã ghim (mặt sau, mặt bên, mặt trên).
-            for pinned_placement in pinned_placements:
+            # Điểm ứng viên sát các kiện đã ghim (mặt sau, mặt bên, mặt trên); ở lượt 2 của H13 hai lượt, sát cả các
+            # kiện bắt buộc đã đặt ở lượt 1 (danh sách điểm dựng lại theo từng vùng nên không còn điểm của chúng).
+            anchors = list(pinned_placements)
+            if must_pass is False:
+                anchors += [
+                    p for p in placements
+                    if str(p.package_id) not in pinned_ids and packages_map[str(p.package_id)].must_load
+                ]
+            for pinned_placement in anchors:
                 for npt in self._extreme_points_of(pinned_placement):
                     if (
                         npt[0] < vt.inner_l
@@ -533,6 +570,25 @@ class OptimizationClient:
                                and orientation[2] <= vt.inner_h
                        )
                 ]
+
+                # Lượt 2 của H13 hai lượt: thứ tự vùng không còn đảm bảo HC-09 với kiện bắt buộc đã đặt ở lượt 1 — kiện
+                # của điểm giao sau không được chắn lối ra hay đè lên kiện bắt buộc của điểm giao trước (luật từng cặp).
+                early_must = (
+                    [
+                        p for p in placements
+                        if str(p.package_id) not in pinned_ids
+                        and packages_map[str(p.package_id)].must_load
+                        and int(packages_map[str(p.package_id)].stop_index) < int(pkg.stop_index)
+                    ]
+                    if must_pass is False
+                    else []
+                )
+
+                def blocks_early_must(candidate: PlacementData) -> bool:
+                    return any(
+                        not ConstraintEngine.check_multi_drop_lifo(candidate, [early], packages_map).passed
+                        for early in early_must
+                    )
 
                 if not orientations:
                     unplaced.append(
@@ -619,6 +675,8 @@ class OptimizationClient:
                                 candidate_cog_score(candidate)
                                 + (float(pz) / float(vt.inner_h)) * 0.1,
                             )
+                        if early_must and blocks_early_must(candidate):
+                            continue
                         geometric.append((score, candidate))
 
                 # 3. ConstraintEngine check.
@@ -699,6 +757,8 @@ class OptimizationClient:
                                 step_sequence=len(placements) + 1,
                                 stop_zone_id=zone.stop_id,
                             )
+                            if early_must and blocks_early_must(candidate):
+                                continue
                             violations = ConstraintEngine.check_all(candidate, context)
                             if not violations:
                                 chosen_placement = candidate
@@ -739,6 +799,17 @@ class OptimizationClient:
                     ))
 
 
+        if one_pass_state is not None:
+            # Đã dựng lại hai lượt: giữ khi đủ kiện bắt buộc và hợp lệ, không thì quay về bản một lượt.
+            keep_two_pass = (
+                time.monotonic() < deadline
+                and not must_load_missing(problem, placements)
+                and not validate_plan(placements, vt, packages_map, deadline)
+            )
+            logger.info("[H13] two-pass rebuild: placed=%d kept=%s", len(placements), keep_two_pass)
+            if not keep_two_pass:
+                placements, unplaced, total_placed_weight, total_placed_volume = one_pass_state
+                two_pass = False
         _debug_print("=== BEFORE HC-11 / HC-12 ===")
         logger.info("[INITIAL PLAN] Placed=%d Unplaced=%d",len(placements),len(unplaced))
         if problem.pinned:
@@ -765,6 +836,8 @@ class OptimizationClient:
                 previous[key] = UnplacedData(
                     package_id=packages_map[key].id, reason="CONSTRAINT_VIOLATED",
                     violated_constraints=[*(old.violated_constraints if old else []), MUST_LOAD_UNPLACED])
+        if two_pass and placements:
+            placements = loading_order(placements)
         placed_ids = {str(p.package_id) for p in placements}
         expired = time.monotonic() >= deadline
         fallback_codes = ["OPTIMIZATION_TIME_LIMIT_REACHED"] if expired else codes or search.last_violations or ["NO_FEASIBLE_SPACE"]
