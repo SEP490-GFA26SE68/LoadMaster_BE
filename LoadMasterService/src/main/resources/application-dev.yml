@@ -13,10 +13,9 @@ app:
       password: ${DEV_DISPATCHER_PASSWORD:${DEV_ADMIN_PASSWORD}}
       full-name: ${DEV_DISPATCHER_FULL_NAME:LoadMaster Dispatcher}
 
-# Máy dev chạy thanh toán giả lập (mock-checkout, bỏ kiểm chữ ký). Môi trường thật đặt VNPAY_MOCK=false
-# hoặc không bật profile dev.
+# Máy dev chạy thanh toán giả lập khi VNPAY_MOCK=true. Đặt VNPAY_MOCK=false để mở cổng sandbox VNPay thật.
 vnpay:
-  mock: ${VNPAY_MOCK:true}
+  mock: ${VNPAY_MOCK:false}
 
 # Máy dev mở Swagger UI và /v3/api-docs; đặt API_DOCS_ENABLED=false để tắt.
 springdoc:

@@ -60,8 +60,19 @@ public class WebSecurityConfig {
                         // These exact rules must precede the unrelated internal/public matchers.
                         .requestMatchers("/api/internal/credits/**", "/api/credits/deduct", "/api/credits/refund")
                         .authenticated()
-                        .requestMatchers("/api/load-plans/**", "/api/payment/mock-checkout", "/api/warehouse/**")
+                        .requestMatchers("/api/load-plans/**", "/api/warehouse/**")
                         .authenticated()
+                        .requestMatchers(request -> {
+                            String uri = request.getRequestURI();
+                            String path = request.getServletPath();
+                            boolean isMockCheckout = (uri != null && uri.endsWith("/api/payment/mock-checkout"))
+                                    || (path != null && path.endsWith("/api/payment/mock-checkout"));
+                            if (!isMockCheckout) {
+                                return false;
+                            }
+                            String txnRef = request.getParameter("txnRef");
+                            return txnRef == null || !txnRef.startsWith("REG_");
+                        }).authenticated()
 
                         .requestMatchers(org.springframework.http.HttpMethod.GET,
                                 "/api/driver/trips", "/api/driver/trips/*/current-stop").authenticated()

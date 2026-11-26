@@ -86,4 +86,38 @@ public class VnPayClientTest {
         params.put("vnp_Amount", "99999999");
         assertFalse(client.verifyCallback(params));
     }
+
+    @Test
+    @DisplayName("sanitizeOrderInfo should remove accents and special characters according to VNPay spec")
+    void testSanitizeOrderInfo() {
+        String raw = "Dang ky goi Starter - Công ty CP Vận Tải Quốc Tế Thịnh Vượng @#$!";
+        String sanitized = VnPayClient.sanitizeOrderInfo(raw);
+        assertEquals("Dang ky goi Starter - Cong ty CP Van Tai Quoc Te Thinh Vuong", sanitized);
+
+        assertEquals("LoadMaster Payment", VnPayClient.sanitizeOrderInfo(null));
+        assertEquals("LoadMaster Payment", VnPayClient.sanitizeOrderInfo("   "));
+    }
+
+    @Test
+    @DisplayName("createPaymentUrl with accented Vietnamese orderInfo should encode and verify successfully")
+    void testCreatePaymentUrlWithVietnameseOrderInfo() {
+        String url = client.createPaymentUrl("REG_TEST123", new BigDecimal("1200000"), "Dang ky goi Starter - Công ty CP Vận Tải Quốc Tế Thịnh Vượng", "127.0.0.1");
+
+        assertNotNull(url);
+        assertFalse(url.contains("&&")); // No double ampersand bug
+        assertTrue(url.contains("vnp_SecureHash="));
+
+        String queryString = url.substring(url.indexOf("?") + 1);
+        Map<String, String> params = new HashMap<>();
+        for (String pair : queryString.split("&")) {
+            int idx = pair.indexOf("=");
+            if (idx > 0) {
+                String key = pair.substring(0, idx);
+                String value = URLDecoder.decode(pair.substring(idx + 1), StandardCharsets.UTF_8);
+                params.put(key, value);
+            }
+        }
+
+        assertTrue(client.verifyCallback(params));
+    }
 }

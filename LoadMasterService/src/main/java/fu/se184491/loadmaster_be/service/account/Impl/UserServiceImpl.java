@@ -418,7 +418,7 @@ public class UserServiceImpl implements UserService {
                 && user.getUserRoleType() == UserRole.ADMIN
                 && company != null
                 && brevoClient != null) {
-            String subject = "LoadMaster - Thông tin tài khoản Quản trị viên Doanh nghiệp (Company Admin)";
+            String subject = "[LoadMaster] Thông tin tài khoản Quản trị viên Doanh nghiệp / Company Admin Credentials";
             String htmlContent = buildCompanyAdminProvisionEmailHtml(company, user, temporaryPassword);
             String recipient = user.getEmail();
             AfterCommit.run("email tài khoản quản trị công ty",
@@ -428,7 +428,7 @@ public class UserServiceImpl implements UserService {
         if (currentUser.getUserRoleType() == UserRole.ADMIN
                 && company != null
                 && brevoClient != null) {
-            String subject = "LoadMaster - Thông tin tài khoản nhân viên " + company.getCompanyName();
+            String subject = "[LoadMaster] Thông tin tài khoản nhân viên / Employee Credentials - " + company.getCompanyName();
             String htmlContent = buildEmployeeProvisionEmailHtml(company, user, temporaryPassword);
             String recipient = user.getEmail();
             AfterCommit.run("email tài khoản nhân viên",
@@ -444,23 +444,40 @@ public class UserServiceImpl implements UserService {
     }
 
     private String buildCompanyAdminProvisionEmailHtml(Company company, User adminUser, String temporaryPassword) {
-        return """
-                <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #1e293b;">
-                    <h2>Chào mừng Doanh nghiệp %s đến với LoadMaster!</h2>
-                    <p>Xin chào <strong>%s</strong>,</p>
-                    <p>Sau khi hoàn tất ký thỏa thuận dịch vụ, Quản trị viên Hệ thống (System Admin) đã khởi tạo tài khoản <strong>Quản trị viên Doanh nghiệp (ADMIN)</strong> cho công ty của bạn:</p>
-                    <ul>
-                        <li><strong>Email đăng nhập:</strong> %s</li>
-                        <li><strong>Mật khẩu tạm thời:</strong> <code>%s</code></li>
-                        <li><strong>Vai trò:</strong> ADMIN (Quản trị viên Công ty)</li>
-                    </ul>
-                    <p>Vui lòng đăng nhập và đổi mật khẩu ngay trong lần sử dụng đầu tiên. Các tài khoản nhân sự nội bộ trong công ty (MANAGER, DISPATCHER, WAREHOUSE_WORKER, DRIVER) sẽ do chính tài khoản ADMIN công ty của bạn khởi tạo và quản lý.</p>
-                </div>
-                """.formatted(
-                company.getCompanyName() != null ? company.getCompanyName() : "",
-                adminUser.getFullName() != null ? adminUser.getFullName() : adminUser.getEmail(),
-                adminUser.getEmail(),
-                temporaryPassword
+        String webLoginUrl = FrontendUrls.join(frontendUrl, "/login");
+        String companyName = company.getCompanyName() != null ? company.getCompanyName() : "";
+        String adminName = adminUser.getFullName() != null ? adminUser.getFullName() : adminUser.getEmail();
+
+        var items = java.util.List.of(
+                new fu.se184491.loadmaster_be.helpers.EmailTemplateBuilder.AccountProvisionItem("Tên doanh nghiệp", "Company Name", companyName),
+                new fu.se184491.loadmaster_be.helpers.EmailTemplateBuilder.AccountProvisionItem("Mã công ty", "Company Code", company.getCompanyCode()),
+                new fu.se184491.loadmaster_be.helpers.EmailTemplateBuilder.AccountProvisionItem("Họ và tên Quản trị viên", "Administrator Name", adminName),
+                new fu.se184491.loadmaster_be.helpers.EmailTemplateBuilder.AccountProvisionItem("Vai trò tài khoản", "Account Role", "Quản trị viên Doanh nghiệp (Company Admin)"),
+                new fu.se184491.loadmaster_be.helpers.EmailTemplateBuilder.AccountProvisionItem("Email đăng nhập", "Login Email", adminUser.getEmail()),
+                new fu.se184491.loadmaster_be.helpers.EmailTemplateBuilder.AccountProvisionItem("Mật khẩu tạm thời", "Temporary Password", temporaryPassword)
+        );
+
+        var noticesVi = java.util.List.of(
+                "Đây là mật khẩu tạm thời. Bạn bắt buộc phải đổi sang mật khẩu mới ngay trong lần đăng nhập đầu tiên.",
+                "Các tài khoản nhân sự nội bộ (Manager, Dispatcher, Warehouse Worker, Driver) sẽ do chính tài khoản Quản trị công ty của bạn khởi tạo và phân quyền.",
+                "Tuyệt đối không chia sẻ mật khẩu tạm thời này cho bất kỳ ai."
+        );
+        var noticesEn = java.util.List.of(
+                "This is a temporary password. You are required to change your password upon your first login.",
+                "Internal operational accounts (Manager, Dispatcher, Warehouse Worker, Driver) will be created and managed by your Company Admin account.",
+                "Never share this temporary password with anyone."
+        );
+
+        return fu.se184491.loadmaster_be.helpers.EmailTemplateBuilder.buildAccountProvisionEmailHtml(
+                adminName,
+                "Khởi tạo tài khoản Quản trị viên Doanh nghiệp",
+                "Company Administrator Account Provisioning",
+                "Sau khi hoàn tất thỏa thuận dịch vụ, Quản trị viên Hệ thống đã khởi tạo tài khoản Quản trị viên Doanh nghiệp (ADMIN) cho công ty của bạn:",
+                "Following the service agreement, the System Administrator has provisioned the Company Administrator (ADMIN) account for your organization:",
+                items,
+                webLoginUrl,
+                noticesVi,
+                noticesEn
         );
     }
 
@@ -470,45 +487,33 @@ public class UserServiceImpl implements UserService {
         String companyName = company.getCompanyName() != null ? company.getCompanyName() : "";
         String employeeName = employee.getFullName() != null ? employee.getFullName() : employee.getEmail();
 
-        return """
-                <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #1e293b; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 8px;">
-                    <h2 style="color: #0f172a; margin-top: 0;">Chào mừng bạn đến với LoadMaster!</h2>
-                    <p>Xin chào <strong>%s</strong>,</p>
-                    <p>Quản trị viên công ty <strong>%s</strong> đã khởi tạo tài khoản nhân viên cho bạn trên hệ thống LoadMaster với thông tin đăng nhập như sau:</p>
+        var items = java.util.List.of(
+                new fu.se184491.loadmaster_be.helpers.EmailTemplateBuilder.AccountProvisionItem("Tên doanh nghiệp", "Company Name", companyName),
+                new fu.se184491.loadmaster_be.helpers.EmailTemplateBuilder.AccountProvisionItem("Họ và tên nhân viên", "Full Name", employeeName),
+                new fu.se184491.loadmaster_be.helpers.EmailTemplateBuilder.AccountProvisionItem("Vai trò tài khoản", "Account Role", roleDisplayName),
+                new fu.se184491.loadmaster_be.helpers.EmailTemplateBuilder.AccountProvisionItem("Email đăng nhập", "Login Email", employee.getEmail()),
+                new fu.se184491.loadmaster_be.helpers.EmailTemplateBuilder.AccountProvisionItem("Mật khẩu tạm thời", "Temporary Password", temporaryPassword)
+        );
 
-                    <div style="background-color: #f8fafc; padding: 15px; border-radius: 6px; margin: 15px 0;">
-                        <ul style="list-style-type: none; padding-left: 0; margin: 0;">
-                            <li style="margin-bottom: 8px;"><strong>🏢 Doanh nghiệp:</strong> %s</li>
-                            <li style="margin-bottom: 8px;"><strong>👤 Họ và tên:</strong> %s</li>
-                            <li style="margin-bottom: 8px;"><strong>💼 Vai trò:</strong> %s</li>
-                            <li style="margin-bottom: 8px;"><strong>📧 Email đăng nhập:</strong> %s</li>
-                            <li style="margin-bottom: 8px;"><strong>🔑 Mật khẩu tạm thời:</strong> <code style="background-color: #e2e8f0; padding: 2px 6px; border-radius: 4px; font-weight: bold; color: #0284c7;">%s</code></li>
-                        </ul>
-                    </div>
+        var noticesVi = java.util.List.of(
+                "Đây là mật khẩu tạm thời. Khi đăng nhập lần đầu tiên vào hệ thống, bạn sẽ được yêu cầu đổi sang mật khẩu cá nhân mới để đảm bảo tính bảo mật.",
+                "Tuyệt đối không chia sẻ thông tin tài khoản cho bất kỳ ai."
+        );
+        var noticesEn = java.util.List.of(
+                "This is a temporary password. Upon your first login, you will be required to change to a new personal password for security.",
+                "Never share your account credentials with anyone."
+        );
 
-                    <div style="background-color: #fffbeb; border-left: 4px solid #f59e0b; padding: 12px; margin: 15px 0; border-radius: 4px;">
-                        <p style="margin: 0; color: #92400e; font-size: 14px;">
-                            <strong>⚠️ Lưu ý quan trọng:</strong> Đây là mật khẩu tạm thời. Khi đăng nhập lần đầu tiên vào hệ thống, bạn sẽ được yêu cầu đổi sang mật khẩu cá nhân mới để đảm bảo tính bảo mật.
-                        </p>
-                    </div>
-
-                    <p style="margin-top: 25px;">
-                        <a href="%s" style="background-color: #0284c7; color: white; padding: 10px 20px; text-decoration: none; border-radius: 6px; font-weight: bold; display: inline-block;">
-                            Đăng nhập vào hệ thống
-                        </a>
-                    </p>
-                    <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 25px 0;" />
-                    <p style="color: #64748b; font-size: 13px; margin-bottom: 0;">Trân trọng,<br />Đội ngũ LoadMaster</p>
-                </div>
-                """.formatted(
+        return fu.se184491.loadmaster_be.helpers.EmailTemplateBuilder.buildAccountProvisionEmailHtml(
                 employeeName,
-                companyName,
-                companyName,
-                employeeName,
-                roleDisplayName,
-                employee.getEmail(),
-                temporaryPassword,
-                webLoginUrl
+                "Thông tin tài khoản nhân viên",
+                "Employee Account Credentials",
+                "Quản trị viên công ty " + companyName + " đã khởi tạo tài khoản nhân viên cho bạn trên hệ thống LoadMaster với thông tin đăng nhập như sau:",
+                "The administrator of " + companyName + " has provisioned your employee account on the LoadMaster platform with the following details:",
+                items,
+                webLoginUrl,
+                noticesVi,
+                noticesEn
         );
     }
 
@@ -517,39 +522,32 @@ public class UserServiceImpl implements UserService {
         String companyName = company.getCompanyName() != null ? company.getCompanyName() : "";
         String employeeName = employee.getFullName() != null ? employee.getFullName() : employee.getEmail();
 
-        return """
-                <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #1e293b; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 8px;">
-                    <h2 style="color: #0f172a; margin-top: 0;">Thông báo Cấp lại Mật khẩu Tạm thời</h2>
-                    <p>Xin chào <strong>%s</strong>,</p>
-                    <p>Mật khẩu tài khoản của bạn tại <strong>%s</strong> trên hệ thống LoadMaster vừa được đặt lại:</p>
+        var items = java.util.List.of(
+                new fu.se184491.loadmaster_be.helpers.EmailTemplateBuilder.AccountProvisionItem("Họ và tên", "Full Name", employeeName),
+                new fu.se184491.loadmaster_be.helpers.EmailTemplateBuilder.AccountProvisionItem("Tên doanh nghiệp", "Company Name", companyName),
+                new fu.se184491.loadmaster_be.helpers.EmailTemplateBuilder.AccountProvisionItem("Email đăng nhập", "Login Email", employee.getEmail()),
+                new fu.se184491.loadmaster_be.helpers.EmailTemplateBuilder.AccountProvisionItem("Mật khẩu tạm thời mới", "New Temporary Password", temporaryPassword)
+        );
 
-                    <div style="background-color: #f8fafc; padding: 15px; border-radius: 6px; margin: 15px 0;">
-                        <ul style="list-style-type: none; padding-left: 0; margin: 0;">
-                            <li style="margin-bottom: 8px;"><strong>📧 Email đăng nhập:</strong> %s</li>
-                            <li style="margin-bottom: 8px;"><strong>🔑 Mật khẩu tạm thời mới:</strong> <code style="background-color: #e2e8f0; padding: 2px 6px; border-radius: 4px; font-weight: bold; color: #0284c7;">%s</code></li>
-                        </ul>
-                    </div>
+        var noticesVi = java.util.List.of(
+                "Mật khẩu của bạn vừa được Quản trị viên cấp lại. Vui lòng đổi sang mật khẩu mới ngay khi đăng nhập vào hệ thống.",
+                "Không chia sẻ mật khẩu này cho bất kỳ ai."
+        );
+        var noticesEn = java.util.List.of(
+                "Your password has been reset by the Administrator. Please change to a new password immediately upon logging in.",
+                "Never share this password with anyone."
+        );
 
-                    <div style="background-color: #fffbeb; border-left: 4px solid #f59e0b; padding: 12px; margin: 15px 0; border-radius: 4px;">
-                        <p style="margin: 0; color: #92400e; font-size: 14px;">
-                            <strong>⚠️ Lưu ý:</strong> Bạn cần đổi sang mật khẩu mới ngay khi đăng nhập vào hệ thống.
-                        </p>
-                    </div>
-
-                    <p style="margin-top: 25px;">
-                        <a href="%s" style="background-color: #0284c7; color: white; padding: 10px 20px; text-decoration: none; border-radius: 6px; font-weight: bold; display: inline-block;">
-                            Đăng nhập vào hệ thống
-                        </a>
-                    </p>
-                    <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 25px 0;" />
-                    <p style="color: #64748b; font-size: 13px; margin-bottom: 0;">Trân trọng,<br />Đội ngũ LoadMaster</p>
-                </div>
-                """.formatted(
+        return fu.se184491.loadmaster_be.helpers.EmailTemplateBuilder.buildAccountProvisionEmailHtml(
                 employeeName,
-                companyName,
-                employee.getEmail(),
-                temporaryPassword,
-                webLoginUrl
+                "Thông báo Cấp lại Mật khẩu Tạm thời",
+                "Temporary Password Reissuance Notification",
+                "Mật khẩu tài khoản của bạn tại " + companyName + " trên hệ thống LoadMaster vừa được đặt lại:",
+                "Your account password at " + companyName + " on LoadMaster has been reset:",
+                items,
+                webLoginUrl,
+                noticesVi,
+                noticesEn
         );
     }
 
@@ -861,7 +859,7 @@ public class UserServiceImpl implements UserService {
         logAccount(ACTION_USER_PASSWORD_RESET, currentUser, targetUser, null, null);
 
         if (targetUser.getCompany() != null && brevoClient != null) {
-            String subject = "LoadMaster - Cấp lại mật khẩu tạm thời";
+            String subject = "[LoadMaster] Cấp lại mật khẩu tạm thời / Temporary Password Reissuance";
             String htmlContent = buildEmployeePasswordResetEmailHtml(targetUser.getCompany(), targetUser, temporaryPassword);
             String recipient = targetUser.getEmail();
             AfterCommit.run("email đặt lại mật khẩu nhân viên",

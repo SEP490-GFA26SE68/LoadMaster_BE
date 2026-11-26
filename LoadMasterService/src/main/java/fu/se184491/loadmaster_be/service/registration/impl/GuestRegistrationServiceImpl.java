@@ -405,7 +405,7 @@ public class GuestRegistrationServiceImpl implements GuestRegistrationService {
         try {
             // Dùng lại tài khoản Keycloak mồ côi cùng email; rollback thì người dùng Keycloak vừa tạo bị xoá lại
             keycloakUserId = KeycloakAccounts.provision(keycloakAdminClient, userRepository, session.getEmail(),
-                    session.getFullName(), temporaryPassword, false,
+                    session.getFullName(), temporaryPassword, true,
                     fu.se184491.loadmaster_be.constant.account.UserRole.ADMIN, true);
         } catch (AppException ex) {
             throw ex;
@@ -554,47 +554,45 @@ public class GuestRegistrationServiceImpl implements GuestRegistrationService {
             String temporaryPassword,
             byte[] invoicePdf
     ) {
-        String subject = "LoadMaster - Thông tin tài khoản quản trị và hóa đơn dịch vụ";
-        String content = """
-                Xin chào %s,
+        String subject = "[LoadMaster] Thông tin tài khoản quản trị và hóa đơn dịch vụ / Account Credentials & Invoice";
+        String loginUrl = FrontendUrls.join(frontendUrl, "/dang-nhap");
 
-                Chúc mừng bạn đã hoàn tất đăng ký tài khoản doanh nghiệp trên nền tảng LoadMaster!
-
-                THÔNG TIN DOANH NGHIỆP:
-                • Tên công ty: %s
-                • Mã công ty: %s
-                • Mã số thuế: %s
-
-                THÔNG TIN TÀI KHOẢN QUẢN TRỊ:
-                • Tên đăng nhập / Email: %s
-                • Mật khẩu tạm thời: %s
-                • Vai trò: Quản trị viên Doanh nghiệp (Company Admin)
-
-                THÔNG TIN GÓI DỊCH VỤ:
-                • Gói: %s
-                • Chu kỳ thanh toán: %s
-
-                HƯỚNG DẪN ĐĂNG NHẬP:
-                Vui lòng truy cập đường dẫn bên dưới để đăng nhập và đổi mật khẩu ở lần đầu tiên:
-                %s
-
-                Hóa đơn thanh toán chi tiết được đính kèm cùng email này (file PDF).
-
-                Trân trọng,
-                Đội ngũ Quản trị Nền tảng LoadMaster
-                """.formatted(
-                user.getFullName(),
-                company.getCompanyName(),
-                company.getCompanyCode(),
-                company.getTaxCode(),
-                user.getEmail(),
-                temporaryPassword,
-                plan != null ? plan.getName() : "Gói dịch vụ SaaS",
-                billingCycle != null ? billingCycle.name() : "MONTHLY",
-                FrontendUrls.join(frontendUrl, "/dang-nhap")
+        var items = java.util.List.of(
+                new fu.se184491.loadmaster_be.helpers.EmailTemplateBuilder.AccountProvisionItem("Tên doanh nghiệp", "Company Name", company.getCompanyName()),
+                new fu.se184491.loadmaster_be.helpers.EmailTemplateBuilder.AccountProvisionItem("Mã công ty", "Company Code", company.getCompanyCode()),
+                new fu.se184491.loadmaster_be.helpers.EmailTemplateBuilder.AccountProvisionItem("Mã số thuế", "Tax Code", company.getTaxCode()),
+                new fu.se184491.loadmaster_be.helpers.EmailTemplateBuilder.AccountProvisionItem("Họ và tên người đại diện", "Full Name", user.getFullName()),
+                new fu.se184491.loadmaster_be.helpers.EmailTemplateBuilder.AccountProvisionItem("Tên đăng nhập (Email)", "Login Email", user.getEmail()),
+                new fu.se184491.loadmaster_be.helpers.EmailTemplateBuilder.AccountProvisionItem("Mật khẩu tạm thời", "Temporary Password", temporaryPassword),
+                new fu.se184491.loadmaster_be.helpers.EmailTemplateBuilder.AccountProvisionItem("Vai trò tài khoản", "Account Role", "Quản trị viên Doanh nghiệp (Company Admin)"),
+                new fu.se184491.loadmaster_be.helpers.EmailTemplateBuilder.AccountProvisionItem("Gói dịch vụ đã đăng ký", "Subscription Plan", plan != null ? plan.getName() : "Gói dịch vụ SaaS"),
+                new fu.se184491.loadmaster_be.helpers.EmailTemplateBuilder.AccountProvisionItem("Chu kỳ thanh toán", "Billing Cycle", billingCycle != null ? billingCycle.name() : "MONTHLY")
         );
 
-        brevoClient.sendEmailWithAttachment(user.getEmail(), subject, content, "hoa-don-loadmaster.pdf", invoicePdf);
+        var noticesVi = java.util.List.of(
+                "Đây là mật khẩu tạm thời. Bạn bắt buộc phải đổi mật khẩu ngay trong lần đăng nhập đầu tiên.",
+                "Hóa đơn thanh toán chi tiết được đính kèm cùng email này (file PDF).",
+                "Tuyệt đối không chia sẻ thông tin đăng nhập này cho bất kỳ ai để bảo vệ quyền truy cập của doanh nghiệp."
+        );
+        var noticesEn = java.util.List.of(
+                "This is a temporary password. You are required to change your password upon your first login.",
+                "The detailed payment invoice is attached to this email (PDF file).",
+                "Never share these credentials with anyone to protect your organization access."
+        );
+
+        String htmlContent = fu.se184491.loadmaster_be.helpers.EmailTemplateBuilder.buildAccountProvisionEmailHtml(
+                user.getFullName(),
+                "Thông tin tài khoản quản trị và hóa đơn dịch vụ",
+                "Account Credentials & Service Invoice",
+                "Chúc mừng bạn đã hoàn tất đăng ký tài khoản doanh nghiệp trên nền tảng LoadMaster! Dưới đây là thông tin đăng nhập của bạn:",
+                "Congratulations on completing your business account registration on LoadMaster! Here are your login credentials:",
+                items,
+                loginUrl,
+                noticesVi,
+                noticesEn
+        );
+
+        brevoClient.sendEmailWithAttachment(user.getEmail(), subject, htmlContent, "hoa-don-loadmaster.pdf", invoicePdf);
     }
 
     @Override
@@ -612,18 +610,15 @@ public class GuestRegistrationServiceImpl implements GuestRegistrationService {
     }
 
     private void sendOtpEmail(String email, String fullName, String otp) {
-        String subject = "LoadMaster - Mã OTP xác thực đăng ký tài khoản";
-        String content = """
-                Xin chào %s,
-
-                Mã OTP xác thực đăng ký tài khoản LoadMaster của bạn là: %s
-
-                Mã này có hiệu lực trong vòng 10 phút. Vui lòng không chia sẻ mã này cho bất kỳ ai.
-
-                Trân trọng,
-                Đội ngũ LoadMaster
-                """.formatted(fullName, otp);
-        brevoClient.sendEmail(email, subject, content);
+        String subject = "[LoadMaster] Mã OTP xác thực đăng ký tài khoản / Account Registration Code";
+        String htmlContent = fu.se184491.loadmaster_be.helpers.EmailTemplateBuilder.buildOtpEmailHtml(
+                fullName,
+                otp,
+                10,
+                "đăng ký tài khoản doanh nghiệp",
+                "business account registration"
+        );
+        brevoClient.sendEmail(email, subject, htmlContent);
     }
 
     private GuestRegistrationSessionResponse mapToResponse(GuestRegistrationSession session, String message) {

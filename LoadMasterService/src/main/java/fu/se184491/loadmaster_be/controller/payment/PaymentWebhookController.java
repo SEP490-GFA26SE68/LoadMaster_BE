@@ -47,12 +47,21 @@ public class PaymentWebhookController {
     @GetMapping("/webhook/vnpay-return")
     public ResponseEntity<Void> handleVnPayReturn(@RequestParam Map<String, String> allParams) {
         log.info("Received VNPay Return redirect: {}", LogMasks.vnpayParams(allParams));
-        paymentCallbackHandler.handleVnPayCallback(allParams);
+        Map<String, String> callbackResult = paymentCallbackHandler.handleVnPayCallback(allParams);
 
         String txnRef = allParams.get("vnp_TxnRef");
-        String redirectUrl = FrontendUrls.join(frontendUrl, (txnRef != null && txnRef.startsWith("REG_"))
-                ? "/dang-ky-thanh-cong"
-                : "/goi-cuoc");
+        String responseCode = allParams.get("vnp_ResponseCode");
+        boolean isSuccess = "00".equals(responseCode) && "00".equals(callbackResult.get("RspCode"));
+
+        String redirectUrl;
+        if (txnRef != null && txnRef.startsWith("REG_")) {
+            redirectUrl = FrontendUrls.join(frontendUrl, "/dang-ky-thanh-cong?orderCode="
+                    + java.net.URLEncoder.encode(txnRef, java.nio.charset.StandardCharsets.UTF_8));
+        } else {
+            String status = isSuccess ? "success" : "failed";
+            redirectUrl = FrontendUrls.join(frontendUrl, "/goi-cuoc?paymentStatus=" + status
+                    + (txnRef != null ? "&txnRef=" + java.net.URLEncoder.encode(txnRef, java.nio.charset.StandardCharsets.UTF_8) : ""));
+        }
 
         return ResponseEntity.status(HttpStatus.FOUND)
                 .location(URI.create(redirectUrl))

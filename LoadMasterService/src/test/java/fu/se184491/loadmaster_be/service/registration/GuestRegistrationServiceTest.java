@@ -645,7 +645,7 @@ class GuestRegistrationServiceTest {
 
         // Verify Keycloak user created and password set
         verify(keycloakAdminClient).createUser("guest@company.com", "Nguyen Van A");
-        verify(keycloakAdminClient).setPassword("keycloak-user-uuid", "TempPass@123", false);
+        verify(keycloakAdminClient).setPassword("keycloak-user-uuid", "TempPass@123", true);
         verify(keycloakAdminClient).assignRealmRole("keycloak-user-uuid", "ADMIN");
 
         // Verify user created

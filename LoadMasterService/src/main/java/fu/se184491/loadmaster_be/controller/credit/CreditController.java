@@ -7,6 +7,7 @@ import fu.se184491.loadmaster_be.dto.response.credit.CreditPricingResponse;
 import fu.se184491.loadmaster_be.dto.response.credit.CreditTransactionResponse;
 import fu.se184491.loadmaster_be.dto.response.payment.PaymentUrlResponse;
 import fu.se184491.loadmaster_be.helpers.CurrentUserService;
+import fu.se184491.loadmaster_be.service.assistant.gate.ClientIpResolver;
 import fu.se184491.loadmaster_be.service.credit.CreditService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
@@ -28,6 +29,7 @@ public class CreditController {
 
     private final CreditService creditService;
     private final CurrentUserService currentUserService;
+    private final ClientIpResolver clientIpResolver;
 
     @GetMapping("/balance")
     @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'DISPATCHER', 'SYSTEM_ADMIN', 'SYSTEM_MANAGER', 'SYSTEM_SUPPORTER')")
@@ -81,7 +83,8 @@ public class CreditController {
             @Valid @RequestBody CreditTopupRequest request,
             HttpServletRequest servletRequest) {
         Long companyId = currentUserService.getCurrentCompanyId();
-        PaymentUrlResponse response = creditService.topup(companyId, request, servletRequest.getRemoteAddr());
+        String clientIp = clientIpResolver.resolveIpv4(servletRequest);
+        PaymentUrlResponse response = creditService.topup(companyId, request, clientIp);
 
         return ResponseEntity.ok(ApiResponse.<PaymentUrlResponse>builder()
                 .success(true)

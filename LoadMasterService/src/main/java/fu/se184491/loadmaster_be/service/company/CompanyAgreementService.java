@@ -14,7 +14,11 @@ public interface CompanyAgreementService {
 
     CompanyAgreementResponse getMyAgreement(User currentUser);
 
-    CompanyAgreementResponse signAgreement(User currentUser, SignAgreementRequest request, String clientIp);
+    default CompanyAgreementResponse signAgreement(User currentUser, SignAgreementRequest request, String clientIp) {
+        return signAgreement(currentUser, request, clientIp, null);
+    }
+
+    CompanyAgreementResponse signAgreement(User currentUser, SignAgreementRequest request, String clientIp, String signerDevice);
 
     CompanyAgreementResponse getCompanyAgreement(Long companyId);
 

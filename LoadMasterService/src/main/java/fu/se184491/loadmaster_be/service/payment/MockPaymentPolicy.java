@@ -13,13 +13,12 @@ public class MockPaymentPolicy {
     private final Environment environment;
 
     public boolean isEnabled() {
-        return config.isMock() && environment.matchesProfiles("dev")
-                && !environment.matchesProfiles("prod", "production");
+        return config.isMock() && !environment.matchesProfiles("prod", "production");
     }
 
     public void requireEnabled() {
         if (!isEnabled()) {
-            throw new AccessDeniedException("Mock payments require an explicitly enabled development profile");
+            throw new AccessDeniedException("Mock payments require an explicitly enabled development/test mode and cannot run in production");
         }
     }
 }

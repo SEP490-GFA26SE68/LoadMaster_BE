@@ -112,6 +112,25 @@ public class PaymentWebhookControllerTest {
     }
 
     @Test
+    @DisplayName("GET /api/payment/mock-checkout - guest registration REG_ prefix: does not require login and confirms payment")
+    void testMockCheckoutGuestRegistrationDoesNotRequireLogin() throws Exception {
+        when(vnPayClient.isMock()).thenReturn(true);
+        when(paymentCallbackHandler.handleVnPayCallback(anyMap()))
+                .thenReturn(Map.of("RspCode", "00", "Message", "Confirm Success"));
+
+        mockMvc.perform(get("/api/payment/mock-checkout")
+                        .param("txnRef", "REG_ABC12345"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.txnRef").value("REG_ABC12345"))
+                .andExpect(jsonPath("$.callbackResult.RspCode").value("00"));
+
+        verify(mockCheckoutAccess).requireAllowed("REG_ABC12345");
+        verify(paymentCallbackHandler).handleVnPayCallback(argThat(params ->
+                "REG_ABC12345".equals(params.get("vnp_TxnRef"))));
+    }
+
+    @Test
     @DisplayName("GET /api/payment/mock-checkout - transaction of another company: 404, confirms nothing")
     void testMockCheckoutOfAnotherCompanyIsNotFound() throws Exception {
         when(vnPayClient.isMock()).thenReturn(true);
