@@ -1,5 +1,7 @@
 package fu.se184491.loadmaster_be.entity.optimization;
 
+import fu.se184491.loadmaster_be.entity.trip.Trip;
+import fu.se184491.loadmaster_be.entity.vehicle.Vehicle;
 import org.junit.jupiter.api.Test;
 
 import java.time.Duration;
@@ -31,5 +33,19 @@ class OptimizationJobTest {
         job.fillCreatedAt();
 
         assertThat(job.getCreatedAt()).isEqualTo(written);
+    }
+
+    @Test
+    void jobRecordsTheVehicleTheTripHasWhenItIsCreated() {
+        Trip trip = new Trip();
+        trip.setVehicle(Vehicle.builder().id(42L).build());
+
+        assertThat(OptimizationJob.vehicleIdOf(trip)).isEqualTo(42L);
+    }
+
+    @Test
+    void jobWithoutTripOrVehicleHasNoVehicle() {
+        assertThat(OptimizationJob.vehicleIdOf(null)).isNull();
+        assertThat(OptimizationJob.vehicleIdOf(new Trip())).isNull();
     }
 }

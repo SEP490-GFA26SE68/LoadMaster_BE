@@ -62,7 +62,7 @@ public class LoadPlanReadRepository {
                    COALESCE(lp.manually_edited, FALSE) AS manually_edited,
                    COALESCE(lp.is_stale, FALSE) AS is_stale,
                    j.job_uuid, j.trip_id, j.status AS job_status, j.objective,
-                   j.algorithm_name, j.computation_ms, t.company_id
+                   j.algorithm_name, j.computation_ms, j.vehicle_id, t.company_id
             FROM load_plans lp
             JOIN optimization_jobs j ON j.id = lp.job_id
             JOIN trips t ON t.id = j.trip_id
@@ -248,6 +248,7 @@ public class LoadPlanReadRepository {
         return LoadPlanDetailResponse.builder()
                 .id(rs.getLong("id"))
                 .tripId(nullableLong(rs, "trip_id"))
+                .vehicleId(nullableLong(rs, "vehicle_id"))
                 .jobId(nullableLong(rs, "job_id"))
                 .jobUuid(rs.getString("job_uuid"))
                 .jobStatus(rs.getString("job_status"))

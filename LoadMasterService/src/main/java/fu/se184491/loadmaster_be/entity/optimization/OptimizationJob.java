@@ -80,6 +80,18 @@ public class OptimizationJob {
     @Column(name = "execution_started_at")
     private java.time.Instant executionStartedAt;
 
+    /**
+     * Xe của chuyến lúc tạo job: phương án dựng trên lòng thùng của xe này. Đổi xe sau đó không đổi cột này, nên Planner vẫn vẽ
+     * phương án cũ trong đúng xe của nó. Trống ở job tạo trước V56 mà không suy ra được xe.
+     */
+    @Column(name = "vehicle_id")
+    private Long vehicleId;
+
+    /** Mã xe đang gán cho chuyến, để ghi vào {@link #vehicleId} lúc tạo job. */
+    public static Long vehicleIdOf(Trip trip) {
+        return trip == null || trip.getVehicle() == null ? null : trip.getVehicle().getId();
+    }
+
     /** Job do Java tạo (chạy lại giữ ghim) cũng có giờ tạo, giờ Việt Nam như dịch vụ tối ưu ghi. */
     @PrePersist
     void fillCreatedAt() {
