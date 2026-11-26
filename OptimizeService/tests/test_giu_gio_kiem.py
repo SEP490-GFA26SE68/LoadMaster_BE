@@ -63,3 +63,15 @@ def test_no_new_pass_inside_the_reserve(monkeypatch, ratio, passes):
     request = request.model_copy(update={"algorithm_name": "BASIC"})
     OptimizationClient().solve_candidates(request)
     assert len(seen) == passes
+
+
+@pytest.mark.parametrize("bounded", [True, False])
+def test_checked_ep_plan_is_never_dropped(monkeypatch, bounded):
+    """D1 (26/11/2026): đã có phương án EP qua kiểm thì không trả phương án rỗng — kể cả khi bước sửa không tìm được
+    gì hơn và mọi lần kiểm lại sau đó đều hết giờ. C quá tải trọng xe nên phương án đủ kiện không tồn tại."""
+    monkeypatch.setattr(settings, "LOAD_BALANCE_BOUNDED_ENABLED", bounded)
+    monkeypatch.setattr(OC, "validate_plan", lambda *a, **k: ["OPTIMIZATION_TIME_LIMIT_REACHED"])
+    request = problem([package("A"), package("B"), package("C", weight=6000)], time_limit_sec=10)
+    result = OptimizationClient().solve_in_process(request)
+    assert sorted(str(p.package_id) for p in result.placements) == ["A", "B"]
+    assert [str(u.package_id) for u in result.unplaced] == ["C"]
