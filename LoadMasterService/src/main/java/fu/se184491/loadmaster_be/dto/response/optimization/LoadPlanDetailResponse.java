@@ -21,6 +21,8 @@ import java.util.List;
 public class LoadPlanDetailResponse {
     private Long id;
     private Long tripId;
+    /** Xe mà phương án được tính cho (xe của chuyến lúc chạy tối ưu); trống ở phương án cũ không suy ra được xe. */
+    private Long vehicleId;
     private Long jobId;
     private String jobUuid;
     private String jobStatus;

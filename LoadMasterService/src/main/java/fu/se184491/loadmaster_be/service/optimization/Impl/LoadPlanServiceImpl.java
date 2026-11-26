@@ -203,6 +203,7 @@ public class LoadPlanServiceImpl implements LoadPlanService {
 
         OptimizationJob newJob = OptimizationJob.builder()
                 .trip(currentPlan.getJob() != null ? currentPlan.getJob().getTrip() : null)
+                .vehicleId(currentPlan.getJob() != null ? OptimizationJob.vehicleIdOf(currentPlan.getJob().getTrip()) : null)
                 .jobUuid(jobUuid)
                 // Chạy lại theo hạng gói của công ty lúc này, như lần chạy đầy đủ
                 .algorithmName(rerunAlgorithm(currentPlan))

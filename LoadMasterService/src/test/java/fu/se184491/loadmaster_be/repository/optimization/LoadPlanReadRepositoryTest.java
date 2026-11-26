@@ -90,6 +90,20 @@ class LoadPlanReadRepositoryTest {
     }
 
     @Test
+    void planCarriesTheVehicleItsJobRanFor() throws SQLException {
+        ResultSet rs = planRow(1, "MAX_VOLUME", "A", "MAX_VOLUME");
+        when(rs.getLong("vehicle_id")).thenReturn(42L);
+        rows(rs);
+
+        LoadPlanDetailResponse plan = repository.findPlansByTrip(10L).get(0);
+
+        assertThat(plan.getVehicleId()).isEqualTo(42L);
+        ArgumentCaptor<String> sql = ArgumentCaptor.forClass(String.class);
+        verify(jdbc).query(sql.capture(), anyMap(), any(RowMapper.class));
+        assertThat(sql.getValue()).contains("j.vehicle_id");
+    }
+
+    @Test
     void eachPlanCarriesTheAlgorithmThatMadeItAndTheRunTier() throws SQLException {
         ResultSet ga = planRow(1, "MAX_VOLUME", "A", "MAX_VOLUME");
         when(ga.getString("plan_algorithm")).thenReturn("GA");
