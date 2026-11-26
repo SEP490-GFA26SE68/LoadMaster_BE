@@ -14,7 +14,8 @@ của bộ dựng cũ), nên không thêm mã thuật toán mới cho FE. Kiểm
 H13); cách xếp nào bị từ chối thì bỏ.
 
 Chia giờ (bài lớn: kiểm dỡ hàng một phương án 200+ kiện có thể tốn hàng chục giây): dựng một cách → kiểm ngay → cách
-tiếp theo. Không mở lượt dựng mới khi thời gian còn lại ít hơn lượt dựng lâu nhất đã thấy. Khi chưa có cách xếp nào qua
+tiếp theo. Không mở lượt dựng mới khi thời gian còn lại ít hơn thời gian ước của lượt đó (lượt lâu nhất cùng họ EP /
+Heuristic-4; lượt Heuristic-4 đầu tiên ước bằng H4_OVER_EP × lượt EP lâu nhất). Khi chưa có cách xếp nào qua
 kiểm mà còn cách khác chờ, một lần kiểm chỉ được dùng FIRST_CHECK_SHARE thời gian còn lại (để còn cách rẻ hơn thử).
 
 Không dùng được (bài có kiện ghim — lmai không giữ ghim; thiếu numpy; không cách xếp nào qua kiểm) → trả rỗng và
@@ -92,17 +93,28 @@ def _build(lm_problem, name: str):
     return _rollout(lm_problem, EnvConfig(), PRESETS[int(name[-1])], 0.0, np.random.default_rng(0)).result
 
 
+# Heuristic-4 xét nhiều ứng viên hơn EP (buffer 5 kiện × 6 hướng): đo rat_lon 2–4 lần lâu hơn một lượt EP.
+H4_OVER_EP = 4.0
+
+
+def _family(name: str) -> str:
+    return "H4" if name.startswith("H4") else "EP"
+
+
 def _plans(lm_problem, deadline: float):
     """Sinh lần lượt (nhãn, chiến lược, PlanResult, giây dựng). Lượt đầu luôn chạy; sau đó không mở lượt mới khi phần
-    còn lại tới `deadline` ít hơn lượt dựng lâu nhất đã thấy."""
-    longest = 0.0
+    còn lại tới `deadline` ít hơn thời gian ước của lượt đó: lượt lâu nhất đã thấy cùng họ (EP / H4); họ H4 chưa
+    chạy lần nào thì ước = H4_OVER_EP × lượt EP lâu nhất."""
+    longest = {"EP": 0.0, "H4": 0.0}
     for i, (name, strategy) in enumerate(BUILDS):
-        if i and time.monotonic() + longest >= deadline:
+        fam = _family(name)
+        est = longest[fam] or (H4_OVER_EP * longest["EP"] if fam == "H4" else max(longest.values()))
+        if i and time.monotonic() + est >= deadline:
             return
         t0 = time.monotonic()
         res = _build(lm_problem, name)
         sec = time.monotonic() - t0
-        longest = max(longest, sec)
+        longest[fam] = max(longest[fam], sec)
         yield name, strategy, res, sec
 
 

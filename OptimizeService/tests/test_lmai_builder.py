@@ -140,3 +140,23 @@ def test_first_check_leaves_time_for_other_builds(monkeypatch):
     out = LB.build_layouts(_random_problem(7, n=8, stops=1), OptimizationClient(), time.monotonic() + 100)
     assert out.layouts == [] and seen
     assert all(s <= LB.FIRST_CHECK_SHARE * 100 + 0.5 for s in seen[:-1])
+
+
+def test_builder_estimates_heuristic4_from_ep(monkeypatch):
+    """Hai lượt EP 0,2 s; còn ~0,7 s: không mở lượt Heuristic-4 đầu tiên (ước 4 × 0,2 = 0,8 s)."""
+    real = LB._build
+    built = []
+
+    def slow(lm, name):
+        built.append(name)
+        time.sleep(0.2)
+        return real(lm, name)
+
+    monkeypatch.setattr(LB, "_build", slow)
+    list(LB._plans(_lm(_random_problem(8, n=6, stops=1)), time.monotonic() + 1.15))
+    assert built == ["EP-DBLF", "EP-trong-tam"]
+
+
+def _lm(request):
+    from app.ml.lmai.problem import Problem
+    return Problem.from_request(request.model_dump(mode="json"))
