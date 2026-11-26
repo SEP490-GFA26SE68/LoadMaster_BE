@@ -11,7 +11,11 @@ Cờ OPTIMIZATION_LMAI_BUILDER_ENABLED (mặc định tắt). Bật thì bước
 Mọi cách xếp vẫn mang mã EP_DBLF (đều là bộ dựng Extreme Points, chỉ khác cách chấm chỗ đặt — như bốn chiến lược
 của bộ dựng cũ), nên không thêm mã thuật toán mới cho FE. Kiểm cuối vẫn bằng luật của service
 (`OptimizationClient.evaluate_fixed_layout`: ConstraintEngine từng chỗ đặt, HC-11 / HC-12, UnloadFeasibilityValidator,
-H13); cách xếp nào bị từ chối thì bỏ. Kiểm theo thứ tự khoá chọn của job (tốt nhất trước) cho tới hạn chót.
+H13); cách xếp nào bị từ chối thì bỏ.
+
+Chia giờ (bài lớn: kiểm dỡ hàng một phương án 200+ kiện có thể tốn hàng chục giây): dựng một cách → kiểm ngay → cách
+tiếp theo. Không mở lượt dựng mới khi thời gian còn lại ít hơn lượt dựng lâu nhất đã thấy. Khi chưa có cách xếp nào qua
+kiểm mà còn cách khác chờ, một lần kiểm chỉ được dùng FIRST_CHECK_SHARE thời gian còn lại (để còn cách rẻ hơn thử).
 
 Không dùng được (bài có kiện ghim — lmai không giữ ghim; thiếu numpy; không cách xếp nào qua kiểm) → trả rỗng và
 bước EP chạy bộ dựng cũ như khi tắt cờ.
@@ -26,7 +30,6 @@ from typing import Optional
 from app.constant.optimization.plan_algorithm import PlanAlgorithm
 from app.dto.optimization.engine.engine_response import EngineOptimizationResponse, PlacementData
 from app.dto.optimization.engine.problem_request import ProblemRequest
-from app.service.optimize import plan_score
 from app.service.optimize.constraint_engine import ConstraintEngine
 
 logger = logging.getLogger(__name__)
@@ -40,6 +43,9 @@ BUILDS = (
     ("H4-2", "HEAVY_FIRST"),
     ("H4-3", "DEEP_FIRST"),
 )
+
+
+FIRST_CHECK_SHARE = 0.6
 
 
 @dataclass
@@ -72,27 +78,32 @@ def _to_placements(result) -> list[PlacementData]:
     ]
 
 
-def _plans(lm_problem, deadline: float) -> list[tuple[str, str, object, float]]:
-    """Các phương án lmai (nhãn, chiến lược, PlanResult, giây), dừng mở lượt mới khi tới `deadline`."""
+def _build(lm_problem, name: str):
     import numpy as np
 
     from app.ml.lmai.env import EnvConfig
     from app.ml.lmai.heuristics import ep_center, ep_dblf
     from app.ml.lmai.teacher import PRESETS, _rollout
 
-    out = []
-    for name, strategy in BUILDS:
-        if out and time.monotonic() >= deadline:
-            break
+    if name == "EP-DBLF":
+        return ep_dblf(lm_problem)
+    if name == "EP-trong-tam":
+        return ep_center(lm_problem)
+    return _rollout(lm_problem, EnvConfig(), PRESETS[int(name[-1])], 0.0, np.random.default_rng(0)).result
+
+
+def _plans(lm_problem, deadline: float):
+    """Sinh lần lượt (nhãn, chiến lược, PlanResult, giây dựng). Lượt đầu luôn chạy; sau đó không mở lượt mới khi phần
+    còn lại tới `deadline` ít hơn lượt dựng lâu nhất đã thấy."""
+    longest = 0.0
+    for i, (name, strategy) in enumerate(BUILDS):
+        if i and time.monotonic() + longest >= deadline:
+            return
         t0 = time.monotonic()
-        if name == "EP-DBLF":
-            res = ep_dblf(lm_problem)
-        elif name == "EP-trong-tam":
-            res = ep_center(lm_problem)
-        else:
-            res = _rollout(lm_problem, EnvConfig(), PRESETS[int(name[-1])], 0.0, np.random.default_rng(0)).result
-        out.append((name, strategy, res, time.monotonic() - t0))
-    return out
+        res = _build(lm_problem, name)
+        sec = time.monotonic() - t0
+        longest = max(longest, sec)
+        yield name, strategy, res, sec
 
 
 def build_layouts(problem: ProblemRequest, client, deadline: float) -> LmaiBuild:
@@ -107,30 +118,28 @@ def build_layouts(problem: ProblemRequest, client, deadline: float) -> LmaiBuild
     from app.ml.lmai.problem import Problem
 
     lm_problem = Problem.from_request(problem.model_dump(mode="json"), physics_v2=ConstraintEngine.physics_v2())
-    plans = _plans(lm_problem, deadline)
-
-    def key(item):
-        name, _, res, _ = item
-        if not res.verdict.valid or not res.placements:
-            return (False,)
-        if plan_score.enabled():
-            return (True,) + tuple(plan_score.selection_key(problem, _to_placements(res)))
-        return (True, res.cargo_frac, res.packed_frac_raw)
 
     seen: set[tuple] = set()
-    for name, strategy, res, sec in sorted(plans, key=key, reverse=True):
+    built = 0
+    for name, strategy, res, sec in _plans(lm_problem, deadline):
+        built += 1
         if not res.verdict.valid or not res.placements:
             out.rejected[name] = "LMAI_INVALID:" + ",".join(res.verdict.reasons()[:2])
             continue
         sig = tuple(sorted((p.package_id, round(p.x, 2), round(p.y, 2), round(p.z, 2)) for p in res.placements))
         if sig in seen:          # hai cách chấm cho cùng phương án: kiểm một lần
             continue
-        if out.layouts and time.monotonic() >= deadline:
+        now = time.monotonic()
+        if now >= deadline:
             out.rejected[name] = "TIME_LIMIT"
             continue
         seen.add(sig)
+        check_deadline = deadline
+        if not out.layouts and built < len(BUILDS):
+            check_deadline = now + FIRST_CHECK_SHARE * (deadline - now)
         layout, reason = client.evaluate_fixed_layout(
-            problem, _to_placements(res), PlanAlgorithm.EP_DBLF.value, started_at=time.time() - sec, deadline=deadline,
+            problem, _to_placements(res), PlanAlgorithm.EP_DBLF.value, started_at=time.time() - sec,
+            deadline=check_deadline,
         )
         if layout is None:
             out.rejected[name] = reason or "REJECTED"

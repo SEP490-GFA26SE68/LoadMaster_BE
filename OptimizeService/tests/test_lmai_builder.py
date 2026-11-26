@@ -103,11 +103,40 @@ def test_builder_crash_falls_back_to_old_builder(monkeypatch, lmai_on):
 
 
 def test_evaluate_fixed_layout_respects_deadline():
-    """Hạn chót đã qua: bước kiểm dỡ hàng từ chối (fail-closed), không chạy quá giờ."""
+    """Hạn chót đã qua: bước kiểm từ chối (fail-closed), không chạy quá giờ."""
     request = _random_problem(5, n=10, stops=2)
     out = LB.build_layouts(request, OptimizationClient(), time.monotonic() + 60)
     pls = out.layouts[0].placements
     layout, reason = OptimizationClient().evaluate_fixed_layout(request, pls, "EP_DBLF", deadline=time.monotonic() - 1)
-    assert layout is None and reason == "UNLOAD_TIME_LIMIT_REACHED"
+    assert layout is None and reason == "OPTIMIZATION_TIME_LIMIT_REACHED"
     layout, reason = OptimizationClient().evaluate_fixed_layout(request, pls, "EP_DBLF")
     assert layout is not None and reason is None
+
+
+def test_builder_does_not_open_a_build_it_cannot_finish(monkeypatch):
+    """Lượt dựng đầu tốn 0,3 s, hạn còn 0,5 s: không mở lượt thứ hai (lượt đó sẽ vượt hạn)."""
+    real = LB._build
+    built = []
+
+    def slow(lm, name):
+        built.append(name)
+        time.sleep(0.3)
+        return real(lm, name)
+
+    monkeypatch.setattr(LB, "_build", slow)
+    LB.build_layouts(_random_problem(6, n=8, stops=1), OptimizationClient(), time.monotonic() + 0.5)
+    assert built == ["EP-DBLF"]
+
+
+def test_first_check_leaves_time_for_other_builds(monkeypatch):
+    """Chưa có cách xếp nào qua kiểm mà còn cách khác chờ: lần kiểm chỉ được dùng FIRST_CHECK_SHARE thời gian còn lại."""
+    seen = []
+
+    def fake_eval(self, problem, placements, name, started_at=None, deadline=None):
+        seen.append(deadline - time.monotonic())
+        return None, "UNLOAD_TIME_LIMIT_REACHED"
+
+    monkeypatch.setattr(OC.OptimizationClient, "evaluate_fixed_layout", fake_eval)
+    out = LB.build_layouts(_random_problem(7, n=8, stops=1), OptimizationClient(), time.monotonic() + 100)
+    assert out.layouts == [] and seen
+    assert all(s <= LB.FIRST_CHECK_SHARE * 100 + 0.5 for s in seen[:-1])

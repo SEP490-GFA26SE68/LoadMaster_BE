@@ -916,8 +916,9 @@ class OptimizationClient:
         (mỗi kiện so với các kiện đặt trước nó), rồi HC-11 / HC-12 trên cả phương án và
         UnloadFeasibilityValidator. Không sửa chỗ đặt nào (không dời khối cân trọng tâm).
         Trả (cách xếp, None) khi đạt; (None, lý do) khi vi phạm ràng buộc cứng — cả cách xếp bị bỏ.
-        `deadline` (time.monotonic): giới hạn cho bước kiểm dỡ hàng; hết giờ = chưa chứng minh được → bỏ
-        (UNLOAD_TIME_LIMIT_REACHED, fail-closed). None = không giới hạn (như trước).
+        `deadline` (time.monotonic): giới hạn cho cả bước kiểm (từng chỗ đặt + kiểm dỡ hàng); hết giờ = chưa chứng
+        minh được → bỏ (OPTIMIZATION_TIME_LIMIT_REACHED / UNLOAD_TIME_LIMIT_REACHED, fail-closed). None = không giới
+        hạn (như trước).
         """
         start_time = started_at if started_at is not None else time.time()
         vt = problem.vehicle
@@ -947,6 +948,8 @@ class OptimizationClient:
                 "stop_zone_id": package_stop.get(key),
                 "pinned": False,
             })
+            if deadline is not None and time.monotonic() >= deadline:
+                return None, "OPTIMIZATION_TIME_LIMIT_REACHED"
             violations = ConstraintEngine.check_all(placement, context)
             if violations:
                 return None, f"{violations[0].violation_code}:{key}"

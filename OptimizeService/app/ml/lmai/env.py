@@ -119,8 +119,9 @@ class PackingEnv:
             if cfg.profile_sample:
                 rng = np.random.default_rng([int(self.problem.seed or 0), 7])
                 profile = PF.sample_profile(rng, cfg.p_preset, cfg.log_sigma, cfg.p_zero)
-            else:
-                profile = PF.get(cfg.profile)
+            else:   # suy luận: hồ sơ của job (plan_score.set_profile — lookahead, AISolver, backend), không có thì cfg.profile
+                from .plan_score import active_profile
+                profile = active_profile() or PF.get(cfg.profile)
         self.profile = profile                                  # hồ sơ sản phẩm (w_n của file) — thầy / chọn phương án
         self.profile_train = PF.with_w_n(profile, cfg.reward_w_n)   # thưởng + quan sát
         v = self.problem.vehicle
