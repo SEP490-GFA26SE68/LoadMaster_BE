@@ -3,6 +3,7 @@ package fu.se184491.loadmaster_be.repository.optimization;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import fu.se184491.loadmaster_be.dto.response.optimization.LoadPlanDetailResponse;
+import fu.se184491.loadmaster_be.dto.response.optimization.DataWarningResponse;
 import fu.se184491.loadmaster_be.dto.response.optimization.OptimizationJobStatusResponse;
 import fu.se184491.loadmaster_be.dto.response.optimization.PlacementDetailResponse;
 import fu.se184491.loadmaster_be.dto.response.optimization.UnplacedPackageResponse;
@@ -109,7 +110,7 @@ public class LoadPlanReadRepository {
     public Optional<OptimizationJobStatusResponse> findJobStatus(Long jobId) {
         List<OptimizationJobStatusResponse> rows = jdbc.query("""
                         SELECT j.id, j.job_uuid, j.trip_id, j.objective, j.time_limit_sec, j.status,
-                               j.computation_ms, j.created_at, j.algorithm_name, j.failure_code,
+                               j.computation_ms, j.created_at, j.algorithm_name, j.failure_code, j.data_warnings,
                                (SELECT CASE WHEN tx.amount=0 THEN 'ZERO_DEBIT'
                                     WHEN tx.refunded THEN 'REFUNDED'
                                     WHEN j.execution_generation IS NOT NULL AND ((j.status IN ('TIMEOUT','NO_SOLUTION') AND j.execution_generation>0 AND j.execution_started_at IS NOT NULL)
@@ -147,6 +148,7 @@ public class LoadPlanReadRepository {
                             .pinnedCount(rs.getInt("pinned_count"))
                             .failureCode(rs.getString("failure_code"))
                             .creditStatus(rs.getString("credit_status"))
+                            .dataWarnings(dataWarnings(rs))
                             .build();
                 });
         return rows.stream().findFirst();
@@ -280,6 +282,35 @@ public class LoadPlanReadRepository {
     private static Long nullableLong(ResultSet rs, String column) throws SQLException {
         long value = rs.getLong(column);
         return rs.wasNull() ? null : value;
+    }
+
+    /** Cảnh báo dữ liệu do OptimizeService ghi: [{"code": "...", "package_ids": ["..."]}]. Trống / hỏng → []. */
+    private static List<DataWarningResponse> dataWarnings(ResultSet rs) throws SQLException {
+        String raw = rs.getString("data_warnings");
+        if (raw == null || raw.isBlank()) {
+            return List.of();
+        }
+        try {
+            JsonNode node = JSON.readTree(raw);
+            if (node == null || !node.isArray()) {
+                return List.of();
+            }
+            List<DataWarningResponse> warnings = new ArrayList<>();
+            for (JsonNode item : node) {
+                if (item == null || !item.hasNonNull("code") || !item.get("code").isTextual()) {
+                    continue;
+                }
+                List<String> ids = new ArrayList<>();
+                JsonNode idNodes = item.get("package_ids");
+                if (idNodes != null && idNodes.isArray()) {
+                    idNodes.forEach(id -> ids.add(id.asText()));
+                }
+                warnings.add(new DataWarningResponse(item.get("code").asText(), List.copyOf(ids)));
+            }
+            return List.copyOf(warnings);
+        } catch (Exception ignored) {
+            return List.of();
+        }
     }
 
     /** JSON array do OptimizeService ghi; cột trống hoặc JSON hỏng thì không bịa mã. */

@@ -80,6 +80,14 @@ public class VehicleType {
     private BigDecimal maxCogOffsetRatio =
             new BigDecimal("0.15");
 
+    // H11: lệch trọng tâm ngang tối đa / bề rộng thùng (0–0,5). Trống = dùng max_cog_offset_ratio.
+    @Column(name = "max_cog_offset_ratio_y", precision = 5, scale = 4)
+    private BigDecimal maxCogOffsetRatioY;
+
+    // H10: tải trọng sàn, kg/m². Trống = không kiểm tải sàn.
+    @Column(name = "floor_load_capacity_kg_m2", precision = 12, scale = 2)
+    private BigDecimal floorLoadCapacityKgM2;
+
     @Builder.Default
     @Column(name = "hazardous_capable", nullable = false)
     private Boolean hazardousCapable = false;

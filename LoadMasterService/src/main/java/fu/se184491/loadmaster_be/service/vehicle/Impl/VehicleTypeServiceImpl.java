@@ -88,6 +88,8 @@ public class VehicleTypeServiceImpl implements VehicleTypeService {
                                         ? request.maxCogOffsetRatio()
                                         : new BigDecimal("0.15")
                         )
+                        .maxCogOffsetRatioY(request.maxCogOffsetRatioY())
+                        .floorLoadCapacityKgM2(request.floorLoadCapacityKgM2())
                         .hazardousCapable(
                                 Boolean.TRUE.equals(
                                         request.hazardousCapable()
@@ -212,6 +214,13 @@ public class VehicleTypeServiceImpl implements VehicleTypeService {
         if (request.maxCogOffsetRatio() != null) {
             type.setMaxCogOffsetRatio(request.maxCogOffsetRatio());
         }
+        // Trường mới (spec 8.1): FE cũ không gửi → giữ giá trị đang có, không xoá.
+        if (request.maxCogOffsetRatioY() != null) {
+            type.setMaxCogOffsetRatioY(request.maxCogOffsetRatioY());
+        }
+        if (request.floorLoadCapacityKgM2() != null) {
+            type.setFloorLoadCapacityKgM2(request.floorLoadCapacityKgM2());
+        }
         if (request.hazardousCapable() != null) {
             type.setHazardousCapable(request.hazardousCapable());
         }
@@ -245,6 +254,8 @@ public class VehicleTypeServiceImpl implements VehicleTypeService {
                 .append(plain(type.getEmptyFrontAxleLoadKg())).append('|')
                 .append(plain(type.getEmptyRearAxleLoadKg())).append('|')
                 .append(plain(type.getMaxCogOffsetRatio())).append('|')
+                .append(plain(type.getMaxCogOffsetRatioY())).append('|')
+                .append(plain(type.getFloorLoadCapacityKgM2())).append('|')
                 .append(type.getHazardousCapable());
         for (VehicleTypeObstacle obstacle : type.getObstacles()) {
             spec.append('|').append(obstacle.getType())
@@ -357,6 +368,8 @@ public class VehicleTypeServiceImpl implements VehicleTypeService {
                 .emptyFrontAxleLoadKg(vehicleType.getEmptyFrontAxleLoadKg())
                 .emptyRearAxleLoadKg(vehicleType.getEmptyRearAxleLoadKg())
                 .maxCogOffsetRatio(vehicleType.getMaxCogOffsetRatio())
+                .maxCogOffsetRatioY(vehicleType.getMaxCogOffsetRatioY())
+                .floorLoadCapacityKgM2(vehicleType.getFloorLoadCapacityKgM2())
                 .hazardousCapable(vehicleType.getHazardousCapable())
                 .obstacles(
                         vehicleType.getObstacles().stream()

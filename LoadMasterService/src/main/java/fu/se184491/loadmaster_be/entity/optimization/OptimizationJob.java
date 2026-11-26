@@ -64,6 +64,10 @@ public class OptimizationJob {
     @Column(name = "failure_code", length = 64)
     private String failureCode;
 
+    /** Cảnh báo dữ liệu của lần chạy (JSON, do OptimizeService ghi; V55 mặc định []). Java chỉ đọc. */
+    @Column(name = "data_warnings", columnDefinition = "jsonb", insertable = false, updatable = false)
+    private String dataWarnings;
+
     @Column(name = "execution_generation")
     private Long executionGeneration;
     @org.hibernate.annotations.JdbcTypeCode(org.hibernate.type.SqlTypes.TIMESTAMP_WITH_TIMEZONE)

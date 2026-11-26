@@ -2,6 +2,8 @@
 package fu.se184491.loadmaster_be.dto.request.vehicle;
 
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.DecimalMax;
+import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Positive;
@@ -57,6 +59,14 @@ public record CreateVehicleTypeRequest(
         BigDecimal emptyRearAxleLoadKg,
 
         BigDecimal maxCogOffsetRatio,
+
+        // H11: lệch trọng tâm ngang tối đa (0–0,5); trống = dùng maxCogOffsetRatio. Tuỳ chọn.
+        @DecimalMin("0.0") @DecimalMax("0.5")
+        BigDecimal maxCogOffsetRatioY,
+
+        // H10: tải trọng sàn, kg/m²; trống = không kiểm tải sàn. Tuỳ chọn.
+        @Positive
+        BigDecimal floorLoadCapacityKgM2,
 
         Boolean hazardousCapable,
 

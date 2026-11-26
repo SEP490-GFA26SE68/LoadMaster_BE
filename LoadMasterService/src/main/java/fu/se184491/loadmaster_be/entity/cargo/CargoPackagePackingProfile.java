@@ -74,6 +74,11 @@ public class CargoPackagePackingProfile {
     )
     private BigDecimal minSupportRatio;
 
+    // σ riêng của kiện, kg/m² (H7); ghi đè σ của loại kiện.
+    @DecimalMin("0.0")
+    @Column(name = "top_load_capacity_kg_m2", precision = 12, scale = 2)
+    private BigDecimal topLoadCapacityKgM2;
+
     // Độ ưu tiên khi lựa chọn kiện để xếp.
     @Column(name = "priority")
     private Integer priority;

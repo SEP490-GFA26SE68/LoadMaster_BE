@@ -216,4 +216,34 @@ public class PackageTypeServiceTest {
         assertEquals(ErrorCode.PACKAGE_TYPE_NOT_FOUND, ex.getErrorCode());
         verify(packageTypeRepository, never()).delete(any(PackageType.class));
     }
+
+    @Test
+    @DisplayName("σ, ρ (spec ràng buộc vật lý 8.1) được lưu khi tạo và trả về")
+    void createPackageType_storesTopLoadCapacityAndSupportRatio() {
+        request.setTopLoadCapacityKgM2(new BigDecimal("416.67"));
+        request.setMinSupportRatio(new BigDecimal("0.80"));
+        when(packageTypeRepository.save(any(PackageType.class))).thenAnswer(call -> call.getArgument(0));
+
+        PackageTypeResponse response = packageTypeService.createPackageType(1L, request);
+
+        assertEquals(new BigDecimal("416.67"), response.getTopLoadCapacityKgM2());
+        assertEquals(new BigDecimal("0.80"), response.getMinSupportRatio());
+    }
+
+    @Test
+    @DisplayName("Cập nhật từ FE cũ (không gửi σ, ρ) giữ nguyên σ, ρ đang có")
+    void updatePackageType_withoutNewFieldsKeepsThem() {
+        packageType.setTopLoadCapacityKgM2(new BigDecimal("500.00"));
+        packageType.setMinSupportRatio(new BigDecimal("0.75"));
+        when(packageTypeRepository.findByIdAndCompanyId(100L, 1L)).thenReturn(Optional.of(packageType));
+
+        packageTypeService.updatePackageType(1L, 100L, request);
+
+        assertEquals(new BigDecimal("500.00"), packageType.getTopLoadCapacityKgM2());
+        assertEquals(new BigDecimal("0.75"), packageType.getMinSupportRatio());
+
+        request.setTopLoadCapacityKgM2(BigDecimal.ZERO);
+        packageTypeService.updatePackageType(1L, 100L, request);
+        assertEquals(BigDecimal.ZERO, packageType.getTopLoadCapacityKgM2());
+    }
 }

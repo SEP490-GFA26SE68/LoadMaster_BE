@@ -40,6 +40,14 @@ public class PackageType {
     @Column(name = "max_stack_weight_kg", precision = 10, scale = 2)
     private BigDecimal maxStackingWeightKg;
 
+    // σ: sức chịu nén mặt trên, kg/m² (spec ràng buộc vật lý H7). Trống = chưa khai (cảnh báo khi tối ưu); 0 = không chịu tải.
+    @Column(name = "top_load_capacity_kg_m2", precision = 12, scale = 2)
+    private BigDecimal topLoadCapacityKgM2;
+
+    // ρ: tỉ lệ đáy được đỡ tối thiểu (H8), 0,5–1. Trống = mặc định của bộ tối ưu.
+    @Column(name = "min_support_ratio", precision = 5, scale = 4)
+    private BigDecimal minSupportRatio;
+
     @Builder.Default @Column(name = "allow_rotate_x")
     private Boolean allowRotateX = true;
 
