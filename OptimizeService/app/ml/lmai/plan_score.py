@@ -22,6 +22,7 @@ from .result import PlanResult
 
 EPS = 1e-4
 _ACTIVE: Optional[P.PlanProfile] = P.get(os.environ.get("LMAI_HO_SO") or None)
+ACTIVE = "active"   # plan_score(r, ACTIVE) = dùng hồ sơ đã đặt cho tiến trình (mặc định); chuỗi để gửi được sang tiến trình phụ
 
 
 def set_profile(code) -> None:
@@ -35,12 +36,15 @@ def active_profile() -> Optional[P.PlanProfile]:
     return _ACTIVE
 
 
-def plan_score(r: PlanResult):
-    if _ACTIVE is None:
+def plan_score(r: PlanResult, profile=ACTIVE):
+    """`profile`: ACTIVE (hồ sơ của tiến trình, `set_profile`), một `PlanProfile`, hoặc None (cách chấm cũ). Backend truyền
+    hồ sơ của job tường minh — nhiều job trong một tiến trình không dùng chung biến toàn cục."""
+    prof = _ACTIVE if isinstance(profile, str) and profile == ACTIVE else profile
+    if prof is None:
         return (10.0 if r.verdict.valid else 0.0) + r.cargo_frac + 0.001 * r.packed_frac_raw
     if not r.verdict.valid or not r.placements:
         return (False, 0, 0.0)
-    return (True, len(r.placements) if P.pack_count_first() else 0, score(r.problem, r.placements, _ACTIVE).j)
+    return (True, len(r.placements) if P.pack_count_first() else 0, score(r.problem, r.placements, prof).j)
 
 
 def better(a, b, eps: float = 1e-9) -> bool:
