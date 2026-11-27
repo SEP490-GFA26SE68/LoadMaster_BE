@@ -71,6 +71,13 @@ public record CreateVehicleTypeRequest(
         Boolean hazardousCapable,
 
         @Valid
-        List<CreateVehicleTypeObstacleRequest> obstacles
+        List<CreateVehicleTypeObstacleRequest> obstacles,
+
+        // Kiểu thân xe (tên của VehicleBodyStyle), chỉ đổi hình xe trong khung 3D. Tuỳ chọn; giá trị lạ là
+        // VEHICLE_BODY_STYLE_INVALID (400). Khi sửa: vắng là giữ kiểu đang có (client cũ không gửi trường này).
+        String bodyStyle,
+
+        // Khi sửa: true là bỏ kiểu thân xe về trống (web chọn theo kích thước). Không gửi cùng bodyStyle.
+        Boolean clearBodyStyle
 ) {
 }

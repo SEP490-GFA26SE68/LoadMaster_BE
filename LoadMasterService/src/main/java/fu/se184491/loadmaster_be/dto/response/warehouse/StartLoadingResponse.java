@@ -48,6 +48,8 @@ public class StartLoadingResponse {
     /** Tải trọng tối đa của xe (kg), lấy từ loại xe; null khi chưa khai. */
     private BigDecimal maxPayloadKg;
     private List<fu.se184491.loadmaster_be.dto.response.trip.TripVehicleConfigResponse.Obstacle> obstacles;
+    /** Kiểu thân xe của loại xe (tên của VehicleBodyStyle), cho hình xe trong khung 3D; null khi chưa chọn hoặc chưa có loại. */
+    private String bodyStyle;
     private Integer totalPackages;
     private Integer confirmedCount;
     private Integer deviationCount;

@@ -1,7 +1,9 @@
 package fu.se184491.loadmaster_be.service.vehicle;
 
 import fu.se184491.loadmaster_be.constant.trip.TripStatus;
+import fu.se184491.loadmaster_be.constant.vehicle.VehicleBodyStyle;
 import fu.se184491.loadmaster_be.dto.request.vehicle.CreateVehicleTypeRequest;
+import fu.se184491.loadmaster_be.entity.account.User;
 import fu.se184491.loadmaster_be.entity.company.Company;
 import fu.se184491.loadmaster_be.entity.trip.Trip;
 import fu.se184491.loadmaster_be.entity.vehicle.VehicleType;
@@ -22,15 +24,18 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
+import org.springframework.http.HttpStatus;
 
 import java.math.BigDecimal;
 import java.util.List;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -63,7 +68,7 @@ class VehicleTypeServiceImplTest {
 
     private static CreateVehicleTypeRequest request(String name, int length, String payload) {
         return new CreateVehicleTypeRequest(name, length, 235, 240, 230, 230, new BigDecimal(payload),
-                null, null, null, null, null, null, null, null, null, null, null);
+                null, null, null, null, null, null, null, null, null, null, null, null, null);
     }
 
     /** Sáu thông số trục theo thứ tự: giới hạn trước, giới hạn sau, vị trí trước, vị trí sau, tải rỗng trước, tải rỗng sau. */
@@ -71,12 +76,18 @@ class VehicleTypeServiceImplTest {
                                                       String emptyFront, String emptyRear) {
         return new CreateVehicleTypeRequest("Thùng 6 m", 600, 235, 240, 230, 230, new BigDecimal("5000"),
                 dec(frontLimit), dec(rearLimit), dec(frontX), dec(rearX), dec(emptyFront), dec(emptyRear),
-                null, null, null, null, null);
+                null, null, null, null, null, null, null);
     }
 
     private static CreateVehicleTypeRequest withPhysics(String cogY, String floorLoad) {
         return new CreateVehicleTypeRequest("Thùng 6 m", 600, 235, 240, 230, 230, new BigDecimal("5000"),
-                null, null, null, null, null, null, null, dec(cogY), dec(floorLoad), null, null);
+                null, null, null, null, null, null, null, dec(cogY), dec(floorLoad), null, null, null, null);
+    }
+
+    /** Lòng thùng như loại xe đang có (không đổi đầu vào tối ưu), chỉ khác kiểu thân xe. */
+    private static CreateVehicleTypeRequest withBodyStyle(String bodyStyle, Boolean clearBodyStyle) {
+        return new CreateVehicleTypeRequest("Thùng 6 m", 600, 235, 240, 230, 230, new BigDecimal("5000"),
+                null, null, null, null, null, null, null, null, null, null, null, bodyStyle, clearBodyStyle);
     }
 
     private static BigDecimal dec(String value) {
@@ -158,6 +169,91 @@ class VehicleTypeServiceImplTest {
         assertEquals(new BigDecimal("0.10"), type.getMaxCogOffsetRatioY());
         assertEquals(new BigDecimal("2500"), type.getFloorLoadCapacityKgM2());
         verify(loadPlanRepository, never()).markStaleByTripId(anyLong());
+    }
+
+    @Test
+    void newTypeStoresTheBodyStyleAndReturnsItsName() {
+        when(currentUserService.getCurrentUser()).thenReturn(User.builder().id(9L).company(type.getCompany()).build());
+
+        var response = service.createVehicleType(withBodyStyle("TRUCK_REEFER", null));
+
+        assertEquals("TRUCK_REEFER", response.bodyStyle());
+        verify(vehicleTypeRepository).save(argThat(saved -> saved.getBodyStyle() == VehicleBodyStyle.TRUCK_REEFER));
+    }
+
+    @Test
+    void newTypeWithoutBodyStyleLeavesItEmpty() {
+        when(currentUserService.getCurrentUser()).thenReturn(User.builder().id(9L).company(type.getCompany()).build());
+
+        var response = service.createVehicleType(withBodyStyle(null, null));
+
+        assertNull(response.bodyStyle());
+    }
+
+    @Test
+    void changingOnlyTheBodyStyleKeepsPlansFresh() {
+        var response = service.updateVehicleType(3L, withBodyStyle("VAN_MID", null));
+
+        assertEquals(VehicleBodyStyle.VAN_MID, type.getBodyStyle());
+        assertEquals("VAN_MID", response.bodyStyle());
+        // Chỉ đổi hình xe trong khung 3D, không thuộc đầu vào tối ưu
+        verify(loadPlanRepository, never()).markStaleByTripId(anyLong());
+    }
+
+    @Test
+    void oldClientsThatDoNotSendTheBodyStyleKeepIt() {
+        type.setBodyStyle(VehicleBodyStyle.TRUCK_FLATBED);
+
+        var response = service.updateVehicleType(3L, request("Thùng 6 m", 600, "5000"));
+
+        assertEquals(VehicleBodyStyle.TRUCK_FLATBED, type.getBodyStyle());
+        assertEquals("TRUCK_FLATBED", response.bodyStyle());
+    }
+
+    @Test
+    void clearBodyStyleEmptiesItWithoutMarkingPlansStale() {
+        type.setBodyStyle(VehicleBodyStyle.TRUCK_FLATBED);
+
+        var response = service.updateVehicleType(3L, withBodyStyle(null, true));
+
+        assertNull(type.getBodyStyle());
+        assertNull(response.bodyStyle());
+        verify(loadPlanRepository, never()).markStaleByTripId(anyLong());
+    }
+
+    @Test
+    void unknownBodyStyleIsABadRequestWithItsOwnCode() {
+        type.setBodyStyle(VehicleBodyStyle.VAN_LARGE);
+
+        for (String unknown : List.of("BUS", "", "van_mid", " VAN_MID")) {
+            AppException error = assertThrows(AppException.class,
+                    () -> service.updateVehicleType(3L, withBodyStyle(unknown, null)), unknown);
+
+            assertEquals(ErrorCode.VEHICLE_BODY_STYLE_INVALID, error.getErrorCode(), unknown);
+        }
+        assertEquals(HttpStatus.BAD_REQUEST, ErrorCode.VEHICLE_BODY_STYLE_INVALID.getHttpStatus());
+        assertEquals(VehicleBodyStyle.VAN_LARGE, type.getBodyStyle());
+        verify(vehicleTypeRepository, never()).save(any());
+    }
+
+    @Test
+    void unknownBodyStyleIsRejectedWhenCreatingToo() {
+        when(currentUserService.getCurrentUser()).thenReturn(User.builder().id(9L).company(type.getCompany()).build());
+
+        AppException error = assertThrows(AppException.class,
+                () -> service.createVehicleType(withBodyStyle("TRUCK", null)));
+
+        assertEquals(ErrorCode.VEHICLE_BODY_STYLE_INVALID, error.getErrorCode());
+        verify(vehicleTypeRepository, never()).save(any());
+    }
+
+    @Test
+    void bodyStyleAndClearTogetherIsRejected() {
+        AppException error = assertThrows(AppException.class,
+                () -> service.updateVehicleType(3L, withBodyStyle("VAN_MID", true)));
+
+        assertEquals(ErrorCode.INVALID_INPUT, error.getErrorCode());
+        verify(vehicleTypeRepository, never()).save(any());
     }
 
     @Test

@@ -543,7 +543,8 @@ public class TripServiceImpl implements TripService {
                 type.getEmptyFrontAxleLoadKg(),
                 type.getEmptyRearAxleLoadKg(),
 
-                obstacles
+                obstacles,
+                fu.se184491.loadmaster_be.constant.vehicle.VehicleBodyStyle.nameOf(type)
         );
     }
 

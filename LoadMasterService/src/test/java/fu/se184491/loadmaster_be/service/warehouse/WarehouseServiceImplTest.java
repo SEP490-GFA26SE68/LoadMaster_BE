@@ -472,7 +472,8 @@ class WarehouseServiceImplTest {
         trip.setVehicle(Vehicle.builder().id(3L).licensePlate("51C-123.45")
                 .vehicleType(VehicleType.builder().name("Xe 8 tấn")
                         .innerLength(720).innerWidth(235).innerHeight(240)
-                        .doorWidth(230).doorHeight(230).maxPayloadKg(new BigDecimal("8000")).build())
+                        .doorWidth(230).doorHeight(230).maxPayloadKg(new BigDecimal("8000"))
+                        .bodyStyle(fu.se184491.loadmaster_be.constant.vehicle.VehicleBodyStyle.TRUCK_REEFER).build())
                 .build());
         trip.getVehicle().getVehicleType().setObstacles(List.of(
                 fu.se184491.loadmaster_be.entity.vehicle.VehicleTypeObstacle.builder()
@@ -513,6 +514,8 @@ class WarehouseServiceImplTest {
         assertEquals(720, session.getInnerLength());
         assertEquals(235, session.getInnerWidth());
         assertEquals(240, session.getInnerHeight());
+        // Kiểu thân xe đi trong phiên: nhân viên kho không đọc được loại xe
+        assertEquals("TRUCK_REEFER", session.getBodyStyle());
         assertEquals(230, session.getDoorWidth());
         assertEquals(230, session.getDoorHeight());
         assertEquals("51C-123.45", session.getLicensePlate());
