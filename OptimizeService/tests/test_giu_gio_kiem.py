@@ -12,6 +12,13 @@ from app.service.optimize.optimization_client import OptimizationClient, check_r
 from tests.test_load_balance_search import package, problem
 
 
+@pytest.fixture(autouse=True)
+def old_ep_builder(monkeypatch):
+    """Các test này kiểm bộ dựng EP cũ của service (vẫn chạy khi bộ dựng lmai của M9 không dùng được: kiện ghim, thiếu
+    numpy, không cách nào qua kiểm). Cờ M9 bật mặc định từ 27/11/2026 nên ghim tắt ở đây."""
+    monkeypatch.setattr(settings, "OPTIMIZATION_LMAI_BUILDER_ENABLED", False)
+
+
 def test_reserve_defaults():
     assert settings.OPTIMIZATION_CHECK_RESERVE_RATIO == 0.15
     assert settings.OPTIMIZATION_CHECK_RESERVE_MIN_SEC == 2.0

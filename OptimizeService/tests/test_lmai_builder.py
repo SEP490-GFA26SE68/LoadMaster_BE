@@ -43,8 +43,15 @@ def _spy_old_builder(monkeypatch):
     return calls
 
 
-def test_flag_is_off_by_default():
-    assert settings.OPTIMIZATION_LMAI_BUILDER_ENABLED is False
+def test_flag_is_on_by_default():
+    """Bật ở mọi môi trường từ 27/11/2026; numpy là phụ thuộc chính (requirements.txt) để không lặng lẽ lùi bộ cũ."""
+    import pathlib
+
+    from app.config.settings import Settings
+
+    assert Settings.model_fields["OPTIMIZATION_LMAI_BUILDER_ENABLED"].default is True
+    req = (pathlib.Path(__file__).resolve().parents[1] / "requirements.txt").read_text(encoding="utf-8")
+    assert any(line.startswith("numpy==") for line in req.splitlines())
 
 
 def test_basic_job_uses_lmai_builder(monkeypatch, lmai_on):

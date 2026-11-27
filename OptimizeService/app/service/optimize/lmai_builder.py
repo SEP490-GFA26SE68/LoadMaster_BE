@@ -1,7 +1,7 @@
 """
 Bộ dựng chung từ LoadMaster_AI (`app/ml/lmai`, M9 — KE-HOACH-TOI-UU, quyết định D1 26/11/2026).
 
-Cờ OPTIMIZATION_LMAI_BUILDER_ENABLED (mặc định tắt). Bật thì bước EP của job (mọi gói) dựng phương án bằng
+Cờ OPTIMIZATION_LMAI_BUILDER_ENABLED (mặc định bật từ 27/11/2026). Bật thì bước EP của job (mọi gói) dựng phương án bằng
 `state` / `packer` của lmai thay cho bộ dựng EP của service:
 
   EP-DBLF        lmai.heuristics.ep_dblf   (sâu → thấp → trái)
