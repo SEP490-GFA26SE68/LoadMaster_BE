@@ -7,7 +7,10 @@ bộ dựng EP của service, vài giây một lần, đo M7: PRO không hơn BA
   - lời giải = bộ trọng số chấm chỗ đặt kiểu Heuristic-4 (+ cột thưởng J tức thời theo hồ sơ) + nhiễu;
     giải mã = một lượt xếp lmai (cùng bộ dựng với M9);
   - cờ PLAN_SCORE_J bật: một chuỗi SA cho mỗi hồ sơ A / B / C (phương án A / B / C của job chọn theo đúng hồ sơ đó),
-    xuất phát từ các cách Heuristic-4 M9 đã dựng; tắt: một chuỗi theo cách chấm cũ của lmai (hàng lên xe);
+    xuất phát từ các cách Heuristic-4 và EP-DBLF M9 đã dựng (+ PRESET_J); tắt: một chuỗi theo cách chấm cũ của lmai
+    (hàng lên xe);
+  - lời giải có cả cấu hình bộ dựng (số kiện chờ, số điểm mỗi hướng): PRESET_DBLF (1 kiện, 21 điểm) cho ra đúng cách
+    EP-DBLF của M9 trên bộ đo, nên SA tìm được quanh EP-DBLF — bài EP-DBLF hơn mọi Heuristic-4 thì SA vẫn vượt được;
   - phương án tốt nhất của mỗi chuỗi (khi hơn điểm xuất phát) được kiểm bằng luật của service
     (`evaluate_fixed_layout`, như M9); qua kiểm thì vào danh sách cách xếp với mã SA.
 
@@ -45,13 +48,18 @@ def run_lmai_sa(problem, client, built, deadline: float):
     out = MetaResult()
     if built is None or built.lm_problem is None:
         return out
-    from app.ml.lmai.sa import Sol, anneal, env_config
+    from app.ml.lmai.sa import PRESET_DBLF, PRESET_J, Sol, anneal, env_config
     from app.ml.lmai.teacher import PRESETS
 
     starts = [(Sol.of(PRESETS[int(name[-1])]), res) for name, res in built.lm_results.items() if name.startswith("H4-")]
     if not starts:   # bài lớn: chưa kịp dựng cách Heuristic-4 nào thì cũng không đủ giờ cho SA
         logger.info("lmai SA skipped: no Heuristic-4 start")
         return out
+    # EP-DBLF đã dựng: dùng lại phương án, lời giải PRESET_DBLF (cùng cách xếp) để SA đi quanh nó; PRESET_J dựng trong SA
+    dblf = built.lm_results.get("EP-DBLF")
+    if dblf is not None:
+        starts.append((Sol.of(PRESET_DBLF, buf=1, rot=21), dblf))
+    starts.append((Sol.of(PRESET_J), None))
     codes = list(plan_score.CANDIDATE_PROFILES) if plan_score.enabled() else [None]
     reserve = len(codes) * CHECK_MARGIN * max(built.check_sec, 0.5)
     budget = min(float(settings.LMAI_SA_BUDGET_SEC), deadline - time.monotonic() - reserve)

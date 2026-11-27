@@ -1,12 +1,17 @@
 # Chép từ LoadMaster_AI/lmai/sa.py (E:/SEP490/LoadMaster_AI) để OptimizeService chạy suy luận Lumo — không sửa nội dung, sửa ở dự án gốc rồi chép lại.
 """SA tối đa J trên bộ dựng lmai (M10 — KE-HOACH-TOI-UU; spec R2: SA là bước cải thiện chính của gói PRO / ULTIMATE).
 
-Một lời giải = bộ trọng số chấm chỗ đặt kiểu Heuristic-4 (`teacher.PRESETS`) + mức nhiễu + hạt giống nhiễu. Giải mã = một
-lượt xếp của `PackingEnv` (cùng tập nước đi với Lumo), mỗi bước chọn ứng viên có điểm thấp nhất. Bộ đặc trưng có thêm
-hai cột `dj` / `pen` của quan sát CP3b (`EnvConfig.obs_dj`): thưởng J tức thời theo hồ sơ → cách xếp nghe theo hồ sơ.
+Một lời giải = bộ trọng số chấm chỗ đặt kiểu Heuristic-4 (`teacher.PRESETS`) + mức nhiễu + hạt giống nhiễu + cấu hình
+bộ dựng (số kiện trong hàng chờ, số điểm đặt giữ lại mỗi hướng). Giải mã = một lượt xếp của `PackingEnv` (cùng tập nước
+đi với Lumo), mỗi bước chọn ứng viên có điểm thấp nhất. Bộ đặc trưng có thêm hai cột `dj` / `pen` của quan sát CP3b
+(`EnvConfig.obs_dj`): thưởng J tức thời theo hồ sơ → cách xếp nghe theo hồ sơ.
 
-Láng giềng: nhân một trọng số với e^{N(0; 0,5)}, thêm / bỏ một đặc trưng (dấu theo hướng tự nhiên của đặc trưng), hoặc
-đổi nhiễu. Nhận theo Metropolis trên khoá sản phẩm (hợp lệ → số kiện → J, như `plan_score.better`); nhiệt độ giảm
+Vì sao có cấu hình bộ dựng: Heuristic-4 giữ 6 điểm thấp nhất mỗi hướng (5 kiện chờ) nên có bài EP-DBLF (1 kiện, mọi điểm)
+xếp được nhiều kiện hơn mọi bộ Heuristic-4; SA chỉ đi trong vùng Heuristic-4 thì không vượt được (đo 27/11, rb_vua bài 0).
+PRESET_DBLF (1 kiện chờ, 21 điểm mỗi hướng, sâu → thấp → trái) là điểm xuất phát gần EP-DBLF.
+
+Láng giềng: nhân một trọng số với e^{N(0; 0,5)}, thêm / bỏ một đặc trưng (dấu theo hướng tự nhiên của đặc trưng), đổi
+nhiễu, hoặc đổi cấu hình bộ dựng. Nhận theo Metropolis trên khoá sản phẩm (hợp lệ → số kiện → J, như `plan_score.better`); nhiệt độ giảm
 theo thời gian đã dùng, T0 → T_END (đơn vị điểm J). Luôn trả phương án tốt nhất đã thấy, nên không bao giờ kém
 phương án xuất phát tốt nhất.
 
@@ -16,7 +21,7 @@ from __future__ import annotations
 
 import math
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Dict, List, Optional, Sequence, Tuple
 
 import numpy as np
@@ -27,14 +32,19 @@ from .result import PlanResult
 from .teacher import F_CX, F_CY, F_OZ, F_SUP, F_TOP, F_VOL, F_WALL, F_XZ0, F_Z, PRESETS, _score
 
 F_DJ, F_PEN = FC + FC3, FC + FC3 + 1      # cột obs_dj: thưởng J tức thời / phần phạt (càng cao càng tốt → trọng số âm)
+F_Y = 4                                   # y / W (trái → phải)
+BUFS = (1, 2, 3, 4, 5)                    # số kiện trong hàng chờ
+ROTS = (6, 12, 21)                        # số điểm đặt giữ lại mỗi (kiện, hướng); 1 kiện × 6 hướng × 21 ≤ 128 ứng viên
 
 # đặc trưng SA được thêm vào, kèm (dấu, độ lớn khi thêm): điểm càng thấp càng tốt
 ADDABLE: Dict[int, Tuple[float, float]] = {
     F_XZ0: (1.0, 0.6), F_Z: (1.0, 0.6), F_TOP: (1.0, 0.5), F_VOL: (-1.0, 0.4), F_CX: (1.0, 0.4), F_CY: (1.0, 0.4),
-    F_SUP: (-1.0, 0.4), F_WALL: (-1.0, 0.3), F_DJ: (-1.0, 0.5), F_PEN: (-1.0, 0.5),
+    F_SUP: (-1.0, 0.4), F_WALL: (-1.0, 0.3), F_DJ: (-1.0, 0.5), F_PEN: (-1.0, 0.5), F_Y: (1.0, 0.01),
 }
 # điểm xuất phát thêm cho SA: sâu → thấp + thưởng J tức thời theo hồ sơ
 PRESET_J: Dict[int, float] = {F_OZ: 10, F_XZ0: 0.6, F_Z: 0.6, F_DJ: -0.5}
+# gần EP-DBLF: 1 kiện chờ (thể tích giảm dần), nhiều điểm mỗi hướng, sâu nhất → thấp nhất → trái nhất
+PRESET_DBLF: Dict[int, float] = {F_OZ: 10, F_XZ0: 1.0, F_Z: 1e-3, F_Y: 1e-5}
 
 T0, T_END = 1.0, 0.02
 NO_KEY = -1e18
@@ -50,10 +60,12 @@ class Sol:
     w: Tuple[Tuple[int, float], ...]     # (đặc trưng, trọng số), sắp theo đặc trưng
     noise: float = 0.0
     seed: int = 0
+    buf: int = 5                         # PackConfig.buffer_k (Heuristic-4: 5)
+    rot: int = 6                         # PackConfig.per_rot (Heuristic-4: 6)
 
     @staticmethod
-    def of(w: Dict[int, float], noise: float = 0.0, seed: int = 0) -> "Sol":
-        return Sol(tuple(sorted((int(k), float(v)) for k, v in w.items())), float(noise), int(seed))
+    def of(w: Dict[int, float], noise: float = 0.0, seed: int = 0, buf: int = 5, rot: int = 6) -> "Sol":
+        return Sol(tuple(sorted((int(k), float(v)) for k, v in w.items())), float(noise), int(seed), int(buf), int(rot))
 
     def weights(self) -> Dict[int, float]:
         return dict(self.w)
@@ -70,8 +82,16 @@ class SAStats:
     trace: List[Tuple[int, float]] = field(default_factory=list)   # (lần giải mã, khoá tốt nhất) khi khoá tăng
 
 
+def default_starts() -> List[Tuple[Sol, None]]:
+    """4 bộ Heuristic-4 + PRESET_J + PRESET_DBLF (chưa dựng)."""
+    return [(Sol.of(w), None) for w in list(PRESETS) + [PRESET_J]] + [(Sol.of(PRESET_DBLF, buf=1, rot=21), None)]
+
+
 def decode(problem: Problem, sol: Sol, profile, env_cfg: Optional[EnvConfig] = None) -> PlanResult:
-    env = PackingEnv(env_cfg or env_config())
+    env_cfg = env_cfg or env_config()
+    if (env_cfg.buffer_k, env_cfg.per_rot) != (sol.buf, sol.rot):
+        env_cfg = replace(env_cfg, buffer_k=sol.buf, per_rot=sol.rot)
+    env = PackingEnv(env_cfg)
     obs = env.reset(problem, profile=profile)
     w = sol.weights()
     rng = np.random.default_rng(sol.seed) if sol.noise > 0 else None
@@ -99,10 +119,15 @@ def key_of(res: PlanResult, profile) -> float:
 
 def neighbour(sol: Sol, rng: np.random.Generator) -> Sol:
     w = sol.weights()
-    noise, seed = sol.noise, sol.seed
+    noise, seed, buf, rot = sol.noise, sol.seed, sol.buf, sol.rot
     active = [k for k in w if k != F_OZ]
     u = rng.random()
-    if u < 0.55 and active:
+    if u < 0.1:
+        if rng.random() < 0.5:
+            buf = int(BUFS[int(rng.integers(len(BUFS)))])
+        else:
+            rot = int(ROTS[int(rng.integers(len(ROTS)))])
+    elif u < 0.55 and active:
         k = active[int(rng.integers(len(active)))]
         w[k] *= math.exp(0.5 * rng.standard_normal())
     elif u < 0.85:
@@ -117,15 +142,15 @@ def neighbour(sol: Sol, rng: np.random.Generator) -> Sol:
         noise = float(min(0.2, max(0.0, noise + 0.04 * rng.standard_normal())))
         seed = int(rng.integers(1 << 30))
     w.setdefault(F_OZ, 10.0)
-    return Sol.of(w, noise, seed)
+    return Sol.of(w, noise, seed, buf, rot)
 
 
 def anneal(problem: Problem, profile, deadline: float, starts: Sequence[Tuple[Sol, Optional[PlanResult]]] = (),
            seed: int = 0, env_cfg: Optional[EnvConfig] = None, max_evals: Optional[int] = None,
            t0: float = T0, t_end: float = T_END) -> Tuple[Optional[PlanResult], Optional[Sol], SAStats]:
-    """SA tới `deadline` (time.monotonic()). `starts`: (lời giải, phương án đã dựng hoặc None) — mặc định 4 bộ
-    Heuristic-4 + PRESET_J. Trả (phương án tốt nhất, lời giải của nó, thống kê). `profile`: PlanProfile hoặc mã; None =
-    cách chấm cũ (khi backend tắt J)."""
+    """SA tới `deadline` (time.monotonic()). `starts`: (lời giải, phương án đã dựng hoặc None) — mặc định
+    `default_starts()` (4 bộ Heuristic-4 + PRESET_J + PRESET_DBLF). Trả (phương án tốt nhất, lời giải của nó,
+    thống kê). `profile`: PlanProfile hoặc mã; None = cách chấm cũ (khi backend tắt J)."""
     from . import profiles as PF
     prof = PF.get(profile) if isinstance(profile, str) else profile
     env_cfg = env_cfg or env_config()
@@ -133,7 +158,7 @@ def anneal(problem: Problem, profile, deadline: float, starts: Sequence[Tuple[So
     st = SAStats()
     t_start = time.monotonic()
     if not starts:
-        starts = [(Sol.of(w), None) for w in list(PRESETS) + [PRESET_J]]
+        starts = default_starts()
 
     def budget_left() -> bool:
         return time.monotonic() < deadline and (max_evals is None or st.evaluations < max_evals)

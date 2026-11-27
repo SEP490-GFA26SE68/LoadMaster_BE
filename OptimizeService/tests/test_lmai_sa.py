@@ -117,6 +117,34 @@ def test_sa_skips_without_heuristic4_start_or_budget(monkeypatch):
     assert LS.run_lmai_sa(request, client, None, time.monotonic() + 30).layouts == []
 
 
+def test_sa_starts_from_heuristic4_ep_dblf_and_preset_j(monkeypatch):
+    """Bài EP-DBLF hơn mọi Heuristic-4 (đo 27/11, rb_vua bài 0) thì SA chỉ đi quanh Heuristic-4 không vượt được →
+    điểm xuất phát gồm cả EP-DBLF (lời giải PRESET_DBLF, dùng lại phương án M9) và PRESET_J."""
+    from app.ml.lmai import sa as lsa
+
+    monkeypatch.setattr(settings, "PLAN_SCORE_J", False)
+    client = OptimizationClient()
+    for seed in range(12, 40):      # bài EP-DBLF hợp lệ theo lmai (có bài EP-DBLF bị lmai loại)
+        request = _random_problem(seed, n=20)
+        built = LB.build_layouts(request, client, time.monotonic() + 60)
+        if "EP-DBLF" in built.lm_results and any(k.startswith("H4-") for k in built.lm_results):
+            break
+    else:
+        pytest.fail("không có bài nào EP-DBLF hợp lệ")
+    seen = []
+
+    def fake(problem, profile, deadline, starts=(), **k):
+        seen.append(list(starts))
+        return None, None, lsa.SAStats()
+
+    monkeypatch.setattr(lsa, "anneal", fake)
+    LS.run_lmai_sa(request, client, built, time.monotonic() + 30)
+    sols = [s for s, _ in seen[0]]
+    assert lsa.Sol.of(lsa.PRESET_DBLF, buf=1, rot=21) in sols and lsa.Sol.of(lsa.PRESET_J) in sols
+    pairs = dict((s, r) for s, r in seen[0])
+    assert pairs[lsa.Sol.of(lsa.PRESET_DBLF, buf=1, rot=21)] is built.lm_results["EP-DBLF"]
+
+
 def test_sa_crash_does_not_break_job(monkeypatch, sa_on):
     def boom(*a, **k):
         raise RuntimeError("SA hỏng")
