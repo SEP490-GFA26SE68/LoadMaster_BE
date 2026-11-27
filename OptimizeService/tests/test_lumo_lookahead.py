@@ -44,6 +44,7 @@ def test_lookahead_never_worse_than_greedy_and_passes_service_rules(monkeypatch,
     monkeypatch.setattr(settings, "PLAN_SCORE_J", j)
     request = _random_problem(300 + seed, n=25).model_copy(
         update={"plan_profile": PlanProfileRequest(code="C") if j else None})
+    monkeypatch.setattr(settings, "OPTIMIZATION_LMAI_LOOKAHEAD_ENABLED", False)   # lượt so sánh: greedy thật
     greedy = lumo_models.run_lumo_models(request, [CODE], OptimizationClient(), samples=0)
     monkeypatch.setattr(settings, "OPTIMIZATION_LMAI_LOOKAHEAD_ENABLED", True)
     seen = []
@@ -93,7 +94,7 @@ def test_lookahead_uses_job_profile(monkeypatch, la_on):
 
 
 def test_lookahead_respects_deadline(monkeypatch, la_on):
-    """"Biết tính trước" xong trước hạn job (phần giữ = 1,5 × lượt greedy + 1 s cho bước kiểm). Đo lúc nó kết thúc,
+    """"Biết tính trước" xong trước hạn job (phần giữ = 2 × lượt greedy + 1 s cho bước kiểm; lượt thử chỉ mở khi ước tính xong trước giờ). Đo lúc nó kết thúc,
     không đo cả hàm: bước kiểm của service sau đó không nhận hạn job (như trước M11) và chậm hẳn khi máy bận."""
     from app.ml.lmai.lookahead import Lookahead
 
@@ -108,9 +109,29 @@ def test_lookahead_respects_deadline(monkeypatch, la_on):
 
     monkeypatch.setattr(Lookahead, "solve", timed)
     request = _random_problem(320, n=40)
-    deadline = time.monotonic() + 8.0
+    deadline = time.monotonic() + 15.0      # đủ rộng để biết tính trước chạy cả khi máy bận
     lumo_models.run_lumo_models(request, [CODE], OptimizationClient(), deadline=deadline, samples=0)
     assert len(ends) == 1 and ends[0] < deadline + 0.5
+
+
+def test_lookahead_stops_at_job_target(monkeypatch, la_on):
+    """Mục tiêu cả job (`target` = lúc bắt đầu job + LMAI_JOB_TARGET_SEC) chặn biết tính trước dù hạn request còn dài."""
+    from app.ml.lmai.lookahead import Lookahead
+
+    monkeypatch.setattr(settings, "LMAI_LOOKAHEAD_SEC", 60.0)
+    ends = []
+    real = Lookahead.solve
+
+    def timed(self, problem):
+        res = real(self, problem)
+        ends.append(time.monotonic())
+        return res
+
+    monkeypatch.setattr(Lookahead, "solve", timed)
+    now = time.monotonic()
+    lumo_models.run_lumo_models(_random_problem(321, n=40), [CODE], OptimizationClient(), deadline=now + 60,
+                                target=now + 15.0, samples=0)
+    assert len(ends) == 1 and ends[0] < now + 15.0 + 0.5
 
 
 def test_lookahead_skipped_when_no_time(monkeypatch, la_on):

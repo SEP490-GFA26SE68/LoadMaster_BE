@@ -44,7 +44,8 @@ _failed: dict[str, str] = {}
 
 LOOKAHEAD_CODE = PlanAlgorithm.LUMO_R1_1.value
 LOOKAHEAD_MIN_SEC = 1.0      # còn ít hơn chừng này thì không chạy "biết tính trước"
-LOOKAHEAD_TAIL = 1.5         # phần giữ = LOOKAHEAD_TAIL × lượt greedy (hết giờ thì đi nốt bằng greedy) + CHECK_SEC
+LOOKAHEAD_TAIL = 2.0         # phần giữ = LOOKAHEAD_TAIL × lượt greedy + CHECK_SEC: phần đi nốt bằng greedy sau giờ
+                             # (≤ 1 lượt) + sai số ước tính; lượt thử chỉ mở khi ước tính xong trước giờ (strict_limit)
 LOOKAHEAD_CHECK_SEC = 1.0    # phần giữ cho bước kiểm lại bằng luật của service
 
 
@@ -164,7 +165,8 @@ def _run_lookahead(problem: ProblemRequest, lm_problem, best: dict, cost: dict, 
     from app.ml.lmai.lookahead import Lookahead
 
     model, env_cfg = _load(code)
-    la = Lookahead(model, env_cfg, topk=3, use_heur=True, time_limit=limit, profile=_lmai_profile(problem))
+    la = Lookahead(model, env_cfg, topk=3, use_heur=True, time_limit=limit, profile=_lmai_profile(problem),
+                   strict_limit=True)
     result = la.solve(lm_problem)
     st = la.stats
     better = _plan_score(result, problem) > _plan_score(best[code], problem)
@@ -184,8 +186,11 @@ def run_lumo_models(
     client,
     deadline: Optional[float] = None,
     samples: Optional[int] = None,
+    target: Optional[float] = None,
 ) -> LumoRun:
-    """Chạy các mô hình trong `codes` (thứ tự giữ nguyên) trên bài toán, trả cách xếp đã kiểm lại."""
+    """Chạy các mô hình trong `codes` (thứ tự giữ nguyên) trên bài toán, trả cách xếp đã kiểm lại.
+    `target` (time.monotonic): hạn riêng cho "biết tính trước" (M11) = min(hạn job, lúc bắt đầu job + LMAI_JOB_TARGET_SEC);
+    greedy / lấy mẫu vẫn theo `deadline` như trước."""
     out = LumoRun()
     codes = [c for c in codes if c in MODEL_FILES]
     if not codes:
@@ -259,7 +264,8 @@ def run_lumo_models(
     fallback: dict[str, object] = {}
     if settings.OPTIMIZATION_LMAI_LOOKAHEAD_ENABLED and LOOKAHEAD_CODE in best:
         try:
-            previous = _run_lookahead(problem, lm_problem, best, cost, deadline)
+            la_end = deadline if target is None else (target if deadline is None else min(deadline, target))
+            previous = _run_lookahead(problem, lm_problem, best, cost, la_end)
             if previous is not None:
                 fallback[LOOKAHEAD_CODE] = previous
         except Exception as exc:

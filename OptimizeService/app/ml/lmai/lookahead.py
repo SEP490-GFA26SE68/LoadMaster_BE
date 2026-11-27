@@ -8,6 +8,10 @@ Giống lmai/search.lookahead (mỗi bước: thử vài nước, cho mô hình 
 3. Tuỳ chọn chia các nhánh cho nhiều tiến trình (`workers`) — dùng trong service để 1 chuyến chạy trên nhiều nhân CPU.
 Kết quả không bao giờ kém chạy 1 lần (luôn giữ phương án tốt nhất đã biết). Hết `time_limit` giây thì đi tiếp bằng greedy.
 
+`strict_limit=True` (backend M11): chỉ mở một lượt thử khi ước tính nó xong trước `time_limit` (số nhánh × thời gian
+greedy đo ở đầu × phần kiện còn lại). Không bật thì như cũ: lượt thử mở sát giờ có thể chạy tới vài lần lượt greedy sau
+`time_limit` (đo 27/11, 40 kiện: tới 7 lần) — giữ mặc định để số nghiên cứu cũ không đổi.
+
 Chấm phương án: `profile` = ACTIVE (mặc định: hồ sơ đặt cho tiến trình bằng `plan_score.set_profile`), một `PlanProfile`
 (backend M11: hồ sơ của job → khoá hợp lệ → số kiện → J, như backend chọn phương án), hoặc None (cách chấm cũ).
 """
@@ -87,8 +91,9 @@ def _wtry(args) -> List[float]:
 class Lookahead:
     def __init__(self, model, env_cfg: EnvConfig, topk: int = 3, use_heur: bool = True, confident: float = 0.97,
                  time_limit: Optional[float] = None, device="cpu", workers: int = 0, model_path: Optional[str] = None,
-                 profile=ACTIVE):
+                 profile=ACTIVE, strict_limit: bool = False):
         self.model, self.env_cfg, self.device, self.profile = model, env_cfg, device, profile
+        self.strict_limit = strict_limit
         self.topk, self.use_heur, self.confident, self.time_limit = topk, use_heur, confident, time_limit
         self.pool = None
         if workers and workers > 1:
@@ -125,6 +130,8 @@ class Lookahead:
         g = clone_env(env)
         cached = _score(finish_many(self.model, [g], [obs], self.device)[0], self.profile)
         greedy_score = cached
+        greedy_sec = time.perf_counter() - t0          # một lượt greedy đầy đủ (ước tính giá một nhánh thử)
+        n_pk = max(1, len(problem.packages))
         tried = changed = steps = 0
         changed_p0, win_src = [], {"mô hình": 0, "heuristic": 0}
         res = None
@@ -136,7 +143,8 @@ class Lookahead:
             a = int(order[0])
             p0 = 1.0 / np.exp(lg[:n] - lg[a]).sum()
             in_time = not (self.time_limit and time.perf_counter() - t0 > self.time_limit)
-            if n > 1 and p0 < self.confident and in_time:
+            do_try = n > 1 and p0 < self.confident and in_time
+            if do_try:
                 cands = [int(x) for x in order[: self.topk]]
                 if self.use_heur:
                     for w in PRESETS:
@@ -144,6 +152,10 @@ class Lookahead:
                         if h not in cands:
                             cands.append(h)
                 others = cands[1:]
+                if self.strict_limit and self.time_limit:   # lượt thử phải xong trước time_limit (ước tính)
+                    est = len(others) * greedy_sec * max(1, n_pk - steps) / n_pk
+                    do_try = time.perf_counter() - t0 + est <= self.time_limit
+            if do_try:
                 sc = [cached] + self._scores(env, others)
                 b = argbest(sc)   # điểm có thể là bộ (hồ sơ J) → không dùng np.argmax / "+ 1e-9"
                 tried += 1
