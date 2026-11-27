@@ -66,6 +66,11 @@ def check_reserve_sec(problem: ProblemRequest) -> float:
     return min(max(float(settings.OPTIMIZATION_CHECK_RESERVE_MIN_SEC), ratio * limit), limit / 2)
 
 
+def lmai_target(start: float, deadline: float) -> float:
+    """Hạn cho các bước tối ưu thêm mới (SA lmai, biết tính trước): min(hạn job, lúc bắt đầu job + LMAI_JOB_TARGET_SEC)."""
+    return min(deadline, start + float(settings.LMAI_JOB_TARGET_SEC))
+
+
 class OptimizationClient:
     """
     Client tương tác với Optimization Engine.
@@ -204,7 +209,7 @@ class OptimizationClient:
             try:
                 from app.ml.lumo_models import run_lumo_models
 
-                ai = run_lumo_models(problem, ai_codes, self, deadline=deadline)
+                ai = run_lumo_models(problem, ai_codes, self, deadline=deadline, target=lmai_target(start, deadline))
                 tried.extend(code for code in ai.tried)
                 layouts += ai.layouts
             except Exception as exc:  # không bao giờ làm hỏng job vì AI
@@ -230,7 +235,7 @@ class OptimizationClient:
             from app.service.optimize.lmai_sa import run_lmai_sa
 
             try:
-                meta = run_lmai_sa(problem, self, lmai, deadline - SA_END_MARGIN_SEC)
+                meta = run_lmai_sa(problem, self, lmai, lmai_target(start, deadline) - SA_END_MARGIN_SEC)
                 tried.extend(meta.tried)
                 layouts += meta.layouts
             except Exception as exc:  # SA mới hỏng không được làm hỏng job

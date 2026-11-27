@@ -64,7 +64,8 @@ class Settings(BaseSettings):
     # Thời gian tối đa (giây) cho cả phần mô hình AI của một job (trong giới hạn thời gian của request).
     LUMO_TIME_BUDGET_SEC: float = 8.0
     # M11 (KE-HOACH-TOI-UU): Lumo-R1.1 + "biết tính trước" (app/ml/lmai/lookahead.py) cho gói ULTIMATE, chấm theo J của
-    # hồ sơ job khi PLAN_SCORE_J bật. Tắt mặc định tới khi có số đo. Ngân sách tính riêng, ngoài LUMO_TIME_BUDGET_SEC.
+    # hồ sơ job khi PLAN_SCORE_J bật. Tắt mặc định tới khi có số đo. Ngân sách tính riêng, ngoài LUMO_TIME_BUDGET_SEC;
+    # xong trước job_start + LMAI_JOB_TARGET_SEC (mục tiêu cả job 45 s, xem dưới).
     OPTIMIZATION_LMAI_LOOKAHEAD_ENABLED: bool = False
     LMAI_LOOKAHEAD_SEC: float = 12.0
 
@@ -106,7 +107,12 @@ class Settings(BaseSettings):
     # bộ dựng lmai (app/service/optimize/lmai_sa.py) — một chuỗi cho mỗi hồ sơ A / B / C khi PLAN_SCORE_J bật. Cần
     # bộ dựng M9 đã chạy. LMAI_SA_BUDGET_SEC: trần thời gian cho cả các chuỗi (còn bị giới hạn bởi hạn chót của job).
     OPTIMIZATION_LMAI_SA_ENABLED: bool = False
-    LMAI_SA_BUDGET_SEC: float = 30.0
+    # 15 s (chủ dự án 27/11): đo dev, SA 15 s hơn Heuristic-4 tốt nhất +3,7 J (default) / +9,8 J (hồ sơ C).
+    LMAI_SA_BUDGET_SEC: float = 15.0
+    # Mục tiêu thời gian của cả job cho các bước tối ưu thêm mới (SA lmai M10, biết tính trước M11): các bước này dừng
+    # trước job_start + LMAI_JOB_TARGET_SEC (vẫn trong hạn của request) để còn dư khi máy chủ yếu hơn máy đo
+    # (chủ dự án 27/11: 45 s; giả định máy chủ 2–4 nhân tới khi có Q-D6). Không đổi các bước cũ.
+    LMAI_JOB_TARGET_SEC: float = 45.0
 
     LOADMASTER_SERVICE_URL: str = "http://localhost:8080"
     REDIS_URL: str = "redis://localhost:6379"
