@@ -72,6 +72,17 @@ def model_path(code: str) -> Path:
     return path
 
 
+def configure_torch_threads() -> None:
+    """Đặt số luồng torch của tiến trình theo LUMO_TORCH_THREADS (0 = giữ mặc định của torch). Gọi lại vô hại."""
+    n = int(settings.LUMO_TORCH_THREADS)
+    if n <= 0:
+        return
+    import torch
+
+    if torch.get_num_threads() != n:
+        torch.set_num_threads(n)
+
+
 def _load(code: str):
     """(mô hình, EnvConfig) đã nạp một lần cho cả tiến trình; lỗi thì nhớ lý do, không thử lại."""
     if code in _loaded:
@@ -81,6 +92,7 @@ def _load(code: str):
     try:
         from app.ml.lmai.ppo import load_policy
 
+        configure_torch_threads()
         path = model_path(code)
         if not path.is_file():
             raise FileNotFoundError(str(path))
