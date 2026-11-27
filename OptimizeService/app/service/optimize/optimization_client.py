@@ -53,6 +53,19 @@ def _lifo_code() -> str:
     return LIFO_BLOCKED if ConstraintEngine.physics_v2() else "MULTI_DROP_LIFO_VIOLATION"
 
 
+SA_END_MARGIN_SEC = 1.0   # M10: SA lmai (gồm bước kiểm của nó) xong trước hạn chót của job ít nhất từng ấy giây
+
+
+def check_reserve_sec(problem: ProblemRequest) -> float:
+    """M8: thời gian giữ lại cho bước kiểm phương án = max(MIN, RATIO × time_limit_sec), không quá nửa giới hạn.
+    RATIO <= 0 tắt (bộ dựng chạy tới hạn chót như trước)."""
+    ratio = float(settings.OPTIMIZATION_CHECK_RESERVE_RATIO)
+    if ratio <= 0:
+        return 0.0
+    limit = max(float(problem.time_limit_sec or 60), 1)
+    return min(max(float(settings.OPTIMIZATION_CHECK_RESERVE_MIN_SEC), ratio * limit), limit / 2)
+
+
 class OptimizationClient:
     """
     Client tương tác với Optimization Engine.
@@ -112,8 +125,29 @@ class OptimizationClient:
         # Cách xếp mang nhãn EP_DBLF phải là EP thuần: gói có Lumo chấm điểm thì tắt nó ở đây
         # (Lumo-R1.1 chấm chỗ đặt là một cách xếp riêng, EP_LUMO_R1_1).
         ep_kwargs = {"use_lumo_scorer": False} if uses_lumo(problem.algorithm_name) else {}
+        reserve = check_reserve_sec(problem)
+        lmai_built = False
+        built = None
+        if settings.OPTIMIZATION_LMAI_BUILDER_ENABLED:
+            # M9 (D1): bộ dựng chung của LoadMaster_AI; không ra cách xếp nào qua kiểm thì chạy bộ dựng cũ bên dưới.
+            from app.service.optimize.lmai_builder import build_layouts
+
+            try:
+                built = build_layouts(problem, self, deadline - reserve)
+            except Exception as exc:  # bộ dựng mới hỏng không được làm hỏng job
+                logger.warning("lmai builder failed, falling back to EP: %s", exc)
+                built = None
+            if built is not None and built.layouts:
+                layouts += built.layouts
+                ep_runs += built.ep_runs
+                lmai_built = True
+            elif built is not None:
+                logger.info("lmai builder: no layout (%s %s), falling back to EP", built.skipped, built.rejected)
         for strategy in layout_strategies_for(problem.vehicle):
-            if layouts and time.monotonic() >= deadline:
+            if lmai_built:   # M9: đã có cách xếp từ bộ dựng lmai
+                break
+            # M8: không mở lượt mới khi phần còn lại chỉ đủ cho bước kiểm của lượt đó.
+            if layouts and time.monotonic() >= deadline - reserve:
                 break
             layout = self.solve_in_process(problem, strategy=strategy, job_deadline=deadline, **ep_kwargs)
             layout = layout.model_copy(update={"algorithm_name": PlanAlgorithm.EP_DBLF.value})
@@ -122,7 +156,8 @@ class OptimizationClient:
         tried.append(PlanAlgorithm.EP_DBLF.value)
 
         if len(allowed) > 1:
-            layouts += self._advanced_layouts(problem, allowed, ep_runs, start, deadline, tried)
+            layouts += self._advanced_layouts(problem, allowed, ep_runs, start, deadline, tried,
+                                              lmai=built if lmai_built else None)
 
         candidates = pick_candidates(layouts, problem.vehicle, problem)
         if plan_score.enabled():
@@ -151,10 +186,13 @@ class OptimizationClient:
         start: float,
         deadline: float,
         tried: list[str],
+        lmai=None,
     ) -> list[EngineOptimizationResponse]:
         """
         Cách xếp của gói PRO / ULTIMATE. Thứ tự: mô hình AI greedy (mỗi mô hình một lượt cố định),
         EP + Lumo-R1.1, rồi GA → SA dùng phần thời gian còn lại (tối đa ngân sách trong settings).
+        M10: cờ OPTIMIZATION_LMAI_SA_ENABLED và bước EP đã dựng bằng bộ dựng lmai (`lmai`) → SA tối đa J trên bộ dựng
+        lmai thay cho GA + SA cũ (lmai_sa.py).
         Một bước hỏng (thiếu torch, lỗi mô hình) chỉ bị bỏ qua, không làm hỏng job.
         """
         from app.constant.optimization.plan_algorithm import PlanAlgorithm as P
@@ -186,6 +224,18 @@ class OptimizationClient:
                 tried.append(P.EP_LUMO_R1_1.value)
             else:
                 logger.info("EP_LUMO_R1_1 skipped: Lumo-R1.1 scorer unavailable (torch or weights missing)")
+
+        if (settings.OPTIMIZATION_LMAI_SA_ENABLED and lmai is not None and P.SA.value in allowed
+                and time.monotonic() < deadline):
+            from app.service.optimize.lmai_sa import run_lmai_sa
+
+            try:
+                meta = run_lmai_sa(problem, self, lmai, deadline - SA_END_MARGIN_SEC)
+                tried.extend(meta.tried)
+                layouts += meta.layouts
+            except Exception as exc:  # SA mới hỏng không được làm hỏng job
+                logger.warning("lmai SA failed: %s", exc)
+            return layouts
 
         if (P.GA.value in allowed or P.SA.value in allowed) and time.monotonic() < deadline:
             # Chuyến lớn: một lần giải mã (một lượt EP + DBLF) có thể mất vài giây, nên ngân sách
@@ -301,6 +351,9 @@ class OptimizationClient:
         stop_sequences = [stop.sequence for stop in problem.stops]
         if len(stop_ids) != len(set(stop_ids)) or len(stop_sequences) != len(set(stop_sequences)):
             raise ValueError("Stop IDs and sequences must be unique")
+        # M8: bộ dựng (EP, dựng lại hai lượt H13) dừng ở build_deadline; phần còn lại dành cho kiểm phương án
+        # (lần kiểm đầu trong LoadBalanceSearch và kiểm cuối) để phương án đã dựng không bị bỏ vì hết giờ.
+        build_deadline = deadline - check_reserve_sec(problem)
         search = LoadBalanceSearch(problem, deadline)
         input_codes = [code for code in search.input_violations() if code != "PINNED_PLACEMENT_UNSUPPORTED"]
         logger.info("[INPUT CHECK] Packages=%d Violations=%s", len(ids), input_codes)
@@ -433,7 +486,8 @@ class OptimizationClient:
         pass_i = 0
         while True:
             if pass_i == len(zone_passes):
-                if two_pass_allowed and not two_pass and must_load_missing(problem, placements):
+                if (two_pass_allowed and not two_pass and time.monotonic() < build_deadline
+                        and must_load_missing(problem, placements)):
                     one_pass_state = (placements, unplaced, total_placed_weight, total_placed_volume)
                     placements, unplaced = list(pinned_placements), []
                     context["existing_placements"] = placements
@@ -445,7 +499,7 @@ class OptimizationClient:
                 break
             zone, must_pass = zone_passes[pass_i]
             pass_i += 1
-            if time.monotonic() >= deadline: break
+            if time.monotonic() >= build_deadline: break
             zone_pkgs = [
                 p for p in stops_dict.get(zone.stop_id, [])
                 if str(p.id) not in pinned_ids and (must_pass is None or bool(p.must_load) == must_pass)
@@ -537,7 +591,7 @@ class OptimizationClient:
                             ep_list.append(candidate_pt)
 
             for pkg in sorted_pkgs:
-                if time.monotonic() >= deadline: break
+                if time.monotonic() >= build_deadline: break
                 if vt.max_payload_kg > 0 and (total_placed_weight + pkg.weight > vt.max_payload_kg):
                     unplaced.append(UnplacedData(
                         package_id=pkg.id,
@@ -656,7 +710,7 @@ class OptimizationClient:
                 for pt in sorted_eps:
                     px, py, pz = pt
                     for (ol, ow, oh, rot_type) in orientations:
-                        if time.monotonic() >= deadline: break
+                        if time.monotonic() >= build_deadline: break
                         # 1. Bounds check trong zone
                         if px + ol > zone.zone_end_x + 1e-4:
                             continue
@@ -755,7 +809,7 @@ class OptimizationClient:
                     for pt in all_vehicle_eps:
                         px, py, pz = pt
                         for (ol, ow, oh, rot_type) in orientations:
-                            if time.monotonic() >= deadline: break
+                            if time.monotonic() >= build_deadline: break
                             if px + ol > vt.inner_l + 1e-4 or py + ow > vt.inner_w + 1e-4 or pz + oh > vt.inner_h + 1e-4:
                                 continue
                             if self._check_overlap(px, py, pz, ol, ow, oh, placements):
@@ -875,6 +929,7 @@ class OptimizationClient:
         placements_in: Sequence[PlacementData],
         algorithm_name: str,
         started_at: Optional[float] = None,
+        deadline: Optional[float] = None,
     ) -> tuple[Optional[EngineOptimizationResponse], Optional[str]]:
         """
         Kiểm lại một cách xếp do bộ giải khác (mô hình AI) dựng, bằng đúng các luật và cách tính
@@ -882,6 +937,9 @@ class OptimizationClient:
         (mỗi kiện so với các kiện đặt trước nó), rồi HC-11 / HC-12 trên cả phương án và
         UnloadFeasibilityValidator. Không sửa chỗ đặt nào (không dời khối cân trọng tâm).
         Trả (cách xếp, None) khi đạt; (None, lý do) khi vi phạm ràng buộc cứng — cả cách xếp bị bỏ.
+        `deadline` (time.monotonic): giới hạn cho cả bước kiểm (từng chỗ đặt + kiểm dỡ hàng); hết giờ = chưa chứng
+        minh được → bỏ (OPTIMIZATION_TIME_LIMIT_REACHED / UNLOAD_TIME_LIMIT_REACHED, fail-closed). None = không giới
+        hạn (như trước).
         """
         start_time = started_at if started_at is not None else time.time()
         vt = problem.vehicle
@@ -911,6 +969,8 @@ class OptimizationClient:
                 "stop_zone_id": package_stop.get(key),
                 "pinned": False,
             })
+            if deadline is not None and time.monotonic() >= deadline:
+                return None, "OPTIMIZATION_TIME_LIMIT_REACHED"
             violations = ConstraintEngine.check_all(placement, context)
             if violations:
                 return None, f"{violations[0].violation_code}:{key}"
@@ -924,7 +984,7 @@ class OptimizationClient:
                 if not check.passed:
                     return None, check.violation_code
             unload = UnloadFeasibilityValidator.validate(
-                placements=placements, packages_map=packages_map, vehicle=vt
+                placements=placements, packages_map=packages_map, vehicle=vt, deadline=deadline
             )
             if not unload.passed:
                 return None, unload.violation_code or _lifo_code()

@@ -1,4 +1,4 @@
-"""P13 / P22 (KE-HOACH-TOI-UU, M8a): bước sửa cân bằng có giới hạn (cờ LOAD_BALANCE_BOUNDED_ENABLED, mặc định tắt).
+"""P13 / P22 (KE-HOACH-TOI-UU, M8a): bước sửa cân bằng có giới hạn (cờ LOAD_BALANCE_BOUNDED_ENABLED, mặc định bật từ M8).
 
 Ngân sách riêng, dừng khi không còn hơn, trần cho mỗi lần kiểm dỡ hàng — vẫn fail-closed: chỉ phương án đã
 kiểm đủ mới được giữ.
@@ -21,9 +21,9 @@ def bounded(monkeypatch):
     monkeypatch.setattr(settings, "LOAD_BALANCE_UNLOAD_CHECK_SEC", 3.0)
 
 
-def test_bounded_flag_is_off_by_default():
+def test_bounded_flag_is_on_by_default():
     from app.config.settings import Settings
-    assert Settings(_env_file=None, KEYCLOAK_CLIENT_SECRET="x").LOAD_BALANCE_BOUNDED_ENABLED is False
+    assert Settings(_env_file=None, KEYCLOAK_CLIENT_SECRET="x").LOAD_BALANCE_BOUNDED_ENABLED is True
 
 
 def _partial_start():

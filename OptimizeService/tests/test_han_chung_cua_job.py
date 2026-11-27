@@ -1,4 +1,4 @@
-"""P21 / P13 (KE-HOACH-TOI-UU, M8a): một hạn chót cho cả job (cờ OPTIMIZATION_SHARED_DEADLINE_ENABLED, mặc định tắt)."""
+"""P21 / P13 (KE-HOACH-TOI-UU, M8a): một hạn chót cho cả job (cờ OPTIMIZATION_SHARED_DEADLINE_ENABLED, mặc định bật từ M8)."""
 import time
 
 import pytest
@@ -14,10 +14,10 @@ def shared_deadline(monkeypatch):
 
 
 
-def test_shared_deadline_flag_is_off_by_default():
+def test_shared_deadline_flag_is_on_by_default():
     from app.config.settings import Settings
     fresh = Settings(_env_file=None, KEYCLOAK_CLIENT_SECRET="x")
-    assert fresh.OPTIMIZATION_SHARED_DEADLINE_ENABLED is False
+    assert fresh.OPTIMIZATION_SHARED_DEADLINE_ENABLED is True
 
 
 def test_job_deadline_is_ignored_when_flag_off(monkeypatch):
@@ -35,6 +35,8 @@ def test_expired_job_deadline_stops_ep_pass_when_flag_on(shared_deadline):
 
 
 def test_solve_candidates_gives_every_ep_pass_the_same_job_deadline(monkeypatch):
+    # Lượt EP của bộ dựng cũ (đường lùi khi bộ dựng lmai của M9 không dùng được; cờ M9 bật mặc định từ 27/11/2026).
+    monkeypatch.setattr(settings, "OPTIMIZATION_LMAI_BUILDER_ENABLED", False)
     seen = []
     real = OptimizationClient.solve_in_process
 
