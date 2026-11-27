@@ -164,6 +164,7 @@ def _run_lookahead(problem: ProblemRequest, lm_problem, best: dict, cost: dict, 
         return None
     from app.ml.lmai.lookahead import Lookahead
 
+    job_progress.stage(job_progress.IMPROVING, code)
     model, env_cfg = _load(code)
     la = Lookahead(model, env_cfg, topk=3, use_heur=True, time_limit=limit, profile=_lmai_profile(problem))
     result = la.solve(lm_problem)

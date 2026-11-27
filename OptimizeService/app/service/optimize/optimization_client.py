@@ -141,6 +141,8 @@ class OptimizationClient:
                 built = None
             if built is not None and built.layouts:
                 layouts += built.layouts
+                for layout in built.layouts:
+                    job_progress.layout_done(layout)
                 ep_runs += built.ep_runs
                 lmai_built = True
             elif built is not None:
@@ -235,10 +237,13 @@ class OptimizationClient:
                 and time.monotonic() < deadline):
             from app.service.optimize.lmai_sa import run_lmai_sa
 
+            job_progress.stage(job_progress.IMPROVING, P.SA.value)
             try:
                 meta = run_lmai_sa(problem, self, lmai, deadline - SA_END_MARGIN_SEC)
                 tried.extend(meta.tried)
                 layouts += meta.layouts
+                for layout in meta.layouts:
+                    job_progress.layout_done(layout)
             except Exception as exc:  # SA mới hỏng không được làm hỏng job
                 logger.warning("lmai SA failed: %s", exc)
             return layouts

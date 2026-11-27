@@ -225,6 +225,33 @@ class TestSolverStages:
         before = sum(1 for e in r.events[:building] if e[0] == "layout")
         assert r.snapshot()["layouts_tried"] > before   # GA / SA giải mã thêm cách xếp
 
+    def test_lmai_builder_layouts_are_counted(self, monkeypatch):
+        """M9: cách xếp của bộ dựng lmai cũng được đếm (bước EP cũ không chạy khi bộ dựng lmai đã có cách xếp)."""
+        pytest.importorskip("numpy")
+        monkeypatch.setattr(settings, "OPTIMIZATION_LMAI_BUILDER_ENABLED", True)
+        problem = _problem("EP_DBLF")
+        r = Recording(total=len(problem.packages))
+        result = _run_with(r, problem)
+        counts = [e[1] for e in r.events if e[0] == "layout"]
+        assert counts == list(range(1, len(counts) + 1)) and counts
+        assert r.snapshot()["best_placed_count"] == max(len(c.result.placements) for c in result.candidates)
+
+    def test_pro_reports_lmai_sa_stage_when_flag_on(self, monkeypatch):
+        """M10: SA lmai báo bước IMPROVING / SA, và các cách xếp SA qua kiểm được đếm."""
+        pytest.importorskip("numpy")
+        monkeypatch.setattr(settings, "OPTIMIZATION_LMAI_BUILDER_ENABLED", True)
+        monkeypatch.setattr(settings, "OPTIMIZATION_LMAI_SA_ENABLED", True)
+        monkeypatch.setattr(settings, "LMAI_SA_BUDGET_SEC", 2.0)
+        r = Recording()
+        result = _run_with(r, _problem("EP_DBLF_GA"))
+        stages = [e[1:] for e in r.events if e[0] == "stage"]
+        assert stages[0] == ("BUILDING", "EP_DBLF") and stages[-1] == ("SELECTING", None)
+        assert ("IMPROVING", "SA") in stages and ("IMPROVING", "GA") not in stages
+        at = r.events.index(("stage", "IMPROVING", "SA"))
+        after = sum(1 for e in r.events[at:] if e[0] == "layout")
+        if any(c.result.algorithm_name == "SA" for c in result.candidates):
+            assert after >= 1                          # cách xếp SA vào job thì đã được đếm sau bước SA
+
     def test_reporting_never_changes_the_result(self, fast_meta):
         plain = OptimizationClient(engine_url="").solve_candidates(_problem("EP_DBLF_GA"))
         reported = _run_with(Recording(), _problem("EP_DBLF_GA"))
