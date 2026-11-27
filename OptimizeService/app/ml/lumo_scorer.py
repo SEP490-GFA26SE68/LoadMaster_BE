@@ -29,6 +29,10 @@ class LumoScorer:
             raise RuntimeError("torch is not installed")
         import torch
 
+        from app.ml.lumo_models import configure_torch_threads
+
+        configure_torch_threads()
+
         path = Path(model_path)
         if not path.is_absolute():
             path = Path(__file__).resolve().parents[2] / path
