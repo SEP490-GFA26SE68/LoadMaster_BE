@@ -14,7 +14,8 @@ bộ dựng EP của service, vài giây một lần, đo M7: PRO không hơn BA
   - phương án tốt nhất của mỗi chuỗi (khi hơn điểm xuất phát) được kiểm bằng luật của service
     (`evaluate_fixed_layout`, như M9); qua kiểm thì vào danh sách cách xếp với mã SA.
 
-Ngân sách: min(LMAI_SA_BUDGET_SEC, thời gian còn lại tới hạn − phần giữ cho bước kiểm), chia đều cho các chuỗi.
+Ngân sách: min(LMAI_SA_BUDGET_SEC = 15, thời gian còn lại tới hạn − phần giữ cho bước kiểm), chia đều cho các chuỗi.
+Hạn ở đây là min(hạn job, lúc bắt đầu job + LMAI_JOB_TARGET_SEC = 45) — `optimization_client.lmai_target`.
 GA không chạy khi cờ bật (D2, 26/11/2026: GA không cải thiện EP; code GA giữ cho thí nghiệm R9).
 """
 from __future__ import annotations

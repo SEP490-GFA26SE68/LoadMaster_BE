@@ -26,7 +26,8 @@ def sa_on(monkeypatch):
 def test_flag_is_off_by_default():
     from app.config.settings import Settings
     assert Settings.model_fields["OPTIMIZATION_LMAI_SA_ENABLED"].default is False
-    assert Settings.model_fields["LMAI_SA_BUDGET_SEC"].default == 30.0
+    assert Settings.model_fields["LMAI_SA_BUDGET_SEC"].default == 15.0
+    assert Settings.model_fields["LMAI_JOB_TARGET_SEC"].default == 45.0
 
 
 @pytest.mark.parametrize("j", [False, True])
@@ -105,6 +106,18 @@ def test_sa_respects_deadline(monkeypatch):
     t0 = time.monotonic()
     LS.run_lmai_sa(request, client, built, t0 + 2.5)
     assert time.monotonic() - t0 < 2.5 + 1.0          # một lần giải mã / kiểm cuối có thể vượt nhẹ
+
+
+def test_pro_job_stops_sa_at_job_target(monkeypatch, sa_on):
+    """Mục tiêu cả job (LMAI_JOB_TARGET_SEC) chặn SA dù ngân sách SA và hạn request còn dài."""
+    monkeypatch.setattr(settings, "PLAN_SCORE_J", True)
+    monkeypatch.setattr(settings, "LMAI_SA_BUDGET_SEC", 60.0)
+    monkeypatch.setattr(settings, "LMAI_JOB_TARGET_SEC", 6.0)
+    request = _random_problem(13, n=30).model_copy(update={"algorithm_name": "PRO", "time_limit_sec": 60})
+    t0 = time.monotonic()
+    result = OptimizationClient().solve_candidates(request)
+    assert time.monotonic() - t0 < 6.0 + 2.5          # bước chọn A / B / C sau SA
+    assert result.candidates
 
 
 def test_sa_skips_without_heuristic4_start_or_budget(monkeypatch):
