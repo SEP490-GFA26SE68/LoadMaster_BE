@@ -63,6 +63,10 @@ class Settings(BaseSettings):
     LUMO_SAMPLES: int = 2
     # Thời gian tối đa (giây) cho cả phần mô hình AI của một job (trong giới hạn thời gian của request).
     LUMO_TIME_BUDGET_SEC: float = 8.0
+    # M11 (KE-HOACH-TOI-UU): Lumo-R1.1 + "biết tính trước" (app/ml/lmai/lookahead.py) cho gói ULTIMATE, chấm theo J của
+    # hồ sơ job khi PLAN_SCORE_J bật. Tắt mặc định tới khi có số đo. Ngân sách tính riêng, ngoài LUMO_TIME_BUDGET_SEC.
+    OPTIMIZATION_LMAI_LOOKAHEAD_ENABLED: bool = False
+    LMAI_LOOKAHEAD_SEC: float = 12.0
 
     # GA + SA của gói PRO / ULTIMATE: ngân sách thời gian (giây, trong giới hạn của request)
     # và số lần giải mã tối đa (mỗi lần giải mã là một lượt EP + DBLF đầy đủ ràng buộc).
@@ -70,20 +74,39 @@ class Settings(BaseSettings):
     METAHEURISTIC_MAX_EVALUATIONS: int = 60
     # Ngân sách GA + SA được nới tới đủ chừng này lần giải mã khi chuyến lớn (giải mã chậm).
     METAHEURISTIC_MIN_DECODES: int = 5
+    # D2 (26/11/2026): gói đang bán không còn GA, EP_LUMO_R1_1, LUMO_R2. Bật để chạy lại danh sách cũ (thí nghiệm R9).
+    TIER_LEGACY_ALGORITHMS_ENABLED: bool = False
 
     # Một hạn chót cho cả job: mọi lượt EP, lần giải mã GA / SA và bước sửa cân bằng dùng chung hạn của request
     # (tắt: mỗi lượt EP nhận hạn mới = time_limit_sec, job có thể chạy gần gấp đôi giới hạn).
-    OPTIMIZATION_SHARED_DEADLINE_ENABLED: bool = False
+    # Bật mặc định từ 26/11/2026 (M8, D1 đã duyệt): đo M7 — tắt thì job tới 113 s, 23 % phương án rỗng ở rb_vua.
+    OPTIMIZATION_SHARED_DEADLINE_ENABLED: bool = True
     # Bước sửa cân bằng (LoadBalanceSearch) có giới hạn: ngân sách = phần của time_limit_sec cho mỗi lần sửa,
     # dừng sau PATIENCE lần xếp lại liên tiếp không hơn, và mỗi lần kiểm dỡ hàng trong bước sửa tối đa
     # UNLOAD_CHECK_SEC giây (quá thì coi như chưa chứng minh được → không nhận, vẫn fail-closed).
-    LOAD_BALANCE_BOUNDED_ENABLED: bool = False
+    # Bật mặc định từ 26/11/2026 (M8, D1); cùng cờ trên: hàng lên xe rb_vua +13,4 [+9,5; +17,4], rb_lon +10,5 điểm.
+    LOAD_BALANCE_BOUNDED_ENABLED: bool = True
     LOAD_BALANCE_BUDGET_RATIO: float = 0.25
     LOAD_BALANCE_PATIENCE: int = 4
     LOAD_BALANCE_UNLOAD_CHECK_SEC: float = 3.0
     # Phương án của bộ dựng được kiểm dỡ hàng trong tối đa INITIAL_CHECK_RATIO × thời gian còn lại của lượt
     # (không dưới UNLOAD_CHECK_SEC): đủ cho phương án lớn hợp lệ, mà phương án sai khó chứng minh không ăn hết lượt.
     LOAD_BALANCE_INITIAL_CHECK_RATIO: float = 0.5
+    # M8 (26/11/2026, D1): bộ dựng EP dừng sớm hơn hạn chót của lượt một khoảng = max(MIN, RATIO × time_limit_sec)
+    # (không quá nửa giới hạn) để còn thời gian kiểm phương án vừa dựng. RATIO = 0 tắt.
+    OPTIMIZATION_CHECK_RESERVE_RATIO: float = 0.15
+    OPTIMIZATION_CHECK_RESERVE_MIN_SEC: float = 2.0
+    # M9 (D1, 26/11/2026): bước EP dựng phương án bằng bộ dựng chung của LoadMaster_AI (app/ml/lmai: state / packer,
+    # EP-DBLF, EP-trọng-tâm, 4 bộ trọng số Heuristic-4), kiểm cuối vẫn bằng luật của service. Tắt = bộ dựng EP cũ.
+    # Bài có kiện ghim / thiếu numpy / không cách xếp nào qua kiểm → tự lùi về bộ dựng cũ (app/service/optimize/lmai_builder.py).
+    # Bật mặc định ở mọi môi trường từ 27/11/2026 (chủ dự án): 420 bài BASIC — hợp lệ 89,3 → 100 %, hàng lên xe +15,7
+    # điểm [+13,3; +18,3], job trung bình 50 → 7,7 s. numpy vì thế nằm trong requirements.txt (không cần INSTALL_AI).
+    OPTIMIZATION_LMAI_BUILDER_ENABLED: bool = True
+    # M10 (KE-HOACH-TOI-UU, spec R2): gói PRO / ULTIMATE thay GA + SA cũ (giải mã bằng bộ dựng EP cũ) bằng SA tối đa J trên
+    # bộ dựng lmai (app/service/optimize/lmai_sa.py) — một chuỗi cho mỗi hồ sơ A / B / C khi PLAN_SCORE_J bật. Cần
+    # bộ dựng M9 đã chạy. LMAI_SA_BUDGET_SEC: trần thời gian cho cả các chuỗi (còn bị giới hạn bởi hạn chót của job).
+    OPTIMIZATION_LMAI_SA_ENABLED: bool = False
+    LMAI_SA_BUDGET_SEC: float = 30.0
 
     LOADMASTER_SERVICE_URL: str = "http://localhost:8080"
     REDIS_URL: str = "redis://localhost:6379"

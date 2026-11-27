@@ -6,7 +6,10 @@ Ba mô hình Lumo tự xếp cả phương án (gói ULTIMATE, EP_DBLF_GA_AI) �
   LUMO_R2    app/ml/models/Lumo-R2-thu-nghiem.pt   bản thử nghiệm đầu vào v2, CHƯA qua tiêu chí phát hành
 
 Mỗi mô hình chạy một lượt greedy trên bài toán (qua gói app/ml/lmai, chép từ LoadMaster_AI), rồi vài lượt
-lấy mẫu nếu còn thời gian (không dùng chế độ "biết tính trước"). Cách xếp của mô hình được kiểm lại bằng
+lấy mẫu nếu còn thời gian. M11 (cờ OPTIMIZATION_LMAI_LOOKAHEAD_ENABLED, mặc định tắt): Lumo-R1.1 chạy thêm chế độ
+"biết tính trước" (lmai/lookahead.py: ở bước mô hình không chắc, thử vài nước của mô hình + 4 bộ Heuristic-4, cho mô
+hình xếp tiếp tới hết, đi nước có phương án cuối tốt nhất), chấm theo J của hồ sơ job (cờ PLAN_SCORE_J) hoặc cách chấm
+cũ; tối đa LMAI_LOOKAHEAD_SEC giây; không bao giờ kém lượt greedy; vẫn mang mã LUMO_R1_1. Cách xếp của mô hình được kiểm lại bằng
 ConstraintEngine / HC-11 / HC-12 / UnloadFeasibilityValidator của chính service và tính chỉ số theo cùng
 một cách với EP (OptimizationClient.evaluate_fixed_layout); vi phạm ràng buộc cứng thì bỏ cả cách xếp.
 
@@ -39,6 +42,11 @@ MODEL_FILES: dict[str, str] = {
 
 _loaded: dict[str, tuple] = {}
 _failed: dict[str, str] = {}
+
+LOOKAHEAD_CODE = PlanAlgorithm.LUMO_R1_1.value
+LOOKAHEAD_MIN_SEC = 1.0      # còn ít hơn chừng này thì không chạy "biết tính trước"
+LOOKAHEAD_TAIL = 1.5         # phần giữ = LOOKAHEAD_TAIL × lượt greedy (hết giờ thì đi nốt bằng greedy) + CHECK_SEC
+LOOKAHEAD_CHECK_SEC = 1.0    # phần giữ cho bước kiểm lại bằng luật của service
 
 
 @dataclass
@@ -134,6 +142,43 @@ def _to_placements(result) -> list[PlacementData]:
     ]
 
 
+def _lmai_profile(problem: ProblemRequest):
+    """Hồ sơ của job (PLAN_SCORE_J bật) dưới dạng PlanProfile của lmai; tắt: None = cách chấm cũ của lmai."""
+    if not plan_score.enabled():
+        return None
+    from app.ml.lmai.profiles import PlanProfile as LmaiProfile
+
+    p = plan_score.resolve_profile(problem.plan_profile)
+    return LmaiProfile(p.code, p.name, p.w_vol, p.w_n, tuple(p.weights), p.assumed)
+
+
+def _run_lookahead(problem: ProblemRequest, lm_problem, best: dict, cost: dict, deadline: Optional[float]):
+    """M11: Lumo-R1.1 + "biết tính trước"; thay best[LUMO_R1_1] khi hơn (theo cùng khoá chọn của job). Trả phương án
+    bị thay (để lùi về nếu luật của service từ chối phương án mới) hoặc None."""
+    code = LOOKAHEAD_CODE
+    limit = float(settings.LMAI_LOOKAHEAD_SEC)
+    if deadline is not None:
+        limit = min(limit, deadline - time.monotonic() - LOOKAHEAD_TAIL * cost[code] - LOOKAHEAD_CHECK_SEC)
+    if limit < LOOKAHEAD_MIN_SEC:
+        logger.info("%s lookahead skipped: còn %.1fs", code, limit)
+        return None
+    from app.ml.lmai.lookahead import Lookahead
+
+    model, env_cfg = _load(code)
+    la = Lookahead(model, env_cfg, topk=3, use_heur=True, time_limit=limit, profile=_lmai_profile(problem))
+    result = la.solve(lm_problem)
+    st = la.stats
+    better = _plan_score(result, problem) > _plan_score(best[code], problem)
+    logger.info("%s lookahead: %d bước, thử %d, đổi %d, %.1fs (giới hạn %.1fs), %s", code, st["steps"], st["tried"],
+                st["changed"], st["seconds"], limit, "hơn" if better else "không hơn")
+    if not better:
+        return None
+    previous = best[code]
+    best[code] = result
+    cost[code] += st["seconds"]
+    return previous
+
+
 def run_lumo_models(
     problem: ProblemRequest,
     codes: list[str],
@@ -213,6 +258,16 @@ def run_lumo_models(
             if _plan_score(sampled, problem) > _plan_score(best[code], problem):
                 best[code] = sampled
 
+    # M11: Lumo-R1.1 + "biết tính trước" (ngân sách riêng, trong hạn của job). Lỗi thì giữ kết quả đã có.
+    fallback: dict[str, object] = {}
+    if settings.OPTIMIZATION_LMAI_LOOKAHEAD_ENABLED and LOOKAHEAD_CODE in best:
+        try:
+            previous = _run_lookahead(problem, lm_problem, best, cost, deadline)
+            if previous is not None:
+                fallback[LOOKAHEAD_CODE] = previous
+        except Exception as exc:
+            logger.warning("%s lookahead failed: %s", LOOKAHEAD_CODE, exc)
+
     # Kiểm lại bằng luật của service; vi phạm ràng buộc cứng thì bỏ cả cách xếp.
     for code, result in best.items():
         if not result.verdict.valid:
@@ -222,6 +277,13 @@ def run_lumo_models(
         layout, reason = client.evaluate_fixed_layout(
             problem, _to_placements(result), code, started_at=time.time() - cost[code]
         )
+        if layout is None and code in fallback and fallback[code].verdict.valid:
+            # lmai và service chưa khớp tuyệt đối: phương án "biết tính trước" bị từ chối thì lùi về phương án trước đó
+            logger.warning("%s: luật của service từ chối phương án biết tính trước (%s) → dùng phương án greedy",
+                           code, reason)
+            layout, reason = client.evaluate_fixed_layout(
+                problem, _to_placements(fallback[code]), code, started_at=time.time() - cost[code]
+            )
         if layout is None:
             out.skipped[code] = "CONSTRAINT_VIOLATED"
             logger.warning("%s: bỏ cách xếp vì ConstraintEngine của service từ chối (%s)", code, reason)
