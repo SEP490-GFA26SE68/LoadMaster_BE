@@ -31,8 +31,10 @@ from .search import _forward, _score, clone_env
 from .teacher import PRESETS, _score as heur_score
 
 
-def finish_many(model, envs: List[PackingEnv], obs: List[dict], device="cpu") -> List[PlanResult]:
-    """Cho mô hình xếp tiếp (greedy) nhiều môi trường cùng lúc, chấm theo lô."""
+def finish_many(model, envs: List[PackingEnv], obs: List[dict], device="cpu",
+                stop_at: Optional[float] = None) -> List[Optional[PlanResult]]:
+    """Cho mô hình xếp tiếp (greedy) nhiều môi trường cùng lúc, chấm theo lô. `stop_at` (time.perf_counter): quá giờ
+    thì dừng, môi trường chưa xong trả None."""
     out: List[Optional[PlanResult]] = [None] * len(envs)
     active = []
     for i, e in enumerate(envs):
@@ -41,6 +43,8 @@ def finish_many(model, envs: List[PackingEnv], obs: List[dict], device="cpu") ->
         else:
             active.append(i)
     while active:
+        if stop_at is not None and time.perf_counter() > stop_at:
+            break
         lg, _ = _forward(model, [obs[i] for i in active], device)
         nxt = []
         for j, i in enumerate(active):
@@ -54,8 +58,10 @@ def finish_many(model, envs: List[PackingEnv], obs: List[dict], device="cpu") ->
     return out
 
 
-def try_actions(model, env: PackingEnv, actions: Sequence[int], device="cpu", profile=ACTIVE) -> List[float]:
-    """Điểm phương án cuối khi đi từng nước trong `actions` rồi để mô hình xếp tiếp."""
+def try_actions(model, env: PackingEnv, actions: Sequence[int], device="cpu", profile=ACTIVE,
+                stop_at: Optional[float] = None) -> List[Optional[float]]:
+    """Điểm phương án cuối khi đi từng nước trong `actions` rồi để mô hình xếp tiếp. Nhánh chưa xong lúc `stop_at`:
+    None (không biết điểm → không được chọn)."""
     envs, obs, scores, idx = [], [], [None] * len(actions), []
     for k, a in enumerate(actions):
         e = clone_env(env)
@@ -66,8 +72,8 @@ def try_actions(model, env: PackingEnv, actions: Sequence[int], device="cpu", pr
             envs.append(e)
             obs.append(o)
             idx.append(k)
-    for k, r in zip(idx, finish_many(model, envs, obs, device)):
-        scores[k] = _score(r, profile)
+    for k, r in zip(idx, finish_many(model, envs, obs, device, stop_at)):
+        scores[k] = _score(r, profile) if r is not None else None
     return scores
 
 
@@ -112,8 +118,9 @@ class Lookahead:
     def _scores(self, env: PackingEnv, actions: List[int]) -> List[float]:
         if not actions:
             return []
+        stop_at = self._t0 + self.time_limit if (self.strict_limit and self.time_limit) else None
         if self.pool is None or len(actions) == 1:
-            return try_actions(self.model, env, actions, self.device, self.profile)
+            return try_actions(self.model, env, actions, self.device, self.profile, stop_at)
         b = pickle.dumps(env)
         chunks = [actions[i::self.workers] for i in range(min(self.workers, len(actions)))]
         res = self.pool.map(_wtry, [(b, c, self.profile) for c in chunks])
@@ -123,7 +130,7 @@ class Lookahead:
         return [out[a] for a in actions]
 
     def solve(self, problem: Problem) -> PlanResult:
-        t0 = time.perf_counter()
+        t0 = self._t0 = time.perf_counter()
         env = PackingEnv(self.env_cfg)
         obs = env.reset(problem)
         # điểm phương án greedy từ trạng thái hiện tại (= nước "m0" ở mọi bước sau, nếu cứ đi theo nhánh tốt nhất)
@@ -156,7 +163,8 @@ class Lookahead:
                     est = len(others) * greedy_sec * max(1, n_pk - steps) / n_pk
                     do_try = time.perf_counter() - t0 + est <= self.time_limit
             if do_try:
-                sc = [cached] + self._scores(env, others)
+                # nhánh bị chốt cứng cắt giữa chừng (strict_limit, máy chậm hẳn): không biết điểm → coi như không hơn
+                sc = [cached] + [x if x is not None else cached for x in self._scores(env, others)]
                 b = argbest(sc)   # điểm có thể là bộ (hồ sơ J) → không dùng np.argmax / "+ 1e-9"
                 tried += 1
                 if better(sc[b], sc[0]):
