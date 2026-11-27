@@ -63,6 +63,10 @@ class Settings(BaseSettings):
     LUMO_SAMPLES: int = 2
     # Thời gian tối đa (giây) cho cả phần mô hình AI của một job (trong giới hạn thời gian của request).
     LUMO_TIME_BUDGET_SEC: float = 8.0
+    # M11 (KE-HOACH-TOI-UU): Lumo-R1.1 + "biết tính trước" (app/ml/lmai/lookahead.py) cho gói ULTIMATE, chấm theo J của
+    # hồ sơ job khi PLAN_SCORE_J bật. Tắt mặc định tới khi có số đo. Ngân sách tính riêng, ngoài LUMO_TIME_BUDGET_SEC.
+    OPTIMIZATION_LMAI_LOOKAHEAD_ENABLED: bool = False
+    LMAI_LOOKAHEAD_SEC: float = 12.0
 
     # GA + SA của gói PRO / ULTIMATE: ngân sách thời gian (giây, trong giới hạn của request)
     # và số lần giải mã tối đa (mỗi lần giải mã là một lượt EP + DBLF đầy đủ ràng buộc).
