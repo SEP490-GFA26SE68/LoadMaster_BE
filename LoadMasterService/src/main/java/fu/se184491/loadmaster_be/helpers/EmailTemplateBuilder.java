@@ -1,5 +1,7 @@
 package fu.se184491.loadmaster_be.helpers;
 
+import org.springframework.web.util.HtmlUtils;
+
 import java.util.List;
 
 /**
@@ -9,10 +11,19 @@ import java.util.List;
  * - 100% song ngữ Tiếng Việt và Tiếng Anh xen kẽ.
  * - Không sử dụng bất kỳ emoji/icon nào.
  * - Dùng số thứ tự (1, 2, 3...) cho danh mục thông tin và dấu gạch đầu dòng (-) cho lưu ý/điều khoản.
+ *
+ * <p>Mọi tham số chuỗi là <b>văn bản thuần</b> và được thoát HTML ở đây (tên công ty, mã giao dịch
+ * từ cổng thanh toán, tên gói... do người dùng hoặc bên ngoài nhập). Riêng {@code bodyHtml} của
+ * {@link #wrapHtml(String, String)} là HTML đã dựng sẵn và được chèn nguyên.</p>
  */
 public final class EmailTemplateBuilder {
 
     private EmailTemplateBuilder() {
+    }
+
+    /** Thoát HTML cho văn bản thuần; chỉ thoát {@code < > & " '}, giữ nguyên chữ tiếng Việt. */
+    private static String esc(String text) {
+        return text == null ? "" : HtmlUtils.htmlEscape(text, "UTF-8");
     }
 
     /**
@@ -83,9 +94,9 @@ public final class EmailTemplateBuilder {
                     </ul>
                 </div>
                 """.formatted(
-                safeName,
-                safePurposeVi, safePurposeEn,
-                otp,
+                esc(safeName),
+                esc(safePurposeVi), esc(safePurposeEn),
+                esc(otp),
                 expireMinutes, expireMinutes
         );
 
@@ -123,7 +134,7 @@ public final class EmailTemplateBuilder {
                             <strong>%d. %s / <span style="color: #64748b; font-weight: normal;">%s</span>:</strong>
                             <span style="color: #0f172a; font-weight: 600;">%s</span>
                         </li>
-                        """.formatted(counter++, item.labelVi(), item.labelEn(), item.value()));
+                        """.formatted(counter++, esc(item.labelVi()), esc(item.labelEn()), esc(item.value())));
             }
         }
 
@@ -139,9 +150,9 @@ public final class EmailTemplateBuilder {
             for (int i = 0; i < noticesVi.size(); i++) {
                 String vi = noticesVi.get(i);
                 String en = (noticesEn != null && i < noticesEn.size()) ? noticesEn.get(i) : null;
-                noticesHtml.append("<li style=\"margin-bottom: 6px;\">").append(vi);
+                noticesHtml.append("<li style=\"margin-bottom: 6px;\">").append(esc(vi));
                 if (en != null && !en.isBlank()) {
-                    noticesHtml.append("<br /><span style=\"color: #64748b;\">").append(en).append("</span>");
+                    noticesHtml.append("<br /><span style=\"color: #64748b;\">").append(esc(en)).append("</span>");
                 }
                 noticesHtml.append("</li>");
             }
@@ -150,6 +161,7 @@ public final class EmailTemplateBuilder {
 
         String buttonHtml = "";
         if (loginUrl != null && !loginUrl.isBlank()) {
+            String safeUrl = esc(loginUrl);
             buttonHtml = """
                     <div style="margin: 28px 0; text-align: center;">
                         <a href="%s" style="background-color: #0284c7; color: #ffffff; padding: 12px 28px; text-decoration: none; border-radius: 6px; font-size: 14px; font-weight: 600; display: inline-block;">
@@ -159,7 +171,7 @@ public final class EmailTemplateBuilder {
                             Đường dẫn truy cập: <a href="%s" style="color: #0284c7;">%s</a>
                         </div>
                     </div>
-                    """.formatted(loginUrl, loginUrl, loginUrl);
+                    """.formatted(safeUrl, safeUrl, safeUrl);
         }
 
         String contentHtml = """
@@ -190,9 +202,9 @@ public final class EmailTemplateBuilder {
                 %s
                 %s
                 """.formatted(
-                headingVi, headingEn,
-                safeName,
-                introVi, introEn,
+                esc(headingVi), esc(headingEn),
+                esc(safeName),
+                esc(introVi), esc(introEn),
                 itemsHtml.toString(),
                 buttonHtml,
                 noticesHtml.toString()
@@ -203,6 +215,9 @@ public final class EmailTemplateBuilder {
 
     /**
      * Bọc nội dung trong khung giao diện email chuẩn của LoadMaster.
+     *
+     * @param title    văn bản thuần, được thoát HTML
+     * @param bodyHtml HTML đã dựng sẵn, chèn nguyên; người gọi tự thoát phần dữ liệu bên trong
      */
     public static String wrapHtml(String title, String bodyHtml) {
         return """
@@ -257,6 +272,6 @@ public final class EmailTemplateBuilder {
                     </table>
                 </body>
                 </html>
-                """.formatted(title, bodyHtml);
+                """.formatted(esc(title), bodyHtml);
     }
 }
