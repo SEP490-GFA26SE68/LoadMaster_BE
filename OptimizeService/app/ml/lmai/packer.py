@@ -24,6 +24,19 @@ from .zones import Zone, compute_zones
 H13_TWO_PASS = os.environ.get("LMAI_H13_HAI_LUOT", "1") == "1"
 
 
+def unique_rows(a: np.ndarray) -> np.ndarray:
+    """= np.unique(a, axis=0) cho mảng N×3 số thực: các hàng khác nhau, sắp theo cột 0 → 1 → 2 (28/11/2026, nhanh hơn
+    vài lần vì không đổi sang kiểu có trường). Hàng trùng là trùng từng bit nên giữ hàng nào cũng như nhau. Mảng có -0.0
+    hay NaN thì dùng thẳng np.unique: ở đó "bằng nhau" không còn là trùng bit và hàng được giữ tuỳ thuật toán sắp."""
+    if len(a) < 2 or np.isnan(a).any() or ((a == 0) & np.signbit(a)).any():
+        return np.unique(a, axis=0)
+    s = a[np.lexsort((a[:, 2], a[:, 1], a[:, 0]))]
+    keep = np.empty(len(s), dtype=bool)
+    keep[0] = True
+    keep[1:] = (s[1:] != s[:-1]).any(axis=1)
+    return s[keep]
+
+
 @dataclass
 class PackConfig:
     buffer_k: int = 5          # số kiện trong hàng chờ AI được chọn
@@ -100,19 +113,23 @@ class Packer:
     def _cands_for(self, slot: int, pkg_idx: int, xlo: float, xhi: float, base: np.ndarray) -> List[Candidate]:
         pkg = self.problem.packages[pkg_idx]
         out: List[Candidate] = []
+        # điểm sát vách trái (→ thêm biến thể sát vách phải) / sát đầu vùng phía sâu (→ thêm biến thể sát đầu vùng phía
+        # cửa). Vector hoá (28/11/2026); unique_rows (= np.unique axis 0) sắp lại nên thứ tự thêm không ảnh hưởng — cùng
+        # các điểm, cùng thứ tự như vòng cũ.
+        on_y = np.abs(base[:, 1] - self.dy0) <= EPS if base.size else None
+        on_x = np.abs(base[:, 0] - xlo) <= EPS if base.size else None
+        has_extra = base.size and (on_y.any() or on_x.any())
         for rot in pkg.rotations():
             l, w, h = pkg.dims(rot)
-            if base.size:
-                extra = []
-                for x, y, z in base:
-                    if abs(y - self.dy0) <= EPS:  # thêm biến thể sát vách phải
-                        extra.append((x, self.dy1 - w, z))
-                    if abs(x - xlo) <= EPS:        # thêm biến thể sát đầu vùng phía cửa
-                        extra.append((xhi - l, y, z))
-                pts = np.unique(np.vstack([base, np.array(extra).reshape(-1, 3)]), axis=0) if extra else base
+            if has_extra:
+                ey = base[on_y]
+                ey[:, 1] = self.dy1 - w
+                ex = base[on_x]
+                ex[:, 0] = xhi - l
+                pts = unique_rows(np.vstack([base, ey, ex]))
             else:
                 pts = base
-            cs = self.state.feasible_positions(pkg, rot, xlo, xhi, pts)
+            cs = self.state.feasible_positions(pkg, rot, xlo, xhi, pts, limit=self.cfg.per_rot)
             cs.sort(key=lambda c: (c.z, c.x, c.y))
             for c in cs[: self.cfg.per_rot]:
                 c.slot, c.pkg_idx = slot, pkg_idx
