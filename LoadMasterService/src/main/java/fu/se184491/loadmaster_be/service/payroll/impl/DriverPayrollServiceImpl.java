@@ -393,7 +393,7 @@ public class DriverPayrollServiceImpl implements DriverPayrollService {
         }
         lockCompanyForPayrollUpdate(companyId);
         PayrollPeriod payrollPeriod = findPeriodForUpdate(companyId, month.atDay(1));
-        becomeSoleLockedPeriod(companyId, payrollPeriod);
+        lockPeriodNow(payrollPeriod);
         return periodResponse(payrollPeriod);
     }
 
@@ -622,13 +622,8 @@ public class DriverPayrollServiceImpl implements DriverPayrollService {
                 rate.getHandlingDriverPercent(), rate.getKpiTargetKg(), rate.getKpiBonusVnd(), periodStatus);
     }
 
-    private void becomeSoleLockedPeriod(Long companyId, PayrollPeriod payrollPeriod) {
-        for (PayrollPeriod other : periodRepository.findByCompanyIdAndStatus(companyId, PayrollPeriodStatus.LOCKED)) {
-            if (!Objects.equals(other.getId(), payrollPeriod.getId())) {
-                other.setStatus(PayrollPeriodStatus.DRAFT);
-                other.setLockedAt(null);
-            }
-        }
+    /** Chỉ chốt kỳ này; các tháng đã chốt trước đó giữ nguyên để còn xem lại lương. */
+    private void lockPeriodNow(PayrollPeriod payrollPeriod) {
         if (payrollPeriod.getStatus() != PayrollPeriodStatus.LOCKED) {
             payrollPeriod.setStatus(PayrollPeriodStatus.LOCKED);
             payrollPeriod.setLockedAt(LocalDateTime.now(VIETNAM_TIME_ZONE).truncatedTo(ChronoUnit.SECONDS));

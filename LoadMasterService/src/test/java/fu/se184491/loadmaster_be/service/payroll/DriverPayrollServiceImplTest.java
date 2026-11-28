@@ -44,6 +44,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.LocalTime;
 import java.time.YearMonth;
 import java.time.ZoneId;
 import java.util.List;
@@ -740,7 +741,6 @@ class DriverPayrollServiceImplTest {
                 .build();
         when(periodRepository.findByCompanyIdAndPeriodStartForUpdate(10L, periodStart))
                 .thenReturn(Optional.of(period));
-        when(periodRepository.findByCompanyIdAndStatus(10L, PayrollPeriodStatus.LOCKED)).thenReturn(List.of());
         when(periodRepository.save(any(PayrollPeriod.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
         var response = service.lockPeriod(10L, month.toString());
@@ -763,6 +763,39 @@ class DriverPayrollServiceImplTest {
         verify(periodRepository, never()).findByCompanyIdAndPeriodStartForUpdate(10L,
                 YearMonth.parse(futurePeriod).atDay(1));
         verify(periodRepository, never()).save(any(PayrollPeriod.class));
+    }
+
+    @Test
+    void lockingAnotherMonthKeepsEarlierLockedMonthsLocked() {
+        YearMonth currentMonth = YearMonth.now(ZoneId.of("Asia/Ho_Chi_Minh"));
+        LocalDate currentMonthStart = currentMonth.atDay(1);
+        LocalDate previousMonthStart = currentMonth.minusMonths(1).atDay(1);
+        LocalDateTime previousLockedAt = LocalDateTime.of(previousMonthStart.plusDays(4), LocalTime.of(9, 0, 0));
+        PayrollPeriod currentDraft = PayrollPeriod.builder()
+                .id(1L)
+                .periodStart(currentMonthStart)
+                .status(PayrollPeriodStatus.DRAFT)
+                .driverPayrolls(List.of())
+                .build();
+        PayrollPeriod previousLocked = PayrollPeriod.builder()
+                .id(2L)
+                .periodStart(previousMonthStart)
+                .status(PayrollPeriodStatus.LOCKED)
+                .lockedAt(previousLockedAt)
+                .driverPayrolls(List.of())
+                .build();
+        when(periodRepository.findByCompanyIdAndPeriodStartForUpdate(10L, currentMonthStart))
+                .thenReturn(Optional.of(currentDraft));
+        // Chốt một kỳ không được động tới các kỳ khác: lenient để test đỏ vì kết quả sai, không vì stub thừa.
+        lenient().when(periodRepository.findByCompanyIdAndStatus(10L, PayrollPeriodStatus.LOCKED))
+                .thenReturn(List.of(previousLocked));
+        when(periodRepository.save(any(PayrollPeriod.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        service.lockPeriod(10L, currentMonth.toString());
+
+        assertEquals(PayrollPeriodStatus.LOCKED, currentDraft.getStatus());
+        assertEquals(PayrollPeriodStatus.LOCKED, previousLocked.getStatus());
+        assertEquals(previousLockedAt, previousLocked.getLockedAt());
     }
 
     @Test
