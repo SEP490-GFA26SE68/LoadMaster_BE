@@ -96,6 +96,29 @@ class GoongMapsClientTest {
     }
 
     @Test
+    void requestsAlternativeRoutesWhenAsked() {
+        RestClient.Builder builder = RestClient.builder().baseUrl("https://goong.test");
+        MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
+        GoongMapsClient client = new GoongMapsClient(builder.build(), "test-api-key");
+        server.expect(once(), requestTo(
+                        "https://goong.test/direction?origin=10.75,106.67"
+                                + "&destination=10.8,106.72&vehicle=car&alternatives=true&api_key=test-api-key"))
+                .andExpect(method(GET))
+                .andRespond(withSuccess("""
+                        {"routes": [{"legs": [{"distance": {"value": 1000}, "duration": {"value": 120}}],
+                        "overview_polyline": {"points": "alt-route"}}]}
+                        """, MediaType.APPLICATION_JSON));
+
+        DirectionsResponse response = client.getDirections(
+                new LatLng(10.75, 106.67),
+                new LatLng(10.80, 106.72),
+                true);
+
+        assertEquals("alt-route", response.getRoutes().getFirst().getPolyline());
+        server.verify();
+    }
+
+    @Test
     void retriesTwiceAfterTimeoutAndReturnsTheSuccessfulResponse() {
         RestClient.Builder builder = RestClient.builder().baseUrl("https://goong.test");
         MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();

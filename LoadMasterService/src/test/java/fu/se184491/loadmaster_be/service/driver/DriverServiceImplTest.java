@@ -527,30 +527,41 @@ class DriverServiceImplTest {
     }
 
     @Test
-    void completingStopReturnsPackagesWithAnIssue() {
+    void completingStopStillNeedsUnloadWhenThePackageHasAnIssue() {
+        trip.setStatus(TripStatus.IN_TRANSIT);
+        DeliveryStop stop = DeliveryStop.builder().id(30L).trip(trip).stopSequence(1)
+                .status(DeliveryStopStatus.ARRIVED).build();
+        CargoPackage refused = CargoPackage.builder().id(2L).status(PackageStatus.LOADED).build();
+        when(deliveryStopRepository.findById(30L)).thenReturn(Optional.of(stop));
+        when(tripPackageResolver.packagesOfStop(30L)).thenReturn(List.of(refused));
+        when(unloadConfirmationRepository.existsByCargoPackageId(2L)).thenReturn(false);
+
+        assertThrows(fu.se184491.loadmaster_be.exception.IncompleteStopException.class, () -> service.completeStop(30L, null));
+        assertEquals(PackageStatus.LOADED, refused.getStatus());
+        assertEquals(DeliveryStopStatus.ARRIVED, stop.getStatus());
+    }
+
+    @Test
+    void completingStopDeliversPackagesThatHaveAnIssue() {
         trip.setStatus(TripStatus.IN_TRANSIT);
         DeliveryStop stop = DeliveryStop.builder().id(30L).trip(trip).stopSequence(1)
                 .status(DeliveryStopStatus.ARRIVED).build();
         DeliveryStop next = DeliveryStop.builder().id(31L).trip(trip).stopSequence(2)
                 .status(DeliveryStopStatus.PENDING).build();
         CargoPackage delivered = CargoPackage.builder().id(1L).build();
-        CargoPackage refused = CargoPackage.builder().id(2L).status(PackageStatus.LOADED).build();
-        DeliveryIssue issue = DeliveryIssue.builder().id(50L).cargoPackage(refused).deliveryStop(stop)
-                .kind(DeliveryIssueKind.REFUSED).build();
+        CargoPackage withIssue = CargoPackage.builder().id(2L).status(PackageStatus.DELIVERED).build();
         when(deliveryStopRepository.findById(30L)).thenReturn(Optional.of(stop));
-        when(deliveryIssueRepository.findByDeliveryStopIdOrderByReportedAtAsc(30L)).thenReturn(List.of(issue));
-        when(tripPackageResolver.packagesOfStop(30L)).thenReturn(List.of(delivered, refused));
+        when(tripPackageResolver.packagesOfStop(30L)).thenReturn(List.of(delivered, withIssue));
         when(unloadConfirmationRepository.existsByCargoPackageId(1L)).thenReturn(true);
-        when(unloadConfirmationRepository.existsByCargoPackageId(2L)).thenReturn(false);
+        when(unloadConfirmationRepository.existsByCargoPackageId(2L)).thenReturn(true);
         when(deliveryStopRepository.findFirstByTripIdAndStatusNotOrderByStopSequenceAsc(10L, DeliveryStopStatus.COMPLETED))
                 .thenReturn(Optional.of(next));
 
         CompleteStopResponse response = service.completeStop(30L, null);
 
-        assertEquals(1, response.getDeliveredCount());
-        assertEquals(1, response.getReturnedCount());
-        assertEquals(Boolean.TRUE, issue.getReturned());
-        assertEquals(PackageStatus.RETURNED, refused.getStatus());
+        assertEquals(2, response.getDeliveredCount());
+        assertEquals(0, response.getReturnedCount());
+        assertEquals(PackageStatus.DELIVERED, withIssue.getStatus());
         assertEquals(DeliveryStopStatus.COMPLETED, stop.getStatus());
         assertEquals(31L, response.getNextStopId());
     }

@@ -26,6 +26,18 @@ public class RoutePlanDetailResponse {
 
     private Boolean isActive;
 
+    private String runId;
+
+    private String candidateLabel;
+
+    private String objective;
+
+    private Boolean approved;
+
+    private List<Long> orderedStops;
+
+    private List<Long> deadlineMissedStops;
+
     private LocalDateTime createdAt;
 
     private List<RouteLegResponse> legs;

@@ -51,14 +51,22 @@ public class GoongMapsClient {
     }
 
     public DirectionsResponse getDirections(LatLng origin, LatLng destination) {
+        return getDirections(origin, destination, false);
+    }
+
+    public DirectionsResponse getDirections(LatLng origin, LatLng destination, boolean alternatives) {
         return executeWithTimeoutRetry(() -> restClient.get()
-                .uri(uriBuilder -> uriBuilder
-                        .path("/direction")
-                        .queryParam("origin", coordinate(origin))
-                        .queryParam("destination", coordinate(destination))
-                        .queryParam("vehicle", "car")
-                        .queryParam("api_key", apiKey)
-                        .build())
+                .uri(uriBuilder -> {
+                    var uri = uriBuilder
+                            .path("/direction")
+                            .queryParam("origin", coordinate(origin))
+                            .queryParam("destination", coordinate(destination))
+                            .queryParam("vehicle", "car");
+                    if (alternatives) {
+                        uri.queryParam("alternatives", "true");
+                    }
+                    return uri.queryParam("api_key", apiKey).build();
+                })
                 .header(API_KEY_HEADER, apiKey)
                 .retrieve()
                 .body(DirectionsResponse.class));

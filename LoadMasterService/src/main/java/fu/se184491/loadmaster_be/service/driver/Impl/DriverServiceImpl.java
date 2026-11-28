@@ -383,21 +383,12 @@ public class DriverServiceImpl implements DriverService {
             throw new AppException(ErrorCode.MANUAL_CONFIRM_PENDING);
         }
 
-        // Kiện đã báo sự cố (khách từ chối, hỏng, thiếu…) không phải dỡ: hoàn tất điểm thì kiện chưa dỡ là hoàn trả
-        Map<Long, DeliveryIssue> issueById = new HashMap<>();
-        for (DeliveryIssue issue : deliveryIssueRepository.findByDeliveryStopIdOrderByReportedAtAsc(stopId)) {
-            if (issue.getCargoPackage() != null) {
-                issueById.put(issue.getCargoPackage().getId(), issue);
-            }
-        }
+        // Sự cố chỉ là ghi nhận: mọi kiện của điểm vẫn phải dỡ và giao cho bên nhận — không giữ trên xe
         int unconfirmedCount = 0;
         int deliveredCount = 0;
-        List<DeliveryIssue> returnedIssues = new ArrayList<>();
         for (CargoPackage pkg : tripPackageResolver.packagesOfStop(stopId)) {
             if (unloadConfirmationRepository.existsByCargoPackageId(pkg.getId())) {
                 deliveredCount++;
-            } else if (issueById.containsKey(pkg.getId())) {
-                returnedIssues.add(issueById.get(pkg.getId()));
             } else {
                 unconfirmedCount++;
             }
@@ -406,14 +397,6 @@ public class DriverServiceImpl implements DriverService {
         pickupDriverService.requireComplete(stop);
         if (unconfirmedCount > 0) {
             throw new IncompleteStopException("Điểm dừng chưa hoàn tất: còn " + unconfirmedCount + " kiện hàng chưa được dỡ");
-        }
-        for (DeliveryIssue issue : returnedIssues) {
-            issue.setReturned(Boolean.TRUE);
-            deliveryIssueRepository.save(issue);
-            // Kiện ở lại xe, được chở về kho: hoàn trả
-            CargoPackage returned = issue.getCargoPackage();
-            returned.setStatus(PackageStatus.RETURNED);
-            cargoPackageRepository.save(returned);
         }
 
         if (stop.getActualArrival() == null) {
@@ -433,8 +416,7 @@ public class DriverServiceImpl implements DriverService {
                 .newValues(Map.of(
                         "stopId", stop.getId(),
                         "tripId", trip.getId(),
-                        "delivered", deliveredCount,
-                        "returned", returnedIssues.size()
+                        "delivered", deliveredCount
                 ))
                 .createdAt(Instant.now())
                 .build();
@@ -483,7 +465,7 @@ public class DriverServiceImpl implements DriverService {
                 .tripStatus(tripStatus != null ? tripStatus.name() : null)
                 .tripCompleted(tripCompleted)
                 .deliveredCount(deliveredCount)
-                .returnedCount(returnedIssues.size())
+                .returnedCount(0)
                 .message(tripCompleted
                         ? "Điểm giao cuối cùng đã hoàn tất, chuyến đi đã giao thành công (DELIVERED)"
                         : "Điểm giao hàng đã hoàn thành thành công, đã kích hoạt điểm dừng tiếp theo")

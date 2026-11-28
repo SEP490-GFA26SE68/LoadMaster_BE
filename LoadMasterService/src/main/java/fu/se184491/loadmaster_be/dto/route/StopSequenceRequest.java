@@ -38,7 +38,12 @@ public class StopSequenceRequest {
             double lat,
             double lng,
             LocalDateTime deadline,
-            int packageCount
+            int packageCount,
+            int priority
     ) {
+        /** Mặc định ưu tiên Bình thường (D-93 = 2) khi chỗ gọi cũ chưa truyền. */
+        public Stop(Long id, double lat, double lng, LocalDateTime deadline, int packageCount) {
+            this(id, lat, lng, deadline, packageCount, 2);
+        }
     }
 }

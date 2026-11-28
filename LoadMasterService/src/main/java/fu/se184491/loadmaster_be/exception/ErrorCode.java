@@ -339,6 +339,8 @@ public enum ErrorCode {
     ROUTE_PLAN_NOT_FOUND("Không tìm thấy kế hoạch lộ trình", HttpStatus.NOT_FOUND),
     ROUTE_LEG_NOT_FOUND("Không tìm thấy chặng lộ trình", HttpStatus.NOT_FOUND),
     ROUTE_SUGGESTION_NOT_FOUND("Không tìm thấy đề xuất đổi tuyến", HttpStatus.NOT_FOUND),
+    ROUTE_PLAN_ALREADY_APPROVED("Phương án tuyến này đã được duyệt", HttpStatus.BAD_REQUEST),
+    ROUTE_PLAN_NOT_CANDIDATE("Chỉ duyệt được phương án tuyến A · B · C của lần tối ưu", HttpStatus.BAD_REQUEST),
 
     // -------------------------------------------------------------------------
     // Partner Contract & Support Guest errors (Sprint 4)

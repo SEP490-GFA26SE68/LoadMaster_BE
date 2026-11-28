@@ -46,6 +46,14 @@ public class RoutePlanWriter {
         }
     }
 
+    public record CandidateMeta(
+            String runId,
+            String candidateLabel,
+            String objective,
+            Map<String, Object> proposalJson
+    ) {
+    }
+
     @Transactional
     public RoutePlan persistNewActivePlan(
             Trip trip,
@@ -53,17 +61,47 @@ public class RoutePlanWriter {
             Integer totalDurationSeconds,
             List<LegDraft> legs
     ) {
-        routePlanRepository.deactivateAllByTripId(trip.getId());
+        return persistPlan(trip, totalDistanceMeters, totalDurationSeconds, legs, true, null);
+    }
+
+    @Transactional
+    public RoutePlan persistCandidate(
+            Trip trip,
+            Integer totalDistanceMeters,
+            Integer totalDurationSeconds,
+            List<LegDraft> legs,
+            CandidateMeta meta
+    ) {
+        return persistPlan(trip, totalDistanceMeters, totalDurationSeconds, legs, false, meta);
+    }
+
+    private RoutePlan persistPlan(
+            Trip trip,
+            Integer totalDistanceMeters,
+            Integer totalDurationSeconds,
+            List<LegDraft> legs,
+            boolean active,
+            CandidateMeta meta
+    ) {
+        if (active) {
+            routePlanRepository.deactivateAllByTripId(trip.getId());
+        }
 
         int nextVersion = routePlanRepository.findByTripId(trip.getId()).size() + 1;
-        RoutePlan plan = RoutePlan.builder()
+        RoutePlan.RoutePlanBuilder builder = RoutePlan.builder()
                 .trip(trip)
                 .planVersion(nextVersion)
                 .totalDistanceMeters(totalDistanceMeters)
                 .totalDurationSeconds(totalDurationSeconds)
-                .isActive(true)
-                .build();
-        RoutePlan saved = routePlanRepository.save(plan);
+                .isActive(active)
+                .approved(false);
+        if (meta != null) {
+            builder.runId(meta.runId())
+                    .candidateLabel(meta.candidateLabel())
+                    .objective(meta.objective())
+                    .proposalJson(meta.proposalJson());
+        }
+        RoutePlan saved = routePlanRepository.save(builder.build());
 
         List<RouteLeg> toSave = new ArrayList<>();
         if (legs != null) {
