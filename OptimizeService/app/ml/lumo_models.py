@@ -29,6 +29,7 @@ from app.constant.optimization.plan_algorithm import PlanAlgorithm
 from app.dto.optimization.engine.engine_response import EngineOptimizationResponse, PlacementData
 from app.dto.optimization.engine.problem_request import ProblemRequest
 from app.service.optimize import plan_score
+from app.service.optimize import job_progress
 from app.service.optimize.constraint_engine import ConstraintEngine
 
 logger = logging.getLogger(__name__)
@@ -176,6 +177,7 @@ def _run_lookahead(problem: ProblemRequest, lm_problem, best: dict, cost: dict, 
         return None
     from app.ml.lmai.lookahead import Lookahead
 
+    job_progress.stage(job_progress.IMPROVING, code)
     model, env_cfg = _load(code)
     la = Lookahead(model, env_cfg, topk=3, use_heur=True, time_limit=limit, profile=_lmai_profile(problem),
                    strict_limit=True)
@@ -248,6 +250,7 @@ def run_lumo_models(
             logger.warning("%s skipped: không nạp được mô hình (%s)", code, exc)
             continue
         started[code] = time.monotonic()
+        job_progress.stage(job_progress.IMPROVING, code)
         try:
             best[code] = _rollout(model, env_cfg, lm_problem)
         except Exception as exc:
@@ -264,6 +267,7 @@ def run_lumo_models(
             if time.monotonic() + cost[code] > end:
                 continue
             model, env_cfg = _load(code)
+            job_progress.stage(job_progress.IMPROVING, code)
             try:
                 sampled = _rollout(model, env_cfg, lm_problem, generator=generator)
             except Exception as exc:
@@ -304,6 +308,7 @@ def run_lumo_models(
             logger.warning("%s: bỏ cách xếp vì ConstraintEngine của service từ chối (%s)", code, reason)
             continue
         out.layouts.append(layout)
+        job_progress.layout_done(layout)
         logger.info(
             "%s: %d/%d kiện, thể tích %.4f, greedy %.2fs",
             code, len(layout.placements), len(problem.packages),

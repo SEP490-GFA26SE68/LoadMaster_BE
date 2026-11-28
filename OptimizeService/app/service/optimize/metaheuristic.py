@@ -36,6 +36,7 @@ from app.constant.optimization.plan_algorithm import PlanAlgorithm
 from app.dto.optimization.engine.engine_response import EngineOptimizationResponse
 from app.dto.optimization.engine.problem_request import ProblemRequest
 from app.service.optimize import plan_score
+from app.service.optimize import job_progress
 from app.service.optimize.candidate_plans import (
     LayoutStrategy,
     axle_imbalance,
@@ -150,6 +151,7 @@ class _Search:
         )
         # Ước lượng thời gian giải mã theo lần chậm nhất gần đây (không để vượt hạn chót).
         self.decode_estimate = max(self.decode_estimate * 0.8, time.monotonic() - t0)
+        job_progress.layout_done(result)
         self.cache[key] = result
         return result, True
 
@@ -282,6 +284,7 @@ def run_ga_sa(
     sa_limit = max(0, max_evaluations - ga_limit) if run_sa else 0
 
     # ---------------------------------------------------------------- GA
+    job_progress.stage(job_progress.IMPROVING, PlanAlgorithm.GA.value)
     population: list[tuple[Genome, float]] = []
     for strategy, layout in ep_runs:
         genome = search.seed_genome(strategy)
@@ -327,6 +330,7 @@ def run_ga_sa(
 
     # ---------------------------------------------------------------- SA
     if run_sa and population:
+        job_progress.stage(job_progress.IMPROVING, PlanAlgorithm.SA.value)
         current, current_score = max(population, key=lambda item: item[1])
         temperature = SA_T0
         sa_used = 0

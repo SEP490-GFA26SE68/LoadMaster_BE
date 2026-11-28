@@ -68,6 +68,10 @@ public class OptimizationJob {
     @Column(name = "data_warnings", columnDefinition = "jsonb", insertable = false, updatable = false)
     private String dataWarnings;
 
+    /** Tiến độ sống của lần chạy đang RUNNING (JSON, do OptimizeService ghi; V58, trống = chưa báo gì). Java chỉ đọc. */
+    @Column(name = "progress", columnDefinition = "jsonb", insertable = false, updatable = false)
+    private String progress;
+
     @Column(name = "execution_generation")
     private Long executionGeneration;
     @org.hibernate.annotations.JdbcTypeCode(org.hibernate.type.SqlTypes.TIMESTAMP_WITH_TIMEZONE)

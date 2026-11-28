@@ -30,6 +30,7 @@ from app.constant.optimization.violation_codes import LIFO_BLOCKED, MUST_LOAD_UN
 from app.service.optimize.load_balance_search import LoadBalanceSearch, validate_plan
 from app.service.optimize.load_order import loading_order
 from app.service.optimize import plan_score
+from app.service.optimize import job_progress
 from app.service.optimize.placement_facts import annotate_result
 from app.service.optimize.constraint_engine import ConstraintEngine
 from app.service.optimize.unload_feasibility_validator import (
@@ -130,6 +131,7 @@ class OptimizationClient:
         # Cách xếp mang nhãn EP_DBLF phải là EP thuần: gói có Lumo chấm điểm thì tắt nó ở đây
         # (Lumo-R1.1 chấm chỗ đặt là một cách xếp riêng, EP_LUMO_R1_1).
         ep_kwargs = {"use_lumo_scorer": False} if uses_lumo(problem.algorithm_name) else {}
+        job_progress.stage(job_progress.BUILDING, PlanAlgorithm.EP_DBLF.value)
         reserve = check_reserve_sec(problem)
         lmai_built = False
         built = None
@@ -144,6 +146,8 @@ class OptimizationClient:
                 built = None
             if built is not None and built.layouts:
                 layouts += built.layouts
+                for layout in built.layouts:
+                    job_progress.layout_done(layout)
                 ep_runs += built.ep_runs
                 lmai_built = True
             elif built is not None:
@@ -157,6 +161,7 @@ class OptimizationClient:
             layout = self.solve_in_process(problem, strategy=strategy, job_deadline=deadline, **ep_kwargs)
             layout = layout.model_copy(update={"algorithm_name": PlanAlgorithm.EP_DBLF.value})
             layouts.append(layout)
+            job_progress.layout_done(layout)
             ep_runs.append((strategy, layout))
         tried.append(PlanAlgorithm.EP_DBLF.value)
 
@@ -164,6 +169,7 @@ class OptimizationClient:
             layouts += self._advanced_layouts(problem, allowed, ep_runs, start, deadline, tried,
                                               lmai=built if lmai_built else None)
 
+        job_progress.stage(job_progress.SELECTING)
         candidates = pick_candidates(layouts, problem.vehicle, problem)
         if plan_score.enabled():
             candidates = [c.model_copy(update={"result": annotate_result(problem, c.result, score_data=c.result.plan_score)})
@@ -223,9 +229,11 @@ class OptimizationClient:
             except Exception as exc:
                 logger.warning("EP_LUMO_R1_1 skipped: %s", exc)
             if scorer is not None:
+                job_progress.stage(job_progress.IMPROVING, P.EP_LUMO_R1_1.value)
                 layout = self.solve_in_process(problem, strategy=LayoutStrategy.CENTER_FIRST,
                                                use_lumo_scorer=True, quiet=True, job_deadline=deadline)
                 layouts.append(layout.model_copy(update={"algorithm_name": P.EP_LUMO_R1_1.value}))
+                job_progress.layout_done(layout)
                 tried.append(P.EP_LUMO_R1_1.value)
             else:
                 logger.info("EP_LUMO_R1_1 skipped: Lumo-R1.1 scorer unavailable (torch or weights missing)")
@@ -234,10 +242,13 @@ class OptimizationClient:
                 and time.monotonic() < deadline):
             from app.service.optimize.lmai_sa import run_lmai_sa
 
+            job_progress.stage(job_progress.IMPROVING, P.SA.value)
             try:
                 meta = run_lmai_sa(problem, self, lmai, lmai_target(start, deadline) - SA_END_MARGIN_SEC)
                 tried.extend(meta.tried)
                 layouts += meta.layouts
+                for layout in meta.layouts:
+                    job_progress.layout_done(layout)
             except Exception as exc:  # SA mới hỏng không được làm hỏng job
                 logger.warning("lmai SA failed: %s", exc)
             return layouts

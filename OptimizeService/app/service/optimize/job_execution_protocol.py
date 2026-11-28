@@ -4,7 +4,7 @@ Legacy NULL metadata is never upgraded implicitly. No automatic same-UUID restar
 """
 from dataclasses import dataclass
 from datetime import timedelta
-from sqlalchemy import select, func
+from sqlalchemy import select, func, update
 from fastapi import HTTPException
 from app.entity.optimization.optimization_job import OptimizationJob
 from app.exception.app_exception import AppException
@@ -116,6 +116,20 @@ class JobExecutionProtocol:
             if now >= absolute:
                 raise OwnershipLost("Absolute execution deadline exceeded")
             job.lease_expires_at = min(now + self.lease, absolute)
+
+    def write_progress(self, uuid, generation, progress) -> bool:
+        """Ghi tiến độ sống (V58) cho đúng lần chạy đang RUNNING. Không đụng lease, không chờ khoá:
+        hàng đang bị heartbeat / finalize khoá thì bỏ lượt này (False), job đã cuối thì không ghi gì."""
+        with self.sessions() as db, db.begin():
+            target = (select(OptimizationJob.id)
+                      .where(OptimizationJob.job_uuid == uuid,
+                             OptimizationJob.execution_generation == generation,
+                             OptimizationJob.status == "RUNNING")
+                      .with_for_update(skip_locked=True)
+                      .scalar_subquery())
+            result = db.execute(update(OptimizationJob).where(OptimizationJob.id == target)
+                                .values(progress=progress).execution_options(synchronize_session=False))
+            return bool(result.rowcount)
 
     def finalize(self, uuid, generation, status, write_result=None, failure_code=None, computation_ms=None):
         if status not in TERMINAL:
