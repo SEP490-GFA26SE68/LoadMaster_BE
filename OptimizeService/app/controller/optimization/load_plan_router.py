@@ -96,7 +96,14 @@ def approve_plan(
         _ensure_caller_company(caller, [id], service, db)
         # Người duyệt là tài khoản ứng với sub của token (approved_by là users.id, không phải UUID của Keycloak)
         user_id = user_id_of_caller(caller, db)
-    plan = service.approve_plan(plan_id=id, current_user_id=user_id, db=db)
+    if is_backend_service(caller):
+        plan = service.approve_plan(plan_id=id, current_user_id=user_id, db=db)
+    else:
+        company_id = company_of_caller(caller, db)
+        if company_id is None:
+            raise AppException(ErrorCode.LOAD_PLAN_NOT_FOUND)
+        plan = service.approve_plan(plan_id=id, current_user_id=user_id, db=db,
+                                    expected_company_id=company_id)
     response_dto = service.to_response(plan, db)
 
     return ApiResponse.ok(

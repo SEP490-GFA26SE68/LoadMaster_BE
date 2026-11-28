@@ -51,6 +51,7 @@ class LoadPlanService:
         plan_id: Union[int, str],
         current_user_id: Optional[Union[int, str]],
         db: Session,
+        expected_company_id: Optional[int] = None,
     ) -> LoadPlan:
         """
         Duyệt kế hoạch xếp hàng (S3-11).
@@ -72,6 +73,36 @@ class LoadPlanService:
         if not plan:
             raise AppException(ErrorCode.LOAD_PLAN_NOT_FOUND)
 
+        # The Python writer owns the final transaction for every approval entry point.
+        # Lock Trip before Plan, matching loading/departure and mutation writers.
+        from app.entity.trip_model import Trip
+        from app.entity.optimization.optimization_job import OptimizationJob
+        job = db.query(OptimizationJob).filter(OptimizationJob.id == plan.job_id).first()
+        if job is None or job.trip_id is None:
+            raise AppException(ErrorCode.LOAD_PLAN_NOT_FOUND)
+        trip = (db.query(Trip).filter(Trip.id == job.trip_id)
+                .populate_existing().with_for_update().first())
+        if trip is None:
+            raise AppException(ErrorCode.LOAD_PLAN_NOT_FOUND)
+        # Every plan writer must acquire sibling rows in the same order. Locking only
+        # the target first can deadlock with a bulk stale writer holding an older plan.
+        trip_job_ids = db.query(OptimizationJob.id).filter(OptimizationJob.trip_id == trip.id)
+        locked_plans = (db.query(LoadPlan).filter(LoadPlan.job_id.in_(trip_job_ids))
+                        .order_by(LoadPlan.id).populate_existing().with_for_update().all())
+        plan = next((candidate for candidate in locked_plans if candidate.id == plan.id), None)
+        if plan is None or plan.job_id != job.id:
+            raise AppException(ErrorCode.LOAD_PLAN_NOT_FOUND)
+        # User identity is resolved from the verified principal by the router, not request data.
+        # Backend service callers retain Spring's existing authenticated tenant precheck.
+        if expected_company_id is not None and trip.company_id != expected_company_id:
+            raise AppException(ErrorCode.LOAD_PLAN_NOT_FOUND)
+        if (trip.company_id is not None and job.company_id is not None
+                and str(trip.company_id) != str(job.company_id)):
+            raise AppException(ErrorCode.LOAD_PLAN_NOT_FOUND)
+        if plan.stale is True:
+            raise AppException(ErrorCode.PLAN_STALE)
+        if trip.status != "PLANNED":
+            raise AppException(ErrorCode.PLAN_TRIP_NOT_PLANNED)
         if plan.approved:
             raise AppException(ErrorCode.PLAN_ALREADY_APPROVED)
 

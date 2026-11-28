@@ -33,6 +33,8 @@ class ErrorCode(str, Enum):
     AUTH_ERROR = ("AUTH_ERROR", "Lỗi xác thực với Engine tối ưu", 401)
     AUTH_FORBIDDEN = ("AUTH_FORBIDDEN", "Không có quyền gọi Engine tối ưu", 403)
     LOAD_PLAN_NOT_FOUND = ("LOAD_PLAN_NOT_FOUND", "Không tìm thấy kế hoạch xếp hàng", 404)
+    PLAN_STALE = ("PLAN_STALE", "Load plan is stale", 409)
+    PLAN_TRIP_NOT_PLANNED = ("PLAN_TRIP_NOT_PLANNED", "Trip must be PLANNED to approve a load plan", 409)
     PLAN_ALREADY_APPROVED = ("PLAN_ALREADY_APPROVED", "Kế hoạch xếp hàng này đã được phê duyệt", 400)
     PLAN_HAS_NO_PLACEMENTS = ("PLAN_HAS_NO_PLACEMENTS", "Kế hoạch xếp hàng không có kiện hàng nào", 400)
     PLAN_LIFO_INVALID = ("PLAN_LIFO_INVALID", "Thứ tự dỡ hàng LIFO không hợp lệ", 400)
