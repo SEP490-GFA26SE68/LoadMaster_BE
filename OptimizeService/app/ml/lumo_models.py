@@ -48,6 +48,8 @@ LOOKAHEAD_MIN_SEC = 1.0      # còn ít hơn chừng này thì không chạy "bi
 LOOKAHEAD_TAIL = 2.0         # phần giữ = LOOKAHEAD_TAIL × lượt greedy + CHECK_SEC: phần đi nốt bằng greedy sau giờ
                              # (≤ 1 lượt) + sai số ước tính; lượt thử chỉ mở khi ước tính xong trước giờ (strict_limit)
 LOOKAHEAD_CHECK_SEC = 1.0    # phần giữ cho bước kiểm lại bằng luật của service
+# lý do evaluate_fixed_layout trả khi bước kiểm hết giờ (không phải vi phạm ràng buộc)
+CHECK_TIMEOUTS = frozenset({"OPTIMIZATION_TIME_LIMIT_REACHED", "UNLOAD_TIME_LIMIT_REACHED"})
 
 
 @dataclass
@@ -105,8 +107,9 @@ def _load(code: str):
         raise
 
 
-def _rollout(model, env_cfg, lm_problem, generator=None):
-    """Một lượt xếp của mô hình: greedy khi không có generator, lấy mẫu theo xác suất khi có."""
+def _rollout(model, env_cfg, lm_problem, generator=None, stop_at: Optional[float] = None):
+    """Một lượt xếp của mô hình: greedy khi không có generator, lấy mẫu theo xác suất khi có.
+    `stop_at` (time.monotonic): quá lúc này mà chưa xếp xong thì bỏ lượt, trả None (không chạy quá hạn job)."""
     import torch
 
     from app.ml.lmai.env import PackingEnv
@@ -119,6 +122,8 @@ def _rollout(model, env_cfg, lm_problem, generator=None):
         return env.result("AI")
     with torch.inference_mode():
         while True:
+            if stop_at is not None and time.monotonic() >= stop_at:
+                return None
             logits, _ = model(obs_to_torch(_stack([obs]), "cpu"))
             if generator is None:
                 action = int(logits[0].argmax().item())
@@ -203,8 +208,10 @@ def run_lumo_models(
     target: Optional[float] = None,
 ) -> LumoRun:
     """Chạy các mô hình trong `codes` (thứ tự giữ nguyên) trên bài toán, trả cách xếp đã kiểm lại.
-    `target` (time.monotonic): hạn riêng cho "biết tính trước" (M11) = min(hạn job, lúc bắt đầu job + LMAI_JOB_TARGET_SEC);
-    greedy / lấy mẫu vẫn theo `deadline` như trước."""
+    `target` (time.monotonic): hạn riêng cho "biết tính trước" (M11) = min(hạn job, lúc bắt đầu job + LMAI_JOB_TARGET_SEC).
+    `deadline` (hạn job): mọi lượt xếp phải xong trước deadline − phần giữ cho bước kiểm (check_reserve_sec, như bộ dựng
+    EP); lượt chưa xong lúc đó bị bỏ; không mở lượt khi lượt lâu nhất đã thấy không kịp; bước kiểm của service dừng ở
+    deadline (hết giờ = bỏ cách xếp, TIME_LIMIT). Trước đây bài rất lớn (230–290 kiện) có job ULTIMATE 64–75 s."""
     out = LumoRun()
     codes = [c for c in codes if c in MODEL_FILES]
     if not codes:
@@ -228,8 +235,12 @@ def run_lumo_models(
 
     start = time.monotonic()
     end = start + float(settings.LUMO_TIME_BUDGET_SEC)
+    stop: Optional[float] = None      # lúc mọi lượt xếp phải xong (để kịp bước kiểm trước hạn job)
     if deadline is not None:
-        end = min(end, deadline)
+        from app.service.optimize.optimization_client import check_reserve_sec
+
+        stop = deadline - check_reserve_sec(problem)
+        end = min(end, stop)
     samples = int(settings.LUMO_SAMPLES) if samples is None else samples
     # Luật ràng buộc của lmai theo cờ PHYSICS_RULES_V2 của service (tắt: luật cũ, như trước khi đồng bộ).
     lm_problem = Problem.from_request(problem.model_dump(mode="json"), physics_v2=ConstraintEngine.physics_v2())
@@ -239,7 +250,9 @@ def run_lumo_models(
     cost: dict[str, float] = {}
     started: dict[str, float] = {}
     for code in codes:
-        if time.monotonic() >= end:
+        now = time.monotonic()
+        longest = max(cost.values(), default=0.0)   # các mô hình cùng cỡ: lượt lâu nhất đã thấy ≈ lượt này
+        if now >= end or (stop is not None and now + longest > stop):
             out.skipped[code] = "TIME_LIMIT"
             logger.info("%s skipped: hết thời gian", code)
             continue
@@ -252,11 +265,16 @@ def run_lumo_models(
         started[code] = time.monotonic()
         job_progress.stage(job_progress.IMPROVING, code)
         try:
-            best[code] = _rollout(model, env_cfg, lm_problem)
+            result = _rollout(model, env_cfg, lm_problem, stop_at=stop)
         except Exception as exc:
             out.skipped[code] = "INFERENCE_FAILED"
             logger.warning("%s skipped: lỗi khi suy luận (%s)", code, exc)
             continue
+        if result is None:
+            out.skipped[code] = "TIME_LIMIT"
+            logger.info("%s skipped: chưa xếp xong khi tới hạn (%.1fs)", code, time.monotonic() - started[code])
+            continue
+        best[code] = result
         cost[code] = time.monotonic() - started[code]
         out.tried.append(code)
 
@@ -269,9 +287,11 @@ def run_lumo_models(
             model, env_cfg = _load(code)
             job_progress.stage(job_progress.IMPROVING, code)
             try:
-                sampled = _rollout(model, env_cfg, lm_problem, generator=generator)
+                sampled = _rollout(model, env_cfg, lm_problem, generator=generator, stop_at=stop)
             except Exception as exc:
                 logger.warning("%s: bỏ lượt lấy mẫu lỗi (%s)", code, exc)
+                continue
+            if sampled is None:
                 continue
             if _plan_score(sampled, problem) > _plan_score(best[code], problem):
                 best[code] = sampled
@@ -280,7 +300,7 @@ def run_lumo_models(
     fallback: dict[str, object] = {}
     if settings.OPTIMIZATION_LMAI_LOOKAHEAD_ENABLED and LOOKAHEAD_CODE in best:
         try:
-            la_end = deadline if target is None else (target if deadline is None else min(deadline, target))
+            la_end = stop if target is None else (target if stop is None else min(stop, target))
             previous = _run_lookahead(problem, lm_problem, best, cost, la_end)
             if previous is not None:
                 fallback[LOOKAHEAD_CODE] = previous
@@ -294,18 +314,22 @@ def run_lumo_models(
             logger.info("%s: phương án bị bộ kiểm của lmai từ chối (%s)", code, result.verdict.reasons())
             continue
         layout, reason = client.evaluate_fixed_layout(
-            problem, _to_placements(result), code, started_at=time.time() - cost[code]
+            problem, _to_placements(result), code, started_at=time.time() - cost[code], deadline=deadline
         )
-        if layout is None and code in fallback and fallback[code].verdict.valid:
+        if layout is None and reason not in CHECK_TIMEOUTS and code in fallback and fallback[code].verdict.valid:
             # lmai và service chưa khớp tuyệt đối: phương án "biết tính trước" bị từ chối thì lùi về phương án trước đó
             logger.warning("%s: luật của service từ chối phương án biết tính trước (%s) → dùng phương án greedy",
                            code, reason)
             layout, reason = client.evaluate_fixed_layout(
-                problem, _to_placements(fallback[code]), code, started_at=time.time() - cost[code]
+                problem, _to_placements(fallback[code]), code, started_at=time.time() - cost[code], deadline=deadline
             )
         if layout is None:
-            out.skipped[code] = "CONSTRAINT_VIOLATED"
-            logger.warning("%s: bỏ cách xếp vì ConstraintEngine của service từ chối (%s)", code, reason)
+            if reason in CHECK_TIMEOUTS:
+                out.skipped[code] = "TIME_LIMIT"
+                logger.info("%s: bỏ cách xếp vì bước kiểm chưa xong khi tới hạn job (%s)", code, reason)
+            else:
+                out.skipped[code] = "CONSTRAINT_VIOLATED"
+                logger.warning("%s: bỏ cách xếp vì ConstraintEngine của service từ chối (%s)", code, reason)
             continue
         out.layouts.append(layout)
         job_progress.layout_done(layout)
