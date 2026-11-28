@@ -2,6 +2,7 @@ package fu.se184491.loadmaster_be.service.payroll;
 
 import fu.se184491.loadmaster_be.dto.request.payroll.CompanyPayrollRateRequest;
 import fu.se184491.loadmaster_be.dto.request.payroll.DriverBaseSalaryRequest;
+import fu.se184491.loadmaster_be.dto.request.payroll.DriverPayrollPenaltyRequest;
 import fu.se184491.loadmaster_be.dto.request.payroll.SetTripPayrollDriversRequest;
 import fu.se184491.loadmaster_be.dto.response.payroll.CompanyPayrollRateResponse;
 import fu.se184491.loadmaster_be.dto.response.payroll.DriverBaseSalaryResponse;
@@ -36,4 +37,7 @@ public interface DriverPayrollService {
     PayrollPeriodResponse lockPeriod(Long companyId, String period);
 
     PayrollPeriodResponse unlockPeriod(Long companyId, String period);
+
+    /** Tiền phạt quản lý nhập tay cho một tài xế trong tháng (0 = bỏ phạt); chỉ bảng nháp. */
+    PayrollPeriodResponse setDriverPenalty(Long companyId, String period, Long driverId, DriverPayrollPenaltyRequest request);
 }

@@ -110,6 +110,7 @@ class MyPayrollToolTest {
                 PayrollPeriodStatus.LOCKED, 42L, "Trần Minh Khoa", new BigDecimal("8000000"), new BigDecimal("42000"),
                 new BigDecimal("300"), new BigDecimal("1260000"), new BigDecimal("10"), new BigDecimal("50"),
                 new BigDecimal("40"), new BigDecimal("840000"), new BigDecimal("40000"), true, new BigDecimal("500000"),
+                new BigDecimal("50000"), "Giao trễ chuyến TRIP-2026-0001",
                 new BigDecimal("10600000"), lines));
 
         JsonNode out = JSON.readTree(ToolResults.json(new MyPayrollTool(currentUser, payroll).getMyPayroll("2026-10")));
@@ -120,6 +121,8 @@ class MyPayrollToolTest {
         assertThat(out.get("kpiTargetKg").decimalValue()).isEqualByComparingTo("40000");
         assertThat(out.get("kpiAchieved").asBoolean()).isTrue();
         assertThat(out.get("kpiBonusVnd").decimalValue()).isEqualByComparingTo("500000");
+        assertThat(out.get("penaltyVnd").decimalValue()).isEqualByComparingTo("50000");
+        assertThat(out.get("penaltyNote").asString()).isEqualTo("Giao trễ chuyến TRIP-2026-0001");
         assertThat(out.get("tripCount").asInt()).isEqualTo(35);
         assertThat(out.get("trips").size()).isEqualTo(MyPayrollTool.MAX_TRIPS);
         assertThat(out.get("trips").get(0).get("tripCode").asString()).isEqualTo("TRIP-2026-0001");

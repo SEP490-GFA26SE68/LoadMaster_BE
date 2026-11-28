@@ -44,7 +44,7 @@ public class SubscriptionPlanInitializer implements ApplicationRunner {
                     .price(new BigDecimal("3500000"))
                     .billingCycle(BillingCycle.MONTHLY)
                     .tier(SubscriptionTier.PRO)
-                    .monthlyCredits(15000)
+                    .monthlyCredits(10000)
                     .algorithmTier(AlgorithmTier.EP_DBLF_GA)
                     .features("[\"Tối ưu 3D nâng cao (EP-DBLF + Genetic Algorithm)\",\"10.000 Credits / tháng (2 Credits/lần đầu, 1 Credit/lần chạy lại)\",\"Tối ưu lộ trình đa điểm dừng (LIFO)\",\"Hỗ trợ kỹ thuật ưu tiên 24/7\"]")
                     .active(true)
@@ -59,15 +59,15 @@ public class SubscriptionPlanInitializer implements ApplicationRunner {
                     .price(new BigDecimal("7900000"))
                     .billingCycle(BillingCycle.MONTHLY)
                     .tier(SubscriptionTier.ULTIMATE)
-                    // Không ghi credit tháng: Ultimate không giới hạn lần tối ưu
-                    .monthlyCredits(null)
+                    // Ultimate trừ credit như mọi gói (V61): 30.000 credit/tháng
+                    .monthlyCredits(30000)
                     .algorithmTier(AlgorithmTier.EP_DBLF_GA_AI)
-                    .features("[\"Toàn bộ 3 thuật toán + AI Heuristic (EP-DBLF + GA + AI)\",\"Không giới hạn Credits\",\"Ghim kiện hàng & Rerun tinh chỉnh chỉ 1 Credit\",\"Cam kết SLA 99.5% & Chuyên gia hỗ trợ riêng\"]")
+                    .features("[\"Toàn bộ 3 thuật toán + AI Heuristic (EP-DBLF + GA + AI)\",\"30.000 Credits / tháng (2 Credits/lần đầu, 1 Credit/lần chạy lại)\",\"Ghim kiện hàng & Rerun tinh chỉnh chỉ 1 Credit\",\"Cam kết SLA 99.5% & Chuyên gia hỗ trợ riêng\"]")
                     .active(true)
                     .build();
             subscriptionPlanRepository.save(ultimatePlan);
         }
 
-        log.info("Ensured 3 default SubscriptionPlans (BASIC: 3,000 cr, PRO: 10,000 cr, ULTIMATE: unlimited)");
+        log.info("Ensured 3 default SubscriptionPlans (BASIC: 3,000 cr, PRO: 10,000 cr, ULTIMATE: 30,000 cr)");
     }
 }

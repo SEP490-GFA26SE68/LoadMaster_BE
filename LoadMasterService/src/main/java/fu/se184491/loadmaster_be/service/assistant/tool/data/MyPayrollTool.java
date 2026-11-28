@@ -40,7 +40,8 @@ public class MyPayrollTool implements AssistantTool {
                             BigDecimal baseSalaryVnd, BigDecimal totalKg, BigDecimal rateVndPerKg,
                             BigDecimal kgAmountVnd, BigDecimal commissionPercent, BigDecimal handlingFeeVndPerKg,
                             BigDecimal handlingDriverPercent, BigDecimal handlingAmountVnd, BigDecimal kpiTargetKg,
-                            Boolean kpiAchieved, BigDecimal kpiBonusVnd, BigDecimal totalSalaryVnd,
+                            Boolean kpiAchieved, BigDecimal kpiBonusVnd, BigDecimal penaltyVnd, String penaltyNote,
+                            BigDecimal totalSalaryVnd,
                             Integer tripCount, List<TripLine> trips) {
     }
 
@@ -58,7 +59,7 @@ public class MyPayrollTool implements AssistantTool {
     @Tool(name = "get_my_payroll", description = """
             Phiếu lương một tháng của chính tài xế đang hỏi: lương cứng, tổng kg đã chở, tiền theo kg, tiền bốc \
             dỡ, thưởng KPI (chỉ tiêu kg, đạt hay không, tiền thưởng — chỉ khi công ty dùng KPI), tổng lương và phần \
-            của từng chuyến. Tổng lương đã gồm thưởng KPI. calculated = false nghĩa là công ty chưa chốt kỳ: chỉ có \
+            của từng chuyến. Tổng lương đã gồm thưởng KPI và đã trừ tiền phạt (penaltyVnd, lý do ở penaltyNote — quản lý nhập tay). calculated = false nghĩa là công ty chưa chốt kỳ: chỉ có \
             lương cứng, hoa hồng, bốc dỡ và KPI hiện sau khi chốt — không tự tính. Dùng khi tài xế hỏi lương của mình.""")
     public Statement getMyPayroll(
             @ToolParam(description = "Kỳ lương dạng yyyy-MM, ví dụ 2026-11 (\"tháng này\" là tháng của hôm nay)")
@@ -75,7 +76,7 @@ public class MyPayrollTool implements AssistantTool {
                 statement.baseSalaryVnd(), statement.totalKg(), statement.rateVndPerKg(), statement.kgAmountVnd(),
                 statement.commissionPercent(), statement.handlingFeeVndPerKg(), statement.handlingDriverPercent(),
                 statement.handlingAmountVnd(), statement.kpiTargetKg(), statement.kpiAchieved(),
-                statement.kpiBonusVnd(), statement.totalSalaryVnd(),
+                statement.kpiBonusVnd(), statement.penaltyVnd(), statement.penaltyNote(), statement.totalSalaryVnd(),
                 statement.calculated() ? lines.size() : null, statement.calculated() ? trips : null);
     }
 

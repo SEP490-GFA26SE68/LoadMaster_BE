@@ -53,6 +53,15 @@ public class DriverPayroll {
     @Column(name = "kpi_amount_vnd", nullable = false, precision = 15, scale = 0)
     private BigDecimal kpiAmountVnd = BigDecimal.ZERO;
 
+    /** Tiền phạt quản lý công ty nhập tay cho tài xế này trong tháng (V60); giữ nguyên khi tính lại bảng lương. */
+    @Builder.Default
+    @Column(name = "penalty_vnd", nullable = false, precision = 15, scale = 0)
+    private BigDecimal penaltyVnd = BigDecimal.ZERO;
+
+    /** Lý do phạt, bắt buộc khi có phạt; null khi không phạt. */
+    @Column(name = "penalty_note", length = 200)
+    private String penaltyNote;
+
     @Column(name = "total_salary_vnd", nullable = false, precision = 15, scale = 0)
     private BigDecimal totalSalaryVnd;
 

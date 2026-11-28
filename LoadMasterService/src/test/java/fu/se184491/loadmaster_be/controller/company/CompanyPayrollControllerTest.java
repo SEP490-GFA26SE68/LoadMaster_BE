@@ -6,10 +6,16 @@ import org.junit.jupiter.api.Test;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
+import fu.se184491.loadmaster_be.dto.request.payroll.DriverPayrollPenaltyRequest;
+
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.ZoneId;
 
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -135,5 +141,42 @@ class CompanyPayrollControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"effectiveFrom\":\"" + nextMonth + "\",\"baseSalaryVnd\":8000000,\"rateVndPerKg\":100,\"commissionPercent\":15,\"handlingFeeVndPerKg\":150,\"handlingDriverPercent\":85}"))
                 .andExpect(status().isOk());
+    }
+
+    private static org.springframework.test.web.servlet.ResultActions putPenalty(
+            DriverPayrollService service, String body) throws Exception {
+        CurrentUserService currentUser = mock(CurrentUserService.class);
+        when(currentUser.getCurrentCompanyId()).thenReturn(10L);
+        return MockMvcBuilders.standaloneSetup(new CompanyPayrollController(service, currentUser)).build()
+                .perform(put("/api/company/payroll/periods/2026-11/drivers/21/penalty")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body));
+    }
+
+    @Test
+    void managerSetsADriversPenaltyForThatMonthOfTheirOwnCompany() throws Exception {
+        DriverPayrollService service = mock(DriverPayrollService.class);
+        putPenalty(service, "{\"penaltyVnd\":50000,\"note\":\"Giao trễ\"}").andExpect(status().isOk());
+        verify(service).setDriverPenalty(10L, "2026-11", 21L,
+                new DriverPayrollPenaltyRequest(new BigDecimal("50000"), "Giao trễ"));
+    }
+
+    @Test
+    void rejectsANegativePenalty() throws Exception {
+        DriverPayrollService service = mock(DriverPayrollService.class);
+        putPenalty(service, "{\"penaltyVnd\":-1,\"note\":\"x\"}").andExpect(status().isBadRequest());
+        verify(service, never()).setDriverPenalty(eq(10L), eq("2026-11"), eq(21L), org.mockito.ArgumentMatchers.any());
+    }
+
+    @Test
+    void rejectsAPenaltyWithFractionsOfADong() throws Exception {
+        putPenalty(mock(DriverPayrollService.class), "{\"penaltyVnd\":100.5,\"note\":\"x\"}")
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void rejectsAReasonLongerThanTwoHundredCharacters() throws Exception {
+        putPenalty(mock(DriverPayrollService.class), "{\"penaltyVnd\":1000,\"note\":\"" + "a".repeat(201) + "\"}")
+                .andExpect(status().isBadRequest());
     }
 }

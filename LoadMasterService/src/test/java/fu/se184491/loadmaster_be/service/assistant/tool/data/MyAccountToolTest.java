@@ -89,22 +89,23 @@ class MyAccountToolTest {
         assertThat(subscription.get("planName").asString()).isEqualTo("Gói Chuyên Nghiệp (Pro)");
         assertThat(subscription.get("creditsBalance").asInt()).isEqualTo(8412);
         assertThat(subscription.get("expiresAt").asString()).isEqualTo("2026-12-20T09:00:00");
-        assertThat(subscription.get("unlimitedCredits").asBoolean()).isFalse();
+        assertThat(subscription.has("unlimitedCredits")).isFalse();
         assertThat(subscription.has("subscriptionId")).isFalse();
         assertThat(subscription.has("planId")).isFalse();
     }
 
     @Test
-    void ultimateHasNoBalanceButUnlimitedCredits() {
+    void ultimateShowsItsBalanceAndMonthlyGrantLikeEveryPlan() {
         profile(UserRole.ADMIN, 1L, false);
         when(subscriptions.getCurrentSubscription(1L)).thenReturn(SubscriptionCurrentResponse.builder()
                 .planName("Gói Toàn Diện (Ultimate AI)").tier(SubscriptionTier.ULTIMATE)
-                .status(SubscriptionStatus.ACTIVE).creditsBalance(0).creditsMonthlyGrant(null).build());
+                .status(SubscriptionStatus.ACTIVE).creditsBalance(21000).creditsMonthlyGrant(30000).build());
 
         JsonNode subscription = call().get("subscription");
 
-        assertThat(subscription.has("creditsBalance")).isFalse();
-        assertThat(subscription.get("unlimitedCredits").asBoolean()).isTrue();
+        assertThat(subscription.get("creditsBalance").asInt()).isEqualTo(21000);
+        assertThat(subscription.get("creditsMonthlyGrant").asInt()).isEqualTo(30000);
+        assertThat(subscription.has("unlimitedCredits")).isFalse();
     }
 
     @Test
