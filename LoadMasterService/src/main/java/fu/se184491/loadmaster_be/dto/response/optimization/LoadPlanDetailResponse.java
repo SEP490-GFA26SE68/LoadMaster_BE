@@ -21,6 +21,8 @@ import java.util.List;
 public class LoadPlanDetailResponse {
     private Long id;
     private Long tripId;
+    /** Xe mà phương án được tính cho (xe của chuyến lúc chạy tối ưu); trống ở phương án cũ không suy ra được xe. */
+    private Long vehicleId;
     private Long jobId;
     private String jobUuid;
     private String jobStatus;
@@ -52,6 +54,15 @@ public class LoadPlanDetailResponse {
     private Boolean manuallyEdited;
     /** Phương án lỗi thời: hàng, xe hoặc điểm giao của chuyến đã đổi sau khi tối ưu; không duyệt được. */
     private Boolean stale;
+    /**
+     * Hồ sơ đã chọn phương án ứng viên này ("A" | "B" | "C"). Null khi cờ PLAN_SCORE_J tắt lúc chạy, phương án cũ, bản
+     * dựng từ chỉnh tay hay bản chạy lại.
+     */
+    private String candidateProfile;
+    /** Nhãn phương án trước đã chọn trùng cách xếp ("A" | "B"); null khi không trùng hoặc không có điểm J. */
+    private String duplicateOf;
+    /** Điểm J + phân rã theo hồ sơ; null như {@code candidateProfile}. */
+    private PlanScoreResponse planScore;
     private List<PlacementDetailResponse> placements;
     private List<UnplacedPackageResponse> unplaced;
     /**

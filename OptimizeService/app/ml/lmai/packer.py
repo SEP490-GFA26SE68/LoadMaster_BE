@@ -7,6 +7,7 @@ Không đặt được trong vùng thì thử cả thùng (vẫn giữ luật d�
 """
 from __future__ import annotations
 
+import os
 from collections import deque
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Tuple
@@ -14,8 +15,26 @@ from typing import Dict, List, Optional, Tuple
 import numpy as np
 
 from .problem import Problem
-from .state import EPS, Candidate, LoadState
+from .state import EPS, Candidate, LoadState, OUTSIDE_DOOR_FRAME
 from .zones import Zone, compute_zones
+
+# Bộ dựng biết H13 (sau M5, 26/11/2026): luật mới + bài có kiện must_load → hai lượt: lượt 0 đặt kiện must_load của MỌI
+# vùng (vùng sâu trước) khi thùng còn trống, lượt 1 xếp phần còn lại như cũ — để hàng tràn từ vùng sâu không chiếm chỗ của
+# kiện bắt buộc ở vùng sát cửa. Bài không có must_load: y hệt trước. LMAI_H13_HAI_LUOT=0 để tắt (đo so sánh).
+H13_TWO_PASS = os.environ.get("LMAI_H13_HAI_LUOT", "1") == "1"
+
+
+def unique_rows(a: np.ndarray) -> np.ndarray:
+    """= np.unique(a, axis=0) cho mảng N×3 số thực: các hàng khác nhau, sắp theo cột 0 → 1 → 2 (28/11/2026, nhanh hơn
+    vài lần vì không đổi sang kiểu có trường). Hàng trùng là trùng từng bit nên giữ hàng nào cũng như nhau. Mảng có -0.0
+    hay NaN thì dùng thẳng np.unique: ở đó "bằng nhau" không còn là trùng bit và hàng được giữ tuỳ thuật toán sắp."""
+    if len(a) < 2 or np.isnan(a).any() or ((a == 0) & np.signbit(a)).any():
+        return np.unique(a, axis=0)
+    s = a[np.lexsort((a[:, 2], a[:, 1], a[:, 0]))]
+    keep = np.empty(len(s), dtype=bool)
+    keep[0] = True
+    keep[1:] = (s[1:] != s[:-1]).any(axis=1)
+    return s[keep]
 
 
 @dataclass
@@ -33,8 +52,12 @@ class Packer:
         self.zones: List[Zone] = compute_zones(problem)
         self.zone_of_stop: Dict[int, Zone] = {z.stop_index: z for z in self.zones}
         v = problem.vehicle
-        self.dy0, self.dy1 = v.door_y_min, v.door_y_max
+        # vùng Y được đặt: khung cửa, hoặc cả bề rộng thùng khi bật thí nghiệm P18 (state.OUTSIDE_DOOR_FRAME)
+        self.dy0, self.dy1 = (0.0, v.inner_w) if OUTSIDE_DOOR_FRAME else (v.door_y_min, v.door_y_max)
         self.zone_i = 0
+        # lượt 0 = chỉ kiện must_load (khi bật bộ dựng biết H13), lượt 1 = phần còn lại / mọi kiện
+        self.phase = 0 if (H13_TWO_PASS and problem.physics_v2 and any(p.must_load for p in problem.packages)) else 1
+        self.two_pass = self.phase == 0   # → result.finish đánh lại step_sequence theo thứ tự bốc (load_order)
         self.queue: deque = deque()
         self.buffer: List[int] = []
         self.unplaced: List[int] = []
@@ -49,14 +72,25 @@ class Packer:
 
     # ---------------------------------------------------------------- hàng chờ
     def _load_zone(self) -> None:
+        if self.phase == 0 and self.zone_i >= len(self.zones):   # hết lượt kiện bắt buộc → lượt phần còn lại
+            self.phase, self.zone_i = 1, 0
         while self.zone_i < len(self.zones):
             s = self.zones[self.zone_i].stop_index
             idx = [i for i, p in enumerate(self.problem.packages) if p.stop_index == s]
+            if self.phase == 0:
+                idx = [i for i in idx if self.problem.packages[i].must_load]
+            elif self.problem.physics_v2 and H13_TWO_PASS:
+                idx = [i for i in idx if not self.problem.packages[i].must_load]
             idx.sort(key=lambda i: (self.problem.packages[i].volume, self.problem.packages[i].weight), reverse=True)
+            if self.problem.physics_v2:
+                # H13 (như backend solve_in_process): kiện must_load xét trước, giữ thứ tự còn lại
+                idx.sort(key=lambda i: not self.problem.packages[i].must_load)
             if idx:
                 self.queue = deque(idx)
                 return
             self.zone_i += 1
+            if self.phase == 0 and self.zone_i >= len(self.zones):
+                self.phase, self.zone_i = 1, 0
         self.queue = deque()
 
     def _fill_buffer(self) -> None:
@@ -79,19 +113,23 @@ class Packer:
     def _cands_for(self, slot: int, pkg_idx: int, xlo: float, xhi: float, base: np.ndarray) -> List[Candidate]:
         pkg = self.problem.packages[pkg_idx]
         out: List[Candidate] = []
+        # điểm sát vách trái (→ thêm biến thể sát vách phải) / sát đầu vùng phía sâu (→ thêm biến thể sát đầu vùng phía
+        # cửa). Vector hoá (28/11/2026); unique_rows (= np.unique axis 0) sắp lại nên thứ tự thêm không ảnh hưởng — cùng
+        # các điểm, cùng thứ tự như vòng cũ.
+        on_y = np.abs(base[:, 1] - self.dy0) <= EPS if base.size else None
+        on_x = np.abs(base[:, 0] - xlo) <= EPS if base.size else None
+        has_extra = base.size and (on_y.any() or on_x.any())
         for rot in pkg.rotations():
             l, w, h = pkg.dims(rot)
-            if base.size:
-                extra = []
-                for x, y, z in base:
-                    if abs(y - self.dy0) <= EPS:  # thêm biến thể sát vách phải
-                        extra.append((x, self.dy1 - w, z))
-                    if abs(x - xlo) <= EPS:        # thêm biến thể sát đầu vùng phía cửa
-                        extra.append((xhi - l, y, z))
-                pts = np.unique(np.vstack([base, np.array(extra).reshape(-1, 3)]), axis=0) if extra else base
+            if has_extra:
+                ey = base[on_y]
+                ey[:, 1] = self.dy1 - w
+                ex = base[on_x]
+                ex[:, 0] = xhi - l
+                pts = unique_rows(np.vstack([base, ey, ex]))
             else:
                 pts = base
-            cs = self.state.feasible_positions(pkg, rot, xlo, xhi, pts)
+            cs = self.state.feasible_positions(pkg, rot, xlo, xhi, pts, limit=self.cfg.per_rot)
             cs.sort(key=lambda c: (c.z, c.x, c.y))
             for c in cs[: self.cfg.per_rot]:
                 c.slot, c.pkg_idx = slot, pkg_idx

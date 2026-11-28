@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Optional, Union, List
+from typing import Dict, Optional, Union, List
 from uuid import UUID
 from pydantic import BaseModel, Field, model_validator
 from app.dto.optimization.engine.rotation_contract import RotationCode
@@ -64,6 +64,11 @@ class VehicleData(BaseModel):
 
     max_cog_offset_ratio: float = Field(default=0.15, ge=0, le=0.5)
 
+    # Spec ràng buộc vật lý (dữ liệu M3; ConstraintEngine CHƯA đọc): H11 lệch ngang (trống = max_cog_offset_ratio),
+    # H10 tải trọng sàn kg/m² (trống = không kiểm).
+    max_cog_offset_ratio_y: Optional[float] = Field(default=None, ge=0, le=0.5)
+    floor_load_capacity_kg_m2: Optional[float] = Field(default=None, gt=0)
+
 
     @model_validator(mode="after")
     def validate_obstacles(self):
@@ -90,6 +95,19 @@ class PackageData(BaseModel):
     fragile: bool = False
     rotation_allowed: bool = True
 
+    # Spec ràng buộc vật lý (dữ liệu M3; ConstraintEngine CHƯA đọc). Giá trị: hồ sơ kiện > loại kiện > trống.
+    top_load_capacity_kg_m2: Optional[float] = Field(default=None, ge=0)  # σ, kg/m² (H7); trống = chưa khai
+    min_support_ratio: Optional[float] = Field(default=None, ge=0, le=1)  # ρ (H8); trống = mặc định của bộ kiểm
+    must_load: bool = False  # H13
+    priority: Optional[int] = None
+    packing_group: Optional[str] = None
+
+
+class DataWarningData(BaseModel):
+    """Cảnh báo dữ liệu đầu vào của lần chạy (không chặn job): mã + các kiện liên quan."""
+    code: str  # TOP_LOAD_CAPACITY_MISSING | PACKAGE_TYPE_MISSING
+    package_ids: List[str] = Field(default_factory=list)
+
 
 class StopData(BaseModel):
     """Điểm giao hàng trong chuyến."""
@@ -104,11 +122,21 @@ class PinnedData(BaseModel):
     pos_y: float
     pos_z: float
     rotation_type: RotationCode = 0
-    rotation_type: Union[int, str] = 0
     # Kích thước đã áp hướng xoay (cm). Vắng thì suy từ kích thước kiện và rotation_type.
     packed_l: Optional[float] = None
     packed_w: Optional[float] = None
     packed_h: Optional[float] = None
+
+
+class PlanProfileRequest(BaseModel):
+    """
+    Hồ sơ ưu tiên của hàm điểm J cho một lần chạy (spec mục 6.3; chỉ đọc khi PLAN_SCORE_J bật).
+    code: default | A | B | C (app/config/plan_profiles.json). Trọng số ghi ở đây đè lên hồ sơ đó cho lần chạy này.
+    """
+    code: str = "default"
+    w_vol: Optional[float] = Field(default=None, ge=0)
+    w_n: Optional[float] = Field(default=None, ge=0)
+    weights: Optional[Dict[str, float]] = None  # mã S1…S8 → trọng số ≥ 0
 
 
 class ProblemRequest(BaseModel):
@@ -122,3 +150,7 @@ class ProblemRequest(BaseModel):
     seed: Optional[int] = None
     # EP_DBLF | EP_DBLF_GA | EP_DBLF_GA_AI — ULTIMATE dùng Lumo khi có trọng số
     algorithm_name: Optional[str] = None
+    # Cảnh báo dữ liệu do bước dựng bài từ DB tìm ra; bộ giải không đọc, chỉ lưu vào optimization_jobs.data_warnings.
+    data_warnings: List[DataWarningData] = Field(default_factory=list)
+    # Hồ sơ ưu tiên của lần chạy (M6, cờ PLAN_SCORE_J). Trống = hồ sơ "default".
+    plan_profile: Optional[PlanProfileRequest] = None

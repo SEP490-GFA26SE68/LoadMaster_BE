@@ -89,6 +89,7 @@ class WarehouseServiceImplTest {
     @Mock private TripPackageResolver tripPackageResolver;
     @Mock private WarehouseProgress warehouseProgress;
     @Mock private LoadingDamageRepository loadingDamageRepository;
+    @Mock private fu.se184491.loadmaster_be.service.vehicle.VehiclePresenceStore presenceStore;
 
     @Mock private jakarta.persistence.EntityManager entityManager;
     @InjectMocks
@@ -471,7 +472,8 @@ class WarehouseServiceImplTest {
         trip.setVehicle(Vehicle.builder().id(3L).licensePlate("51C-123.45")
                 .vehicleType(VehicleType.builder().name("Xe 8 tấn")
                         .innerLength(720).innerWidth(235).innerHeight(240)
-                        .doorWidth(230).doorHeight(230).maxPayloadKg(new BigDecimal("8000")).build())
+                        .doorWidth(230).doorHeight(230).maxPayloadKg(new BigDecimal("8000"))
+                        .bodyStyle(fu.se184491.loadmaster_be.constant.vehicle.VehicleBodyStyle.TRUCK_REEFER).build())
                 .build());
         trip.getVehicle().getVehicleType().setObstacles(List.of(
                 fu.se184491.loadmaster_be.entity.vehicle.VehicleTypeObstacle.builder()
@@ -512,6 +514,8 @@ class WarehouseServiceImplTest {
         assertEquals(720, session.getInnerLength());
         assertEquals(235, session.getInnerWidth());
         assertEquals(240, session.getInnerHeight());
+        // Kiểu thân xe đi trong phiên: nhân viên kho không đọc được loại xe
+        assertEquals("TRUCK_REEFER", session.getBodyStyle());
         assertEquals(230, session.getDoorWidth());
         assertEquals(230, session.getDoorHeight());
         assertEquals("51C-123.45", session.getLicensePlate());
@@ -581,5 +585,46 @@ class WarehouseServiceImplTest {
         assertThrows(AppException.class, () -> service.startLoading(10L, null));
         verify(loadingExecutionRepository, never()).save(any());
         verify(tripStatusService, never()).transitionTo(any(), any(), any());
+    }
+
+    @Test
+    void tasksAndSessionCarryVehicleOriginAndPresenceWithoutWriting() {
+        trip.setStatus(TripStatus.LOADING);
+        trip.setOriginWarehouse(fu.se184491.loadmaster_be.entity.company.CompanyWarehouse.builder().id(101L).build());
+        when(presenceStore.presence(3L, 1L)).thenReturn(
+                new fu.se184491.loadmaster_be.service.vehicle.VehiclePresenceStore.Presence(3L, 1L, null, "IN_TRANSIT", null, null, null, 2));
+        when(tripRepository.findByCompanyIdAndStatus(1L, TripStatus.PLANNED)).thenReturn(List.of());
+        when(tripRepository.findByCompanyIdAndStatus(1L, TripStatus.LOADING)).thenReturn(List.of(trip));
+        when(loadPlanRepository.findFirstByJobTripIdAndApprovedTrueOrderByIdDesc(10L)).thenReturn(Optional.of(plan));
+        when(loadingExecutionRepository.findByLoadPlanId(50L)).thenReturn(Optional.of(
+                LoadingExecution.builder().id(60L).loadPlan(plan).status(LoadingExecutionStatus.COMPLETED).build()));
+
+        WarehouseTaskResponse task = service.getTasks(null, null).getFirst();
+        StartLoadingResponse session = service.getSession(10L);
+
+        var inTransit = new fu.se184491.loadmaster_be.dto.response.warehouse.VehiclePresenceSummary("IN_TRANSIT", null);
+        assertEquals(3L, task.getVehicleId());
+        assertEquals(101L, task.getOriginWarehouseId());
+        assertEquals(inTransit, task.getVehiclePresence());
+        assertEquals(3L, session.getVehicleId());
+        assertEquals(101L, session.getOriginWarehouseId());
+        assertEquals(inTransit, session.getVehiclePresence());
+        verify(presenceStore, never()).change(org.mockito.ArgumentMatchers.anyLong(), org.mockito.ArgumentMatchers.anyLong(),
+                any(), any(), org.mockito.ArgumentMatchers.anyLong(), any(), any());
+    }
+
+    @Test
+    void tripWithoutVehicleOrOriginHasNoPresence() {
+        trip.setVehicle(null);
+        when(tripRepository.findByCompanyIdAndStatus(1L, TripStatus.PLANNED)).thenReturn(List.of(trip));
+        when(tripRepository.findByCompanyIdAndStatus(1L, TripStatus.LOADING)).thenReturn(List.of());
+        when(loadPlanRepository.findFirstByJobTripIdAndApprovedTrueOrderByIdDesc(10L)).thenReturn(Optional.of(plan));
+
+        WarehouseTaskResponse task = service.getTasks(null, null).getFirst();
+
+        assertNull(task.getVehicleId());
+        assertNull(task.getOriginWarehouseId());
+        assertNull(task.getVehiclePresence());
+        verify(presenceStore, never()).presence(org.mockito.ArgumentMatchers.anyLong(), org.mockito.ArgumentMatchers.anyLong());
     }
 }

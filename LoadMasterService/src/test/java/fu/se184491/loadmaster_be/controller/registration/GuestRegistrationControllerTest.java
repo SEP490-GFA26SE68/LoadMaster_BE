@@ -14,6 +14,7 @@ import fu.se184491.loadmaster_be.dto.request.registration.VerifyOtpRequest;
 import fu.se184491.loadmaster_be.dto.response.registration.GuestRegistrationSessionResponse;
 import fu.se184491.loadmaster_be.dto.response.registration.PaymentLinkResponse;
 import fu.se184491.loadmaster_be.dto.response.registration.ResendOtpResponse;
+import fu.se184491.loadmaster_be.service.assistant.gate.ClientIpResolver;
 import fu.se184491.loadmaster_be.service.registration.GuestRegistrationService;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -38,7 +39,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @WebMvcTest(GuestRegistrationController.class)
-@Import(WebSecurityConfig.class)
+@Import({WebSecurityConfig.class, ClientIpResolver.class})
 @AutoConfigureMockMvc(addFilters = false)
 class GuestRegistrationControllerTest {
 

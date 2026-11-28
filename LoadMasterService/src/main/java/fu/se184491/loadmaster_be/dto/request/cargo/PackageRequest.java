@@ -88,6 +88,11 @@ public class PackageRequest {
     @Digits(integer = 8, fraction = 2)
     private BigDecimal maxTopLoadKg;
 
+    // σ riêng của kiện, kg/m² (spec H7); ghi đè σ của loại kiện. Tuỳ chọn.
+    @DecimalMin(value = "0.0", message = "Sức chịu nén mặt trên không được âm")
+    @Digits(integer = 10, fraction = 2)
+    private BigDecimal topLoadCapacityKgM2;
+
     @Min(value = 1, message = "Số tầng tối đa phải >= 1")
     private Integer maxLayers;
 

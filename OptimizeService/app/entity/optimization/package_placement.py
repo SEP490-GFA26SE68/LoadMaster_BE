@@ -1,4 +1,5 @@
-from sqlalchemy import Column, Integer, BigInteger, ForeignKey, Numeric, Boolean
+from sqlalchemy import Column, Integer, BigInteger, ForeignKey, Numeric, Boolean, JSON
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import relationship
 
 from app.config.database import Base
@@ -20,6 +21,12 @@ class PackagePlacement(Base):
     step_sequence = Column(Integer, nullable=True, default=1)
     pinned = Column(Boolean, default=False)
     stop_zone_id = Column(Integer().with_variant(BigInteger, "postgresql"), ForeignKey("delivery_stops.id"), nullable=True)
+    # Lý do đặt + số đo của chỗ đặt (V57; chỉ có khi cờ PLAN_SCORE_J bật, trống ở phương án cũ và bản chỉnh tay).
+    reason_codes = Column(JSON().with_variant(JSONB(), "postgresql"), nullable=True)
+    stack_pressure_kg_m2 = Column(Numeric(16, 3), nullable=True)
+    top_load_capacity_kg_m2 = Column(Numeric(16, 3), nullable=True)
+    support_ratio = Column(Numeric(5, 4), nullable=True)
+    distance_to_door_cm = Column(Numeric(10, 3), nullable=True)
 
     load_plan = relationship("LoadPlan", back_populates="placements")
     cargo_package = relationship("CargoPackage")

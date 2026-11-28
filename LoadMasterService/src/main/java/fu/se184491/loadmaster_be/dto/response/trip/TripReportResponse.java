@@ -34,7 +34,7 @@ public record TripReportResponse(
         Packages packages,
         /** Số kiện theo cách đối chiếu có hiệu lực ở từng bước: soạn, xếp, dỡ. */
         List<Verification> verifications,
-        /** Số kiện theo từng cách đối chiếu ở từng bước: soạn, xếp, dỡ, nhận dọc đường. */
+        /** Số kiện theo từng cách đối chiếu ở từng bước: soạn, xếp, dỡ. */
         List<VerificationMethods> verificationMethods,
         List<ManualConfirmation> manualConfirmations,
         List<TripExceptionItem> exceptions,

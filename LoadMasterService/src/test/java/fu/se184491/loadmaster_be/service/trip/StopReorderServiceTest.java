@@ -11,7 +11,6 @@ import fu.se184491.loadmaster_be.helpers.CurrentUserService;
 import fu.se184491.loadmaster_be.repository.common.AuditLogRepository;
 import fu.se184491.loadmaster_be.repository.driver.UnloadConfirmationRepository;
 import fu.se184491.loadmaster_be.repository.optimization.PackagePlacementRepository;
-import fu.se184491.loadmaster_be.repository.pickup.PickupRequestRepository;
 import fu.se184491.loadmaster_be.repository.trip.DeliveryStopRepository;
 import fu.se184491.loadmaster_be.repository.warehouse.DeviationRepository;
 import fu.se184491.loadmaster_be.repository.warehouse.LoadingExecutionRepository;
@@ -42,7 +41,6 @@ class StopReorderServiceTest {
     @Mock private CurrentUserService currentUserService;
     @Mock private TripLookupHelper tripLookupHelper;
     @Mock private DeliveryStopRepository deliveryStopRepository;
-    @Mock private PickupRequestRepository pickupRequestRepository;
     @Mock private LoadingExecutionRepository loadingExecutionRepository;
     @Mock private PackagePlacementRepository packagePlacementRepository;
     @Mock private PlacementConfirmationRepository placementConfirmationRepository;

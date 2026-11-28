@@ -20,6 +20,7 @@ import org.springframework.web.bind.annotation.*;
 public class GuestRegistrationController {
 
     private final GuestRegistrationService guestRegistrationService;
+    private final fu.se184491.loadmaster_be.service.assistant.gate.ClientIpResolver clientIpResolver;
 
     @PostMapping("/init")
     public ResponseEntity<GuestRegistrationSessionResponse> initRegistration(
@@ -50,7 +51,7 @@ public class GuestRegistrationController {
             @Valid @RequestBody AcceptPolicyRequest request,
             HttpServletRequest servletRequest
     ) {
-        String ipAddress = servletRequest.getRemoteAddr();
+        String ipAddress = clientIpResolver.resolveIpv4(servletRequest);
         GuestRegistrationSessionResponse response = guestRegistrationService.acceptPolicy(request, ipAddress);
         return ResponseEntity.ok(response);
     }
@@ -60,7 +61,7 @@ public class GuestRegistrationController {
             @Valid @RequestBody InitPaymentRequest request,
             HttpServletRequest servletRequest
     ) {
-        String ipAddress = servletRequest.getRemoteAddr();
+        String ipAddress = clientIpResolver.resolveIpv4(servletRequest);
         PaymentLinkResponse response = guestRegistrationService.initPayment(request, ipAddress);
         return ResponseEntity.ok(response);
     }

@@ -7,6 +7,7 @@ import fu.se184491.loadmaster_be.dto.response.payment.PaymentUrlResponse;
 import fu.se184491.loadmaster_be.dto.response.subscription.SubscriptionCurrentResponse;
 import fu.se184491.loadmaster_be.dto.response.subscription.SubscriptionRenewalResponse;
 import fu.se184491.loadmaster_be.helpers.CurrentUserService;
+import fu.se184491.loadmaster_be.service.assistant.gate.ClientIpResolver;
 import fu.se184491.loadmaster_be.service.subscription.SubscriptionService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
@@ -24,6 +25,7 @@ public class SubscriptionController {
 
     private final SubscriptionService subscriptionService;
     private final CurrentUserService currentUserService;
+    private final ClientIpResolver clientIpResolver;
 
     @GetMapping("/current")
     @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'DISPATCHER', 'SYSTEM_MANAGER')")
@@ -42,7 +44,7 @@ public class SubscriptionController {
             @Valid @RequestBody SubscribeRequest request,
             HttpServletRequest servletRequest) {
         Long companyId = currentUserService.getCurrentCompanyId();
-        String clientIp = servletRequest.getRemoteAddr();
+        String clientIp = clientIpResolver.resolveIpv4(servletRequest);
         PaymentUrlResponse response = subscriptionService.subscribe(companyId, request, clientIp);
         return ResponseEntity.ok(ApiResponse.<PaymentUrlResponse>builder()
                 .success(true)
@@ -79,8 +81,9 @@ public class SubscriptionController {
             @RequestBody(required = false) RenewSubscriptionRequest request,
             HttpServletRequest servletRequest) {
         Long companyId = currentUserService.getCurrentCompanyId();
+        String clientIp = clientIpResolver.resolveIpv4(servletRequest);
         PaymentUrlResponse response = subscriptionService.renew(
-                companyId, request != null ? request.getGateway() : null, servletRequest.getRemoteAddr());
+                companyId, request != null ? request.getGateway() : null, clientIp);
         return ResponseEntity.ok(ApiResponse.<PaymentUrlResponse>builder()
                 .success(true)
                 .data(response)

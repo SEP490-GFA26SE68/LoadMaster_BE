@@ -62,6 +62,16 @@ if not has_crypto:
         "Cài bằng: pip install -r requirements.txt"
     )
 
+import importlib.util
+
+from app.config.settings import settings as _settings
+
+if _settings.OPTIMIZATION_LMAI_BUILDER_ENABLED and importlib.util.find_spec("numpy") is None:
+    logger.error(
+        "OPTIMIZATION_LMAI_BUILDER_ENABLED bật nhưng chưa cài numpy: bước EP dùng bộ dựng cũ (M9 không có tác dụng). "
+        "Cài bằng: pip install -r requirements.txt"
+    )
+
 if not torch_available():
     logger.warning(
         "Chưa cài torch / numpy: gói ULTIMATE (EP_DBLF_GA_AI) sẽ chạy heuristic, không có mô hình Lumo. "

@@ -12,7 +12,7 @@ from typing import Dict
 import torch
 from torch import nn
 
-from .env import FC, FC2, FG, FG2, FP, FR
+from .env import FC, FC2, FC3, FC4, FG, FG2, FG3, FP, FR
 
 
 def _mlp(i: int, h: int, o: int) -> nn.Sequential:
@@ -20,13 +20,28 @@ def _mlp(i: int, h: int, o: int) -> nn.Sequential:
 
 
 class PCTPolicy(nn.Module):
-    def __init__(self, d: int = 128, heads: int = 4, layers: int = 2, ff: int = 256, v2: bool = False, hmap: int = 128):
+    def __init__(self, d: int = 128, heads: int = 4, layers: int = 2, ff: int = 256, v2: bool = False, hmap: int = 128,
+                 v3: bool = False, dj: bool = False):
         super().__init__()
+        if v2 and v3:
+            raise ValueError("v2 và v3 không dùng cùng nhau")
+        if dj and not v3:
+            raise ValueError("dj cần v3")
         self.cfg = dict(d=d, heads=heads, layers=layers, ff=ff)
         self.v2 = v2
         if v2:  # CP2: đọc thêm cột mới + token hàng còn lại + bản đồ độ cao
             self.cfg.update(v2=True, hmap=hmap)
-        self.fc, self.fg = (FC + FC2, FG + FG2) if v2 else (FC, FG)
+        if v3:  # Lumo-R3: +4 cột ứng viên, +8 cột toàn cục (hồ sơ); cùng kiến trúc, chỉ rộng lớp nhúng đầu vào
+            self.cfg.update(v3=True)
+        self.dj = dj
+        if dj:  # CP3b: +2 cột ứng viên (dj, pen — env._observe_dj) + đường tắt dj_gain·dj vào điểm chọn nước
+            self.cfg.update(dj=True)
+        self.fc, self.fg = (FC + FC2, FG + FG2) if v2 else ((FC + FC3, FG + FG3) if v3 else (FC, FG))
+        if dj:
+            self.fc += FC4
+            # Một số vô hướng, khởi tạo 0 → mạng mới tính đúng như mạng v3 nguồn. Học được > 0 nghĩa là chính sách nghiêng
+            # về nước có thưởng J tức thời cao theo hồ sơ của job.
+            self.dj_gain = nn.Parameter(torch.zeros(()))
         self.emb_placed = _mlp(FP, d, d)
         self.emb_cand = _mlp(self.fc, d, d)
         self.emb_glob = _mlp(self.fg, d, d)
@@ -62,6 +77,8 @@ class PCTPolicy(nn.Module):
         mean_c = (hc * cm).sum(1) / cm.sum(1).clamp(min=1.0)
         ctx = hg + mean_c
         logits = self.pointer(torch.cat([hc, ctx.unsqueeze(1).expand(-1, C, -1)], dim=-1)).squeeze(-1)
+        if self.dj:
+            logits = logits + self.dj_gain * cand[..., FC + FC3]
         logits = logits.masked_fill(~cmask, -1e9)
         value = self.value(torch.cat([hg, mean_c], dim=-1)).squeeze(-1)
         return logits, value

@@ -128,8 +128,8 @@ def test_rigid_translation_into_obstacle_is_rejected_then_repack_is_safe(monkeyp
     search = LoadBalanceSearch(request, time.monotonic() + 5)
     observed = []
     consider = search._consider
-    def record(trial):
-        valid = consider(trial)
+    def record(trial, **kwargs):
+        valid = consider(trial, **kwargs)
         observed.extend(search.last_violations)
         return valid
     monkeypatch.setattr(search, "_consider", record)

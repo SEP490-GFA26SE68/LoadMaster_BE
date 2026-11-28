@@ -130,4 +130,62 @@ class PayrollMathTest {
 
         assertEquals(ErrorCode.PAYROLL_INVALID_DRIVER_ASSIGNMENT, exception.getErrorCode());
     }
+
+    @Test
+    void kpiBonusIsPaidWhenTotalKgReachesTheTarget() {
+        assertEquals(new BigDecimal("500000"),
+                PayrollMath.kpiBonus(new BigDecimal("1200.500"), new BigDecimal("1000"), new BigDecimal("500000")));
+    }
+
+    @Test
+    void kpiBonusIsPaidWhenTotalKgEqualsTheTargetExactly() {
+        assertEquals(new BigDecimal("500000"),
+                PayrollMath.kpiBonus(new BigDecimal("1000.000"), new BigDecimal("1000"), new BigDecimal("500000")));
+    }
+
+    @Test
+    void kpiBonusIsZeroWhenTotalKgIsBelowTheTarget() {
+        assertEquals(new BigDecimal("0"),
+                PayrollMath.kpiBonus(new BigDecimal("999.999"), new BigDecimal("1000"), new BigDecimal("500000")));
+    }
+
+    @Test
+    void kpiBonusIsZeroWhenTheCompanyDoesNotUseKpi() {
+        assertEquals(new BigDecimal("0"),
+                PayrollMath.kpiBonus(new BigDecimal("5000"), null, new BigDecimal("500000")));
+    }
+
+    @Test
+    void kpiBonusIsRoundedToWholeDong() {
+        assertEquals(new BigDecimal("500001"),
+                PayrollMath.kpiBonus(new BigDecimal("1000"), new BigDecimal("1000"), new BigDecimal("500000.50")));
+    }
+
+    @Test
+    void kpiBonusRejectsNegativeKg() {
+        AppException exception = assertThrows(AppException.class,
+                () -> PayrollMath.kpiBonus(new BigDecimal("-1"), new BigDecimal("1000"), new BigDecimal("500000")));
+
+        assertEquals(ErrorCode.PAYROLL_INVALID_AMOUNT, exception.getErrorCode());
+    }
+
+    @Test
+    void loadedAmountRoundsTheMonthTotalToWholeDongOnce() {
+        // 22,750 kg × 150,50 đ = 3.423,875 đ → 3.424 đ.
+        assertEquals(new BigDecimal("3424"),
+                PayrollMath.loadedAmount(new BigDecimal("22.750"), new BigDecimal("150.50")));
+    }
+
+    @Test
+    void loadedAmountIsZeroWithoutLoadedKg() {
+        assertEquals(new BigDecimal("0"), PayrollMath.loadedAmount(new BigDecimal("0.000"), new BigDecimal("150.50")));
+    }
+
+    @Test
+    void loadedAmountRejectsNegativeValues() {
+        AppException exception = assertThrows(AppException.class,
+                () -> PayrollMath.loadedAmount(new BigDecimal("-0.001"), new BigDecimal("150")));
+
+        assertEquals(ErrorCode.PAYROLL_INVALID_AMOUNT, exception.getErrorCode());
+    }
 }

@@ -5,6 +5,7 @@ import fu.se184491.loadmaster_be.dto.request.optimization.ApproveEditsRequest;
 import fu.se184491.loadmaster_be.dto.request.optimization.ApproveEditsRequest.EditedPlacement;
 import fu.se184491.loadmaster_be.dto.response.optimization.LoadPlanDetailResponse;
 import fu.se184491.loadmaster_be.dto.response.optimization.PlacementDetailResponse;
+import fu.se184491.loadmaster_be.dto.response.optimization.PlanScoreResponse;
 import fu.se184491.loadmaster_be.entity.account.User;
 import fu.se184491.loadmaster_be.entity.cargo.CargoPackage;
 import fu.se184491.loadmaster_be.entity.cargo.CargoPackagePackingProfile;
@@ -38,8 +39,10 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
 
+import java.lang.reflect.RecordComponent;
 import java.math.BigDecimal;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
 
@@ -321,6 +324,50 @@ class ManualPlanApprovalServiceImplTest {
         verify(auditLogRepository).save(audit.capture());
         assertThat(audit.getValue().getUser().getId()).isEqualTo(42L);
         assertThat(audit.getValue().getNewValues()).containsEntry("movedCount", 0).containsEntry("pinnedCount", 1);
+    }
+
+    /** Nguồn có điểm J, hồ sơ, nhãn trùng (V57) và kiện có lý do đặt. */
+    private void sourceWithScoreAndReasons() {
+        when(loadPlanRepository.findById(5L)).thenReturn(Optional.of(LoadPlan.builder().id(5L).version(1)
+                .job(OptimizationJob.builder().id(9L).trip(trip).build()).objective("AXLE_BALANCE").algorithmName("GA")
+                .planScore("{\"profile\": \"B\", \"j\": 61.2}").candidateProfile("B").duplicateOf("A").build()));
+        source.setCandidateProfile("B");
+        source.setDuplicateOf("A");
+        source.setPlanScore(new PlanScoreResponse("B", "Cân trục", true, 61.2, 0.4, 1.0, 1.0, 0.5, List.of()));
+        source.getPlacements().forEach(placement -> {
+            placement.setReasonCodes(List.of("ZONE_STOP_1", "HEAVY_LOW"));
+            placement.setStackPressureKgM2(BigDecimal.TEN);
+            placement.setSupportRatio(BigDecimal.ONE);
+        });
+    }
+
+    @Test
+    void editedCopyDropsTheJScoreProfileDuplicateAndPlacementReasons() {
+        sourceWithScoreAndReasons();
+
+        service.approveEdits(5L, move(102L, 300, 100.5, null));
+
+        LoadPlan plan = savedPlan();
+        assertThat(plan.getPlanScore()).isNull();
+        assertThat(plan.getCandidateProfile()).isNull();
+        assertThat(plan.getDuplicateOf()).isNull();
+        // Chỗ xếp của bản duyệt ghi bằng insertPlacements, không có cột lý do hay số đo nào: các cột đó để trống.
+        assertThat(Arrays.stream(NewPlacement.class.getRecordComponents()).map(RecordComponent::getName))
+                .doesNotContain("reasonCodes", "stackPressureKgM2", "topLoadCapacityKgM2", "supportRatio",
+                        "distanceToDoorCm");
+    }
+
+    @Test
+    void pinOnlyCopyAlsoDropsTheJScoreProfileAndDuplicate() {
+        sourceWithScoreAndReasons();
+        ApproveEditsRequest pinOnly = ApproveEditsRequest.builder().placements(List.of()).pinnedPlacementIds(List.of(101L)).build();
+
+        service.approveEdits(5L, pinOnly);
+
+        LoadPlan plan = savedPlan();
+        assertThat(plan.getPlanScore()).isNull();
+        assertThat(plan.getCandidateProfile()).isNull();
+        assertThat(plan.getDuplicateOf()).isNull();
     }
 
     @Test

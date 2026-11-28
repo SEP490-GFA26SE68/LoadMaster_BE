@@ -42,6 +42,16 @@ public class PackageTypeRequest {
     )
     private BigDecimal maxStackingWeightKg;
 
+    // σ, kg/m² (spec H7). Tuỳ chọn: trống = chưa khai. Cập nhật mà không gửi trường này thì giữ giá trị cũ.
+    @DecimalMin(value = "0.0", message = "Sức chịu nén mặt trên phải lớn hơn hoặc bằng 0")
+    @Digits(integer = 10, fraction = 2, message = "Sức chịu nén mặt trên tối đa 10 chữ số phần nguyên, 2 chữ số thập phân")
+    private BigDecimal topLoadCapacityKgM2;
+
+    // ρ (spec H8). Tuỳ chọn, 0,5–1. Cập nhật mà không gửi trường này thì giữ giá trị cũ.
+    @DecimalMin(value = "0.5", message = "Tỉ lệ đáy được đỡ tối thiểu phải từ 0,5 đến 1")
+    @DecimalMax(value = "1.0", message = "Tỉ lệ đáy được đỡ tối thiểu phải từ 0,5 đến 1")
+    private BigDecimal minSupportRatio;
+
     @Builder.Default
     private Boolean isFragile = false;
 

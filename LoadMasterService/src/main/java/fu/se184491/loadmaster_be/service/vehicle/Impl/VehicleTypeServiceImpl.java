@@ -14,6 +14,7 @@ import fu.se184491.loadmaster_be.exception.AppException;
 import fu.se184491.loadmaster_be.exception.ErrorCode;
 import fu.se184491.loadmaster_be.helpers.CurrentUserService;
 import fu.se184491.loadmaster_be.constant.trip.TripStatus;
+import fu.se184491.loadmaster_be.constant.vehicle.VehicleBodyStyle;
 import fu.se184491.loadmaster_be.repository.optimization.LoadPlanRepository;
 import fu.se184491.loadmaster_be.repository.trip.TripRepository;
 import fu.se184491.loadmaster_be.repository.vehicle.VehicleTypeRepository;
@@ -53,6 +54,7 @@ public class VehicleTypeServiceImpl implements VehicleTypeService {
 
         validateDoor(request);
         validateAxle(request);
+        VehicleBodyStyle bodyStyle = bodyStyleOf(request);
 
 
         if (currentUser.getCompany() == null) {
@@ -88,11 +90,14 @@ public class VehicleTypeServiceImpl implements VehicleTypeService {
                                         ? request.maxCogOffsetRatio()
                                         : new BigDecimal("0.15")
                         )
+                        .maxCogOffsetRatioY(request.maxCogOffsetRatioY())
+                        .floorLoadCapacityKgM2(request.floorLoadCapacityKgM2())
                         .hazardousCapable(
                                 Boolean.TRUE.equals(
                                         request.hazardousCapable()
                                 )
                         )
+                        .bodyStyle(bodyStyle)
                         .build();
 
         if (request.obstacles() != null) {
@@ -127,6 +132,25 @@ public class VehicleTypeServiceImpl implements VehicleTypeService {
         }
         if (request.rearAxleX().compareTo(request.frontAxleX()) <= 0) {
             throw new AppException(ErrorCode.VEHICLE_AXLE_ORDER);
+        }
+    }
+
+    /**
+     * Kiểu thân xe gửi lên: null khi không gửi, tên của {@link VehicleBodyStyle} khi có. Giá trị lạ (kể cả chuỗi trống, chữ
+     * thường) là VEHICLE_BODY_STYLE_INVALID; gửi kèm {@code clearBodyStyle: true} là INVALID_INPUT.
+     */
+    static VehicleBodyStyle bodyStyleOf(CreateVehicleTypeRequest request) {
+        String value = request.bodyStyle();
+        if (value == null) {
+            return null;
+        }
+        if (Boolean.TRUE.equals(request.clearBodyStyle())) {
+            throw new AppException(ErrorCode.INVALID_INPUT, "Không gửi cùng lúc bodyStyle và clearBodyStyle");
+        }
+        try {
+            return VehicleBodyStyle.valueOf(value);
+        } catch (IllegalArgumentException unknown) {
+            throw new AppException(ErrorCode.VEHICLE_BODY_STYLE_INVALID);
         }
     }
 
@@ -183,7 +207,8 @@ public class VehicleTypeServiceImpl implements VehicleTypeService {
     /**
      * Sửa loại xe: tên, lòng thùng, cửa, tải trọng, giới hạn trục, độ lệch trọng tâm thay hẳn bằng số gửi lên; độ lệch trọng tâm,
      * hàng nguy hiểm và danh sách vật cản vắng thì giữ như cũ. Vị trí trục và tải rỗng không sửa ở đây. Đổi phần nào ngoài tên thì
-     * phương án của chuyến chưa rời kho dùng xe thuộc loại này thành lỗi thời.
+     * phương án của chuyến chưa rời kho dùng xe thuộc loại này thành lỗi thời. Kiểu thân xe vắng thì giữ, {@code clearBodyStyle}
+     * bỏ về trống; đổi kiểu thân xe không làm phương án lỗi thời (chỉ đổi hình 3D).
      */
     // PUT /api/vehicle-types/{id}
     @Override
@@ -194,6 +219,7 @@ public class VehicleTypeServiceImpl implements VehicleTypeService {
                 .orElseThrow(() -> new AppException(ErrorCode.VEHICLE_TYPE_NOT_FOUND));
         validateDoor(request);
         validateAxle(request);
+        VehicleBodyStyle bodyStyle = bodyStyleOf(request);
 
         String before = specOf(type);
         type.setName(request.name().trim());
@@ -212,8 +238,21 @@ public class VehicleTypeServiceImpl implements VehicleTypeService {
         if (request.maxCogOffsetRatio() != null) {
             type.setMaxCogOffsetRatio(request.maxCogOffsetRatio());
         }
+        // Trường mới (spec 8.1): FE cũ không gửi → giữ giá trị đang có, không xoá.
+        if (request.maxCogOffsetRatioY() != null) {
+            type.setMaxCogOffsetRatioY(request.maxCogOffsetRatioY());
+        }
+        if (request.floorLoadCapacityKgM2() != null) {
+            type.setFloorLoadCapacityKgM2(request.floorLoadCapacityKgM2());
+        }
         if (request.hazardousCapable() != null) {
             type.setHazardousCapable(request.hazardousCapable());
+        }
+        // Kiểu thân xe: vắng là giữ (client cũ không gửi); clearBodyStyle bỏ về trống. Không thuộc specOf: chỉ đổi hình 3D.
+        if (bodyStyle != null) {
+            type.setBodyStyle(bodyStyle);
+        } else if (Boolean.TRUE.equals(request.clearBodyStyle())) {
+            type.setBodyStyle(null);
         }
         if (request.obstacles() != null) {
             for (VehicleTypeObstacle obstacle : List.copyOf(type.getObstacles())) {
@@ -245,6 +284,8 @@ public class VehicleTypeServiceImpl implements VehicleTypeService {
                 .append(plain(type.getEmptyFrontAxleLoadKg())).append('|')
                 .append(plain(type.getEmptyRearAxleLoadKg())).append('|')
                 .append(plain(type.getMaxCogOffsetRatio())).append('|')
+                .append(plain(type.getMaxCogOffsetRatioY())).append('|')
+                .append(plain(type.getFloorLoadCapacityKgM2())).append('|')
                 .append(type.getHazardousCapable());
         for (VehicleTypeObstacle obstacle : type.getObstacles()) {
             spec.append('|').append(obstacle.getType())
@@ -357,7 +398,10 @@ public class VehicleTypeServiceImpl implements VehicleTypeService {
                 .emptyFrontAxleLoadKg(vehicleType.getEmptyFrontAxleLoadKg())
                 .emptyRearAxleLoadKg(vehicleType.getEmptyRearAxleLoadKg())
                 .maxCogOffsetRatio(vehicleType.getMaxCogOffsetRatio())
+                .maxCogOffsetRatioY(vehicleType.getMaxCogOffsetRatioY())
+                .floorLoadCapacityKgM2(vehicleType.getFloorLoadCapacityKgM2())
                 .hazardousCapable(vehicleType.getHazardousCapable())
+                .bodyStyle(VehicleBodyStyle.nameOf(vehicleType))
                 .obstacles(
                         vehicleType.getObstacles().stream()
                                 .map(obstacle -> VehicleTypeObstacleResponse.builder()

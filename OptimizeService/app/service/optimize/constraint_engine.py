@@ -4,6 +4,8 @@ from typing import Optional, List, Dict, Any, Union
 from app.dto.optimization.engine.problem_request import VehicleData, PackageData
 from app.dto.optimization.engine.engine_response import PlacementData
 from app.dto.optimization.engine.constraint_result import ConstraintResult
+from app.config.settings import settings
+from app.constant.optimization import violation_codes as VC
 
 
 class ConstraintEngine:
@@ -19,6 +21,46 @@ class ConstraintEngine:
     """
 
     EPSILON = 1e-4
+    # H8: tỉ lệ đáy được đỡ khi kiện không khai ρ (spec mục 5; luật cũ HC-05 viết cứng số này).
+    DEFAULT_SUPPORT_RATIO = 0.70
+
+    # ------------------------------------------------------------------ luật vật lý mới (PHYSICS_RULES_V2)
+    @staticmethod
+    def physics_v2() -> bool:
+        """Cờ luật mới, đọc lúc kiểm (không lúc import) để bật / tắt được khi chạy và trong test."""
+        return bool(settings.PHYSICS_RULES_V2)
+
+    @classmethod
+    def support_ratio_for(cls, package: Optional[PackageData]) -> float:
+        """H8: ρ của kiện = hồ sơ kiện > loại kiện (đã gộp sẵn ở PackageData) > 0,70. Luật cũ: luôn 0,70."""
+        if not cls.physics_v2() or package is None or package.min_support_ratio is None:
+            return cls.DEFAULT_SUPPORT_RATIO
+        return float(package.min_support_ratio)
+
+    @staticmethod
+    def top_load_capacity(package: PackageData) -> Optional[float]:
+        """
+        H7: σ — sức chịu nén mặt trên của kiện [kg/m²]. None = không nhận tải nào đặt lên.
+
+        Thứ tự: σ đã khai > dễ vỡ (σ = 0) > tải chồng cũ K [kg] đổi sang σ = K / A_top
+        (A_top = dài × rộng của kiện / 10⁴ m²). Đúng công thức chuyển dữ liệu của V55 (spec 8.2), nên bài chưa qua V55
+        (API, bộ đo) và dữ liệu đã chuyển ra cùng một σ. Không có số nào: không nhận tải — như HC-07 cũ khi trống,
+        và kiện đã có cảnh báo TOP_LOAD_CAPACITY_MISSING (M3). Không có σ mặc định ngầm (Q-D2).
+        """
+        if package.top_load_capacity_kg_m2 is not None:
+            return float(package.top_load_capacity_kg_m2)
+        if package.fragile:
+            return 0.0
+        if package.max_stack_weight_kg is not None and package.l > 0 and package.w > 0:
+            return float(package.max_stack_weight_kg) / (float(package.l) * float(package.w) / 1e4)
+        return None
+
+    @staticmethod
+    def cog_offset_limit_y(vehicle: VehicleData) -> float:
+        """H11: r_y của loại xe; trống thì dùng max_cog_offset_ratio cũ (mặc định 0,15 — giả định, spec mục 5)."""
+        if vehicle.max_cog_offset_ratio_y is not None:
+            return float(vehicle.max_cog_offset_ratio_y)
+        return float(vehicle.max_cog_offset_ratio)
 
 
     @staticmethod
@@ -166,6 +208,7 @@ class ConstraintEngine:
             existing_placements: List[PlacementData],
             packages: Dict[str, PackageData],
             *, obstacles=None,
+            floor_load_capacity_kg_m2: Optional[float] = None,
     ) -> ConstraintResult:
         """
         HC-07: Stacking Load.
@@ -177,6 +220,11 @@ class ConstraintEngine:
         tải theo tỷ lệ diện tích tiếp xúc.
 
         Đơn vị: cm, kg.
+
+        Luật mới (PHYSICS_RULES_V2), cùng cách truyền tải:
+          H7   pⱼ = Fⱼ / A_c,j ≤ σⱼ — A_c,j là tổng diện tích tiếp xúc trên mặt trên của j [m²]
+               (STACK_PRESSURE_EXCEEDED). Thay so sánh kg của HC-07 và cờ dễ vỡ HC-08.
+          H10  kiện nằm sàn: (mᵢ + Fᵢ) / (lᵢwᵢ / 10⁴) ≤ q_sàn (FLOOR_LOAD_EXCEEDED); xe không khai q_sàn → không kiểm.
         """
         import math
 
@@ -228,8 +276,9 @@ class ConstraintEngine:
 
             weights.append(float(pkg.weight))
 
-        # 2. Tải nhận từ phía trên.
+        # 2. Tải nhận từ phía trên, và diện tích mặt trên đang chịu tải (cm², cho H7).
         received_load = [0.0] * len(all_placements)
+        loaded_top_area = [0.0] * len(all_placements)
 
         # Duyệt từ kiện cao nhất xuống thấp nhất.
         sorted_indices = sorted(
@@ -315,6 +364,11 @@ class ConstraintEngine:
                 )
                 if bottom_idx is not None:
                     received_load[bottom_idx] += load_share
+                    loaded_top_area[bottom_idx] += area
+
+        if cls.physics_v2():
+            return cls._check_pressure(all_placements, packages, weights, received_load, loaded_top_area,
+                                       floor_load_capacity_kg_m2)
 
         # 4. Kiểm tra tải chồng trên từng kiện.
         for idx, p in enumerate(all_placements):
@@ -365,7 +419,49 @@ class ConstraintEngine:
 
         return ConstraintResult.success()
 
+    @classmethod
+    def _check_pressure(cls, all_placements, packages, weights, received_load, loaded_top_area,
+                        floor_load_capacity_kg_m2) -> ConstraintResult:
+        """H7 + H10 từ tải đã truyền của check_stacking (đơn vị: kg, cm² → m², kg/m²)."""
+        def over(value: float, limit: float) -> bool:
+            return value > limit * (1 + 1e-9) + 1e-6
 
+        for idx, p in enumerate(all_placements):
+            load = received_load[idx]
+            if load <= cls.EPSILON:
+                continue
+            pkg = packages[str(p.package_id)]
+            sigma = cls.top_load_capacity(pkg)
+            if sigma is None:
+                return ConstraintResult.fail(
+                    VC.STACK_PRESSURE_EXCEEDED,
+                    f"H7: Package {p.package_id} has no top load capacity (σ) but receives {load:.3f} kg",
+                )
+            if not math.isfinite(sigma) or sigma < 0:
+                return ConstraintResult.fail("INVALID_STACKING_DATA", f"Invalid σ for package {p.package_id}")
+            contact_m2 = loaded_top_area[idx] / 1e4
+            pressure = load / contact_m2
+            if over(pressure, sigma):
+                return ConstraintResult.fail(
+                    VC.STACK_PRESSURE_EXCEEDED,
+                    f"H7: Package {p.package_id} carries {load:.3f} kg on {contact_m2:.4f} m² = "
+                    f"{pressure:.1f} kg/m², exceeding σ {sigma:.1f} kg/m²",
+                )
+
+        if floor_load_capacity_kg_m2 is not None:
+            q = float(floor_load_capacity_kg_m2)
+            for idx, p in enumerate(all_placements):
+                if float(p.z) > cls.EPSILON:
+                    continue
+                base_m2 = float(p.packed_l) * float(p.packed_w) / 1e4
+                pressure = (weights[idx] + received_load[idx]) / base_m2
+                if over(pressure, q):
+                    return ConstraintResult.fail(
+                        VC.FLOOR_LOAD_EXCEEDED,
+                        f"H10: Package {p.package_id} presses {pressure:.1f} kg/m² on the floor, "
+                        f"exceeding {q:.1f} kg/m²",
+                    )
+        return ConstraintResult.success()
 
     @classmethod
     def check_support_area(
@@ -373,9 +469,10 @@ class ConstraintEngine:
             placement: PlacementData,
             existing_placements: List[PlacementData],
             *, obstacles=None,
+            required_ratio: float = DEFAULT_SUPPORT_RATIO,
     ) -> ConstraintResult:
         """
-        HC-05: Support Area >= 70%.
+        HC-05: Support Area >= 70%. Luật mới (H8): ngưỡng = ρ của kiện (`support_ratio_for`).
 
         Kiện trên sàn được xem là nâng đỡ 100%.
         Kiện nằm trên cao phải có >= 70% diện tích đáy
@@ -508,13 +605,13 @@ class ConstraintEngine:
         # trực tiếp cho một đại lượng không có đơn vị.
         ratio_epsilon = 1e-9
 
-        if ratio < 0.70 - ratio_epsilon:
+        if ratio < required_ratio - ratio_epsilon:
             return ConstraintResult.fail(
                 violation_code="INSUFFICIENT_SUPPORT_AREA",
                 detail=(
                     f"Package {placement.package_id} "
                     f"support ratio {ratio:.4%} "
-                    "is below required 70%"
+                    f"is below required {required_ratio:.0%}"
                 ),
             )
 
@@ -790,6 +887,20 @@ class ConstraintEngine:
 
         offset_ratio_x = abs(cog_x - center_x) / length
         offset_ratio_y = abs(cog_y - center_y) / width
+
+        if cls.physics_v2():
+            # H11: chỉ trọng tâm ngang, |ȳ_G − W/2| ≤ r_y·W. Trọng tâm dọc do tải trục (HC-12 / H6) lo; xe không khai
+            # trục đã bị chặn ở kiểm đầu vào (AXLE_CONFIG_MISSING), nên không xe nào mất ràng buộc dọc.
+            limit_y = cls.cog_offset_limit_y(vehicle)
+            if offset_ratio_y > limit_y + cls.EPSILON:
+                return ConstraintResult.fail(
+                    violation_code="CENTER_OF_GRAVITY_OUT_OF_RANGE",
+                    detail=(
+                        f"H11: COG y {cog_y:.2f} cm is {offset_ratio_y:.2%} of the width off centre, "
+                        f"limit {limit_y:.0%}"
+                    ),
+                )
+            return ConstraintResult.success()
 
         if (
                 offset_ratio_x > max_ratio + cls.EPSILON
@@ -1473,8 +1584,12 @@ class ConstraintEngine:
             if not res_rot.passed:
                 violations.append(res_rot)
 
-        # 2. Support area
-        res_supp = cls.check_support_area(placement, existing_placements, obstacles=vehicle.obstacles if vehicle else [])
+        v2 = cls.physics_v2()
+
+        # 2. Support area (H8: ρ theo kiện khi bật luật mới)
+        res_supp = cls.check_support_area(placement, existing_placements,
+                                          obstacles=vehicle.obstacles if vehicle else [],
+                                          required_ratio=cls.support_ratio_for(pkg))
         if not res_supp.passed:
             violations.append(res_supp)
 
@@ -1490,13 +1605,17 @@ class ConstraintEngine:
             violations.append(res_stability)
 
 
-        # 3. Fragility
-        res_frag = cls.check_fragility(placement, existing_placements, packages_map)
-        if not res_frag.passed:
-            violations.append(res_frag)
+        # 3. Fragility (HC-08). Luật mới bỏ: dễ vỡ = σ 0, H7 lo.
+        if not v2:
+            res_frag = cls.check_fragility(placement, existing_placements, packages_map)
+            if not res_frag.passed:
+                violations.append(res_frag)
 
-        # 4. Stacking weight
-        res_stack = cls.check_stacking(placement, existing_placements, packages_map, obstacles=vehicle.obstacles if vehicle else [])
+        # 4. Stacking weight (luật mới: H7 áp lực + H10 tải sàn)
+        res_stack = cls.check_stacking(
+            placement, existing_placements, packages_map, obstacles=vehicle.obstacles if vehicle else [],
+            floor_load_capacity_kg_m2=vehicle.floor_load_capacity_kg_m2 if (v2 and vehicle is not None) else None,
+        )
         if not res_stack.passed:
             violations.append(res_stack)
 

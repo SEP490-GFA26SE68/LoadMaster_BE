@@ -1,7 +1,12 @@
 package fu.se184491.loadmaster_be.repository.optimization;
 
 import fu.se184491.loadmaster_be.dto.response.optimization.LoadPlanDetailResponse;
+import fu.se184491.loadmaster_be.dto.response.optimization.DataWarningResponse;
+import fu.se184491.loadmaster_be.dto.response.optimization.OptimizationJobProgressResponse;
 import fu.se184491.loadmaster_be.dto.response.optimization.OptimizationJobStatusResponse;
+import fu.se184491.loadmaster_be.dto.response.optimization.PlacementDetailResponse;
+import fu.se184491.loadmaster_be.dto.response.optimization.PlanScoreComponentResponse;
+import fu.se184491.loadmaster_be.dto.response.optimization.PlanScoreResponse;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
@@ -12,7 +17,10 @@ import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.json.JsonMapper;
 
+import java.math.BigDecimal;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
@@ -86,6 +94,20 @@ class LoadPlanReadRepositoryTest {
 
         assertThat(plan.getObjective()).isEqualTo("AXLE_BALANCE");
         assertThat(plan.getCandidateLabel()).isNull();
+    }
+
+    @Test
+    void planCarriesTheVehicleItsJobRanFor() throws SQLException {
+        ResultSet rs = planRow(1, "MAX_VOLUME", "A", "MAX_VOLUME");
+        when(rs.getLong("vehicle_id")).thenReturn(42L);
+        rows(rs);
+
+        LoadPlanDetailResponse plan = repository.findPlansByTrip(10L).get(0);
+
+        assertThat(plan.getVehicleId()).isEqualTo(42L);
+        ArgumentCaptor<String> sql = ArgumentCaptor.forClass(String.class);
+        verify(jdbc).query(sql.capture(), anyMap(), any(RowMapper.class));
+        assertThat(sql.getValue()).contains("j.vehicle_id");
     }
 
     @Test
@@ -167,6 +189,92 @@ class LoadPlanReadRepositoryTest {
     }
 
     @Test
+    void jobStatusCarriesDataWarningsWrittenByTheOptimizer() throws SQLException {
+        ResultSet rs = mock(ResultSet.class);
+        when(rs.getLong("id")).thenReturn(42L);
+        when(rs.getString("data_warnings")).thenReturn(
+                "[{\"code\": \"TOP_LOAD_CAPACITY_MISSING\", \"package_ids\": [\"3\", \"4\"]},"
+                        + " {\"code\": \"PACKAGE_TYPE_MISSING\", \"package_ids\": [\"4\"]}, {\"no_code\": true}]");
+        rows(rs);
+
+        assertThat(repository.findJobStatus(42L)).hasValueSatisfying(job -> assertThat(job.getDataWarnings())
+                .containsExactly(new DataWarningResponse("TOP_LOAD_CAPACITY_MISSING", List.of("3", "4")),
+                        new DataWarningResponse("PACKAGE_TYPE_MISSING", List.of("4"))));
+    }
+
+    @Test
+    void jobStatusWithoutWarningsOrBrokenJsonHasAnEmptyList() throws SQLException {
+        ResultSet empty = mock(ResultSet.class);
+        when(empty.getString("data_warnings")).thenReturn("[]");
+        rows(empty);
+        assertThat(repository.findJobStatus(1L)).hasValueSatisfying(job -> assertThat(job.getDataWarnings()).isEmpty());
+    }
+
+    @Test
+    void jobStatusWithBrokenWarningJsonHasAnEmptyList() throws SQLException {
+        ResultSet broken = mock(ResultSet.class);
+        when(broken.getString("data_warnings")).thenReturn("{not json");
+        rows(broken);
+        assertThat(repository.findJobStatus(1L)).hasValueSatisfying(job -> assertThat(job.getDataWarnings()).isEmpty());
+    }
+
+    @Test
+    void runningJobCarriesLiveProgressAndElapsedTimeFromThePostgresClock() throws SQLException {
+        ResultSet rs = mock(ResultSet.class);
+        when(rs.getString("status")).thenReturn("RUNNING");
+        when(rs.getLong("elapsed_ms")).thenReturn(23150L);
+        when(rs.getString("progress")).thenReturn("""
+                {"stage": "BUILDING", "algorithm": "EP_DBLF", "layouts_tried": 3, "total_packages": 97,
+                 "best_placed_count": 87, "best_volume_percent": 54.5, "updated_at": "2026-11-27T01:15:02Z"}""");
+        rows(rs);
+
+        assertThat(repository.findJobStatus(42L)).hasValueSatisfying(job -> {
+            assertThat(job.getElapsedMs()).isEqualTo(23150L);
+            assertThat(job.getProgress()).isEqualTo(new OptimizationJobProgressResponse("BUILDING", "EP_DBLF", 3, 97, 87,
+                    54.5, Instant.parse("2026-11-27T01:15:02Z")));
+        });
+        ArgumentCaptor<String> sql = ArgumentCaptor.forClass(String.class);
+        verify(jdbc).query(sql.capture(), eq(Map.of("id", 42L)), any(RowMapper.class));
+        assertThat(sql.getValue()).contains("j.progress")
+                .contains("CASE WHEN j.status = 'RUNNING' AND j.execution_started_at IS NOT NULL")
+                .contains("clock_timestamp() - j.execution_started_at");
+    }
+
+    @Test
+    void progressBeforeTheFirstLayoutHasNoBestNumbersAndSelectingHasNoAlgorithm() throws SQLException {
+        ResultSet rs = mock(ResultSet.class);
+        when(rs.getString("progress")).thenReturn("""
+                {"stage": "SELECTING", "algorithm": null, "layouts_tried": 0, "total_packages": 4,
+                 "best_placed_count": null, "best_volume_percent": null, "updated_at": "not a time"}""");
+        rows(rs);
+        assertThat(repository.findJobStatus(1L)).hasValueSatisfying(job -> assertThat(job.getProgress())
+                .isEqualTo(new OptimizationJobProgressResponse("SELECTING", null, 0, 4, null, null, null)));
+    }
+
+    @Test
+    void jobWithoutProgressOrBrokenProgressHasNoProgressAndNoElapsedTime() throws SQLException {
+        ResultSet none = mock(ResultSet.class);
+        when(none.getString("progress")).thenReturn(null);
+        when(none.wasNull()).thenReturn(true);   // elapsed_ms NULL: chưa bắt đầu / đã kết thúc
+        ResultSet broken = mock(ResultSet.class);
+        when(broken.getString("progress")).thenReturn("{not json");
+        ResultSet unknownStage = mock(ResultSet.class);
+        when(unknownStage.getString("progress")).thenReturn("{\"stage\": \"DANCING\", \"layouts_tried\": 1}");
+        ResultSet array = mock(ResultSet.class);
+        when(array.getString("progress")).thenReturn("[1, 2]");
+        rows(none);
+        assertThat(repository.findJobStatus(1L)).hasValueSatisfying(job -> {
+            assertThat(job.getProgress()).isNull();
+            assertThat(job.getElapsedMs()).isNull();
+        });
+        for (ResultSet rs : List.of(broken, unknownStage, array)) {
+            org.mockito.Mockito.reset(jdbc);
+            rows(rs);
+            assertThat(repository.findJobStatus(1L)).hasValueSatisfying(job -> assertThat(job.getProgress()).isNull());
+        }
+    }
+
+    @Test
     void placementsCarryTheRotationsTheirPackageTypeAllows() throws SQLException {
         rows(placementRow(3L, true, false, false, true, 0), placementRow(4L, false, true, true, true, 0),
                 placementRow(5L, true, true, true, true, 0));
@@ -188,5 +296,133 @@ class LoadPlanReadRepositoryTest {
         List<LoadPlanReadRepository.PlacementRow> placements = repository.findPlacements(List.of(5L));
 
         assertThat(placements.get(0).placement().getAllowedRotations()).containsExactly(0, 1);
+    }
+
+    /** Điểm J do dịch vụ tối ưu ghi (V57, khoá snake_case) như cột jsonb trả về. */
+    private static final String SCORE_JSON = """
+            {"profile": "B", "profile_name": "Cân trục", "assumed_weights": true, "j": 61.25, "u_vol": 0.42,
+             "u_n": 1.0, "w_vol": 1.0, "w_n": 0.5,
+             "components": [{"code": "S1", "name": "Lệch trọng tâm", "value": 0.1, "weight": 0.3,
+                             "contribution": -3.0, "computed": true},
+                            {"code": "S3", "name": "Tải trục", "value": 0.0, "weight": 0.2, "contribution": 0.0,
+                             "computed": false}]}
+            """;
+
+    @Test
+    void planCarriesTheJScoreProfileAndDuplicateWrittenByTheOptimizer() throws SQLException {
+        ResultSet rs = planRow(2, "AXLE_BALANCE", "B", "MAX_VOLUME");
+        when(rs.getString("plan_score")).thenReturn(SCORE_JSON);
+        when(rs.getString("candidate_profile")).thenReturn("B");
+        when(rs.getString("duplicate_of")).thenReturn("A");
+        rows(rs);
+
+        LoadPlanDetailResponse plan = repository.findPlansByJob(7L).get(0);
+
+        assertThat(plan.getCandidateProfile()).isEqualTo("B");
+        assertThat(plan.getDuplicateOf()).isEqualTo("A");
+        assertThat(plan.getPlanScore()).isEqualTo(new PlanScoreResponse("B", "Cân trục", true, 61.25, 0.42, 1.0, 1.0,
+                0.5, List.of(new PlanScoreComponentResponse("S1", "Lệch trọng tâm", 0.1, 0.3, -3.0, true),
+                        new PlanScoreComponentResponse("S3", "Tải trục", 0.0, 0.2, 0.0, false))));
+        ArgumentCaptor<String> sql = ArgumentCaptor.forClass(String.class);
+        verify(jdbc).query(sql.capture(), anyMap(), any(RowMapper.class));
+        assertThat(sql.getValue()).contains("lp.plan_score", "lp.candidate_profile", "lp.duplicate_of");
+    }
+
+    @Test
+    void planWithoutScoreOrWithBrokenScoreJsonHasNoScore() throws SQLException {
+        ResultSet old = planRow(1, null, null, "MAX_VOLUME");
+        ResultSet broken = planRow(2, null, null, "MAX_VOLUME");
+        when(broken.getString("plan_score")).thenReturn("{not json");
+        ResultSet notAnObject = planRow(3, null, null, "MAX_VOLUME");
+        when(notAnObject.getString("plan_score")).thenReturn("[1, 2]");
+        ResultSet nanJ = planRow(4, null, null, "MAX_VOLUME");
+        when(nanJ.getString("plan_score")).thenReturn("{\"profile\": \"A\", \"j\": null, \"u_vol\": 0.5}");
+        rows(old, broken, notAnObject, nanJ);
+
+        List<LoadPlanDetailResponse> plans = repository.findPlansByJob(7L);
+
+        assertThat(plans.subList(0, 3)).allSatisfy(plan -> {
+            assertThat(plan.getPlanScore()).isNull();
+            assertThat(plan.getCandidateProfile()).isNull();
+            assertThat(plan.getDuplicateOf()).isNull();
+        });
+        // Số không hữu hạn được dịch vụ tối ưu lưu thành null: giữ null, không đổi thành 0.
+        assertThat(plans.get(3).getPlanScore()).isEqualTo(
+                new PlanScoreResponse("A", null, null, null, 0.5, null, null, null, List.of()));
+    }
+
+    @Test
+    void placementsCarryTheReasonsAndFactsOfTheirPlace() throws SQLException {
+        ResultSet placed = placementRow(3L, true, false, false, true, 0);
+        when(placed.getString("reason_codes")).thenReturn("[\"ZONE_STOP_2\", \" \", \"HEAVY_LOW\", 7]");
+        when(placed.getBigDecimal("stack_pressure_kg_m2")).thenReturn(new BigDecimal("412.500"));
+        when(placed.getBigDecimal("top_load_capacity_kg_m2")).thenReturn(new BigDecimal("5000.000"));
+        when(placed.getBigDecimal("support_ratio")).thenReturn(new BigDecimal("0.8125"));
+        when(placed.getBigDecimal("distance_to_door_cm")).thenReturn(new BigDecimal("120.000"));
+        ResultSet old = placementRow(3L, true, false, false, true, 0);
+        ResultSet noReasons = placementRow(3L, true, false, false, true, 0);
+        when(noReasons.getString("reason_codes")).thenReturn("[]");
+        rows(placed, old, noReasons);
+
+        List<LoadPlanReadRepository.PlacementRow> placements = repository.findPlacements(List.of(5L));
+
+        PlacementDetailResponse first = placements.get(0).placement();
+        assertThat(first.getReasonCodes()).containsExactly("ZONE_STOP_2", "HEAVY_LOW");
+        assertThat(first.getStackPressureKgM2()).isEqualByComparingTo("412.5");
+        assertThat(first.getTopLoadCapacityKgM2()).isEqualByComparingTo("5000");
+        assertThat(first.getSupportRatio()).isEqualByComparingTo("0.8125");
+        assertThat(first.getDistanceToDoorCm()).isEqualByComparingTo("120");
+        PlacementDetailResponse second = placements.get(1).placement();
+        assertThat(second.getReasonCodes()).isNull();
+        assertThat(second.getStackPressureKgM2()).isNull();
+        assertThat(second.getTopLoadCapacityKgM2()).isNull();
+        assertThat(second.getSupportRatio()).isNull();
+        assertThat(second.getDistanceToDoorCm()).isNull();
+        assertThat(placements.get(2).placement().getReasonCodes()).isEmpty();
+        ArgumentCaptor<String> sql = ArgumentCaptor.forClass(String.class);
+        verify(jdbc).query(sql.capture(), anyMap(), any(RowMapper.class));
+        assertThat(sql.getValue()).contains("pp.reason_codes", "pp.stack_pressure_kg_m2", "pp.top_load_capacity_kg_m2",
+                "pp.support_ratio", "pp.distance_to_door_cm");
+    }
+
+    /** Web đọc đúng các tên này: đổi tên là vỡ hợp đồng. */
+    @Test
+    void scoreAndReasonFieldsKeepTheirJsonNames() {
+        JsonMapper mapper = JsonMapper.builder().build();
+        PlacementDetailResponse placement = PlacementDetailResponse.builder()
+                .reasonCodes(List.of("PINNED")).stackPressureKgM2(BigDecimal.ZERO).supportRatio(BigDecimal.ONE)
+                .build();
+        LoadPlanDetailResponse plan = LoadPlanDetailResponse.builder()
+                .candidateProfile("C").duplicateOf("A")
+                .planScore(new PlanScoreResponse("C", "Ít dỡ", false, 50.0, 0.4, 0.9, 1.0, 0.5,
+                        List.of(new PlanScoreComponentResponse("S2", "Dỡ-xếp lại", 1.0, 0.1, -10.0, true))))
+                .placements(List.of(placement))
+                .build();
+
+        JsonNode json = mapper.readTree(mapper.writeValueAsString(plan));
+
+        assertThat(json.get("candidateProfile").asString()).isEqualTo("C");
+        assertThat(json.get("duplicateOf").asString()).isEqualTo("A");
+        JsonNode score = json.get("planScore");
+        assertThat(fieldNames(score)).containsExactlyInAnyOrder("profile", "profileName", "assumedWeights", "j", "uVol",
+                "uN", "wVol", "wN", "components");
+        assertThat(score.get("uVol").asDouble()).isEqualTo(0.4);
+        assertThat(score.get("wN").asDouble()).isEqualTo(0.5);
+        assertThat(fieldNames(score.get("components").get(0)))
+                .containsExactlyInAnyOrder("code", "name", "value", "weight", "contribution", "computed");
+        JsonNode first = json.get("placements").get(0);
+        assertThat(first.get("reasonCodes").get(0).asString()).isEqualTo("PINNED");
+        assertThat(fieldNames(first)).contains("reasonCodes", "stackPressureKgM2", "topLoadCapacityKgM2",
+                "supportRatio", "distanceToDoorCm");
+        // Trống thì vẫn gửi null, không bỏ trường.
+        assertThat(first.get("topLoadCapacityKgM2").isNull()).isTrue();
+        JsonNode empty = mapper.readTree(mapper.writeValueAsString(LoadPlanDetailResponse.builder().build()));
+        assertThat(empty.get("planScore").isNull()).isTrue();
+        assertThat(empty.get("candidateProfile").isNull()).isTrue();
+        assertThat(empty.get("duplicateOf").isNull()).isTrue();
+    }
+
+    private static List<String> fieldNames(JsonNode node) {
+        return List.copyOf(node.propertyNames());
     }
 }

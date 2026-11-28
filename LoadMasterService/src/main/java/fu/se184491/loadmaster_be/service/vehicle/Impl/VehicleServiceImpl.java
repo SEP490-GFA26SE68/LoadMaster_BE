@@ -199,7 +199,8 @@ public class VehicleServiceImpl implements VehicleService {
                 type.getEmptyFrontAxleLoadKg(),
                 type.getEmptyRearAxleLoadKg(),
 
-                obstacles
+                obstacles,
+                fu.se184491.loadmaster_be.constant.vehicle.VehicleBodyStyle.nameOf(type)
         );
     }
 

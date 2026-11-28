@@ -138,6 +138,28 @@ public class PackageTypeControllerTest {
     }
 
     @Test
+    @DisplayName("σ âm hoặc ρ ngoài 0,5–1 bị từ chối 400 (spec ràng buộc vật lý 8.1)")
+    @WithMockUser(authorities = "PACKAGE_TYPE_MANAGE")
+    void createPackageType_rejectsBadPhysicsNumbers() throws Exception {
+        for (PackageTypeRequest bad : new PackageTypeRequest[]{
+                validRequestBuilder().topLoadCapacityKgM2(BigDecimal.valueOf(-1)).build(),
+                validRequestBuilder().minSupportRatio(new BigDecimal("0.4")).build(),
+                validRequestBuilder().minSupportRatio(new BigDecimal("1.1")).build()}) {
+            mockMvc.perform(post("/api/package-types")
+                            .with(csrf())
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(bad)))
+                    .andExpect(status().isBadRequest());
+        }
+        verify(packageTypeService, never()).createPackageType(any(), any());
+    }
+
+    private static PackageTypeRequest.PackageTypeRequestBuilder validRequestBuilder() {
+        return PackageTypeRequest.builder().name("Thùng").length(40).width(30).height(30)
+                .weightKg(BigDecimal.TEN).maxStackingWeightKg(BigDecimal.valueOf(50));
+    }
+
+    @Test
     @DisplayName("PUT /api/package-types/{id} should return 200 OK when request is valid")
     @WithMockUser(authorities = "PACKAGE_TYPE_MANAGE")
     void updatePackageType_Success() throws Exception {

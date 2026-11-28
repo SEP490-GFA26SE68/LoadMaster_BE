@@ -20,6 +20,13 @@ class PlacementData(BaseModel):
     stop_zone_id: Optional[Union[UUID, str, int]] = None
     # Kiện đã ghim: giữ nguyên vị trí và hướng của phương án trước.
     pinned: bool = False
+    # Lý do đặt + số đo của chỗ đặt (spec 7.3; chỉ điền khi PLAN_SCORE_J bật). Suy từ phương án cuối, không phải
+    # nhật ký của bộ giải: mã vùng, nằm sàn / chịu tải, kiện bắt buộc, kiện ghim.
+    reason_codes: Optional[List[str]] = None
+    stack_pressure_kg_m2: Optional[float] = None       # pⱼ: áp lực trên mặt trên (H7); 0 khi không có gì đè
+    top_load_capacity_kg_m2: Optional[float] = None    # σⱼ dùng khi kiểm H7 (trống = không nhận tải)
+    support_ratio: Optional[float] = None              # diện tích đáy được đỡ / diện tích đáy (H8); 1 trên sàn
+    distance_to_door_cm: Optional[float] = None        # L − (x + l)
 
 
 class UnplacedData(BaseModel):
@@ -43,6 +50,29 @@ class MetricsData(BaseModel):
     rehandling_count: int = 0
 
 
+class PlanScoreComponentData(BaseModel):
+    """Một dòng của bảng phân rã J: Vₖ, wₖ và đóng góp −100·wₖ·Vₖ."""
+    code: str
+    name: str
+    value: float
+    weight: float
+    contribution: float
+    computed: bool = True  # False: "không tính" (S3 khi xe thiếu dữ liệu trục; S7, S8 chưa làm)
+
+
+class PlanScoreData(BaseModel):
+    """Điểm J của phương án theo một hồ sơ ưu tiên (spec mục 6), kèm phân rã."""
+    profile: str
+    profile_name: str
+    assumed_weights: bool = True  # True = trọng số còn là số giả định; file hồ sơ ghi `assumed` (chốt 26/11/2026: false)
+    j: float
+    u_vol: float
+    u_n: float
+    w_vol: float
+    w_n: float
+    components: List[PlanScoreComponentData] = Field(default_factory=list)
+
+
 class EngineOptimizationResponse(BaseModel):
     """Kết quả trả về từ Optimization Engine."""
     placements: List[PlacementData] = Field(default_factory=list)
@@ -56,6 +86,8 @@ class EngineOptimizationResponse(BaseModel):
     algorithm_name: Optional[str] = None
     # Các thuật toán job đã chạy (kể cả cách không được chọn); chỉ để ghi log, không đưa ra JSON.
     algorithms_tried: List[str] = Field(default_factory=list, exclude=True)
+    # Điểm J + phân rã theo hồ sơ của phương án (M6, cờ PLAN_SCORE_J); tắt cờ thì để trống.
+    plan_score: Optional[PlanScoreData] = None
 
 
 class CandidatePlanData(BaseModel):
@@ -63,6 +95,9 @@ class CandidatePlanData(BaseModel):
     label: str
     objective: str
     result: EngineOptimizationResponse
+    # Cờ PLAN_SCORE_J: hồ sơ đã chọn phương án này (A | B | C) và nhãn trước đó đã chọn trùng phương án (vd "A").
+    profile: Optional[str] = None
+    duplicate_of: Optional[str] = None
 
 
 EngineOptimizationResponse.model_rebuild()

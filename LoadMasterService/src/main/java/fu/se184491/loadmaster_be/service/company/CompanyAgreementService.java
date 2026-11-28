@@ -12,9 +12,15 @@ public interface CompanyAgreementService {
 
     CompanyAgreement createTrialAgreement(Company company, User adminUser, LocalDateTime approvedAt);
 
+    CompanyAgreement createOfficialServiceAgreement(Company company, User adminUser, LocalDateTime approvedAt);
+
     CompanyAgreementResponse getMyAgreement(User currentUser);
 
-    CompanyAgreementResponse signAgreement(User currentUser, SignAgreementRequest request, String clientIp);
+    default CompanyAgreementResponse signAgreement(User currentUser, SignAgreementRequest request, String clientIp) {
+        return signAgreement(currentUser, request, clientIp, null);
+    }
+
+    CompanyAgreementResponse signAgreement(User currentUser, SignAgreementRequest request, String clientIp, String signerDevice);
 
     CompanyAgreementResponse getCompanyAgreement(Long companyId);
 

@@ -143,6 +143,8 @@ public class ManualPlanApprovalServiceImpl implements ManualPlanApprovalService 
         // Chỉ đổi ghim thì cách xếp giữ nguyên: giữ số của bộ tối ưu.
         Integer rehandling = edited.isEmpty() ? sourcePlan.getRehandlingCount()
                 : rehandlingOf(trip, type, byId.values(), after, source.getUnplaced());
+        // Điểm J, hồ sơ, nhãn trùng (load_plans) và lý do đặt + số đo (package_placements) của V57 không chép sang bản này:
+        // chỉnh tay làm chúng sai. Entity và insertPlacements không ghi các cột đó, nên bản duyệt để trống (null).
         LoadPlan approved = loadPlanRepository.saveAndFlush(LoadPlan.builder()
                 .job(sourcePlan.getJob())
                 .planName(sourcePlan.getPlanName())

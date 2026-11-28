@@ -22,7 +22,7 @@ public record TripStopResponse(
         LocalDateTime plannedArrival,
         LocalDateTime actualArrival,
         LocalDateTime deadline,
-        /** DELIVERY hoặc PICKUP (điểm nhận hàng dọc đường). */
+        /** DELIVERY; PICKUP chỉ còn ở điểm nhận cũ (tính năng nhận hàng dọc đường đã bỏ). */
         String stopType
 ) {
 

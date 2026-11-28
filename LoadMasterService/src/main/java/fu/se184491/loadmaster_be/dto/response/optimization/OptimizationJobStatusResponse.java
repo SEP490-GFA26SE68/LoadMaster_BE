@@ -7,6 +7,7 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 
 import java.time.Instant;
+import java.util.List;
 
 /** Canonical job status. Credit settlement is reported separately by creditStatus;
  * FAILED or a failureCode alone does not prove that the ledger was refunded. */
@@ -29,4 +30,10 @@ public class OptimizationJobStatusResponse {
     private String runAlgorithm;
     private String failureCode;
     private String creditStatus;
+    /** Cảnh báo dữ liệu đầu vào của lần chạy (kiện thiếu σ, kiện không có loại kiện …); không chặn job. */
+    private List<DataWarningResponse> dataWarnings;
+    /** Thời gian đã chạy (ms, theo đồng hồ PostgreSQL) khi job đang RUNNING và đã bắt đầu; null trong mọi trường hợp khác. */
+    private Long elapsedMs;
+    /** Tiến độ sống do OptimizeService báo; null khi job chưa báo gì (PENDING, engine từ xa, job cũ). */
+    private OptimizationJobProgressResponse progress;
 }

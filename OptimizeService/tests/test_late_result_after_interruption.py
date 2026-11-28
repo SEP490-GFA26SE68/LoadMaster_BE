@@ -184,7 +184,7 @@ async def test_background_run_releases_session_before_engine_solve():
         engine_exception_handler=handler,
         persistence_service=MagicMock(),
         session_factory=tracking_factory,
-        credit_client=Ledger(),
+        credit_client=Ledger("job-1"),
     )
     with patch("app.service.optimize.authorized_job_dispatch.claim_for_execution", return_value=True):
         await runner.run("job-1", problem=MagicMock())

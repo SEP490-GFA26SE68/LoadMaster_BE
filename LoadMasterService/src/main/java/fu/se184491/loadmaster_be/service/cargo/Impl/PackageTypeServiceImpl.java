@@ -53,6 +53,8 @@ public class PackageTypeServiceImpl implements PackageTypeService {
                 .height(request.getHeight())
                 .weightKg(request.getWeightKg())
                 .maxStackingWeightKg(request.getMaxStackingWeightKg())
+                .topLoadCapacityKgM2(request.getTopLoadCapacityKgM2())
+                .minSupportRatio(request.getMinSupportRatio())
                 .isFragile(defaultFalse(request.getIsFragile()))
                 .rotationAllowed(defaultTrue(request.getRotationAllowed()))
                 .allowRotateX(defaultTrue(request.getAllowRotateX()))
@@ -95,6 +97,13 @@ public class PackageTypeServiceImpl implements PackageTypeService {
         packageType.setHeight(request.getHeight());
         packageType.setWeightKg(request.getWeightKg());
         packageType.setMaxStackWeightKg(request.getMaxStackingWeightKg());
+        // Trường mới (spec 8.1): FE cũ không gửi → giữ giá trị đang có, không xoá.
+        if (request.getTopLoadCapacityKgM2() != null) {
+            packageType.setTopLoadCapacityKgM2(request.getTopLoadCapacityKgM2());
+        }
+        if (request.getMinSupportRatio() != null) {
+            packageType.setMinSupportRatio(request.getMinSupportRatio());
+        }
 
         packageType.setFragile(defaultFalse(request.getIsFragile()));
         packageType.setRotationAllowed(defaultTrue(request.getRotationAllowed()));
@@ -187,6 +196,8 @@ public class PackageTypeServiceImpl implements PackageTypeService {
                 .height(entity.getHeight())
                 .weightKg(entity.getWeightKg())
                 .maxStackingWeightKg(entity.getMaxStackWeightKg())
+                .topLoadCapacityKgM2(entity.getTopLoadCapacityKgM2())
+                .minSupportRatio(entity.getMinSupportRatio())
                 .isFragile(entity.getFragile())
                 .rotationAllowed(entity.getRotationAllowed())
                 .allowRotateX(entity.getAllowRotateX())

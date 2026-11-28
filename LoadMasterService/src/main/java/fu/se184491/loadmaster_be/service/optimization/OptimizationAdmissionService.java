@@ -83,7 +83,7 @@ public class OptimizationAdmissionService {
         }
         var sub = entitlements.requireActive(companyId);
         SubscriptionTier tier = sub.getPlan().getTier();
-        var job = OptimizationJob.builder().trip(trip).jobUuid(uuid).parentPlanId(parentPlanId)
+        var job = OptimizationJob.builder().trip(trip).jobUuid(uuid).parentPlanId(parentPlanId).vehicleId(OptimizationJob.vehicleIdOf(trip))
                 .companyId(companyId.toString()).subscriptionTier(tier).algorithmTier(tier.name())
                 .algorithmName(OptimizationAlgorithm.valueOf(sub.getPlan().getAlgorithmTier().name()))
                 .objective(objective).timeLimitSec(seconds).seed(seed).status(OptimizationJobStatus.PENDING).build();

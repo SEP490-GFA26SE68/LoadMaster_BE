@@ -2,6 +2,8 @@
 package fu.se184491.loadmaster_be.dto.request.vehicle;
 
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.DecimalMax;
+import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Positive;
@@ -58,9 +60,24 @@ public record CreateVehicleTypeRequest(
 
         BigDecimal maxCogOffsetRatio,
 
+        // H11: lệch trọng tâm ngang tối đa (0–0,5); trống = dùng maxCogOffsetRatio. Tuỳ chọn.
+        @DecimalMin("0.0") @DecimalMax("0.5")
+        BigDecimal maxCogOffsetRatioY,
+
+        // H10: tải trọng sàn, kg/m²; trống = không kiểm tải sàn. Tuỳ chọn.
+        @Positive
+        BigDecimal floorLoadCapacityKgM2,
+
         Boolean hazardousCapable,
 
         @Valid
-        List<CreateVehicleTypeObstacleRequest> obstacles
+        List<CreateVehicleTypeObstacleRequest> obstacles,
+
+        // Kiểu thân xe (tên của VehicleBodyStyle), chỉ đổi hình xe trong khung 3D. Tuỳ chọn; giá trị lạ là
+        // VEHICLE_BODY_STYLE_INVALID (400). Khi sửa: vắng là giữ kiểu đang có (client cũ không gửi trường này).
+        String bodyStyle,
+
+        // Khi sửa: true là bỏ kiểu thân xe về trống (web chọn theo kích thước). Không gửi cùng bodyStyle.
+        Boolean clearBodyStyle
 ) {
 }

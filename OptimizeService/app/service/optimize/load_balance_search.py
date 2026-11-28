@@ -6,8 +6,10 @@ import math
 import time
 from itertools import product
 
+from app.config.settings import settings
 from app.dto.optimization.engine.engine_response import PlacementData
 from app.dto.optimization.engine.problem_request import ProblemRequest
+from app.service.optimize import plan_score
 from app.service.optimize.constraint_engine import ConstraintEngine
 from app.service.optimize.unload_feasibility_validator import UnloadFeasibilityValidator
 
@@ -27,8 +29,12 @@ def center_of_mass(placements, packages_map):
                  for axis, size in (("x", "packed_l"), ("y", "packed_w"), ("z", "packed_h")))
 
 
-def validate_plan(placements, vehicle, packages_map, deadline, *, balance=True):
-    """Revalidate the entire geometry/stack graph, rotations, mass and actual unload sequence."""
+def validate_plan(placements, vehicle, packages_map, deadline, *, balance=True, unload_budget_sec=None):
+    """Revalidate the entire geometry/stack graph, rotations, mass and actual unload sequence.
+
+    unload_budget_sec caps this call's unload search; running out is a rejection (UNLOAD_TIME_LIMIT_REACHED),
+    never an acceptance.
+    """
     if time.monotonic() >= deadline:
         return ["OPTIMIZATION_TIME_LIMIT_REACHED"]
     ids = [str(p.package_id) for p in placements]
@@ -54,10 +60,14 @@ def validate_plan(placements, vehicle, packages_map, deadline, *, balance=True):
             result = check(placements, vehicle, packages_map)
             if not result.passed:
                 return [result.violation_code]
-    result = UnloadFeasibilityValidator.validate(placements, packages_map, vehicle, deadline=deadline)
+    unload_deadline = deadline
+    if unload_budget_sec is not None:
+        unload_deadline = min(deadline, time.monotonic() + max(0.0, float(unload_budget_sec)))
+    result = UnloadFeasibilityValidator.validate(placements, packages_map, vehicle, deadline=unload_deadline)
     if time.monotonic() >= deadline:
         return ["OPTIMIZATION_TIME_LIMIT_REACHED"]
-    return [] if result.passed else [result.violation_code or "MULTI_DROP_LIFO_VIOLATION"]
+    lifo = "LIFO_BLOCKED" if ConstraintEngine.physics_v2() else "MULTI_DROP_LIFO_VIOLATION"
+    return [] if result.passed else [result.violation_code or lifo]
 
 
 class LoadBalanceSearch:
@@ -75,6 +85,7 @@ class LoadBalanceSearch:
         self.best_plan = []
         self.best_rank = None
         self.last_violations = []
+        self.profile = None
 
     def best_plan_copy(self):
         """Return an isolated snapshot; callers cannot mutate the validated incumbent."""
@@ -86,9 +97,28 @@ class LoadBalanceSearch:
             return self.best_plan_copy()
         return None
 
-    def _consider(self, placements):
+    @staticmethod
+    def _bounded():
+        return bool(settings.LOAD_BALANCE_BOUNDED_ENABLED)
+
+    def _validate(self, placements, *, balance=True, unload_budget_sec=None):
+        if unload_budget_sec is None and self._bounded():
+            unload_budget_sec = float(settings.LOAD_BALANCE_UNLOAD_CHECK_SEC)
+        return validate_plan(placements, self.vehicle, self.packages, self.deadline,
+                             balance=balance, unload_budget_sec=unload_budget_sec)
+
+    def _initial_unload_budget(self):
+        """Bounded mode: the constructor's plan may use a share of the pass time left (never less than the per-check
+        cap). A large valid plan can need tens of seconds to prove unloadable, but so can an invalid one to prove it
+        is not — an uncapped check would leave no time to repack."""
+        if not self._bounded():
+            return None
+        left = max(0.0, self.deadline - time.monotonic())
+        return max(float(settings.LOAD_BALANCE_UNLOAD_CHECK_SEC), left * float(settings.LOAD_BALANCE_INITIAL_CHECK_RATIO))
+
+    def _consider(self, placements, *, unload_budget_sec=None):
         """Only fully validated plans may be ranked or retained, including partial plans."""
-        codes = validate_plan(placements, self.vehicle, self.packages, self.deadline)
+        codes = self._validate(placements, unload_budget_sec=unload_budget_sec)
         if codes:
             self.last_violations = codes
             return False
@@ -102,6 +132,14 @@ class LoadBalanceSearch:
         error += ((cog[1] - self.vehicle.inner_w / 2) / self.vehicle.inner_w) ** 2
         volume = sum(p.packed_l * p.packed_w * p.packed_h for p in placements)
         rank = (len(placements), volume, -error)
+        if plan_score.enabled():
+            # M6: hạng theo khoá chọn của J (hồ sơ lần chạy); J đã gồm thể tích, lệch trọng tâm / trục.
+            if self.profile is None:
+                self.profile = plan_score.resolve_profile(self.problem.plan_profile)
+            rank = (*plan_score.selection_key(self.problem, placements, self.profile), -error)
+        if ConstraintEngine.physics_v2():
+            # H13: không đổi kiện bắt buộc lấy kiện khác — số kiện must_load được xếp đứng đầu hạng.
+            rank = (sum(1 for p in placements if self.packages[str(p.package_id)].must_load), *rank)
         if self.best_rank is None or rank > self.best_rank:
             self.best_plan = [p.model_copy(deep=True) for p in placements]
             self.best_rank, self.best_cog = rank, cog
@@ -144,14 +182,20 @@ class LoadBalanceSearch:
         return lo, hi
 
     def improve(self, initial, zones):
+        bounded = self._bounded()
+        patience = max(1, int(settings.LOAD_BALANCE_PATIENCE)) if bounded else None
         if time.monotonic() >= self.deadline:
             self._log("time budget exhausted before improvement", ["OPTIMIZATION_TIME_LIMIT_REACHED"])
             return self.best_plan_copy()
-        initial_valid = self._consider(initial)
+        initial_valid = self._consider(initial, unload_budget_sec=self._initial_unload_budget())
         initial_codes = self.last_violations
         if initial_valid and len(initial) == len(self.packages):
             self._log("initial plan already satisfies all hard constraints", [])
             return initial
+        if bounded:
+            # Own share of the job for the search itself (starts after the initial check); pass deadline still applies.
+            budget = max(float(self.problem.time_limit_sec or 60), 1) * float(settings.LOAD_BALANCE_BUDGET_RATIO)
+            self.deadline = min(self.deadline, time.monotonic() + max(0.0, budget))
 
         # Rigid translation retains geometry, but the entire trial must still be validated.
         initial_cog = center_of_mass(initial, self.packages) if initial else None
@@ -183,9 +227,12 @@ class LoadBalanceSearch:
             lambda p: (-p.weight, -p.stop_index, str(p.id)),
             lambda p: (-p.stop_index, -(p.l * p.w * p.h), str(p.id)),
         ]
+        stale = 0
+        stopped_early = False
         for attempt in range(self.MAX_ATTEMPTS):
             if time.monotonic() >= self.deadline:
                 break
+            before = self.best_rank
             order = sorted(packages, key=order_keys[attempt % len(order_keys)])
             trial = self._repack(order, zones, attempt // len(order_keys))
             self.iterations += 1
@@ -194,7 +241,15 @@ class LoadBalanceSearch:
             if self.best_plan and len(self.best_plan) == len(packages):
                 self._log("soft-zone repack accepted after full validation", [])
                 return self.best_plan_copy()
-        reason = "time budget exhausted" if time.monotonic() >= self.deadline else "bounded candidate/order search exhausted"
+            if patience is not None:
+                stale = 0 if self.best_rank != before else stale + 1
+                if stale >= patience:
+                    stopped_early = True
+                    break
+        if stopped_early:
+            reason = f"no better plan in {patience} consecutive repacks"
+        else:
+            reason = "time budget exhausted" if time.monotonic() >= self.deadline else "bounded candidate/order search exhausted"
         self._log(reason, [] if self.best_plan else self.last_violations or initial_codes)
         # An invalid initial plan never sets a minimum count or becomes the fallback.
         return self.best_plan_copy()
@@ -286,7 +341,7 @@ class LoadBalanceSearch:
                 if time.monotonic() >= self.deadline:
                     break
                 # Partial-plan COG is a score, not a hard constraint. All physical/rotation/unload rules remain hard.
-                if not validate_plan([*placed, candidate], v, self.packages, self.deadline, balance=False):
+                if not self._validate([*placed, candidate], balance=False):
                     placed.append(candidate)
                     mass += package.weight
                     # Retain fully validated prefixes before spending time on the next package.

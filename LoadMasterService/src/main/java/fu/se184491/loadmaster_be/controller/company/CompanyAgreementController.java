@@ -19,6 +19,7 @@ public class CompanyAgreementController {
 
     private final CompanyAgreementService agreementService;
     private final CurrentUserService currentUserService;
+    private final fu.se184491.loadmaster_be.service.assistant.gate.ClientIpResolver clientIpResolver;
 
     @GetMapping("/my-agreement")
     @PreAuthorize("hasRole('ADMIN')")
@@ -35,12 +36,16 @@ public class CompanyAgreementController {
             HttpServletRequest servletRequest
     ) {
         User currentUser = currentUserService.getCurrentUser();
-        String clientIp = servletRequest.getHeader("X-Forwarded-For");
-        if (clientIp == null || clientIp.isBlank()) {
-            clientIp = servletRequest.getRemoteAddr();
+        String clientIp = clientIpResolver.resolveIpv4(servletRequest);
+        String userAgent = servletRequest.getHeader("User-Agent");
+        if (userAgent != null && userAgent.length() > 255) {
+            userAgent = userAgent.substring(0, 255);
+        }
+        if (userAgent == null || userAgent.isBlank()) {
+            userAgent = "Unknown Device";
         }
 
-        CompanyAgreementResponse response = agreementService.signAgreement(currentUser, request, clientIp);
+        CompanyAgreementResponse response = agreementService.signAgreement(currentUser, request, clientIp, userAgent);
         return ApiResponse.success("Ký thỏa thuận dịch vụ thành công", response);
     }
 

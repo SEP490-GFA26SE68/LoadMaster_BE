@@ -46,6 +46,7 @@ public class PackageResponse {
     private Integer fragilityLevel;
     private Boolean stackable;
     private BigDecimal maxTopLoadKg;
+    private BigDecimal topLoadCapacityKgM2;
     private Integer maxLayers;
     private BigDecimal minSupportRatio;
     private Integer priority;

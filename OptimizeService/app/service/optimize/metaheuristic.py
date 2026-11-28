@@ -35,6 +35,8 @@ from typing import Optional
 from app.constant.optimization.plan_algorithm import PlanAlgorithm
 from app.dto.optimization.engine.engine_response import EngineOptimizationResponse
 from app.dto.optimization.engine.problem_request import ProblemRequest
+from app.service.optimize import plan_score
+from app.service.optimize import job_progress
 from app.service.optimize.candidate_plans import (
     LayoutStrategy,
     axle_imbalance,
@@ -112,8 +114,10 @@ class _Search:
     def __init__(self, client, problem: ProblemRequest, seed: int, decode_estimate: float):
         self.client = client
         self.problem = problem
+        self.profile = plan_score.resolve_profile(problem.plan_profile) if plan_score.enabled() else None
         self.rng = random.Random(seed)
         self.decode_estimate = decode_estimate
+        self.deadline: Optional[float] = None  # hết ngân sách GA + SA: lần giải mã đang chạy cũng dừng (cờ hạn chung)
         self.cache: dict[tuple, EngineOptimizationResponse] = {}
         self.total = len(problem.packages)
         pinned = {str(p.package_id) for p in problem.pinned or []}
@@ -143,13 +147,19 @@ class _Search:
             orientation_pref=genome.orient,
             use_lumo_scorer=False,
             quiet=True,
+            job_deadline=self.deadline,
         )
         # Ước lượng thời gian giải mã theo lần chậm nhất gần đây (không để vượt hạn chót).
         self.decode_estimate = max(self.decode_estimate * 0.8, time.monotonic() - t0)
+        job_progress.layout_done(result)
         self.cache[key] = result
         return result, True
 
     def score(self, result: EngineOptimizationResponse) -> float:
+        if plan_score.enabled():
+            # M6: J theo hồ sơ của lần chạy; phương án rỗng (vi phạm ràng buộc cứng) không có J → dưới mọi J.
+            rehandling = result.metrics.rehandling_count if result.metrics else None
+            return plan_score.selection_scalar(self.problem, result.placements, self.profile, rehandling)
         return fitness(result, self.problem.vehicle, self.total)
 
     # ------------------------------------------------------------------ cá thể
@@ -250,8 +260,12 @@ def run_ga_sa(
     max_evaluations: int,
     run_sa: bool = True,
     seed: Optional[int] = None,
+    run_ga: bool = True,
 ) -> MetaResult:
-    """Chạy GA rồi SA trong `budget_sec` giây và tối đa `max_evaluations` lần giải mã."""
+    """Chạy GA rồi SA trong `budget_sec` giây và tối đa `max_evaluations` lần giải mã.
+
+    run_ga = False (gói đang bán từ D2, 26/11/2026): bỏ GA; SA bắt đầu từ cách xếp EP tốt nhất (các lượt EP của job,
+    không giải mã lại) và nhận cả ngân sách."""
     out = MetaResult()
     search_start = time.monotonic()
     end = search_start + max(budget_sec, 0.0)
@@ -259,15 +273,18 @@ def run_ga_sa(
         return out
     estimate = max((r.metrics.computation_ms or 0) / 1000.0 for _, r in ep_runs) if ep_runs else 0.0
     search = _Search(client, problem, problem_seed(problem) if seed is None else seed, estimate)
+    search.deadline = end
     if not search.package_ids:
         logger.info("GA/SA skipped: mọi kiện đều đã ghim")
         return out
 
-    ga_end = search_start + budget_sec * (GA_SHARE if run_sa else 1.0)
-    ga_limit = max(1, int(max_evaluations * (GA_SHARE if run_sa else 1.0)))
+    share = (GA_SHARE if run_sa else 1.0) if run_ga else 0.0
+    ga_end = search_start + budget_sec * share
+    ga_limit = max(1, int(max_evaluations * share)) if run_ga else 0
     sa_limit = max(0, max_evaluations - ga_limit) if run_sa else 0
 
     # ---------------------------------------------------------------- GA
+    job_progress.stage(job_progress.IMPROVING, PlanAlgorithm.GA.value)
     population: list[tuple[Genome, float]] = []
     for strategy, layout in ep_runs:
         genome = search.seed_genome(strategy)
@@ -313,6 +330,7 @@ def run_ga_sa(
 
     # ---------------------------------------------------------------- SA
     if run_sa and population:
+        job_progress.stage(job_progress.IMPROVING, PlanAlgorithm.SA.value)
         current, current_score = max(population, key=lambda item: item[1])
         temperature = SA_T0
         sa_used = 0

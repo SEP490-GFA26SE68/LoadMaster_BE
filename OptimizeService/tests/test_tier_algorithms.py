@@ -52,6 +52,9 @@ AI_CODES = {
     PlanAlgorithm.LUMO_R1_1.value,
     PlanAlgorithm.LUMO_R2.value,
 }
+# D2 (26/11/2026): gói đang bán chỉ còn hai mô hình Lumo; GA, EP_LUMO_R1_1, LUMO_R2 chỉ chạy ở chế độ legacy (R9).
+SOLD_AI_CODES = {PlanAlgorithm.LUMO_R1.value, PlanAlgorithm.LUMO_R1_1.value}
+REMOVED = {GA, PlanAlgorithm.EP_LUMO_R1_1.value, PlanAlgorithm.LUMO_R2.value}
 
 VEHICLE = VehicleData(
     inner_l=600, inner_w=200, inner_h=200, max_payload_kg=5000,
@@ -119,9 +122,21 @@ class TestTierRouting:
     def test_plan_algorithms_by_tier(self):
         assert AlgorithmTierService.plan_algorithms_for("EP_DBLF") == [EP]
         assert AlgorithmTierService.plan_algorithms_for(None) == [EP]
+        assert AlgorithmTierService.plan_algorithms_for("EP_DBLF_GA") == [EP, SA]
+        ultimate = AlgorithmTierService.plan_algorithms_for("EP_DBLF_GA_AI")
+        assert ultimate[:2] == [EP, SA] and set(ultimate[2:]) == SOLD_AI_CODES
+        assert not REMOVED & set(ultimate)
+
+    def test_legacy_flag_restores_removed_algorithms_for_experiments(self, monkeypatch):
+        monkeypatch.setattr(settings, "TIER_LEGACY_ALGORITHMS_ENABLED", True)
+        assert AlgorithmTierService.plan_algorithms_for("EP_DBLF") == [EP]
         assert AlgorithmTierService.plan_algorithms_for("EP_DBLF_GA") == [EP, GA, SA]
         ultimate = AlgorithmTierService.plan_algorithms_for("EP_DBLF_GA_AI")
         assert ultimate[:3] == [EP, GA, SA] and set(ultimate[3:]) == AI_CODES
+
+    def test_legacy_flag_is_off_by_default(self):
+        from app.config.settings import Settings
+        assert Settings(_env_file=None, KEYCLOAK_CLIENT_SECRET="x").TIER_LEGACY_ALGORITHMS_ENABLED is False
 
     def test_tier_resolved_from_subscription_runs_its_family(self):
         for tier, family in (("BASIC", "BASIC"), ("PRO", "PRO"), ("ULTIMATE", "ULTIMATE")):
@@ -133,19 +148,19 @@ class TestTierRouting:
         assert result.algorithms_tried == [EP]
         assert {c.result.algorithm_name for c in result.candidates} == {EP}
 
-    def test_pro_runs_ga_and_sa_never_ai(self, fast_meta):
+    def test_pro_runs_sa_never_ga_or_ai(self, fast_meta):
         result = OptimizationClient(engine_url="").solve_candidates(_problem("EP_DBLF_GA"))
         assert result.algorithms_tried[0] == EP
-        assert GA in result.algorithms_tried
-        assert set(result.algorithms_tried) <= {EP, GA, SA}
-        assert {c.result.algorithm_name for c in result.candidates} <= {EP, GA, SA}
+        assert SA in result.algorithms_tried
+        assert set(result.algorithms_tried) <= {EP, SA}
+        assert {c.result.algorithm_name for c in result.candidates} <= {EP, SA}
 
     def test_ultimate_without_torch_skips_ai_and_still_finishes(self, fast_meta, monkeypatch):
         monkeypatch.setattr(lumo_models, "torch_available", lambda: False)
         monkeypatch.setattr(client_module, "get_lumo_scorer", lambda: None)
         result = OptimizationClient(engine_url="").solve_candidates(_problem("EP_DBLF_GA_AI"))
         assert not AI_CODES & set(result.algorithms_tried)
-        assert GA in result.algorithms_tried
+        assert SA in result.algorithms_tried and GA not in result.algorithms_tried
         assert [c.label for c in result.candidates] == ["A", "B", "C"]
 
     def test_ultimate_survives_ai_crash(self, fast_meta, monkeypatch):
@@ -160,13 +175,14 @@ class TestTierRouting:
 
     def test_ultimate_with_torch_runs_lumo_models(self, fast_meta):
         pytest.importorskip("torch")
-        for code in ("LUMO_R1", "LUMO_R1_1", "LUMO_R2"):
+        for code in ("LUMO_R1", "LUMO_R1_1"):
             if not lumo_models.model_path(code).is_file():
                 pytest.skip(f"thiếu trọng số {code}")
         result = OptimizationClient(engine_url="").solve_candidates(_problem("EP_DBLF_GA_AI"))
-        assert {"LUMO_R1", "LUMO_R1_1", "LUMO_R2"} <= set(result.algorithms_tried)
+        assert {"LUMO_R1", "LUMO_R1_1"} <= set(result.algorithms_tried)
+        assert not REMOVED & set(result.algorithms_tried)
         for candidate in result.candidates:
-            assert candidate.result.algorithm_name in {EP, GA, SA} | AI_CODES
+            assert candidate.result.algorithm_name in {EP, SA} | SOLD_AI_CODES
             _assert_physically_valid(candidate.result)
 
     def test_lumo_models_skip_pinned_problem_without_touching_pins(self):
@@ -177,6 +193,28 @@ class TestTierRouting:
         )
         assert run.layouts == [] and run.tried == []
         assert set(run.skipped.values()) == {"PINNED"}
+
+    @pytest.mark.parametrize("v2", [False, True])
+    def test_lumo_models_follow_physics_rules_flag(self, monkeypatch, v2):
+        """lmai xếp theo cờ PHYSICS_RULES_V2 của service (tắt: luật cũ như trước khi đồng bộ bản chép)."""
+        pytest.importorskip("torch")
+        if not lumo_models.model_path("LUMO_R1_1").is_file():
+            pytest.skip("thiếu trọng số LUMO_R1_1")
+        from app.ml.lmai import problem as lm_problem_module
+
+        monkeypatch.setattr(settings, "PHYSICS_RULES_V2", v2)
+        seen = []
+        original = lm_problem_module.Problem.from_request
+
+        def spy(d, physics_v2=False):
+            seen.append(physics_v2)
+            return original(d, physics_v2=physics_v2)
+
+        monkeypatch.setattr(lm_problem_module.Problem, "from_request", staticmethod(spy))
+        run = lumo_models.run_lumo_models(_problem("EP_DBLF_GA_AI"), ["LUMO_R1_1"], OptimizationClient(engine_url=""),
+                                          samples=0)
+        assert seen == [v2]
+        assert run.tried == ["LUMO_R1_1"]
 
     def test_lumo_models_without_torch_warn_with_install_hint(self, monkeypatch, caplog):
         monkeypatch.setattr(lumo_models, "torch_available", lambda: False)
@@ -202,6 +240,17 @@ class TestGaSa:
             placed = {str(p.package_id) for p in layout.placements}
             missing = {str(u.package_id) for u in layout.unplaced}
             assert placed | missing == {str(p.id) for p in problem.packages}
+
+    def test_sa_alone_starts_from_ep_and_carries_its_code(self):
+        """D2: không GA — SA xuất phát từ cách xếp EP tốt nhất, nhận cả ngân sách."""
+        client = OptimizationClient(engine_url="")
+        problem = _problem("EP_DBLF_GA")
+        meta = run_ga_sa(client, problem, _ep_runs(client, problem), budget_sec=30, max_evaluations=10, run_ga=False)
+        assert GA not in meta.evaluations or meta.evaluations[GA] == 0
+        assert GA not in meta.tried and meta.evaluations.get(SA, 0) > 0
+        assert meta.layouts and all(layout.algorithm_name == SA for layout in meta.layouts)
+        for layout in meta.layouts:
+            _assert_physically_valid(layout)
 
     def test_pinned_packages_stay_fixed(self):
         pins = [PinnedData(package_id="3", pos_x=0, pos_y=0, pos_z=0, rotation_type=0)]

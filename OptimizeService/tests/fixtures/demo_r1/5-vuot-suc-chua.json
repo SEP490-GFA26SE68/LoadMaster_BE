@@ -1,0 +1,395 @@
+{
+ "vehicle": {
+  "inner_l": 620,
+  "inner_w": 240,
+  "inner_h": 250,
+  "door_w": 230,
+  "door_h": 240,
+  "max_payload_kg": 1400,
+  "max_cog_offset_ratio": 0.15,
+  "max_cog_offset_ratio_y": 0.15,
+  "floor_load_capacity_kg_m2": 1500,
+  "front_axle_x": 100,
+  "rear_axle_x": 420,
+  "front_axle_limit_kg": 2600,
+  "rear_axle_limit_kg": 4200,
+  "empty_front_axle_load_kg": 1500,
+  "empty_rear_axle_load_kg": 1600
+ },
+ "packages": [
+  {
+   "id": "EP-SAN",
+   "l": 70,
+   "w": 70,
+   "h": 50,
+   "weight": 760,
+   "stop_index": 1,
+   "rotation_allowed": true,
+   "allowed_rotations": [
+    0,
+    1
+   ],
+   "top_load_capacity_kg_m2": 3000.0
+  },
+  {
+   "id": "V00",
+   "l": 60,
+   "w": 40,
+   "h": 40,
+   "weight": 60,
+   "stop_index": 1,
+   "rotation_allowed": true,
+   "allowed_rotations": [
+    0,
+    1
+   ],
+   "top_load_capacity_kg_m2": 3000.0
+  },
+  {
+   "id": "V01",
+   "l": 60,
+   "w": 40,
+   "h": 40,
+   "weight": 60,
+   "stop_index": 1,
+   "rotation_allowed": true,
+   "allowed_rotations": [
+    0,
+    1
+   ],
+   "top_load_capacity_kg_m2": 3000.0
+  },
+  {
+   "id": "V02",
+   "l": 60,
+   "w": 40,
+   "h": 40,
+   "weight": 60,
+   "stop_index": 1,
+   "rotation_allowed": true,
+   "allowed_rotations": [
+    0,
+    1
+   ],
+   "top_load_capacity_kg_m2": 3000.0
+  },
+  {
+   "id": "V03",
+   "l": 60,
+   "w": 40,
+   "h": 40,
+   "weight": 60,
+   "stop_index": 1,
+   "rotation_allowed": true,
+   "allowed_rotations": [
+    0,
+    1
+   ],
+   "top_load_capacity_kg_m2": 3000.0
+  },
+  {
+   "id": "V04",
+   "l": 60,
+   "w": 40,
+   "h": 40,
+   "weight": 60,
+   "stop_index": 1,
+   "rotation_allowed": true,
+   "allowed_rotations": [
+    0,
+    1
+   ],
+   "top_load_capacity_kg_m2": 3000.0
+  },
+  {
+   "id": "V05",
+   "l": 60,
+   "w": 40,
+   "h": 40,
+   "weight": 60,
+   "stop_index": 1,
+   "rotation_allowed": true,
+   "allowed_rotations": [
+    0,
+    1
+   ],
+   "top_load_capacity_kg_m2": 3000.0
+  },
+  {
+   "id": "V06",
+   "l": 60,
+   "w": 40,
+   "h": 40,
+   "weight": 60,
+   "stop_index": 1,
+   "rotation_allowed": true,
+   "allowed_rotations": [
+    0,
+    1
+   ],
+   "top_load_capacity_kg_m2": 3000.0
+  },
+  {
+   "id": "V07",
+   "l": 60,
+   "w": 40,
+   "h": 40,
+   "weight": 60,
+   "stop_index": 1,
+   "rotation_allowed": true,
+   "allowed_rotations": [
+    0,
+    1
+   ],
+   "top_load_capacity_kg_m2": 3000.0
+  },
+  {
+   "id": "V08",
+   "l": 60,
+   "w": 40,
+   "h": 40,
+   "weight": 60,
+   "stop_index": 1,
+   "rotation_allowed": true,
+   "allowed_rotations": [
+    0,
+    1
+   ],
+   "top_load_capacity_kg_m2": 3000.0
+  },
+  {
+   "id": "V09",
+   "l": 60,
+   "w": 40,
+   "h": 40,
+   "weight": 60,
+   "stop_index": 1,
+   "rotation_allowed": true,
+   "allowed_rotations": [
+    0,
+    1
+   ],
+   "top_load_capacity_kg_m2": 3000.0
+  },
+  {
+   "id": "V10",
+   "l": 60,
+   "w": 40,
+   "h": 40,
+   "weight": 60,
+   "stop_index": 1,
+   "rotation_allowed": true,
+   "allowed_rotations": [
+    0,
+    1
+   ],
+   "top_load_capacity_kg_m2": 3000.0
+  },
+  {
+   "id": "V11",
+   "l": 60,
+   "w": 40,
+   "h": 40,
+   "weight": 60,
+   "stop_index": 1,
+   "rotation_allowed": true,
+   "allowed_rotations": [
+    0,
+    1
+   ],
+   "top_load_capacity_kg_m2": 3000.0
+  },
+  {
+   "id": "V12",
+   "l": 60,
+   "w": 40,
+   "h": 40,
+   "weight": 60,
+   "stop_index": 1,
+   "rotation_allowed": true,
+   "allowed_rotations": [
+    0,
+    1
+   ],
+   "top_load_capacity_kg_m2": 3000.0
+  },
+  {
+   "id": "V13",
+   "l": 60,
+   "w": 40,
+   "h": 40,
+   "weight": 60,
+   "stop_index": 1,
+   "rotation_allowed": true,
+   "allowed_rotations": [
+    0,
+    1
+   ],
+   "top_load_capacity_kg_m2": 3000.0
+  },
+  {
+   "id": "V14",
+   "l": 60,
+   "w": 40,
+   "h": 40,
+   "weight": 60,
+   "stop_index": 1,
+   "rotation_allowed": true,
+   "allowed_rotations": [
+    0,
+    1
+   ],
+   "top_load_capacity_kg_m2": 3000.0
+  },
+  {
+   "id": "V15",
+   "l": 60,
+   "w": 40,
+   "h": 40,
+   "weight": 60,
+   "stop_index": 1,
+   "rotation_allowed": true,
+   "allowed_rotations": [
+    0,
+    1
+   ],
+   "top_load_capacity_kg_m2": 3000.0
+  },
+  {
+   "id": "V16",
+   "l": 60,
+   "w": 40,
+   "h": 40,
+   "weight": 60,
+   "stop_index": 1,
+   "rotation_allowed": true,
+   "allowed_rotations": [
+    0,
+    1
+   ],
+   "top_load_capacity_kg_m2": 3000.0
+  },
+  {
+   "id": "V17",
+   "l": 60,
+   "w": 40,
+   "h": 40,
+   "weight": 60,
+   "stop_index": 1,
+   "rotation_allowed": true,
+   "allowed_rotations": [
+    0,
+    1
+   ],
+   "top_load_capacity_kg_m2": 3000.0
+  },
+  {
+   "id": "V18",
+   "l": 60,
+   "w": 40,
+   "h": 40,
+   "weight": 60,
+   "stop_index": 1,
+   "rotation_allowed": true,
+   "allowed_rotations": [
+    0,
+    1
+   ],
+   "top_load_capacity_kg_m2": 3000.0
+  },
+  {
+   "id": "V19",
+   "l": 60,
+   "w": 40,
+   "h": 40,
+   "weight": 60,
+   "stop_index": 1,
+   "rotation_allowed": true,
+   "allowed_rotations": [
+    0,
+    1
+   ],
+   "top_load_capacity_kg_m2": 3000.0
+  },
+  {
+   "id": "V20",
+   "l": 60,
+   "w": 40,
+   "h": 40,
+   "weight": 60,
+   "stop_index": 1,
+   "rotation_allowed": true,
+   "allowed_rotations": [
+    0,
+    1
+   ],
+   "top_load_capacity_kg_m2": 3000.0
+  },
+  {
+   "id": "V21",
+   "l": 60,
+   "w": 40,
+   "h": 40,
+   "weight": 60,
+   "stop_index": 1,
+   "rotation_allowed": true,
+   "allowed_rotations": [
+    0,
+    1
+   ],
+   "top_load_capacity_kg_m2": 3000.0
+  },
+  {
+   "id": "V22",
+   "l": 60,
+   "w": 40,
+   "h": 40,
+   "weight": 60,
+   "stop_index": 1,
+   "rotation_allowed": true,
+   "allowed_rotations": [
+    0,
+    1
+   ],
+   "top_load_capacity_kg_m2": 3000.0
+  },
+  {
+   "id": "V23",
+   "l": 60,
+   "w": 40,
+   "h": 40,
+   "weight": 60,
+   "stop_index": 1,
+   "rotation_allowed": true,
+   "allowed_rotations": [
+    0,
+    1
+   ],
+   "top_load_capacity_kg_m2": 3000.0
+  },
+  {
+   "id": "CAO",
+   "l": 60,
+   "w": 60,
+   "h": 260,
+   "weight": 20,
+   "stop_index": 1,
+   "rotation_allowed": true,
+   "allowed_rotations": [
+    0,
+    1
+   ],
+   "top_load_capacity_kg_m2": 3000.0
+  }
+ ],
+ "stops": [
+  {
+   "id": "S1",
+   "sequence": 1
+  }
+ ],
+ "time_limit_sec": 60,
+ "algorithm_name": "BASIC",
+ "objective": "MAX_VOLUME",
+ "_ghi_chu": "1 kiện 760 kg đáy 70×70 (ép sàn 1551 kg/m² > 1500), 24 thùng 60 kg (1440 kg > tải trọng 1400 kg), 1 kiện cao 260 cm; mong đợi: kiện không xếp được có lý do + mã H đúng (FLOOR_LOAD_EXCEEDED, WEIGHT_LIMIT_EXCEEDED, ORIENTATION_NOT_ALLOWED)."
+}

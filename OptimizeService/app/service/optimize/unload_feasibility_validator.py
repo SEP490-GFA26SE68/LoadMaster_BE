@@ -1,6 +1,7 @@
 
 from __future__ import annotations
 
+import bisect
 import math
 import time
 from dataclasses import dataclass, field
@@ -50,7 +51,18 @@ class UnloadFeasibilityValidator:
             vehicle: VehicleData,
             *,
             deadline: Optional[float] = None,
+            incremental: bool = True,
     ) -> UnloadValidationResult:
+        """
+        `incremental` (mặc định bật, 28/11/2026): khi tìm trình tự dỡ, sau khi lấy một kiện ra chỉ kiểm lại HC-05 / HC-06
+        cho các kiện mà kiện đó có thể đang đỡ trực tiếp. Cùng kết luận với cách kiểm lại mọi kiện còn trong xe
+        (`incremental=False`, giữ làm bản đối chiếu cho test):
+        - check_support_area / check_stability của một kiện chỉ dùng tập kiện có mặt trên chạm đáy nó và giao XY > 0
+          (thứ tự không ảnh hưởng; hình học mọi kiện đã kiểm ở bước 2, nên vòng kiểm dữ liệu của chúng luôn qua);
+        - search chỉ đi tiếp từ trạng thái đã ổn định (trạng thái đầu đã kiểm đủ; trạng thái sau chỉ nhận khi ổn định),
+          nên bỏ kiện i chỉ có thể đổi kết quả của các kiện được i đỡ.
+        Đường tìm kiếm, trình tự dỡ và mã lỗi giữ nguyên; chỉ nhanh hơn (bài 289 kiện: 36 s → vài giây).
+        """
 
         def fail(code: str, detail: str) -> UnloadValidationResult:
             return UnloadValidationResult(
@@ -191,6 +203,7 @@ class UnloadFeasibilityValidator:
 
         # 3. Kiểm tra toàn bộ load plan ban đầu hợp lệ
         # về va chạm và hỗ trợ hình học.
+        from app.constant.optimization.violation_codes import LIFO_BLOCKED
         from app.service.optimize.constraint_engine import ConstraintEngine
 
         for i, p in enumerate(placements):
@@ -214,6 +227,26 @@ class UnloadFeasibilityValidator:
                     f"Overlapping packages near {p.package_id}",
                 )
 
+        def stable_one(i: int, indices: frozenset[int]) -> bool:
+            """Kiện i (thuộc `indices`) thỏa HC-05 và HC-06 khi các kiện `indices` còn trong xe."""
+            p = placements[i]
+            others = [
+                placements[j]
+                for j in indices
+                if j != i
+            ]
+
+            if not ConstraintEngine.check_support_area(
+                    p, others, obstacles=vehicle.obstacles,
+                    required_ratio=ConstraintEngine.support_ratio_for(
+                        packages_map.get(str(p.package_id))),
+            ).passed:
+                return False
+
+            return ConstraintEngine.check_stability(
+                p, others, obstacles=vehicle.obstacles
+            ).passed
+
         def stable_remaining(indices: frozenset[int]) -> bool:
             """
             Những kiện còn trong xe phải tiếp tục
@@ -222,21 +255,49 @@ class UnloadFeasibilityValidator:
             for i in indices:
                 if expired():
                     return False
-                p = placements[i]
-                others = [
-                    placements[j]
-                    for j in indices
-                    if j != i
-                ]
-
-                if not ConstraintEngine.check_support_area(
-                        p, others, obstacles=vehicle.obstacles
-                ).passed:
+                if not stable_one(i, indices):
                     return False
 
-                if not ConstraintEngine.check_stability(
-                        p, others, obstacles=vehicle.obstacles
-                ).passed:
+            return True
+
+        # Kiện k có thể được kiện i đỡ trực tiếp: mặt trên của i ở cao độ đáy k và hình chiếu XY chạm nhau. Lấy rộng
+        # (dung sai 10 × EPSILON, chạm mép cũng tính) — tập rộng hơn chỉ làm kiểm lại thêm, không đổi kết quả.
+        tol = 10 * cls.EPSILON
+        boxes = [
+            (
+                float(p.x), float(p.y), float(p.z),
+                float(p.x) + float(p.packed_l),
+                float(p.y) + float(p.packed_w),
+                float(p.z) + float(p.packed_h),
+            )
+            for p in placements
+        ]
+        dependents: List[List[int]] = [[] for _ in placements]
+        if incremental:
+            by_bottom = sorted(range(len(boxes)), key=lambda k: boxes[k][2])
+            bottoms = [boxes[k][2] for k in by_bottom]
+            for i, (ax0, ay0, _, ax1, ay1, az1) in enumerate(boxes):
+                lo = bisect.bisect_left(bottoms, az1 - tol)
+                hi = bisect.bisect_right(bottoms, az1 + tol)
+                for k in by_bottom[lo:hi]:
+                    bx0, by0, _, bx1, by1, _ = boxes[k]
+                    if (
+                            k != i
+                            and ax0 <= bx1 + tol and bx0 <= ax1 + tol
+                            and ay0 <= by1 + tol and by0 <= ay1 + tol
+                    ):
+                        dependents[i].append(k)
+
+        def stable_after_removal(next_remaining: frozenset[int], removed: int) -> bool:
+            """= stable_remaining(next_remaining) khi next_remaining ∪ {removed} đã ổn định (bất biến của search)."""
+            if not incremental:
+                return stable_remaining(next_remaining)
+            for i in dependents[removed]:
+                if i not in next_remaining:
+                    continue
+                if expired():
+                    return False
+                if not stable_one(i, next_remaining):
                     return False
 
             return True
@@ -465,7 +526,7 @@ class UnloadFeasibilityValidator:
 
                 # Dỡ một kiện không được khiến các kiện
                 # còn lại mất vùng đỡ hoặc mất ổn định.
-                if not stable_remaining(next_remaining):
+                if not stable_after_removal(next_remaining, i):
                     continue
 
                 suffix = search(next_remaining)
@@ -497,7 +558,8 @@ class UnloadFeasibilityValidator:
                 )
 
             return fail(
-                "MULTI_DROP_LIFO_VIOLATION",
+                # H12: luật mới ghi mã mới; mã cũ là bí danh (violation_codes.canonical).
+                LIFO_BLOCKED if ConstraintEngine.physics_v2() else "MULTI_DROP_LIFO_VIOLATION",
                 (
                     "No feasible straight-X unloading sequence "
                     "exists for the delivery stop order"

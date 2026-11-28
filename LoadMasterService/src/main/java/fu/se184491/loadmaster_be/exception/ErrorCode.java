@@ -99,10 +99,12 @@ public enum ErrorCode {
     PAYROLL_RATE_EFFECTIVE_DATE_TOO_EARLY("Mức lương mới chỉ được áp dụng từ tháng sau", HttpStatus.BAD_REQUEST),
     PAYROLL_PERIOD_NOT_FOUND("Chưa có bảng lương cho kỳ này", HttpStatus.NOT_FOUND),
     PAYROLL_PERIOD_LOCKED("Kỳ lương đã chốt, không thể tính lại hoặc thay đổi phân chia", HttpStatus.CONFLICT),
+    PAYROLL_FUTURE_PERIOD_CANNOT_LOCK("Chỉ được chốt bảng lương từ tháng hiện tại trở về trước", HttpStatus.CONFLICT),
     PAYROLL_DATA_INCOMPLETE("Thiếu dữ liệu phương án cân nặng hoặc quãng đường của chuyến", HttpStatus.BAD_REQUEST),
     PAYROLL_INVALID_PERIOD("Kỳ lương không hợp lệ, yêu cầu định dạng yyyy-MM", HttpStatus.BAD_REQUEST),
     PAYROLL_INVALID_DRIVER_ASSIGNMENT("Danh sách tài xế nhận lương năng suất không hợp lệ", HttpStatus.BAD_REQUEST),
     PAYROLL_INVALID_AMOUNT("Khối lượng, quãng đường và đơn giá lương phải là số không âm", HttpStatus.BAD_REQUEST),
+    PAYROLL_KPI_BONUS_REQUIRED("Đã nhập chỉ tiêu KPI thì phải nhập tiền thưởng KPI lớn hơn 0", HttpStatus.BAD_REQUEST),
     PAYROLL_INVALID_OVERTIME_DAYS("Số ngày tăng ca phải từ 0 đến số ngày của tháng lương", HttpStatus.BAD_REQUEST),
     DELIVERY_REQUIREMENT_NOT_FOUND("Không tìm thấy nhu cầu giao hàng", HttpStatus.NOT_FOUND),
     DELIVERY_REQUIREMENT_NOT_PENDING("Chỉ có thể xóa nhu cầu giao hàng đang chờ xử lý", HttpStatus.BAD_REQUEST),
@@ -125,6 +127,7 @@ public enum ErrorCode {
     VEHICLE_AXLE_CONFIG_INCOMPLETE("Phải nhập đủ sáu thông số trục (vị trí, giới hạn tải, tải xe rỗng của trục trước và trục sau) hoặc để trống cả sáu", HttpStatus.BAD_REQUEST),
     VEHICLE_AXLE_ORDER("Vị trí trục sau phải lớn hơn vị trí trục trước", HttpStatus.BAD_REQUEST),
     VEHICLE_SIZE("Kích thước cửa xe phải lớn hơn 0", HttpStatus.BAD_REQUEST),
+    VEHICLE_BODY_STYLE_INVALID("Kiểu thân xe không hợp lệ (VAN_MINI_FLAT, VAN_MINI_HOOD, VAN_MID, VAN_LARGE, TRUCK_BOX, TRUCK_CANVAS, TRUCK_FLATBED, TRUCK_REEFER)", HttpStatus.BAD_REQUEST),
     WIDTH_RATIO("Chiều rộng cửa không được vượt quá chiều rộng thùng xe", HttpStatus.BAD_REQUEST),
 
     HIGH_RATIO("Chiều cao cửa không được vượt quá chiều cao thùng xe", HttpStatus.BAD_REQUEST),
@@ -137,7 +140,6 @@ public enum ErrorCode {
     STOP_ORDER_INVALID("Thứ tự điểm giao không hợp lệ", HttpStatus.BAD_REQUEST),
     MISSING_STOP_COORDINATES("Còn điểm giao chưa có toạ độ", HttpStatus.BAD_REQUEST),
     STOP_NOT_MOVABLE("Điểm đã hoàn tất hoặc xe đã tới không đổi chỗ được", HttpStatus.CONFLICT),
-    PICKUP_AFTER_DELIVERY("Điểm nhận hàng phải đứng trước điểm giao của nó", HttpStatus.CONFLICT),
     STOP_ORDER_BLOCKS_CARGO("Thứ tự mới làm kiện bị che kín lối dỡ", HttpStatus.CONFLICT),
 
     // -------------------------------------------------------------------------
@@ -385,27 +387,21 @@ public enum ErrorCode {
     MANUAL_CONFIRM_NOT_PENDING("Xác nhận tay này đã được xử lý", HttpStatus.CONFLICT),
     NO_LOADED_PLAN("Chuyến chưa có phương án kho đã xếp", HttpStatus.NOT_FOUND),
 
-    // -------------------------------------------------------------------------
-    // Nhận hàng dọc đường
-    // -------------------------------------------------------------------------
-    PICKUP_REQUEST_NOT_FOUND("Không tìm thấy yêu cầu nhận hàng dọc đường", HttpStatus.NOT_FOUND),
-    PICKUP_INVALID("Yêu cầu nhận hàng dọc đường thiếu hoặc sai dữ liệu", HttpStatus.BAD_REQUEST),
-    PICKUP_PACKAGES_REQUIRED("Yêu cầu nhận hàng phải có ít nhất một kiện", HttpStatus.BAD_REQUEST),
-    PICKUP_TRIP_NOT_IN_TRANSIT("Chỉ nhận hàng dọc đường khi chuyến đang vận chuyển", HttpStatus.CONFLICT),
-    INVALID_PICKUP_STATUS_TRANSITION("Yêu cầu nhận hàng không ở trạng thái cho phép thao tác này", HttpStatus.CONFLICT),
-    PICKUP_ROUTE_UNAVAILABLE("Chưa kiểm được luật nhận hàng: thiếu toạ độ điểm, vị trí xe hoặc kích thước thùng", HttpStatus.CONFLICT),
-    PICKUP_REASON_REQUIRED("Phải ghi lý do", HttpStatus.BAD_REQUEST),
-    PICKUP_PACKAGE_NOT_AT_STOP("Kiện nhận không thuộc điểm nhận hiện tại", HttpStatus.CONFLICT),
-    PICKUP_PACKAGE_ALREADY_PICKED("Kiện nhận này đã lên xe", HttpStatus.CONFLICT),
-    PICKUP_STOP_INCOMPLETE("Còn kiện nhận chưa đối chiếu ở điểm nhận", HttpStatus.CONFLICT),
-
     WAREHOUSE_ASSIGNMENT_INVALID("Chỉ phân công nhân viên kho đang hoạt động vào kho đang hoạt động", HttpStatus.CONFLICT),
     DRIVER_VEHICLE_PRESENCE_UNVERIFIED("Chưa xác minh xe tại kho xuất phát. Vui lòng nhờ nhân viên được phân công tại kho xác nhận xe thực tế trước khi xuất phát", HttpStatus.CONFLICT),
     DRIVER_VEHICLE_DEPARTURE_BLOCKED("Chưa thể xuất phát do trạng thái xe hoặc kho chưa phù hợp. Vui lòng liên hệ nhân viên kho hoặc điều phối viên để kiểm tra", HttpStatus.CONFLICT),
     VEHICLE_DEPARTURE_INELIGIBLE("Xe không còn đủ điều kiện tại kho xuất phát. Vui lòng chọn lại xe", HttpStatus.CONFLICT),
     VEHICLE_WAREHOUSE_FORBIDDEN("Không có quyền xác nhận xe tại kho này", HttpStatus.FORBIDDEN),
     VEHICLE_TRANSFER_CONFLICT("Vehicle transfer conflicts with current state. Refresh and retry the same action", HttpStatus.CONFLICT),
-    VEHICLE_PRESENCE_CONFLICT("Trạng thái xe hoặc mã xác nhận bị xung đột. Vui lòng tải lại", HttpStatus.CONFLICT);
+    VEHICLE_PRESENCE_CONFLICT("Trạng thái xe hoặc mã xác nhận bị xung đột. Vui lòng tải lại", HttpStatus.CONFLICT),
+
+    // -------------------------------------------------------------------------
+    // Trợ lý AI
+    // -------------------------------------------------------------------------
+    ASSISTANT_RATE_LIMITED("Bạn đã hỏi trợ lý quá nhiều lần trong một giờ. Vui lòng thử lại sau", HttpStatus.TOO_MANY_REQUESTS),
+    ASSISTANT_BUDGET_EXCEEDED("Trợ lý đã dùng hết hạn mức hôm nay. Vui lòng thử lại vào ngày mai", HttpStatus.SERVICE_UNAVAILABLE),
+    ASSISTANT_UNAVAILABLE("Trợ lý AI tạm thời không khả dụng", HttpStatus.SERVICE_UNAVAILABLE),
+    ASSISTANT_MESSAGE_TOO_LONG("Câu hỏi quá dài", HttpStatus.BAD_REQUEST);
 
     private final String message;
     private final HttpStatus httpStatus;

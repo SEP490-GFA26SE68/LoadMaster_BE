@@ -98,4 +98,27 @@ public interface TripRepository extends
             @Param("tripId") Long tripId,
             @Param("companyId") Long companyId
     );
+
+    /** Số chuyến theo trạng thái. */
+    interface StatusCount {
+
+        TripStatus getStatus();
+
+        Long getTotal();
+    }
+
+    /** Số chuyến của công ty có giờ xuất phát trong [start, end), theo trạng thái. Chỉ đọc. */
+    @Query("""
+        SELECT t.status AS status, COUNT(t) AS total
+        FROM Trip t
+        WHERE t.company.id = :companyId
+          AND t.departureTime >= :start
+          AND t.departureTime < :end
+        GROUP BY t.status
+        """)
+    List<StatusCount> countDepartingBetweenByStatus(
+            @Param("companyId") Long companyId,
+            @Param("start") java.time.LocalDateTime start,
+            @Param("end") java.time.LocalDateTime end
+    );
 }

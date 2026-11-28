@@ -3,6 +3,8 @@ package fu.se184491.loadmaster_be.repository.optimization;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import fu.se184491.loadmaster_be.dto.response.optimization.LoadPlanDetailResponse;
+import fu.se184491.loadmaster_be.dto.response.optimization.DataWarningResponse;
+import fu.se184491.loadmaster_be.dto.response.optimization.OptimizationJobProgressResponse;
 import fu.se184491.loadmaster_be.dto.response.optimization.OptimizationJobStatusResponse;
 import fu.se184491.loadmaster_be.dto.response.optimization.PlacementDetailResponse;
 import fu.se184491.loadmaster_be.dto.response.optimization.UnplacedPackageResponse;
@@ -15,6 +17,7 @@ import org.springframework.stereotype.Repository;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Calendar;
 import java.util.Collection;
@@ -60,8 +63,9 @@ public class LoadPlanReadRepository {
                    lp.algorithm_name AS plan_algorithm,
                    COALESCE(lp.manually_edited, FALSE) AS manually_edited,
                    COALESCE(lp.is_stale, FALSE) AS is_stale,
+                   lp.plan_score, lp.candidate_profile, lp.duplicate_of,
                    j.job_uuid, j.trip_id, j.status AS job_status, j.objective,
-                   j.algorithm_name, j.computation_ms, t.company_id
+                   j.algorithm_name, j.computation_ms, j.vehicle_id, t.company_id
             FROM load_plans lp
             JOIN optimization_jobs j ON j.id = lp.job_id
             JOIN trips t ON t.id = j.trip_id
@@ -109,7 +113,11 @@ public class LoadPlanReadRepository {
     public Optional<OptimizationJobStatusResponse> findJobStatus(Long jobId) {
         List<OptimizationJobStatusResponse> rows = jdbc.query("""
                         SELECT j.id, j.job_uuid, j.trip_id, j.objective, j.time_limit_sec, j.status,
-                               j.computation_ms, j.created_at, j.algorithm_name, j.failure_code,
+                               j.computation_ms, j.created_at, j.algorithm_name, j.failure_code, j.data_warnings,
+                               j.progress,
+                               CASE WHEN j.status = 'RUNNING' AND j.execution_started_at IS NOT NULL
+                                    THEN CAST(EXTRACT(EPOCH FROM (clock_timestamp() - j.execution_started_at)) * 1000 AS BIGINT)
+                               END AS elapsed_ms,
                                (SELECT CASE WHEN tx.amount=0 THEN 'ZERO_DEBIT'
                                     WHEN tx.refunded THEN 'REFUNDED'
                                     WHEN j.execution_generation IS NOT NULL AND ((j.status IN ('TIMEOUT','NO_SOLUTION') AND j.execution_generation>0 AND j.execution_started_at IS NOT NULL)
@@ -147,6 +155,9 @@ public class LoadPlanReadRepository {
                             .pinnedCount(rs.getInt("pinned_count"))
                             .failureCode(rs.getString("failure_code"))
                             .creditStatus(rs.getString("credit_status"))
+                            .dataWarnings(dataWarnings(rs))
+                            .elapsedMs(nullableLong(rs, "elapsed_ms"))
+                            .progress(progress(rs))
                             .build();
                 });
         return rows.stream().findFirst();
@@ -168,6 +179,8 @@ public class LoadPlanReadRepository {
                                pp.packed_length, pp.packed_width, pp.packed_height,
                                pp.rotation_type, pp.step_sequence, pp.pinned,
                                pp.stop_zone_id, ds.stop_name, ds.stop_sequence,
+                               pp.reason_codes, pp.stack_pressure_kg_m2, pp.top_load_capacity_kg_m2,
+                               pp.support_ratio, pp.distance_to_door_cm,
                                pt.id AS package_type_id, pt.rotation_allowed,
                                pt.allow_rotate_x, pt.allow_rotate_y, pt.allow_rotate_z, cpp.upright_only
                         FROM package_placements pp
@@ -198,6 +211,12 @@ public class LoadPlanReadRepository {
                         .stopName(rs.getString("stop_name"))
                         .stopSequence(nullableInt(rs, "stop_sequence"))
                         .allowedRotations(allowedRotations(rs))
+                        // Lý do đặt và số đo của chỗ đặt (V57): dịch vụ tối ưu ghi khi cờ PLAN_SCORE_J bật, không thì trống.
+                        .reasonCodes(PlanScoreJson.reasonCodes(rs.getString("reason_codes")))
+                        .stackPressureKgM2(rs.getBigDecimal("stack_pressure_kg_m2"))
+                        .topLoadCapacityKgM2(rs.getBigDecimal("top_load_capacity_kg_m2"))
+                        .supportRatio(rs.getBigDecimal("support_ratio"))
+                        .distanceToDoorCm(rs.getBigDecimal("distance_to_door_cm"))
                         .build()));
     }
 
@@ -246,6 +265,7 @@ public class LoadPlanReadRepository {
         return LoadPlanDetailResponse.builder()
                 .id(rs.getLong("id"))
                 .tripId(nullableLong(rs, "trip_id"))
+                .vehicleId(nullableLong(rs, "vehicle_id"))
                 .jobId(nullableLong(rs, "job_id"))
                 .jobUuid(rs.getString("job_uuid"))
                 .jobStatus(rs.getString("job_status"))
@@ -274,12 +294,92 @@ public class LoadPlanReadRepository {
                 .rehandlingCount(nullableInt(rs, "rehandling_count"))
                 .manuallyEdited(rs.getBoolean("manually_edited"))
                 .stale(rs.getBoolean("is_stale"))
+                // Điểm J và hồ sơ (V57): trống khi cờ PLAN_SCORE_J tắt lúc chạy, phương án cũ, bản chỉnh tay, bản chạy lại.
+                .candidateProfile(rs.getString("candidate_profile"))
+                .duplicateOf(rs.getString("duplicate_of"))
+                .planScore(PlanScoreJson.planScore(rs.getString("plan_score")))
                 .build();
     }
 
     private static Long nullableLong(ResultSet rs, String column) throws SQLException {
         long value = rs.getLong(column);
         return rs.wasNull() ? null : value;
+    }
+
+    /** Cảnh báo dữ liệu do OptimizeService ghi: [{"code": "...", "package_ids": ["..."]}]. Trống / hỏng → []. */
+    private static List<DataWarningResponse> dataWarnings(ResultSet rs) throws SQLException {
+        String raw = rs.getString("data_warnings");
+        if (raw == null || raw.isBlank()) {
+            return List.of();
+        }
+        try {
+            JsonNode node = JSON.readTree(raw);
+            if (node == null || !node.isArray()) {
+                return List.of();
+            }
+            List<DataWarningResponse> warnings = new ArrayList<>();
+            for (JsonNode item : node) {
+                if (item == null || !item.hasNonNull("code") || !item.get("code").isTextual()) {
+                    continue;
+                }
+                List<String> ids = new ArrayList<>();
+                JsonNode idNodes = item.get("package_ids");
+                if (idNodes != null && idNodes.isArray()) {
+                    idNodes.forEach(id -> ids.add(id.asText()));
+                }
+                warnings.add(new DataWarningResponse(item.get("code").asText(), List.copyOf(ids)));
+            }
+            return List.copyOf(warnings);
+        } catch (Exception ignored) {
+            return List.of();
+        }
+    }
+
+    private static final Set<String> PROGRESS_STAGES = Set.of("BUILDING", "IMPROVING", "SELECTING", "SAVING");
+
+    /**
+     * Tiến độ sống do OptimizeService ghi (V58, khoá snake_case). Cột trống, JSON hỏng hay giai đoạn lạ → null;
+     * khoá nào thiếu hoặc sai kiểu thì riêng trường đó null — không bịa số.
+     */
+    private static OptimizationJobProgressResponse progress(ResultSet rs) throws SQLException {
+        String raw = rs.getString("progress");
+        if (raw == null || raw.isBlank()) {
+            return null;
+        }
+        try {
+            JsonNode node = JSON.readTree(raw);
+            if (node == null || !node.isObject() || !node.path("stage").isTextual()
+                    || !PROGRESS_STAGES.contains(node.get("stage").asText())) {
+                return null;
+            }
+            return new OptimizationJobProgressResponse(
+                    node.get("stage").asText(),
+                    node.path("algorithm").isTextual() ? node.get("algorithm").asText() : null,
+                    jsonInt(node, "layouts_tried"),
+                    jsonInt(node, "total_packages"),
+                    jsonInt(node, "best_placed_count"),
+                    node.path("best_volume_percent").isNumber() ? node.get("best_volume_percent").asDouble() : null,
+                    jsonInstant(node, "updated_at"));
+        } catch (Exception ignored) {
+            return null;
+        }
+    }
+
+    private static Integer jsonInt(JsonNode node, String key) {
+        JsonNode value = node.path(key);
+        return value.isIntegralNumber() && value.canConvertToInt() ? value.asInt() : null;
+    }
+
+    private static Instant jsonInstant(JsonNode node, String key) {
+        JsonNode value = node.path(key);
+        if (!value.isTextual()) {
+            return null;
+        }
+        try {
+            return Instant.parse(value.asText());
+        } catch (Exception ignored) {
+            return null;
+        }
     }
 
     /** JSON array do OptimizeService ghi; cột trống hoặc JSON hỏng thì không bịa mã. */

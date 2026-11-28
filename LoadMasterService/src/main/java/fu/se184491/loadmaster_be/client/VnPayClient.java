@@ -11,6 +11,7 @@ import javax.crypto.spec.SecretKeySpec;
 import java.math.BigDecimal;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
+import java.text.Normalizer;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
@@ -42,17 +43,24 @@ public class VnPayClient {
         Map<String, String> vnpParams = new HashMap<>();
         vnpParams.put("vnp_Version", "2.1.0");
         vnpParams.put("vnp_Command", "pay");
-        vnpParams.put("vnp_TmnCode", config.getTmnCode());
+        vnpParams.put("vnp_TmnCode", getCleanTmnCode());
 
         long amount = amountVnd.multiply(BigDecimal.valueOf(100)).longValue();
         vnpParams.put("vnp_Amount", String.valueOf(amount));
         vnpParams.put("vnp_CurrCode", "VND");
-        vnpParams.put("vnp_TxnRef", txnRef);
-        vnpParams.put("vnp_OrderInfo", orderInfo != null ? orderInfo : "LoadMaster Payment");
+        vnpParams.put("vnp_TxnRef", txnRef != null ? txnRef.trim() : "");
+        vnpParams.put("vnp_OrderInfo", sanitizeOrderInfo(orderInfo));
         vnpParams.put("vnp_OrderType", "other");
         vnpParams.put("vnp_Locale", "vn");
-        vnpParams.put("vnp_ReturnUrl", config.getReturnUrl());
-        vnpParams.put("vnp_IpAddr", (ipAddress != null && !ipAddress.isBlank()) ? ipAddress : "127.0.0.1");
+        vnpParams.put("vnp_ReturnUrl", getCleanReturnUrl());
+
+        String resolvedIp = (ipAddress != null && !ipAddress.isBlank()) ? ipAddress.trim() : "127.0.0.1";
+        if ("0:0:0:0:0:0:0:1".equals(resolvedIp) || "::1".equals(resolvedIp)) {
+            resolvedIp = "127.0.0.1";
+        } else if (resolvedIp.startsWith("::ffff:")) {
+            resolvedIp = resolvedIp.substring(7);
+        }
+        vnpParams.put("vnp_IpAddr", resolvedIp);
 
         ZoneId zone = ZoneId.of("Asia/Ho_Chi_Minh");
         LocalDateTime now = LocalDateTime.now(zone);
@@ -64,31 +72,29 @@ public class VnPayClient {
 
         StringBuilder hashData = new StringBuilder();
         StringBuilder query = new StringBuilder();
-        Iterator<String> itr = fieldNames.iterator();
-        while (itr.hasNext()) {
-            String fieldName = itr.next();
+        boolean first = true;
+        for (String fieldName : fieldNames) {
             String fieldValue = vnpParams.get(fieldName);
             if (fieldValue != null && !fieldValue.isEmpty()) {
-                hashData.append(fieldName);
-                hashData.append('=');
-                hashData.append(URLEncoder.encode(fieldValue, StandardCharsets.US_ASCII));
-
-                query.append(URLEncoder.encode(fieldName, StandardCharsets.US_ASCII));
-                query.append('=');
-                query.append(URLEncoder.encode(fieldValue, StandardCharsets.US_ASCII));
-
-                if (itr.hasNext()) {
-                    query.append('&');
+                if (!first) {
                     hashData.append('&');
+                    query.append('&');
                 }
+                hashData.append(fieldName).append('=').append(URLEncoder.encode(fieldValue, StandardCharsets.UTF_8));
+
+                query.append(URLEncoder.encode(fieldName, StandardCharsets.UTF_8));
+                query.append('=');
+                query.append(URLEncoder.encode(fieldValue, StandardCharsets.UTF_8));
+                first = false;
             }
         }
 
         String queryUrl = query.toString();
-        String vnpSecureHash = hmacSHA512(config.getHashSecret(), hashData.toString());
+        String vnpSecureHash = hmacSHA512(getCleanHashSecret(), hashData.toString());
         queryUrl += "&vnp_SecureHash=" + vnpSecureHash;
 
-        return config.getVnpUrl() + "?" + queryUrl;
+        log.info("Generated VNPay payment URL for txnRef={} (secureHash length={})", txnRef, vnpSecureHash.length());
+        return getCleanVnpUrl() + "?" + queryUrl;
     }
 
     public boolean verifyCallback(Map<String, String> fields) {
@@ -105,22 +111,36 @@ public class VnPayClient {
         Collections.sort(fieldNames);
 
         StringBuilder hashData = new StringBuilder();
-        Iterator<String> itr = fieldNames.iterator();
-        while (itr.hasNext()) {
-            String fieldName = itr.next();
+        boolean first = true;
+        for (String fieldName : fieldNames) {
             String fieldValue = cleanFields.get(fieldName);
             if (fieldValue != null && !fieldValue.isEmpty()) {
-                hashData.append(fieldName);
-                hashData.append('=');
-                hashData.append(URLEncoder.encode(fieldValue, StandardCharsets.US_ASCII));
-                if (itr.hasNext()) {
+                if (!first) {
                     hashData.append('&');
                 }
+                hashData.append(fieldName).append('=').append(URLEncoder.encode(fieldValue, StandardCharsets.UTF_8));
+                first = false;
             }
         }
 
-        String checkSum = hmacSHA512(config.getHashSecret(), hashData.toString());
-        return checkSum.equalsIgnoreCase(secureHash);
+        String checkSum = hmacSHA512(getCleanHashSecret(), hashData.toString());
+        return checkSum.equalsIgnoreCase(secureHash.trim());
+    }
+
+    public static String sanitizeOrderInfo(String orderInfo) {
+        if (orderInfo == null || orderInfo.isBlank()) {
+            return "LoadMaster Payment";
+        }
+        String normalized = Normalizer.normalize(orderInfo, Normalizer.Form.NFD);
+        String noAccents = normalized.replaceAll("\\p{InCombiningDiacriticalMarks}+", "");
+        String sanitized = noAccents.replace('đ', 'd').replace('Đ', 'D')
+                .replaceAll("[^a-zA-Z0-9\\s-_]", " ")
+                .replaceAll("\\s+", " ")
+                .trim();
+        if (sanitized.isEmpty()) {
+            return "LoadMaster Payment";
+        }
+        return sanitized.length() > 255 ? sanitized.substring(0, 255) : sanitized;
     }
 
     public static String hmacSHA512(String key, String data) {
@@ -138,5 +158,29 @@ public class VnPayClient {
             log.error("Failed to generate HMAC SHA512 hash", ex);
             return "";
         }
+    }
+
+    private String getCleanHashSecret() {
+        String secret = config.getHashSecret();
+        if (secret == null) return "";
+        return secret.trim().replaceAll("^['\"]|['\"]$", "");
+    }
+
+    private String getCleanTmnCode() {
+        String tmn = config.getTmnCode();
+        if (tmn == null) return "";
+        return tmn.trim().replaceAll("^['\"]|['\"]$", "");
+    }
+
+    private String getCleanReturnUrl() {
+        String returnUrl = config.getReturnUrl();
+        if (returnUrl == null) return "";
+        return returnUrl.trim();
+    }
+
+    private String getCleanVnpUrl() {
+        String vnpUrl = config.getVnpUrl();
+        if (vnpUrl == null) return "https://sandbox.vnpaytest.vn/paymentv2/vpcpay.html";
+        return vnpUrl.trim();
     }
 }

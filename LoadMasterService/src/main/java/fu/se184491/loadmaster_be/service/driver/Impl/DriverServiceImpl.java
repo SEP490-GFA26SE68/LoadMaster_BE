@@ -48,7 +48,6 @@ import fu.se184491.loadmaster_be.repository.trip.TripRepository;
 import fu.se184491.loadmaster_be.repository.warehouse.LoadingExecutionRepository;
 import fu.se184491.loadmaster_be.service.driver.DriverService;
 import fu.se184491.loadmaster_be.service.monitoring.TripLookupHelper;
-import fu.se184491.loadmaster_be.service.pickup.PickupDriverService;
 import fu.se184491.loadmaster_be.service.trip.TripPackageResolver;
 import fu.se184491.loadmaster_be.service.trip.TripStatusService;
 import lombok.RequiredArgsConstructor;
@@ -95,7 +94,6 @@ public class DriverServiceImpl implements DriverService {
     private final TripLookupHelper tripLookupHelper;
     private final DeliveryIssueRepository deliveryIssueRepository;
     private final ManualUnloadConfirmationRepository manualConfirmationRepository;
-    private final PickupDriverService pickupDriverService;
     private final RoutePlanRepository routePlanRepository;
 
     @Override
@@ -197,16 +195,6 @@ public class DriverServiceImpl implements DriverService {
                 packageResponses.add(stopPackage(pkg, null, order++, state));
             }
         }
-        // Kiện nhận dọc đường giao ở điểm này không có trong phương án: dỡ sau kiện của phương án
-        Set<Long> listed = packageResponses.stream().map(StopPackageResponse::getPackageId).collect(Collectors.toSet());
-        int nextOrder = packageResponses.size() + 1;
-        for (StopPackageResponse pickup : pickupDriverService.pickupDeliveriesAt(stopPackages, listed)) {
-            CargoPackage pkg = stopPackages.stream().filter(p -> p.getId().equals(pickup.getPackageId())).findFirst().orElse(null);
-            StopPackageResponse row = stopPackage(pkg, null, nextOrder++, state);
-            row.setPickupRequestId(pickup.getPickupRequestId());
-            packageResponses.add(row);
-        }
-
         log.info("Current stop for tripId {}: stopId {} ({}), with {} packages to unload",
                 trip.getId(), currentStop.getId(), currentStop.getStopName(), packageResponses.size());
 
@@ -220,7 +208,6 @@ public class DriverServiceImpl implements DriverService {
                 .actualArrival(currentStop.getActualArrival())
                 .packages(packageResponses)
                 .stopType(currentStop.kind().name())
-                .pickupPackages(pickupDriverService.pickupPackagesAt(currentStop))
                 .build();
     }
 
@@ -394,7 +381,6 @@ public class DriverServiceImpl implements DriverService {
             }
         }
 
-        pickupDriverService.requireComplete(stop);
         if (unconfirmedCount > 0) {
             throw new IncompleteStopException("Điểm dừng chưa hoàn tất: còn " + unconfirmedCount + " kiện hàng chưa được dỡ");
         }
@@ -405,7 +391,6 @@ public class DriverServiceImpl implements DriverService {
         stop.setStatus(DeliveryStopStatus.COMPLETED);
         stop.setCompletedAt(LocalDateTime.now());
         deliveryStopRepository.save(stop);
-        pickupDriverService.onStopCompleted(stop, driver);
 
         AuditLog stopAuditLog = AuditLog.builder()
                 .companyId(AuditCompany.ofTrip(trip))

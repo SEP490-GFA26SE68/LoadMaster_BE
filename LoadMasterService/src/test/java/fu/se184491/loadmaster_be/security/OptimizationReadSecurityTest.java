@@ -37,7 +37,6 @@ class OptimizationReadSecurityTest {
  @MockitoBean LoadingOptimizationService loading;
  @MockitoBean LoadPlanQueryService plans;
  @MockitoBean fu.se184491.loadmaster_be.service.driver.DriverDeliveryService driverDelivery;
- @MockitoBean fu.se184491.loadmaster_be.service.pickup.PickupDriverService pickup;
  @MockitoBean OptimizationSubmissionService submission;
  @MockitoBean OptimizationClient client;
  @MockitoBean UserRepository users;
@@ -66,7 +65,7 @@ class OptimizationReadSecurityTest {
   when(placements.findById(31L)).thenReturn(Optional.of(PackagePlacement.builder().id(31L).loadPlan(pb).build()));
   when(client.getJobStatus("own-job")).thenReturn("{\"status\":\"COMPLETED\"}");
   when(client.getJobPlans("own-job")).thenReturn("{\"plans\":[]}");
-  when(warehouse.getTasks(1L,null)).thenReturn(List.of());when(driver.listTrips(11L)).thenReturn(List.of());
+  when(warehouse.getTasks(1L,null,false)).thenReturn(List.of());when(driver.listTrips(11L)).thenReturn(List.of());
  }
  String user(String role)throws Exception{return "Bearer "+TestJwtSupport.userToken("own",role);}
  @ParameterizedTest @ValueSource(strings={"","/plans"}) void ownerCanReadJobAndPlans(String suffix)throws Exception{
@@ -90,7 +89,10 @@ class OptimizationReadSecurityTest {
  }
  @Test void driverCannotUseDispatcherProxy()throws Exception{mvc.perform(get("/api/trips/optimization-jobs/own-job").header("Authorization",user("DRIVER"))).andExpect(status().isForbidden());verifyNoInteractions(client);}
  @ParameterizedTest @ValueSource(strings={"WAREHOUSE_WORKER","DISPATCHER","MANAGER","ADMIN","COMPANY_ADMIN"}) void warehouseOperationalRolesKeepOwnList(String role)throws Exception{
-  mvc.perform(get("/api/warehouse/tasks").header("Authorization",user(role))).andExpect(status().isOk());verify(warehouse).getTasks(1L,null);
+  mvc.perform(get("/api/warehouse/tasks").header("Authorization",user(role))).andExpect(status().isOk());verify(warehouse).getTasks(1L,null,false);
+ }
+ @Test void warehouseAwaitingReplanQueryParamReachesService()throws Exception{
+  mvc.perform(get("/api/warehouse/tasks").param("includeAwaitingReplan","true").header("Authorization",user("WAREHOUSE_WORKER"))).andExpect(status().isOk());verify(warehouse).getTasks(1L,null,true);verify(warehouse,never()).getTasks(1L,null,false);
  }
  @Test void warehouseCannotRequestForeignCompanyOrWorker()throws Exception{
   mvc.perform(get("/api/warehouse/tasks").param("companyId","2").header("Authorization",user("WAREHOUSE_WORKER"))).andExpect(status().isForbidden());

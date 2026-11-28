@@ -293,22 +293,17 @@ public class TrialRegistrationServiceImpl implements TrialRegistrationService {
     }
 
     private void sendOtpEmail(String email, String fullName, String otp) {
-        String subject = "LoadMaster - Mã OTP xác thực đăng ký trải nghiệm";
-        String content = String.format("""
-                Kính gửi Quý khách %s,
-                
-                Mã xác thực (OTP) cho yêu cầu đăng ký tài khoản trải nghiệm LoadMaster của Quý khách là:
-                
-                👉 %s 👈
-                
-                Mã xác thực có hiệu lực trong vòng 10 phút. Vui lòng không chia sẻ mã này cho bất kỳ ai.
-                
-                Trân trọng,
-                Đội ngũ LoadMaster
-                """, fullName, otp);
+        String subject = "[LoadMaster] Mã OTP xác thực đăng ký trải nghiệm / Trial Registration Code";
+        String htmlContent = fu.se184491.loadmaster_be.helpers.EmailTemplateBuilder.buildOtpEmailHtml(
+                fullName,
+                otp,
+                10,
+                "đăng ký tài khoản trải nghiệm dịch vụ",
+                "trial service registration"
+        );
 
         try {
-            brevoClient.sendEmail(email, subject, content);
+            brevoClient.sendEmail(email, subject, htmlContent);
         } catch (Exception ex) {
             log.error("Failed to send OTP email to {}: {}", LogMasks.email(email), ex.getMessage());
         }

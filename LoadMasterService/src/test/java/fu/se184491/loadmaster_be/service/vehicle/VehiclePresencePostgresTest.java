@@ -66,7 +66,7 @@ class VehiclePresencePostgresTest {
    return new fu.se184491.loadmaster_be.service.trip.impl.TripServiceImpl(mock(fu.se184491.loadmaster_be.repository.cargo.CargoPackageRepository.class),warehouses,trips,eligibility,vehicles,mock(fu.se184491.loadmaster_be.repository.account.UserRepository.class),current,mock(fu.se184491.loadmaster_be.repository.trip.DeliveryStopRepository.class),mock(fu.se184491.loadmaster_be.repository.planning.DeliveryRequirementRepository.class),mock(fu.se184491.loadmaster_be.repository.route.RoutePlanRepository.class),mock(fu.se184491.loadmaster_be.service.trip.TripStatusService.class),mock(fu.se184491.loadmaster_be.repository.optimization.LoadPlanRepository.class),mock(fu.se184491.loadmaster_be.service.planning.RequirementCargoPriority.class));
   }
   @Bean fu.se184491.loadmaster_be.service.trip.TripLifecycleService lifecycle(TripRepository trips,VehicleRepository vehicles,CurrentUserService current,VehicleDepartureEligibility eligibility,fu.se184491.loadmaster_be.repository.company.CompanyWarehouseRepository warehouses){
-   return new fu.se184491.loadmaster_be.service.trip.TripLifecycleService(trips,eligibility,mock(fu.se184491.loadmaster_be.repository.trip.DeliveryStopRepository.class),mock(fu.se184491.loadmaster_be.repository.planning.DeliveryRequirementRepository.class),vehicles,mock(fu.se184491.loadmaster_be.repository.account.UserRepository.class),warehouses,mock(fu.se184491.loadmaster_be.repository.warehouse.LoadingExecutionRepository.class),mock(fu.se184491.loadmaster_be.repository.common.AuditLogRepository.class),current,mock(fu.se184491.loadmaster_be.service.trip.TripStatusService.class),mock(fu.se184491.loadmaster_be.repository.optimization.LoadPlanRepository.class),mock(fu.se184491.loadmaster_be.service.trip.TripPackageResolver.class),mock(fu.se184491.loadmaster_be.repository.monitoring.TripExceptionRepository.class),mock(fu.se184491.loadmaster_be.repository.pickup.PickupRequestRepository.class),mock(fu.se184491.loadmaster_be.repository.cargo.CargoPackageRepository.class));
+   return new fu.se184491.loadmaster_be.service.trip.TripLifecycleService(trips,eligibility,mock(fu.se184491.loadmaster_be.repository.trip.DeliveryStopRepository.class),mock(fu.se184491.loadmaster_be.repository.planning.DeliveryRequirementRepository.class),vehicles,mock(fu.se184491.loadmaster_be.repository.account.UserRepository.class),warehouses,mock(fu.se184491.loadmaster_be.repository.warehouse.LoadingExecutionRepository.class),mock(fu.se184491.loadmaster_be.repository.common.AuditLogRepository.class),current,mock(fu.se184491.loadmaster_be.service.trip.TripStatusService.class),mock(fu.se184491.loadmaster_be.repository.optimization.LoadPlanRepository.class),mock(fu.se184491.loadmaster_be.service.trip.TripPackageResolver.class),mock(fu.se184491.loadmaster_be.repository.monitoring.TripExceptionRepository.class));
   }
   @Bean fu.se184491.loadmaster_be.service.trip.TripVehicleChoiceService tripChoices(){return mock(fu.se184491.loadmaster_be.service.trip.TripVehicleChoiceService.class);}
 
@@ -265,16 +265,46 @@ class VehiclePresencePostgresTest {
   assertThrows(fu.se184491.loadmaster_be.exception.AppException.class,()->service.confirmLoadingPresence(101,91,2,key));
   assertEquals(1,sql.queryForObject("SELECT count(*) FROM vehicle_presence_checkin_requests WHERE request_key=?",Integer.class,key.toString()));
  }
- @Test void loadingVerificationCannotBypassWrongWarehouseBusyOrInTransit() {
+ @Test void loadingVerificationCannotBypassWrongWarehouseOrBusyVehicle() {
   legacyLoading();sql.update("INSERT INTO warehouse_staff_assignments VALUES(7,1,102,true)");
   assertThrows(fu.se184491.loadmaster_be.exception.AppException.class,()->service.confirmLoadingPresence(102,90,6,UUID.randomUUID()));
+  assertThrows(fu.se184491.loadmaster_be.exception.AppException.class,()->service.checkIn(102,6,UUID.randomUUID()));
   sql.update("INSERT INTO trips(id,company_id,vehicle_id,status) VALUES(91,1,6,'LOADING')");
   assertThrows(fu.se184491.loadmaster_be.exception.AppException.class,()->service.confirmLoadingPresence(101,90,6,UUID.randomUUID()));
-  sql.update("DELETE FROM trips WHERE id=91");sql.update("UPDATE trips SET vehicle_id=3 WHERE id=90");
-  assertThrows(fu.se184491.loadmaster_be.exception.AppException.class,()->service.confirmLoadingPresence(101,90,3,UUID.randomUUID()));
-  assertEquals(102L,store.presence(3,1).warehouseId());
-  tx.executeWithoutResult(t->service.departure(departing(),8));sql.update("UPDATE trips SET vehicle_id=1 WHERE id=90");
-  assertThrows(fu.se184491.loadmaster_be.exception.AppException.class,()->service.confirmLoadingPresence(101,90,1,UUID.randomUUID()));assertEquals("IN_TRANSIT",store.presence(1,1).status());
+  assertEquals("UNKNOWN",store.presence(6,1).status());assertTrue(store.events(6,1).isEmpty());
+ }
+ @Test void loadingVehicleLeftInTransitByAnEarlierTripIsConfirmedAtTheOriginAndCanDepart() {
+  var earlier=departing();earlier.setId(89L);tx.executeWithoutResult(t->service.departure(earlier,8));
+  assertEquals("IN_TRANSIT",store.presence(1,1).status());
+  legacyLoading();sql.update("UPDATE trips SET vehicle_id=1 WHERE id=90");var key=UUID.randomUUID();
+  var p=service.confirmLoadingPresence(101,90,1,key);
+  assertEquals("AT_WAREHOUSE",p.status());assertEquals(101L,p.warehouseId());
+  var event=store.event(1,"loading-trip:90:"+key).orElseThrow();assertEquals("CHECK_IN",event.eventType());assertEquals(7L,event.actorId());
+  tx.executeWithoutResult(t->service.departure(departing(),8));assertEquals("IN_TRANSIT",store.presence(1,1).status());
+ }
+ @Test void loadingVehicleRecordedAtAnotherWarehouseIsCheckedOutThereAndInAtTheOrigin() {
+  legacyLoading();sql.update("UPDATE trips SET vehicle_id=3 WHERE id=90");var key=UUID.randomUUID();
+  var p=service.confirmLoadingPresence(101,90,3,key);
+  assertEquals("AT_WAREHOUSE",p.status());assertEquals(101L,p.warehouseId());
+  var out=store.event(1,"loading-trip:90:"+key+":out").orElseThrow();assertEquals("CHECK_OUT",out.eventType());assertEquals(102L,out.warehouseId());
+  assertEquals("CHECK_IN",store.event(1,"loading-trip:90:"+key).orElseThrow().eventType());
+  service.confirmLoadingPresence(101,90,3,key);assertEquals(101L,store.presence(3,1).warehouseId());
+  assertEquals(1,sql.queryForObject("SELECT count(*) FROM vehicle_presence_checkin_requests WHERE request_key=?",Integer.class,key.toString()));
+ }
+ @Test void loadingVehicleAlreadyAtTheOriginWritesNoEventButKeepsTheReceipt() {
+  legacyLoading();sql.update("UPDATE trips SET vehicle_id=2 WHERE id=90");int before=store.events(2,1).size();var key=UUID.randomUUID();
+  assertEquals(101L,service.confirmLoadingPresence(101,90,2,key).warehouseId());
+  assertEquals(101L,service.confirmLoadingPresence(101,90,2,key).warehouseId());
+  assertEquals(before,store.events(2,1).size());assertTrue(store.event(1,"loading-trip:90:"+key).isEmpty());
+  assertEquals(1,sql.queryForObject("SELECT count(*) FROM vehicle_presence_checkin_requests WHERE request_key=?",Integer.class,key.toString()));
+ }
+ @Test void checkInOfTheLoadingVehicleAtItsOriginConfirmsItForTheTrip() {
+  legacyLoading();sql.update("UPDATE trips SET vehicle_id=3 WHERE id=90");var key=UUID.randomUUID();
+  assertEquals(101L,service.checkIn(101,3,key).warehouseId());
+  assertTrue(store.event(1,"loading-trip:90:"+key).isPresent());
+  sql.update("UPDATE trips SET vehicle_id=6 WHERE id=90");sql.update("INSERT INTO warehouse_staff_assignments VALUES(7,1,102,true)");
+  assertThrows(fu.se184491.loadmaster_be.exception.AppException.class,()->service.checkIn(102,6,UUID.randomUUID()));
+  assertEquals("UNKNOWN",store.presence(6,1).status());
  }
  @Test void loadingVerificationChecksRoleAssignmentTenantAndCurrentTripState()throws Exception {
   legacyLoading();String path="/api/warehouse/vehicle-presence/101/loading-trips/90/confirm-presence";

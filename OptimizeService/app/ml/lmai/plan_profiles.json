@@ -1,0 +1,30 @@
+{
+  "_ghi_chu": "Hồ sơ ưu tiên của hàm điểm J (spec 'Ràng buộc vật lý và điểm phương án' mục 6). Trọng số CHỐT ngày 26/11/2026 (Q-D4, chủ dự án). Lý do: (1) pack_count_first = true cho cả 4 hồ sơ — giao thiếu hàng nặng hơn mọi bất tiện; chấm J thuần làm mất 0,4–3,9 % số kiện trên dữ liệu M7. (2) S1 luôn là khoản phạt lớn nhất của mỗi hồ sơ (B cho S2 = S3 = S1). (3) Hồ sơ đề cao nhóm nào thì nhóm đó khoảng ×3 so với default, không hơn. (4) S4 và S6 để nhỏ: S4 gần như hằng số (≈ 0,34, chênh trong cùng bài ≈ 0,003), S6 có mức sàn ≈ 0,4; chúng chỉ kéo J xuống, không phân biệt phương án. (5) Chấm lại offline runs/m7-20261126/lmai.jsonl (660 bài, 5 bộ rb): phương án được chọn gần như không đổi; J < 0 giảm mạnh ở B, C. Khi train Lumo-R3, thưởng dùng w_n = 3 (khoá config reward_w_n) vì thưởng là một số, không so số kiện trước được; trong sản phẩm giữ w_n = 0,5 + so số kiện trước. Bản sao ở LoadMaster_AI/lmai/plan_profiles.json phải giống hệt (test_parity_j kiểm).",
+  "assumed": false,
+  "decided_on": "2026-11-26",
+  "pack_count_first": true,
+  "high_priority_min": 2,
+  "adjacent_gap_cm": 1.0,
+  "profiles": {
+    "default": {
+      "name": "Mặc định",
+      "w_vol": 1.0, "w_n": 0.5,
+      "w": {"S1": 0.5, "S2": 0.15, "S3": 0.15, "S4": 0.05, "S5": 0.1, "S6": 0.1, "S7": 0.0, "S8": 0.0}
+    },
+    "A": {
+      "name": "Chở nhiều",
+      "w_vol": 1.5, "w_n": 0.5,
+      "w": {"S1": 0.25, "S2": 0.05, "S3": 0.05, "S4": 0.0, "S5": 0.05, "S6": 0.05, "S7": 0.0, "S8": 0.0}
+    },
+    "B": {
+      "name": "An toàn tải",
+      "w_vol": 1.0, "w_n": 0.5,
+      "w": {"S1": 0.5, "S2": 0.5, "S3": 0.5, "S4": 0.2, "S5": 0.1, "S6": 0.1, "S7": 0.0, "S8": 0.0}
+    },
+    "C": {
+      "name": "Dỡ nhanh",
+      "w_vol": 1.0, "w_n": 0.5,
+      "w": {"S1": 1.5, "S2": 0.15, "S3": 0.15, "S4": 0.05, "S5": 0.5, "S6": 0.3, "S7": 0.0, "S8": 0.0}
+    }
+  }
+}

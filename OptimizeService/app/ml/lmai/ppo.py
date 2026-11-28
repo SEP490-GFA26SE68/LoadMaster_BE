@@ -20,6 +20,8 @@ from .env import EnvConfig, PackingEnv, obs_spec
 from .generator import GenConfig, generate
 from .model import PCTPolicy, obs_to_torch
 from .problem import Problem
+from .plan_score import plan_score
+from .seed_guard import check_train_seed
 from .result import PlanResult
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -36,10 +38,11 @@ def _summary(env: PackingEnv, res: PlanResult) -> Dict:
 class _EnvRunner:
     """Một môi trường + bộ sinh bài toán riêng (seed không trùng giữa các worker)."""
 
-    def __init__(self, env_cfg: dict, gen_cfg: dict, seed: int):
+    def __init__(self, env_cfg: dict, gen_cfg: dict, seed: int, allow_reserved: bool = False):
         self.env = PackingEnv(EnvConfig(**env_cfg))
         self.gen = GenConfig(**gen_cfg)
         self.seed = seed
+        self.allow_reserved = allow_reserved
 
     def set_gen(self, gen_cfg: dict):
         self.gen = GenConfig(**gen_cfg)
@@ -47,6 +50,7 @@ class _EnvRunner:
     def reset(self):
         for _ in range(50):
             self.seed += 1
+            check_train_seed(self.seed, self.allow_reserved)  # không train trên bài của bộ chuẩn / kiểm định
             obs = self.env.reset(generate(self.seed, self.gen))
             if not self.env.done:
                 return obs
@@ -61,9 +65,9 @@ class _EnvRunner:
         return obs, r, done, out
 
 
-def _worker(remote, env_cfg, gen_cfg, seed):
+def _worker(remote, env_cfg, gen_cfg, seed, allow_reserved=False):
     torch.set_num_threads(1)
-    runner = _EnvRunner(env_cfg, gen_cfg, seed)
+    runner = _EnvRunner(env_cfg, gen_cfg, seed, allow_reserved)
     try:
         while True:
             cmd, data = remote.recv()
@@ -89,7 +93,8 @@ def _stack(obs_list: List[Dict[str, np.ndarray]]) -> Dict[str, np.ndarray]:
 class VecEnv:
     """n_envs môi trường; workers > 0 thì mỗi môi trường một tiến trình con, = 0 thì chạy tuần tự trong tiến trình chính."""
 
-    def __init__(self, n_envs: int, env_cfg: EnvConfig, gen_cfg: GenConfig, seed: int, workers: bool = True):
+    def __init__(self, n_envs: int, env_cfg: EnvConfig, gen_cfg: GenConfig, seed: int, workers: bool = True,
+                 allow_reserved: bool = False):
         self.n = n_envs
         self.workers = workers
         ec, gc = asdict(env_cfg), asdict(gen_cfg)
@@ -99,13 +104,13 @@ class VecEnv:
             self.remotes, self.procs = [], []
             for i in range(n_envs):
                 parent, child = ctx.Pipe()
-                p = ctx.Process(target=_worker, args=(child, ec, gc, seeds[i]), daemon=True)
+                p = ctx.Process(target=_worker, args=(child, ec, gc, seeds[i], allow_reserved), daemon=True)
                 p.start()
                 child.close()
                 self.remotes.append(parent)
                 self.procs.append(p)
         else:
-            self.runners = [_EnvRunner(ec, gc, s) for s in seeds]
+            self.runners = [_EnvRunner(ec, gc, s, allow_reserved) for s in seeds]
 
     def reset(self):
         if self.workers:
@@ -187,8 +192,7 @@ def evaluate(model: nn.Module, problems: Sequence[Problem], env_cfg: EnvConfig, 
     return [b for b in best]
 
 
-def _score(r: PlanResult) -> float:
-    return (1.0 if r.verdict.valid else 0.0) * 10 + r.cargo_frac + 0.001 * r.packed_frac_raw
+_score = plan_score  # một hàm chấm chung (lmai/plan_score.py)
 
 
 def _keep(best, i, res):
@@ -222,12 +226,13 @@ class PPOConfig:
     save_every: int = 10
     val_size: int = 100
     val_seed: int = 900_000
+    allow_reserved_seeds: bool = False  # True chỉ để tái lập lần train cũ (seed env chạm dải bộ chuẩn — lmai/seed_guard.py)
     model: Dict = field(default_factory=lambda: dict(d=128, heads=4, layers=2, ff=256))
 
 
 def _gen_from(d: dict) -> GenConfig:
     d = dict(d)
-    for k in ("n_packages", "n_stops", "fill", "weight_frac", "skus_per_stop"):
+    for k in ("n_packages", "n_stops", "fill", "weight_frac", "skus_per_stop", "orders"):
         if k in d and isinstance(d[k], list):
             d[k] = tuple(d[k])
     return GenConfig(**d)
@@ -310,7 +315,7 @@ class Trainer:
         spec = obs_spec(E)
         stage = self._stage()
         gen = _gen_from(stage["gen"])
-        vec = VecEnv(P.n_envs, E, gen, P.seed + self.update, P.workers)
+        vec = VecEnv(P.n_envs, E, gen, P.seed + self.update, P.workers, P.allow_reserved_seeds)
         val = self._val_set(gen)
         obs = vec.reset()
         T, N = P.rollout, P.n_envs

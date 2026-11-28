@@ -17,7 +17,6 @@ import fu.se184491.loadmaster_be.repository.warehouse.LoadingExecutionRepository
 import fu.se184491.loadmaster_be.service.driver.DriverService;
 import fu.se184491.loadmaster_be.service.driver.Impl.DriverServiceImpl;
 import fu.se184491.loadmaster_be.service.monitoring.TripLookupHelper;
-import fu.se184491.loadmaster_be.service.pickup.PickupDriverService;
 import org.junit.jupiter.api.*;
 import org.springframework.context.annotation.*;
 import org.springframework.context.annotation.AnnotationConfigApplicationContext;
@@ -92,7 +91,6 @@ class DriverDeparturePostgresTest {
         @Bean UnloadConfirmationRepository unloaded() { return mock(UnloadConfirmationRepository.class); }
         @Bean DeliveryIssueRepository issues() { return mock(DeliveryIssueRepository.class); }
         @Bean ManualUnloadConfirmationRepository manual() { return mock(ManualUnloadConfirmationRepository.class); }
-        @Bean PickupDriverService pickups() { return mock(PickupDriverService.class); }
         @Bean TripPackageResolver packageResolver() { return mock(TripPackageResolver.class); }
         @Bean TripLookupHelper tripLookup() { return mock(TripLookupHelper.class); }
         @Bean RoutePlanRepository routes() { return mock(RoutePlanRepository.class); }
@@ -244,8 +242,8 @@ class DriverDeparturePostgresTest {
         assertThrows(AppException.class,()->service.startTrip(10L));assertEquals(1,transitions());
     }
     @Test void wrongWarehouseAndOtherActiveTripCannotDepartAndRollbackRequirements() {
-        sql.update("UPDATE trips SET origin_warehouse_id=102 WHERE id=10");
-        assertEquals("DRIVER_VEHICLE_DEPARTURE_BLOCKED",assertThrows(AppException.class,()->service.startTrip(10L)).getErrorCode().name());
+        sql.update("UPDATE trips SET origin_warehouse_id=102 WHERE id=10"); // Xe ghi ở kho khác kho xuất phát: nhân viên kho xuất phát xác nhận được xe, nên tài xế nhận mã "chưa xác nhận xe".
+        assertEquals("DRIVER_VEHICLE_PRESENCE_UNVERIFIED",assertThrows(AppException.class,()->service.startTrip(10L)).getErrorCode().name());
         sql.update("UPDATE trips SET origin_warehouse_id=101 WHERE id=10");insertTrip(11,1,9,"LOADING");
         assertEquals("DRIVER_VEHICLE_DEPARTURE_BLOCKED",assertThrows(AppException.class,()->service.startTrip(10L)).getErrorCode().name());
         assertEquals("LOADING",status());assertEquals(0,transitions());assertEquals("ASSIGNED",sql.queryForObject("SELECT status FROM delivery_requirements WHERE id=70",String.class));

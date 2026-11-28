@@ -15,13 +15,15 @@ from app.dto.optimization.engine.problem_request import (
     ObstacleData,
     PackageData,
     StopData,
+    DataWarningData,
 )
 from app.exception.app_exception import AppException
 from app.exception.error_code import ErrorCode
 from app.dto.optimization.engine.packing_profile_orientation import parse_profile_orientation
-from app.service.optimize.engine_exception_handler import EngineExceptionHandler
+from app.service.optimize.engine_exception_handler import EngineExceptionHandler, TerminalStatusPersistenceError
 from app.service.optimize.optimization_client import OptimizationClient
 from app.service.optimize.optimization_job_service import JobAlreadyFinishedError, OptimizationJobService
+from app.service.optimize import job_progress
 
 logger = logging.getLogger(__name__)
 
@@ -210,6 +212,9 @@ class AsyncOptimizationRunner:
                 if getattr(vt, "max_cog_offset_ratio", None) is not None
                 else 0.15
             ),
+            # Spec ràng buộc vật lý (V55) — chỉ truyền, ConstraintEngine chưa đọc.
+            max_cog_offset_ratio_y=_opt_float(getattr(vt, "max_cog_offset_ratio_y", None)),
+            floor_load_capacity_kg_m2=_opt_float(getattr(vt, "floor_load_capacity_kg_m2", None)),
         )
 
 
@@ -294,6 +299,8 @@ class AsyncOptimizationRunner:
 
 
         package_items: list[PackageData] = []
+        missing_sigma: list[str] = []
+        missing_type: list[str] = []
         for pkg, requirement, stop in packages_query:
             w = float(pkg.actual_weight_kg or 0)
             pt = pkg.package_type
@@ -420,6 +427,17 @@ class AsyncOptimizationRunner:
 
             allowed_rotations = self.restrict_profile_rotations(allowed_rotations, pkg.packing_profile)
 
+            # Spec ràng buộc vật lý 8.1: hồ sơ kiện > loại kiện > trống (không mặc định ngầm — Q-D2).
+            profile = pkg.packing_profile
+            sigma = _first_float(getattr(profile, "top_load_capacity_kg_m2", None),
+                                 getattr(pt, "top_load_capacity_kg_m2", None) if pt else None)
+            support = _first_float(getattr(profile, "min_support_ratio", None),
+                                   getattr(pt, "min_support_ratio", None) if pt else None)
+            if sigma is None:
+                missing_sigma.append(str(pkg.id))
+            if pt is None:
+                missing_type.append(str(pkg.id))
+
             package_items.append(
                 PackageData(
                     id=str(pkg.id),
@@ -441,8 +459,19 @@ class AsyncOptimizationRunner:
                         else None
                     ),
 
+                    top_load_capacity_kg_m2=sigma,
+                    min_support_ratio=support,
+                    must_load=getattr(profile, "must_load", None) is True,
+                    priority=getattr(profile, "priority", None),
+                    packing_group=getattr(profile, "packing_group", None),
                 )
             )
+
+        data_warnings = []
+        if missing_sigma:
+            data_warnings.append(DataWarningData(code="TOP_LOAD_CAPACITY_MISSING", package_ids=missing_sigma))
+        if missing_type:
+            data_warnings.append(DataWarningData(code="PACKAGE_TYPE_MISSING", package_ids=missing_type))
 
         return ProblemRequest(
             vehicle=vehicle_data,
@@ -451,6 +480,7 @@ class AsyncOptimizationRunner:
             objective=job.objective or "MAX_VOLUME_UTIL",
             time_limit_sec=job.time_limit_sec or 60,
             algorithm_name=job.algorithm_name,
+            data_warnings=data_warnings,
         )
 
     async def run(
@@ -512,6 +542,7 @@ class AsyncOptimizationRunner:
 
             if self.persistence_service is not None and hasattr(self.persistence_service, "save"):
                 self.persistence_service.save(job_uuid_str, result, session)
+            save_data_warnings(job_uuid_str, problem, session)
 
             status = self.engine_exception_handler.handle_result(result, job_uuid_str, session)
             if _status_value(status) == OptimizationJobStatus.NO_SOLUTION.value and is_credit_deducted:
@@ -532,6 +563,17 @@ class AsyncOptimizationRunner:
             if is_credit_deducted and company_id:
                 await self._refund(company_id, job_uuid_str)
                 is_credit_deducted = False
+
+        except TerminalStatusPersistenceError:
+            # Commit may have succeeded before refresh failed. Never infer solver failure,
+            # retry execution, or refund a possibly committed result from this uncertainty.
+            if session is not None:
+                try:
+                    session.rollback()
+                except Exception as rollback_exc:
+                    logger.error("Terminal cleanup failed: job=%s exception_type=%s",
+                                 job_uuid_str, type(rollback_exc).__name__)
+            logger.error("Terminal persistence requires reconciliation: job=%s", job_uuid_str)
 
         except Exception as exc:
             logger.error(f"Error executing async optimization job {job_uuid_str}: {exc}")
@@ -581,16 +623,27 @@ class AsyncOptimizationRunner:
                     return  # DB uncertainty is fail-closed; never publish without a final DB check.
         thread = threading.Thread(target=pulse, name="optimization-lease", daemon=True)
         thread.start()
+        # Tiến độ sống (V58) ghi ở thread riêng, nhịp riêng: heartbeat của lease giữ nguyên nhịp và ngữ nghĩa.
+        writer = progress_thread = progress_token = None
         try:
             problem = ProblemRequest.model_validate_json(problem_json)
+            writer, progress_thread, progress_token = _start_progress(protocol, uuid, generation, problem, stop)
             result = asyncio.run(self.optimization_client.solve(problem))
+            # Engine từ xa không báo gì: giữ progress trống, không dựng một SAVING rỗng.
+            if writer is not None and writer.reporter.snapshot() is not None and not lost.is_set():
+                job_progress.stage(job_progress.SAVING)
+                writer.flush()
             validate_result_rotations(problem, result)
+            if writer is not None:
+                writer.close()
             if lost.is_set():
                 return
             status = _status_value(self.engine_exception_handler.classify_result(result))
             ms = result.metrics.computation_ms if result.metrics else None
-            protocol.finalize(uuid, generation, status,
-                write_result=lambda db: self.persistence_service.save(uuid, result, db), computation_ms=ms)
+            def write_result(db):
+                self.persistence_service.save(uuid, result, db)
+                save_data_warnings(uuid, problem, db)
+            protocol.finalize(uuid, generation, status, write_result=write_result, computation_ms=ms)
         except OwnershipLost:
             logger.warning("optimization_execution job_uuid=%s stage=ownership_lost", uuid)
         except Exception as exc:
@@ -604,7 +657,13 @@ class AsyncOptimizationRunner:
                     logger.warning("optimization_execution job_uuid=%s stage=terminal_not_committed", uuid)
         finally:
             stop.set()
+            if writer is not None:
+                writer.close()
+            if progress_token is not None:
+                job_progress.deactivate(progress_token)
             thread.join(timeout=1)
+            if progress_thread is not None:
+                progress_thread.join(timeout=1)
             # Spring reconciles the durable terminal ledger. Never refund here.
 
     async def _refund(self, company_id, job_uuid_str: str) -> None:
@@ -617,5 +676,44 @@ class AsyncOptimizationRunner:
             logger.error(f"Error refunding credit for job {job_uuid_str}: {ref_err}")
 
 
+def _start_progress(protocol, uuid, generation, problem, stop):
+    """Bật bộ báo tiến độ cho thread worker này và thread ghi tiến độ. Lỗi ở đây không chặn job:
+    trả (None, None, None) và job chạy như khi không báo tiến độ."""
+    import threading
+    try:
+        reporter = job_progress.ProgressReporter(total_packages=len(problem.packages or []))
+        writer = job_progress.ProgressWriter(
+            reporter, lambda payload: protocol.write_progress(uuid, generation, payload))
+        progress_thread = threading.Thread(target=writer.loop, args=(stop,), name="optimization-progress", daemon=True)
+        progress_thread.start()
+        return writer, progress_thread, job_progress.activate(reporter)
+    except Exception as exc:
+        logger.warning("optimization_progress job_uuid=%s stage=disabled exception_type=%s", uuid, type(exc).__name__)
+        return None, None, None
+
+
 def _status_value(status) -> Optional[str]:
     return getattr(status, "value", status)
+
+
+def _opt_float(value) -> Optional[float]:
+    return float(value) if value is not None else None
+
+
+def _first_float(*values) -> Optional[float]:
+    for value in values:
+        if value is not None:
+            return float(value)
+    return None
+
+
+def save_data_warnings(job_uuid: str, problem: ProblemRequest, db) -> None:
+    """Ghi cảnh báo dữ liệu của bài vào job (cùng giao dịch với kết quả). Không có job / không có cảnh báo: bỏ qua."""
+    warnings = getattr(problem, "data_warnings", None)
+    if db is None or not warnings:
+        return
+    from app.entity.optimization.optimization_job import OptimizationJob
+    db.query(OptimizationJob).filter(OptimizationJob.job_uuid == str(job_uuid)).update(
+        {OptimizationJob.data_warnings: [w.model_dump() if hasattr(w, "model_dump") else dict(w) for w in warnings]},
+        synchronize_session=False,
+    )

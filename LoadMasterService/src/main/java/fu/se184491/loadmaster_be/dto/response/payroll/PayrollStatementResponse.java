@@ -21,6 +21,12 @@ public record PayrollStatementResponse(
         BigDecimal handlingFeeVndPerKg,
         BigDecimal handlingDriverPercent,
         BigDecimal handlingAmountVnd,
+        /** Chỉ tiêu KPI (kg/tháng) của kỳ này; null khi công ty không dùng KPI hoặc bảng chưa chốt. */
+        BigDecimal kpiTargetKg,
+        /** Tài xế có đạt KPI không; null khi bảng chưa chốt. */
+        Boolean kpiAchieved,
+        /** Tiền thưởng KPI đã cộng vào lương (màn lương trên mobile đọc đúng tên này); null khi bảng chưa chốt. */
+        BigDecimal kpiBonusVnd,
         BigDecimal totalSalaryVnd,
         List<PayrollTripLineResponse> trips
 ) {

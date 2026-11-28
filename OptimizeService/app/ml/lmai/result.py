@@ -76,6 +76,9 @@ class PlanResult:
 def finish(problem: Problem, packer, name: str, seconds: float) -> PlanResult:
     st = packer.state
     pls = st.placements()
+    if getattr(packer, "two_pass", False) and pls:
+        from .load_order import loading_order
+        pls = loading_order(pls)
     unplaced = [problem.packages[i].id for i in packer.unplaced] + [problem.packages[i].id for i in packer.buffer] + \
         [problem.packages[i].id for i in packer.queue]
     placed_ids = {p.package_id for p in pls}
