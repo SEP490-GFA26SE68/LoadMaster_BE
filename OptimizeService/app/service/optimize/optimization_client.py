@@ -53,6 +53,9 @@ def _lifo_code() -> str:
     return LIFO_BLOCKED if ConstraintEngine.physics_v2() else "MULTI_DROP_LIFO_VIOLATION"
 
 
+SA_END_MARGIN_SEC = 1.0   # M10: SA lmai (gồm bước kiểm của nó) xong trước hạn chót của job ít nhất từng ấy giây
+
+
 def check_reserve_sec(problem: ProblemRequest) -> float:
     """M8: thời gian giữ lại cho bước kiểm phương án = max(MIN, RATIO × time_limit_sec), không quá nửa giới hạn.
     RATIO <= 0 tắt (bộ dựng chạy tới hạn chót như trước)."""
@@ -61,6 +64,11 @@ def check_reserve_sec(problem: ProblemRequest) -> float:
         return 0.0
     limit = max(float(problem.time_limit_sec or 60), 1)
     return min(max(float(settings.OPTIMIZATION_CHECK_RESERVE_MIN_SEC), ratio * limit), limit / 2)
+
+
+def lmai_target(start: float, deadline: float) -> float:
+    """Hạn cho các bước tối ưu thêm mới (SA lmai, biết tính trước): min(hạn job, lúc bắt đầu job + LMAI_JOB_TARGET_SEC)."""
+    return min(deadline, start + float(settings.LMAI_JOB_TARGET_SEC))
 
 
 class OptimizationClient:
@@ -123,6 +131,7 @@ class OptimizationClient:
         ep_kwargs = {"use_lumo_scorer": False} if uses_lumo(problem.algorithm_name) else {}
         reserve = check_reserve_sec(problem)
         lmai_built = False
+        built = None
         if settings.OPTIMIZATION_LMAI_BUILDER_ENABLED:
             # M9 (D1): bộ dựng chung của LoadMaster_AI; không ra cách xếp nào qua kiểm thì chạy bộ dựng cũ bên dưới.
             from app.service.optimize.lmai_builder import build_layouts
@@ -151,7 +160,8 @@ class OptimizationClient:
         tried.append(PlanAlgorithm.EP_DBLF.value)
 
         if len(allowed) > 1:
-            layouts += self._advanced_layouts(problem, allowed, ep_runs, start, deadline, tried)
+            layouts += self._advanced_layouts(problem, allowed, ep_runs, start, deadline, tried,
+                                              lmai=built if lmai_built else None)
 
         candidates = pick_candidates(layouts, problem.vehicle, problem)
         if plan_score.enabled():
@@ -180,10 +190,13 @@ class OptimizationClient:
         start: float,
         deadline: float,
         tried: list[str],
+        lmai=None,
     ) -> list[EngineOptimizationResponse]:
         """
         Cách xếp của gói PRO / ULTIMATE. Thứ tự: mô hình AI greedy (mỗi mô hình một lượt cố định),
         EP + Lumo-R1.1, rồi GA → SA dùng phần thời gian còn lại (tối đa ngân sách trong settings).
+        M10: cờ OPTIMIZATION_LMAI_SA_ENABLED và bước EP đã dựng bằng bộ dựng lmai (`lmai`) → SA tối đa J trên bộ dựng
+        lmai thay cho GA + SA cũ (lmai_sa.py).
         Một bước hỏng (thiếu torch, lỗi mô hình) chỉ bị bỏ qua, không làm hỏng job.
         """
         from app.constant.optimization.plan_algorithm import PlanAlgorithm as P
@@ -215,6 +228,18 @@ class OptimizationClient:
                 tried.append(P.EP_LUMO_R1_1.value)
             else:
                 logger.info("EP_LUMO_R1_1 skipped: Lumo-R1.1 scorer unavailable (torch or weights missing)")
+
+        if (settings.OPTIMIZATION_LMAI_SA_ENABLED and lmai is not None and P.SA.value in allowed
+                and time.monotonic() < deadline):
+            from app.service.optimize.lmai_sa import run_lmai_sa
+
+            try:
+                meta = run_lmai_sa(problem, self, lmai, lmai_target(start, deadline) - SA_END_MARGIN_SEC)
+                tried.extend(meta.tried)
+                layouts += meta.layouts
+            except Exception as exc:  # SA mới hỏng không được làm hỏng job
+                logger.warning("lmai SA failed: %s", exc)
+            return layouts
 
         if P.GA.value in allowed and time.monotonic() < deadline:
             # Chuyến lớn: một lần giải mã (một lượt EP + DBLF) có thể mất vài giây, nên ngân sách

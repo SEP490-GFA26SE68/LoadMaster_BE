@@ -96,6 +96,16 @@ class Settings(BaseSettings):
     # Bật mặc định ở mọi môi trường từ 27/11/2026 (chủ dự án): 420 bài BASIC — hợp lệ 89,3 → 100 %, hàng lên xe +15,7
     # điểm [+13,3; +18,3], job trung bình 50 → 7,7 s. numpy vì thế nằm trong requirements.txt (không cần INSTALL_AI).
     OPTIMIZATION_LMAI_BUILDER_ENABLED: bool = True
+    # M10 (KE-HOACH-TOI-UU, spec R2): gói PRO / ULTIMATE thay GA + SA cũ (giải mã bằng bộ dựng EP cũ) bằng SA tối đa J trên
+    # bộ dựng lmai (app/service/optimize/lmai_sa.py) — một chuỗi cho mỗi hồ sơ A / B / C khi PLAN_SCORE_J bật. Cần
+    # bộ dựng M9 đã chạy. LMAI_SA_BUDGET_SEC: trần thời gian cho cả các chuỗi (còn bị giới hạn bởi hạn chót của job).
+    OPTIMIZATION_LMAI_SA_ENABLED: bool = False
+    # 15 s (chủ dự án 27/11): đo dev, SA 15 s hơn Heuristic-4 tốt nhất +3,7 J (default) / +9,8 J (hồ sơ C).
+    LMAI_SA_BUDGET_SEC: float = 15.0
+    # Mục tiêu thời gian của cả job cho các bước tối ưu thêm mới (SA lmai M10, biết tính trước M11): các bước này dừng
+    # trước job_start + LMAI_JOB_TARGET_SEC (vẫn trong hạn của request) để còn dư khi máy chủ yếu hơn máy đo
+    # (chủ dự án 27/11: 45 s; giả định máy chủ 2–4 nhân tới khi có Q-D6). Không đổi các bước cũ.
+    LMAI_JOB_TARGET_SEC: float = 45.0
 
     LOADMASTER_SERVICE_URL: str = "http://localhost:8080"
     REDIS_URL: str = "redis://localhost:6379"

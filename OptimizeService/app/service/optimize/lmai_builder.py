@@ -56,6 +56,16 @@ class LmaiBuild:
     ep_runs: list[tuple[str, EngineOptimizationResponse]] = field(default_factory=list)
     skipped: Optional[str] = None
     rejected: dict[str, str] = field(default_factory=dict)
+    # cho SA của M10 (lmai_sa.py): bài dạng lmai, phương án lmai hợp lệ theo nhãn, lần kiểm lâu nhất, chữ ký đã kiểm
+    lm_problem: object = None
+    lm_results: dict = field(default_factory=dict)
+    check_sec: float = 0.0
+    signatures: set = field(default_factory=set)
+
+
+def signature(result) -> tuple:
+    """Chữ ký chỗ đặt của một PlanResult lmai (hai cách chấm ra cùng phương án thì chỉ kiểm một lần)."""
+    return tuple(sorted((p.package_id, round(p.x, 2), round(p.y, 2), round(p.z, 2)) for p in result.placements))
 
 
 def numpy_available() -> bool:
@@ -130,15 +140,17 @@ def build_layouts(problem: ProblemRequest, client, deadline: float) -> LmaiBuild
     from app.ml.lmai.problem import Problem
 
     lm_problem = Problem.from_request(problem.model_dump(mode="json"), physics_v2=ConstraintEngine.physics_v2())
+    out.lm_problem = lm_problem
 
-    seen: set[tuple] = set()
+    seen: set[tuple] = out.signatures
     built = 0
     for name, strategy, res, sec in _plans(lm_problem, deadline):
         built += 1
         if not res.verdict.valid or not res.placements:
             out.rejected[name] = "LMAI_INVALID:" + ",".join(res.verdict.reasons()[:2])
             continue
-        sig = tuple(sorted((p.package_id, round(p.x, 2), round(p.y, 2), round(p.z, 2)) for p in res.placements))
+        out.lm_results[name] = res
+        sig = signature(res)
         if sig in seen:          # hai cách chấm cho cùng phương án: kiểm một lần
             continue
         now = time.monotonic()
@@ -149,10 +161,12 @@ def build_layouts(problem: ProblemRequest, client, deadline: float) -> LmaiBuild
         check_deadline = deadline
         if not out.layouts and built < len(BUILDS):
             check_deadline = now + FIRST_CHECK_SHARE * (deadline - now)
+        t_check = time.monotonic()
         layout, reason = client.evaluate_fixed_layout(
             problem, _to_placements(res), PlanAlgorithm.EP_DBLF.value, started_at=time.time() - sec,
             deadline=check_deadline,
         )
+        out.check_sec = max(out.check_sec, time.monotonic() - t_check)
         if layout is None:
             out.rejected[name] = reason or "REJECTED"
             logger.warning("lmai %s: bỏ cách xếp vì luật của service từ chối (%s)", name, reason)
