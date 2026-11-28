@@ -6,6 +6,7 @@ import fu.se184491.loadmaster_be.dto.request.credit.CreditTopupRequest;
 import fu.se184491.loadmaster_be.dto.response.credit.CreditBalanceResponse;
 import fu.se184491.loadmaster_be.dto.response.payment.PaymentUrlResponse;
 import fu.se184491.loadmaster_be.helpers.CurrentUserService;
+import fu.se184491.loadmaster_be.service.assistant.gate.ClientIpResolver;
 import fu.se184491.loadmaster_be.service.credit.CreditService;
 import jakarta.servlet.http.HttpServletRequest;
 import org.junit.jupiter.api.BeforeEach;
@@ -14,6 +15,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
+import org.mockito.Spy;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.http.ResponseEntity;
 
@@ -31,6 +33,9 @@ class CreditControllerTest {
 
     @Mock
     private HttpServletRequest servletRequest;
+
+    @Spy
+    private ClientIpResolver clientIpResolver = new ClientIpResolver();
 
     @InjectMocks
     private CreditController creditController;
