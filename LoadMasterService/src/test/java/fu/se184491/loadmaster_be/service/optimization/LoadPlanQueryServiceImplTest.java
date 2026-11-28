@@ -160,11 +160,12 @@ class LoadPlanQueryServiceImplTest {
         User dispatcher = new User();
         dispatcher.setId(42L);
         when(currentUserService.getCurrentUser()).thenReturn(dispatcher);
-        when(tripRepository.findByIdForUpdate(10L)).thenReturn(Optional.of(tripIn(TripStatus.PLANNED)));
+        when(tripRepository.findById(10L)).thenReturn(Optional.of(tripIn(TripStatus.PLANNED)));
 
         LoadPlanDetailResponse result = service.approvePlan(5L);
 
         verify(optimizationClient).approvePlan(5L, 42L);
+        verify(tripRepository, never()).findByIdForUpdate(anyLong());
         assertThat(result.getApproved()).isTrue();
     }
 
@@ -184,13 +185,20 @@ class LoadPlanQueryServiceImplTest {
     void planOfATripPastPlanningCannotBeApproved() {
         when(readRepository.findPlan(5L))
                 .thenReturn(Optional.of(new PlanWithCompany(plan(5L, false), COMPANY)));
-        when(tripRepository.findByIdForUpdate(10L)).thenReturn(Optional.of(tripIn(TripStatus.LOADING)));
+        when(tripRepository.findById(10L)).thenReturn(Optional.of(tripIn(TripStatus.LOADING)));
 
         assertThatThrownBy(() -> service.approvePlan(5L))
                 .isInstanceOf(AppException.class)
                 .extracting(LoadPlanQueryServiceImplTest::codeOf)
                 .isEqualTo(ErrorCode.PLAN_TRIP_NOT_PLANNED);
         verify(optimizationClient, never()).approvePlan(anyLong(), anyLong());
+    }
+
+    @Test
+    void approvalDoesNotHoldATransactionAcrossThePythonCommit() throws Exception {
+        var annotation = LoadPlanQueryServiceImpl.class.getMethod("approvePlan", Long.class)
+                .getAnnotation(org.springframework.transaction.annotation.Transactional.class);
+        assertThat(annotation.propagation()).isEqualTo(org.springframework.transaction.annotation.Propagation.NOT_SUPPORTED);
     }
 
     private static Trip tripIn(TripStatus status) {

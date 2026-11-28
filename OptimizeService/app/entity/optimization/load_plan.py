@@ -14,6 +14,7 @@ class LoadPlan(Base):
     packed_items_count = Column(Integer, nullable=True, default=0)
     volume_utilization = Column(Numeric(7, 4), nullable=True)
     weight_utilization = Column(Numeric(7, 4), nullable=True)
+    stale = Column("is_stale", Boolean, nullable=True, default=False)
     approved = Column("is_approved", Boolean, default=False)
     approved_by_id = Column("approved_by", Integer().with_variant(BigInteger, "postgresql"), nullable=True)
     cog_x = Column(Numeric(10, 3), nullable=True)

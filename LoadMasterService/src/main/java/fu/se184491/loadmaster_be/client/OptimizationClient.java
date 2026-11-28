@@ -37,6 +37,8 @@ public class OptimizationClient {
             "PLAN_ALREADY_APPROVED",
             "PLAN_HAS_NO_PLACEMENTS",
             "PLAN_LIFO_INVALID",
+            "PLAN_STALE",
+            "PLAN_TRIP_NOT_PLANNED",
             "OPTIMIZATION_JOB_NOT_FOUND",
             "TRIP_NOT_FOUND",
             "VEHICLE_NOT_FOUND",

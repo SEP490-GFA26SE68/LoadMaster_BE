@@ -32,6 +32,14 @@ class OptimizationClientTest {
     }
 
     @Test
+    void approvalConflictCodesAreNotConvertedToServiceUnavailable() {
+        for (ErrorCode code : new ErrorCode[]{ErrorCode.PLAN_STALE, ErrorCode.PLAN_TRIP_NOT_PLANNED}) {
+            assertThat(client.translate(error(HttpStatus.CONFLICT,
+                    "{\"code\":\"" + code.name() + "\"}")).getErrorCode()).isEqualTo(code);
+        }
+    }
+
+    @Test
     void unknownOrMissingCodeIsServiceUnavailable() {
         assertThat(client.translate(error(HttpStatus.FORBIDDEN, "{\"code\":\"FORBIDDEN\"}")).getErrorCode())
                 .isEqualTo(ErrorCode.OPTIMIZATION_SERVICE_UNAVAILABLE);

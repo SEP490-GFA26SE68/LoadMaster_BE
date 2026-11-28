@@ -28,8 +28,16 @@ public interface LoadPlanRepository extends JpaRepository<LoadPlan, Long> {
      * tính cho đầu vào cũ.
      */
     @Modifying
-    @Query("UPDATE LoadPlan p SET p.stale = true, p.approved = false"
-            + " WHERE p.job.id IN (SELECT j.id FROM OptimizationJob j WHERE j.trip.id = :tripId)")
+    // Match Python approval's ascending Plan locks, including writers that do not hold Trip.
+    @Query(value = """
+            WITH locked_plans AS MATERIALIZED (
+                SELECT p.id FROM load_plans p
+                WHERE p.job_id IN (SELECT j.id FROM optimization_jobs j WHERE j.trip_id = :tripId)
+                ORDER BY p.id FOR UPDATE
+            )
+            UPDATE load_plans p SET is_stale = true, is_approved = false
+            FROM locked_plans locked WHERE p.id = locked.id
+            """, nativeQuery = true)
     int markStaleByTripId(@Param("tripId") Long tripId);
 
     /**

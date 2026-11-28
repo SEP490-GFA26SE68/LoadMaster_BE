@@ -204,7 +204,7 @@ class FakePlanService:
     def ensure_plans_of_company(self, plan_ids, company_id, db):
         self.company_checks.append(list(plan_ids))
 
-    def approve_plan(self, plan_id, current_user_id, db):
+    def approve_plan(self, plan_id, current_user_id, db, expected_company_id=None):
         self.approved.append((plan_id, current_user_id))
         return SimpleNamespace(id=plan_id)
 
@@ -248,6 +248,7 @@ class TestServiceApproval:
 
     def test_user_token_approves_as_token_user(self, monkeypatch):
         service = FakePlanService()
+        monkeypatch.setattr(load_plan_router, "company_of_caller", lambda claims, db: 1)
         monkeypatch.setattr(
             load_plan_router, "user_id_of_caller",
             lambda claims, db: 456 if claims.get("sub") == "kc-user-456" else None,

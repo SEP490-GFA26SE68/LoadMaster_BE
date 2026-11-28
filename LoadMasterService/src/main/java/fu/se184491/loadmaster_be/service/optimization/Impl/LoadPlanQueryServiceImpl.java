@@ -104,7 +104,7 @@ public class LoadPlanQueryServiceImpl implements LoadPlanQueryService {
     }
 
     @Override
-    @Transactional
+    @Transactional(propagation = org.springframework.transaction.annotation.Propagation.NOT_SUPPORTED)
     public LoadPlanDetailResponse approvePlan(Long planId) {
         LoadPlanDetailResponse plan = ownedPlan(planId);
         if (Boolean.TRUE.equals(plan.getApproved())) {
@@ -113,9 +113,9 @@ public class LoadPlanQueryServiceImpl implements LoadPlanQueryService {
         if (Boolean.TRUE.equals(plan.getStale())) {
             throw new AppException(ErrorCode.PLAN_STALE);
         }
-        // Kho và tài xế đọc phương án đã duyệt: hết pha lập kế hoạch thì không đổi được phương án nữa.
-        // Khoá chuyến tới khi duyệt xong: không chạy chồng với bắt đầu xếp hay huỷ chuyến.
-        tripRepository.findByIdForUpdate(plan.getTripId())
+        // Python rechecks and locks Trip -> Plan in its committing transaction.
+        // Do not hold a Java Trip lock across HTTP: the Python writer needs that same row.
+        tripRepository.findById(plan.getTripId())
                 .filter(trip -> trip.getStatus() == TripStatus.PLANNED)
                 .orElseThrow(() -> new AppException(ErrorCode.PLAN_TRIP_NOT_PLANNED));
         User approver = currentUserService.getCurrentUser();

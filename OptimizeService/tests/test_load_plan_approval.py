@@ -70,7 +70,7 @@ def db_session():
     TestingSession = sessionmaker(autocommit=False, autoflush=False, bind=engine)
     session = TestingSession()
 
-    trip = Trip(id=1, status="DRAFT")
+    trip = Trip(id=1, status="PLANNED")
     session.add(trip)
     session.commit()
 
@@ -216,7 +216,7 @@ class TestLoadPlanApproveApi:
         assert response.status_code == 403
 
     @pytest.mark.integration  # cần token RS256 do Keycloak thật ký (JWKS)
-    def test_approve_plan_dispatcher_role_returns_200_and_approved_plan(self, db_session, plan_with_placements):
+    def test_approve_plan_dispatcher_role_returns_200_and_approved_plan(self, db_session, plan_with_placements, keycloak_jwks):
         """Role DISPATCHER duyệt plan hợp lệ -> 200 OK + LoadPlanResponse với approved=True"""
         _dispatcher_of_the_trip(db_session, user_id=456)
         app.dependency_overrides[get_db] = lambda: db_session
