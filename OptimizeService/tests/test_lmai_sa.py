@@ -23,9 +23,9 @@ def sa_on(monkeypatch):
     monkeypatch.setattr(settings, "LMAI_SA_BUDGET_SEC", 3.0)
 
 
-def test_flag_is_off_by_default():
+def test_flag_is_on_by_default():
     from app.config.settings import Settings
-    assert Settings.model_fields["OPTIMIZATION_LMAI_SA_ENABLED"].default is False
+    assert Settings.model_fields["OPTIMIZATION_LMAI_SA_ENABLED"].default is True
     assert Settings.model_fields["LMAI_SA_BUDGET_SEC"].default == 15.0
     assert Settings.model_fields["LMAI_JOB_TARGET_SEC"].default == 45.0
 
