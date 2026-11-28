@@ -110,7 +110,10 @@ class Settings(BaseSettings):
     # M10 (KE-HOACH-TOI-UU, spec R2): gói PRO / ULTIMATE thay GA + SA cũ (giải mã bằng bộ dựng EP cũ) bằng SA tối đa J trên
     # bộ dựng lmai (app/service/optimize/lmai_sa.py) — một chuỗi cho mỗi hồ sơ A / B / C khi PLAN_SCORE_J bật. Cần
     # bộ dựng M9 đã chạy. LMAI_SA_BUDGET_SEC: trần thời gian cho cả các chuỗi (còn bị giới hạn bởi hạn chót của job).
-    OPTIMIZATION_LMAI_SA_ENABLED: bool = False
+    # Bật mặc định từ 28/11/2026 (đủ điều kiện chủ dự án đặt 27/11): 420 bài PRO 60 s, luật mới + J — J(A) +3,23
+    # [+2,60; +3,89], J(B) +5,36, J(C) +5,86 so với GA + SA cũ; hợp lệ 100 → 100 %; job quá 45 s 19 → 3 (cả 3 do bước EP
+    # trên bài 230–290 kiện, SA không chạy), quá 60 s 0 → 0 (LoadMaster_AI runs/do-sau-cp3b-20261128/m10/tong_hop.md).
+    OPTIMIZATION_LMAI_SA_ENABLED: bool = True
     # 15 s (chủ dự án 27/11): đo dev, SA 15 s hơn Heuristic-4 tốt nhất +3,7 J (default) / +9,8 J (hồ sơ C).
     LMAI_SA_BUDGET_SEC: float = 15.0
     # Mục tiêu thời gian của cả job cho các bước tối ưu thêm mới (SA lmai M10, biết tính trước M11): các bước này dừng

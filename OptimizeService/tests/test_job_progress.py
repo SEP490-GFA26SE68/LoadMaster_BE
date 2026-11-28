@@ -71,6 +71,9 @@ class Recording(job_progress.ProgressReporter):
 
 @pytest.fixture
 def fast_meta(monkeypatch):
+    # Đường GA + SA cũ (số lần giải mã cố định → kết quả lặp lại được). Từ 28/11 SA lmai (M10) bật mặc định và thay đường
+    # này ở PRO; bước SA lmai có test riêng (test_pro_reports_lmai_sa_stage_when_flag_on).
+    monkeypatch.setattr(settings, "OPTIMIZATION_LMAI_SA_ENABLED", False)
     monkeypatch.setattr(settings, "METAHEURISTIC_TIME_BUDGET_SEC", 30.0)
     monkeypatch.setattr(settings, "METAHEURISTIC_MAX_EVALUATIONS", 8)
 
