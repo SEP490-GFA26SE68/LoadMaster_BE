@@ -498,18 +498,6 @@ public class DriverDeliveryServiceImpl implements DriverDeliveryService {
         }
         CargoPackage pkg = at.pkg();
         boolean unloaded = unloadConfirmationRepository.existsByCargoPackageId(pkg.getId());
-        if (request.getKind() == DeliveryIssueKind.REFUSED) {
-            // Khách từ chối: kiện ở lại xe — bỏ lần dỡ và xác nhận tay còn chờ của nó; hoàn tất điểm thì kiện là hoàn trả
-            unloadConfirmationRepository.findByCargoPackageId(pkg.getId()).ifPresent(unloadConfirmationRepository::delete);
-            for (ManualUnloadConfirmation pending : pendingOf(at.stop(), pkg)) {
-                manualConfirmationRepository.delete(pending);
-            }
-            if (pkg.getStatus() == PackageStatus.DELIVERED) {
-                pkg.setStatus(PackageStatus.LOADED);
-                cargoPackageRepository.save(pkg);
-            }
-            unloaded = false;
-        }
 
         DeliveryIssue issue = deliveryIssueRepository.save(DeliveryIssue.builder()
                 .trip(at.trip())
@@ -710,14 +698,6 @@ public class DriverDeliveryServiceImpl implements DriverDeliveryService {
         return confirmation.isUnloadingStep()
                 ? trip.getStatus() == TripStatus.IN_TRANSIT
                 : trip.getStatus() == TripStatus.LOADING;
-    }
-
-    private List<ManualUnloadConfirmation> pendingOf(DeliveryStop stop, CargoPackage pkg) {
-        return manualConfirmationRepository.findByDeliveryStopIdOrderByRequestedAtAsc(stop.getId()).stream()
-                .filter(ManualUnloadConfirmation::isUnloadingStep)
-                .filter(entry -> entry.getStatus() == ManualConfirmStatus.PENDING)
-                .filter(entry -> entry.getCargoPackage() != null && pkg.getId().equals(entry.getCargoPackage().getId()))
-                .toList();
     }
 
     // ---------------------------------------------------------------------------------------------

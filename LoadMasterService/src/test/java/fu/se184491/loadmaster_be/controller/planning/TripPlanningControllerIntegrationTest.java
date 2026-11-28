@@ -24,6 +24,8 @@ import fu.se184491.loadmaster_be.dto.goong.DistanceMatrixResponse;
 import fu.se184491.loadmaster_be.constant.trip.DeliveryStopStatus;
 import fu.se184491.loadmaster_be.entity.vehicle.Vehicle;
 import fu.se184491.loadmaster_be.entity.vehicle.VehicleType;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.persistence.EntityManager;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Disabled;
@@ -52,6 +54,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.Mockito.when;
 
@@ -234,15 +237,23 @@ class TripPlanningControllerIntegrationTest {
         entityManager.flush();
         when(goongMapsClient.getDistanceMatrix(anyList(), anyList()))
                 .thenReturn(matrix(new long[][]{{0, 600}, {600, 0}}));
-        when(goongMapsClient.getDirections(any(), any()))
+        when(goongMapsClient.getDirections(any(), any(), anyBoolean()))
                 .thenReturn(directions(route(4200, 540, "optimized-polyline")));
 
-        mockMvc.perform(post("/api/trips/{id}/optimize-route", trip.getId())
+        String body = mockMvc.perform(post("/api/trips/{id}/optimize-route", trip.getId())
                         .with(asDispatcher()))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.orderedStops[0]").value(stop.getId()))
-                .andExpect(jsonPath("$.data.totalTravelDurationSeconds").value(540))
-                .andExpect(jsonPath("$.data.segments[0].polyline").value("optimized-polyline"));
+                .andExpect(jsonPath("$.data.plans[0].orderedStops[0]").value(stop.getId()))
+                .andExpect(jsonPath("$.data.plans[0].totalTravelDurationSeconds").value(540))
+                .andExpect(jsonPath("$.data.plans.length()").value(3))
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+        JsonNode planA = new ObjectMapper().readTree(body).path("data").path("plans").get(0);
+        mockMvc.perform(post("/api/route-plans/{planId}/approve", planA.path("id").asLong())
+                        .with(asDispatcher()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.orderedStops[0]").value(stop.getId()));
     }
 
     @Test
@@ -263,7 +274,7 @@ class TripPlanningControllerIntegrationTest {
         entityManager.flush();
         when(goongMapsClient.getDistanceMatrix(anyList(), anyList()))
                 .thenReturn(matrix(new long[][]{{0, 600}, {600, 0}}));
-        when(goongMapsClient.getDirections(any(), any()))
+        when(goongMapsClient.getDirections(any(), any(), anyBoolean()))
                 .thenReturn(directions(route(4200, 540, "initial-traffic")))
                 .thenReturn(directions(route(3000, 300, "current-traffic")));
 

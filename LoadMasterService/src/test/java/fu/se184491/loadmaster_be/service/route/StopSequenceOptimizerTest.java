@@ -93,4 +93,50 @@ class StopSequenceOptimizerTest {
         assertEquals(780 + 2 * SERVICE_SECONDS, result.getEstimatedTotalDuration());
         assertEquals(List.of(301L), result.getDeadlineMissedStops());
     }
+
+    @Test
+    void amongAtRiskStopsPrefersUrgentOverHighWhenDeadlinesMatch() {
+        StopSequenceOptimizer optimizer = new StopSequenceOptimizer(CLOCK);
+        LocalDateTime soon = LocalDateTime.ofInstant(NOW, ZoneOffset.UTC).plusMinutes(20);
+        StopSequenceRequest request = new StopSequenceRequest(
+                new LatLng(10.70, 106.60),
+                List.of(
+                        new StopSequenceRequest.Stop(401L, 10.71, 106.61, soon, 1, 3),
+                        new StopSequenceRequest.Stop(402L, 10.72, 106.62, soon, 1, 4)
+                ),
+                new int[][]{
+                        {0, 60, 180},
+                        {60, 0, 120},
+                        {180, 120, 0}
+                });
+
+        StopSequenceResult result = optimizer.optimize(request);
+
+        assertEquals(List.of(402L, 401L), result.getOrderedStops());
+    }
+
+    @Test
+    void deadlineFirstVisitsEarlierDeadlineEvenWhenFartherIfNotYetAtRisk() {
+        StopSequenceOptimizer optimizer = new StopSequenceOptimizer(CLOCK);
+        LocalDateTime now = LocalDateTime.ofInstant(NOW, ZoneOffset.UTC);
+        StopSequenceRequest request = new StopSequenceRequest(
+                new LatLng(10.70, 106.60),
+                List.of(
+                        new StopSequenceRequest.Stop(501L, 10.71, 106.61, now.plusDays(2), 1, 4),
+                        new StopSequenceRequest.Stop(502L, 10.72, 106.62, now.plusHours(3), 1, 1)
+                ),
+                new int[][]{
+                        {0, 60, 600},
+                        {60, 0, 600},
+                        {600, 600, 0}
+                });
+
+        StopSequenceResult nearest = optimizer.optimize(
+                request, now, StopSequenceOptimizer.SequencePolicy.NEAREST_WITH_DEADLINE_RISK);
+        StopSequenceResult deadlineFirst = optimizer.optimize(
+                request, now, StopSequenceOptimizer.SequencePolicy.DEADLINE_FIRST);
+
+        assertEquals(List.of(501L, 502L), nearest.getOrderedStops());
+        assertEquals(List.of(502L, 501L), deadlineFirst.getOrderedStops());
+    }
 }

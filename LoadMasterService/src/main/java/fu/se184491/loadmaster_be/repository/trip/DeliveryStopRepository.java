@@ -19,6 +19,14 @@ public interface DeliveryStopRepository extends JpaRepository<DeliveryStop, Long
 
     List<DeliveryStop> findByTripIdOrderByStopSequenceAsc(Long tripId);
 
+    @Query("""
+            SELECT s FROM DeliveryStop s
+            LEFT JOIN FETCH s.deliveryRequirement
+            WHERE s.trip.id = :tripId
+            ORDER BY s.stopSequence ASC
+            """)
+    List<DeliveryStop> findByTripIdWithRequirementOrderByStopSequenceAsc(@Param("tripId") Long tripId);
+
     Optional<DeliveryStop> findFirstByTripIdAndStatusNotOrderByStopSequenceAsc(
             Long tripId,
             DeliveryStopStatus status

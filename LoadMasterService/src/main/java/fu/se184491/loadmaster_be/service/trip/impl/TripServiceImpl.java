@@ -61,6 +61,7 @@ public class TripServiceImpl implements TripService {
     private final RoutePlanRepository routePlanRepository;
     private final TripStatusService tripStatusService;
     private final fu.se184491.loadmaster_be.repository.optimization.LoadPlanRepository loadPlanRepository;
+    private final fu.se184491.loadmaster_be.service.planning.RequirementCargoPriority requirementCargoPriority;
 
     @Transactional
     public TripResponse createTrip(TripCreateRequest request) {
@@ -467,6 +468,7 @@ public class TripServiceImpl implements TripService {
                 cargoPackage.setStatus(PackageStatus.PLANNED);
             }
         }
+        requirementCargoPriority.apply(packages, requirement.getPriority());
 
         // Hàng của chuyến vừa thêm: phương án xếp đã có tính cho hàng cũ, thành lỗi thời.
         loadPlanRepository.markStaleByTripId(tripId);

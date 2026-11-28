@@ -25,6 +25,8 @@ public interface RoutePlanRepository extends JpaRepository<RoutePlan, Long> {
 
     List<RoutePlan> findByTripId(Long tripId);
 
+    List<RoutePlan> findByTripIdAndRunIdOrderByCandidateLabelAsc(Long tripId, String runId);
+
 
     /**
      * Lấy ID của các chuyến có kế hoạch tuyến đường đang hoạt động.

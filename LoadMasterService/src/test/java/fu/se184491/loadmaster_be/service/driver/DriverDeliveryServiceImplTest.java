@@ -268,22 +268,16 @@ class DriverDeliveryServiceImplTest {
     }
 
     @Test
-    void refusedPackageStaysOnTheTruck() {
+    void refusedPackageKeepsItsUnload() {
         CargoPackage pkg = packageAtStop1(PackageStatus.DELIVERED);
-        UnloadConfirmation unload = UnloadConfirmation.builder().id(40L).cargoPackage(pkg).deliveryStop(stop1).build();
-        ManualUnloadConfirmation pending = ManualUnloadConfirmation.builder().id(61L).cargoPackage(pkg)
-                .status(ManualConfirmStatus.PENDING).build();
         when(unloadConfirmationRepository.existsByCargoPackageId(1L)).thenReturn(true);
-        when(unloadConfirmationRepository.findByCargoPackageId(1L)).thenReturn(Optional.of(unload));
-        when(manualConfirmationRepository.findByDeliveryStopIdOrderByRequestedAtAsc(30L)).thenReturn(List.of(pending));
 
         var response = service.reportIssue(1L, issue(DeliveryIssueKind.REFUSED, "Khách không nhận"));
 
         assertEquals("REFUSED", response.getKind());
-        assertFalse(response.getUnloaded());
-        assertEquals(PackageStatus.LOADED, pkg.getStatus());
-        verify(unloadConfirmationRepository).delete(unload);
-        verify(manualConfirmationRepository).delete(pending);
+        assertTrue(response.getUnloaded());
+        assertEquals(PackageStatus.DELIVERED, pkg.getStatus());
+        verify(unloadConfirmationRepository, never()).delete(any());
         ArgumentCaptor<AuditLog> audit = ArgumentCaptor.forClass(AuditLog.class);
         verify(auditLogRepository).save(audit.capture());
         assertEquals("DELIVERY_ISSUE_REPORTED", audit.getValue().getActionType());

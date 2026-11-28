@@ -12,6 +12,7 @@ import fu.se184491.loadmaster_be.constant.trip.TripStatus;
 import fu.se184491.loadmaster_be.dto.goong.DirectionsResponse;
 import fu.se184491.loadmaster_be.dto.goong.DistanceMatrixResponse;
 import fu.se184491.loadmaster_be.dto.route.RouteOptimizationResult;
+import fu.se184491.loadmaster_be.dto.route.RouteOptimizationRunResponse;
 import fu.se184491.loadmaster_be.entity.account.User;
 import fu.se184491.loadmaster_be.entity.cargo.CargoPackage;
 import fu.se184491.loadmaster_be.entity.common.AuditLog;
@@ -43,9 +44,12 @@ import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.Mockito.when;
 
@@ -157,25 +161,50 @@ class RouteOptimizationServiceIntegrationTest {
     }
 
     @Test
-    void optimizesRouteAndPersistsPlanStopScheduleAndAudit() {
+    void optimizesThreeCandidatesThenApproveAppliesStopOrder() {
         when(goongMapsClient.getDistanceMatrix(anyList(), anyList()))
                 .thenReturn(matrix(new long[][]{
                         {0, 600, 300},
                         {600, 0, 240},
                         {300, 240, 0}
                 }));
-        when(goongMapsClient.getDirections(any(), any()))
+        when(goongMapsClient.getDirections(any(), any(), anyBoolean()))
                 .thenReturn(directions(route(4000, 320, "slow"), route(3500, 280, "origin-second")))
                 .thenReturn(directions(route(2800, 250, "slow"), route(2500, 200, "second-first")));
 
-        RouteOptimizationResult result = routeOptimizationService.optimizeRoute(company.getId(), trip.getId());
+        RouteOptimizationRunResponse run = routeOptimizationService.optimizeRoute(company.getId(), trip.getId());
 
-        assertEquals(List.of(secondStop.getId(), firstStop.getId()), result.getOrderedStops());
-        assertEquals(480, result.getTotalTravelDurationSeconds());
-        assertEquals(6000, result.getTotalDistanceMeters());
-        assertEquals(2280, result.getEstimatedTotalDurationSeconds());
+        assertEquals(3, run.getPlans().size());
+        assertEquals("A", run.getPlans().get(0).getLabel());
+        assertEquals("B", run.getPlans().get(1).getLabel());
+        assertEquals("C", run.getPlans().get(2).getLabel());
+        assertEquals(List.of(secondStop.getId(), firstStop.getId()), run.getPlans().get(0).getOrderedStops());
+        assertEquals(run.getPlans().get(0).getOrderedStops(), run.getPlans().get(1).getOrderedStops());
+        assertTrue(run.getPlans().get(1).isSameStopOrderAsA());
+        assertEquals(480, run.getPlans().get(0).getTotalTravelDurationSeconds());
+        assertEquals(6000, run.getPlans().get(0).getTotalDistanceMeters());
+
+        entityManager.flush();
+        entityManager.clear();
+
+        DeliveryStop beforeApproveSecond = entityManager.find(DeliveryStop.class, secondStop.getId());
+        DeliveryStop beforeApproveFirst = entityManager.find(DeliveryStop.class, firstStop.getId());
+        assertEquals(2, beforeApproveSecond.getStopSequence());
+        assertEquals(1, beforeApproveFirst.getStopSequence());
+
+        long inactiveCount = entityManager.createQuery(
+                        "select count(p) from RoutePlan p where p.trip.id = :tripId and p.isActive = false",
+                        Long.class)
+                .setParameter("tripId", trip.getId())
+                .getSingleResult();
+        assertEquals(3, inactiveCount);
+
+        RouteOptimizationResult approved = routeOptimizationService.approveRoutePlan(
+                company.getId(), run.getPlans().get(0).getId(), null);
+
+        assertEquals(List.of(secondStop.getId(), firstStop.getId()), approved.getOrderedStops());
         assertEquals(List.of("origin-second", "second-first"),
-                result.getSegments().stream().map(RouteOptimizationResult.RouteSegment::polyline).toList());
+                approved.getSegments().stream().map(RouteOptimizationResult.RouteSegment::polyline).toList());
 
         entityManager.flush();
         entityManager.clear();
@@ -188,6 +217,7 @@ class RouteOptimizationServiceIntegrationTest {
         assertEquals(DEPARTURE.plusSeconds(280 + 900 + 200), reloadedFirst.getPlannedArrival());
 
         Trip reloadedTrip = entityManager.find(Trip.class, trip.getId());
+        assertEquals(TripStatus.PLANNED, reloadedTrip.getStatus());
         assertEquals(List.of(secondStop.getId().intValue(), firstStop.getId().intValue()),
                 reloadedTrip.getRoutePlan().get("orderedStops"));
         assertNotNull(reloadedTrip.getRoutePlan().get("activeRoutePlanId"));
@@ -197,7 +227,8 @@ class RouteOptimizationServiceIntegrationTest {
                         RoutePlan.class)
                 .setParameter("tripId", trip.getId())
                 .getSingleResult();
-        assertEquals(1, activePlan.getPlanVersion());
+        assertEquals("A", activePlan.getCandidateLabel());
+        assertTrue(activePlan.getApproved());
         assertEquals(6000, activePlan.getTotalDistanceMeters());
         assertEquals(480, activePlan.getTotalDurationSeconds());
 
@@ -219,6 +250,11 @@ class RouteOptimizationServiceIntegrationTest {
                 .setParameter("tripId", trip.getId().toString())
                 .getSingleResult();
         assertEquals("ROUTE_OPTIMIZED", audit.getActionType());
+        assertFalse(entityManager.createQuery(
+                        "select a from AuditLog a where a.actionType = 'ROUTE_PLAN_APPROVED'",
+                        AuditLog.class)
+                .getResultList()
+                .isEmpty());
     }
 
     @Test

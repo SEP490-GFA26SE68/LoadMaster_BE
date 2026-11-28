@@ -228,12 +228,19 @@ public class RoutePlanServiceImpl implements RoutePlanService {
                 .totalDistanceMeters(plan.getTotalDistanceMeters())
                 .totalDurationSeconds(plan.getTotalDurationSeconds())
                 .isActive(plan.getIsActive())
+                .runId(plan.getRunId())
+                .candidateLabel(plan.getCandidateLabel())
+                .objective(plan.getObjective())
+                .approved(plan.getApproved())
+                .orderedStops(proposalIds(plan, "orderedStops"))
+                .deadlineMissedStops(proposalIds(plan, "deadlineMissedStops"))
                 .createdAt(plan.getCreatedAt())
                 .legs(legResponses)
                 .build();
     }
 
     private RoutePlanSummaryResponse mapToSummaryResponse(RoutePlan plan) {
+        List<Long> missed = proposalIds(plan, "deadlineMissedStops");
         return RoutePlanSummaryResponse.builder()
                 .id(plan.getId())
                 .tripId(plan.getTrip() != null ? plan.getTrip().getId() : null)
@@ -241,8 +248,28 @@ public class RoutePlanServiceImpl implements RoutePlanService {
                 .totalDistanceMeters(plan.getTotalDistanceMeters())
                 .totalDurationSeconds(plan.getTotalDurationSeconds())
                 .isActive(plan.getIsActive())
+                .runId(plan.getRunId())
+                .candidateLabel(plan.getCandidateLabel())
+                .objective(plan.getObjective())
+                .approved(plan.getApproved())
+                .orderedStops(proposalIds(plan, "orderedStops"))
+                .deadlineMissedCount(missed == null ? null : missed.size())
                 .createdAt(plan.getCreatedAt())
                 .build();
+    }
+
+    private static List<Long> proposalIds(RoutePlan plan, String key) {
+        Map<String, Object> proposal = plan.getProposalJson();
+        if (proposal == null || !(proposal.get(key) instanceof List<?> list)) {
+            return null;
+        }
+        List<Long> ids = new ArrayList<>();
+        for (Object item : list) {
+            if (item instanceof Number number) {
+                ids.add(number.longValue());
+            }
+        }
+        return ids;
     }
 
     private RouteLegResponse mapToLegResponse(RouteLeg leg) {

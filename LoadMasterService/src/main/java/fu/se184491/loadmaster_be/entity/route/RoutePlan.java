@@ -3,8 +3,11 @@ package fu.se184491.loadmaster_be.entity.route;
 import fu.se184491.loadmaster_be.entity.trip.Trip;
 import jakarta.persistence.*;
 import lombok.*;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 import java.time.LocalDateTime;
+import java.util.Map;
 
 @Entity
 @Table(
@@ -42,6 +45,27 @@ public class RoutePlan {
     @Builder.Default
     @Column(name = "is_active", nullable = false)
     private Boolean isActive = true;
+
+    /** Mã lần tối ưu (ba phương án A · B · C cùng một {@code run_id}). */
+    @Column(name = "run_id", length = 36)
+    private String runId;
+
+    /** A | B | C; phương án cũ / tạo tay để trống. */
+    @Column(name = "candidate_label", length = 1)
+    private String candidateLabel;
+
+    /** SHORTEST | AVOID_CONGESTION | DEADLINE_FIRST */
+    @Column(name = "objective", length = 40)
+    private String objective;
+
+    @Builder.Default
+    @Column(name = "is_approved", nullable = false)
+    private Boolean approved = false;
+
+    /** Thứ tự điểm và giờ đến đề xuất; chỉ ghi lên {@code delivery_stops} khi duyệt. */
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "proposal_json", columnDefinition = "json")
+    private Map<String, Object> proposalJson;
 
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;

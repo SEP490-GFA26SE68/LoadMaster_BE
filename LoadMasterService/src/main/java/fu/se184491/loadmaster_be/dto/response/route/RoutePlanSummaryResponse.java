@@ -6,6 +6,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.time.LocalDateTime;
+import java.util.List;
 
 @Data
 @Builder
@@ -24,6 +25,18 @@ public class RoutePlanSummaryResponse {
     private Integer totalDurationSeconds;
 
     private Boolean isActive;
+
+    private String runId;
+
+    private String candidateLabel;
+
+    private String objective;
+
+    private Boolean approved;
+
+    private List<Long> orderedStops;
+
+    private Integer deadlineMissedCount;
 
     private LocalDateTime createdAt;
 }
