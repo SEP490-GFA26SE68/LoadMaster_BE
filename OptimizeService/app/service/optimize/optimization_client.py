@@ -30,6 +30,7 @@ from app.constant.optimization.violation_codes import LIFO_BLOCKED, MUST_LOAD_UN
 from app.service.optimize.load_balance_search import LoadBalanceSearch, validate_plan
 from app.service.optimize.load_order import loading_order
 from app.service.optimize import plan_score
+from app.service.optimize import job_progress
 from app.service.optimize.placement_facts import annotate_result
 from app.service.optimize.constraint_engine import ConstraintEngine
 from app.service.optimize.unload_feasibility_validator import (
@@ -53,6 +54,9 @@ def _lifo_code() -> str:
     return LIFO_BLOCKED if ConstraintEngine.physics_v2() else "MULTI_DROP_LIFO_VIOLATION"
 
 
+SA_END_MARGIN_SEC = 1.0   # M10: SA lmai (gồm bước kiểm của nó) xong trước hạn chót của job ít nhất từng ấy giây
+
+
 def check_reserve_sec(problem: ProblemRequest) -> float:
     """M8: thời gian giữ lại cho bước kiểm phương án = max(MIN, RATIO × time_limit_sec), không quá nửa giới hạn.
     RATIO <= 0 tắt (bộ dựng chạy tới hạn chót như trước)."""
@@ -61,6 +65,11 @@ def check_reserve_sec(problem: ProblemRequest) -> float:
         return 0.0
     limit = max(float(problem.time_limit_sec or 60), 1)
     return min(max(float(settings.OPTIMIZATION_CHECK_RESERVE_MIN_SEC), ratio * limit), limit / 2)
+
+
+def lmai_target(start: float, deadline: float) -> float:
+    """Hạn cho các bước tối ưu thêm mới (SA lmai, biết tính trước): min(hạn job, lúc bắt đầu job + LMAI_JOB_TARGET_SEC)."""
+    return min(deadline, start + float(settings.LMAI_JOB_TARGET_SEC))
 
 
 class OptimizationClient:
@@ -102,9 +111,10 @@ class OptimizationClient:
         theo chỉ số của chính nó. Các cách được thử theo hạng thuật toán của job
         (AlgorithmTierService.plan_algorithms_for):
           BASIC    EP + DBLF, bốn chiến lược.
-          PRO      + GA và SA (metaheuristic.py), giải mã bằng chính bộ dựng EP + DBLF.
-          ULTIMATE + EP có Lumo-R1.1 chấm chỗ đặt, + ba mô hình Lumo tự xếp (lumo_models.py),
+          PRO      + SA (metaheuristic.py) từ cách xếp EP tốt nhất, giải mã bằng chính bộ dựng EP + DBLF.
+          ULTIMATE + mô hình Lumo-R1 và Lumo-R1.1 tự xếp (lumo_models.py),
                    mọi chỗ đặt của AI được kiểm lại bằng ConstraintEngine.
+        (D2, 26/11/2026: GA, EP_LUMO_R1_1, LUMO_R2 chỉ chạy khi TIER_LEGACY_ALGORITHMS_ENABLED bật.)
         Mỗi cách xếp mang mã thuật toán đã sinh ra nó (`algorithm_name`). Giới hạn thời gian
         của job áp cho cả lượt: hết giờ thì dừng thử cách mới, cách đầu luôn được chạy.
         Kết quả trả về là phương án A, kèm cả ba ở `candidates`.
@@ -121,20 +131,45 @@ class OptimizationClient:
         # Cách xếp mang nhãn EP_DBLF phải là EP thuần: gói có Lumo chấm điểm thì tắt nó ở đây
         # (Lumo-R1.1 chấm chỗ đặt là một cách xếp riêng, EP_LUMO_R1_1).
         ep_kwargs = {"use_lumo_scorer": False} if uses_lumo(problem.algorithm_name) else {}
+        job_progress.stage(job_progress.BUILDING, PlanAlgorithm.EP_DBLF.value)
         reserve = check_reserve_sec(problem)
+        lmai_built = False
+        built = None
+        if settings.OPTIMIZATION_LMAI_BUILDER_ENABLED:
+            # M9 (D1): bộ dựng chung của LoadMaster_AI; không ra cách xếp nào qua kiểm thì chạy bộ dựng cũ bên dưới.
+            from app.service.optimize.lmai_builder import build_layouts
+
+            try:
+                built = build_layouts(problem, self, deadline - reserve)
+            except Exception as exc:  # bộ dựng mới hỏng không được làm hỏng job
+                logger.warning("lmai builder failed, falling back to EP: %s", exc)
+                built = None
+            if built is not None and built.layouts:
+                layouts += built.layouts
+                for layout in built.layouts:
+                    job_progress.layout_done(layout)
+                ep_runs += built.ep_runs
+                lmai_built = True
+            elif built is not None:
+                logger.info("lmai builder: no layout (%s %s), falling back to EP", built.skipped, built.rejected)
         for strategy in layout_strategies_for(problem.vehicle):
+            if lmai_built:   # M9: đã có cách xếp từ bộ dựng lmai
+                break
             # M8: không mở lượt mới khi phần còn lại chỉ đủ cho bước kiểm của lượt đó.
             if layouts and time.monotonic() >= deadline - reserve:
                 break
             layout = self.solve_in_process(problem, strategy=strategy, job_deadline=deadline, **ep_kwargs)
             layout = layout.model_copy(update={"algorithm_name": PlanAlgorithm.EP_DBLF.value})
             layouts.append(layout)
+            job_progress.layout_done(layout)
             ep_runs.append((strategy, layout))
         tried.append(PlanAlgorithm.EP_DBLF.value)
 
         if len(allowed) > 1:
-            layouts += self._advanced_layouts(problem, allowed, ep_runs, start, deadline, tried)
+            layouts += self._advanced_layouts(problem, allowed, ep_runs, start, deadline, tried,
+                                              lmai=built if lmai_built else None)
 
+        job_progress.stage(job_progress.SELECTING)
         candidates = pick_candidates(layouts, problem.vehicle, problem)
         if plan_score.enabled():
             candidates = [c.model_copy(update={"result": annotate_result(problem, c.result, score_data=c.result.plan_score)})
@@ -162,10 +197,13 @@ class OptimizationClient:
         start: float,
         deadline: float,
         tried: list[str],
+        lmai=None,
     ) -> list[EngineOptimizationResponse]:
         """
         Cách xếp của gói PRO / ULTIMATE. Thứ tự: mô hình AI greedy (mỗi mô hình một lượt cố định),
         EP + Lumo-R1.1, rồi GA → SA dùng phần thời gian còn lại (tối đa ngân sách trong settings).
+        M10: cờ OPTIMIZATION_LMAI_SA_ENABLED và bước EP đã dựng bằng bộ dựng lmai (`lmai`) → SA tối đa J trên bộ dựng
+        lmai thay cho GA + SA cũ (lmai_sa.py).
         Một bước hỏng (thiếu torch, lỗi mô hình) chỉ bị bỏ qua, không làm hỏng job.
         """
         from app.constant.optimization.plan_algorithm import PlanAlgorithm as P
@@ -177,7 +215,7 @@ class OptimizationClient:
             try:
                 from app.ml.lumo_models import run_lumo_models
 
-                ai = run_lumo_models(problem, ai_codes, self, deadline=deadline)
+                ai = run_lumo_models(problem, ai_codes, self, deadline=deadline, target=lmai_target(start, deadline))
                 tried.extend(code for code in ai.tried)
                 layouts += ai.layouts
             except Exception as exc:  # không bao giờ làm hỏng job vì AI
@@ -191,14 +229,31 @@ class OptimizationClient:
             except Exception as exc:
                 logger.warning("EP_LUMO_R1_1 skipped: %s", exc)
             if scorer is not None:
+                job_progress.stage(job_progress.IMPROVING, P.EP_LUMO_R1_1.value)
                 layout = self.solve_in_process(problem, strategy=LayoutStrategy.CENTER_FIRST,
                                                use_lumo_scorer=True, quiet=True, job_deadline=deadline)
                 layouts.append(layout.model_copy(update={"algorithm_name": P.EP_LUMO_R1_1.value}))
+                job_progress.layout_done(layout)
                 tried.append(P.EP_LUMO_R1_1.value)
             else:
                 logger.info("EP_LUMO_R1_1 skipped: Lumo-R1.1 scorer unavailable (torch or weights missing)")
 
-        if P.GA.value in allowed and time.monotonic() < deadline:
+        if (settings.OPTIMIZATION_LMAI_SA_ENABLED and lmai is not None and P.SA.value in allowed
+                and time.monotonic() < deadline):
+            from app.service.optimize.lmai_sa import run_lmai_sa
+
+            job_progress.stage(job_progress.IMPROVING, P.SA.value)
+            try:
+                meta = run_lmai_sa(problem, self, lmai, lmai_target(start, deadline) - SA_END_MARGIN_SEC)
+                tried.extend(meta.tried)
+                layouts += meta.layouts
+                for layout in meta.layouts:
+                    job_progress.layout_done(layout)
+            except Exception as exc:  # SA mới hỏng không được làm hỏng job
+                logger.warning("lmai SA failed: %s", exc)
+            return layouts
+
+        if (P.GA.value in allowed or P.SA.value in allowed) and time.monotonic() < deadline:
             # Chuyến lớn: một lần giải mã (một lượt EP + DBLF) có thể mất vài giây, nên ngân sách
             # được nới tới đủ METAHEURISTIC_MIN_DECODES lần giải mã — vẫn trong giới hạn của request.
             decode_sec = max(((r.metrics.computation_ms or 0) / 1000.0 for _, r in ep_runs), default=0.0)
@@ -210,7 +265,7 @@ class OptimizationClient:
             if budget > 0:
                 meta = run_ga_sa(self, problem, ep_runs, budget_sec=budget,
                                  max_evaluations=int(settings.METAHEURISTIC_MAX_EVALUATIONS),
-                                 run_sa=P.SA.value in allowed)
+                                 run_sa=P.SA.value in allowed, run_ga=P.GA.value in allowed)
                 tried.extend(meta.tried)
                 layouts += meta.layouts
         return layouts
@@ -890,6 +945,7 @@ class OptimizationClient:
         placements_in: Sequence[PlacementData],
         algorithm_name: str,
         started_at: Optional[float] = None,
+        deadline: Optional[float] = None,
     ) -> tuple[Optional[EngineOptimizationResponse], Optional[str]]:
         """
         Kiểm lại một cách xếp do bộ giải khác (mô hình AI) dựng, bằng đúng các luật và cách tính
@@ -897,6 +953,9 @@ class OptimizationClient:
         (mỗi kiện so với các kiện đặt trước nó), rồi HC-11 / HC-12 trên cả phương án và
         UnloadFeasibilityValidator. Không sửa chỗ đặt nào (không dời khối cân trọng tâm).
         Trả (cách xếp, None) khi đạt; (None, lý do) khi vi phạm ràng buộc cứng — cả cách xếp bị bỏ.
+        `deadline` (time.monotonic): giới hạn cho cả bước kiểm (từng chỗ đặt + kiểm dỡ hàng); hết giờ = chưa chứng
+        minh được → bỏ (OPTIMIZATION_TIME_LIMIT_REACHED / UNLOAD_TIME_LIMIT_REACHED, fail-closed). None = không giới
+        hạn (như trước).
         """
         start_time = started_at if started_at is not None else time.time()
         vt = problem.vehicle
@@ -926,6 +985,8 @@ class OptimizationClient:
                 "stop_zone_id": package_stop.get(key),
                 "pinned": False,
             })
+            if deadline is not None and time.monotonic() >= deadline:
+                return None, "OPTIMIZATION_TIME_LIMIT_REACHED"
             violations = ConstraintEngine.check_all(placement, context)
             if violations:
                 return None, f"{violations[0].violation_code}:{key}"
@@ -939,7 +1000,7 @@ class OptimizationClient:
                 if not check.passed:
                     return None, check.violation_code
             unload = UnloadFeasibilityValidator.validate(
-                placements=placements, packages_map=packages_map, vehicle=vt
+                placements=placements, packages_map=packages_map, vehicle=vt, deadline=deadline
             )
             if not unload.passed:
                 return None, unload.violation_code or _lifo_code()

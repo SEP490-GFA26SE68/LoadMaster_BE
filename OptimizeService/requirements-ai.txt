@@ -2,4 +2,4 @@
 # Cài sau requirements.txt:  pip install -r requirements.txt -r requirements-ai.txt
 --extra-index-url https://download.pytorch.org/whl/cpu
 torch==2.11.0
-numpy==2.4.6
+# numpy: đã ở requirements.txt (bộ dựng M9 cần ở mọi bản build).

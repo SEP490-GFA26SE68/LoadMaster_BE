@@ -63,6 +63,15 @@ class Settings(BaseSettings):
     LUMO_SAMPLES: int = 2
     # Thời gian tối đa (giây) cho cả phần mô hình AI của một job (trong giới hạn thời gian của request).
     LUMO_TIME_BUDGET_SEC: float = 8.0
+    # M11 (KE-HOACH-TOI-UU): Lumo-R1.1 + "biết tính trước" (app/ml/lmai/lookahead.py) cho gói ULTIMATE, chấm theo J của
+    # hồ sơ job khi PLAN_SCORE_J bật. Tắt mặc định tới khi có số đo. Ngân sách tính riêng, ngoài LUMO_TIME_BUDGET_SEC;
+    # xong trước job_start + LMAI_JOB_TARGET_SEC (mục tiêu cả job 45 s, xem dưới).
+    OPTIMIZATION_LMAI_LOOKAHEAD_ENABLED: bool = False
+    LMAI_LOOKAHEAD_SEC: float = 12.0
+    # Số luồng torch cho mô hình Lumo trong tiến trình service (đặt một lần khi nạp mô hình đầu tiên; 0 = để torch tự
+    # chọn = số nhân). Mô hình nhỏ (0,39 triệu tham số), chấm theo lô nhỏ: nhiều luồng không nhanh hơn mà còn tranh nhân
+    # với job khác trên máy chủ ít nhân (Q-D6). Đo 27/11 trên máy 8 nhân: 1 / 2 / 4 luồng như nhau, 8 luồng chậm nhất.
+    LUMO_TORCH_THREADS: int = 1
 
     # GA + SA của gói PRO / ULTIMATE: ngân sách thời gian (giây, trong giới hạn của request)
     # và số lần giải mã tối đa (mỗi lần giải mã là một lượt EP + DBLF đầy đủ ràng buộc).
@@ -70,6 +79,8 @@ class Settings(BaseSettings):
     METAHEURISTIC_MAX_EVALUATIONS: int = 60
     # Ngân sách GA + SA được nới tới đủ chừng này lần giải mã khi chuyến lớn (giải mã chậm).
     METAHEURISTIC_MIN_DECODES: int = 5
+    # D2 (26/11/2026): gói đang bán không còn GA, EP_LUMO_R1_1, LUMO_R2. Bật để chạy lại danh sách cũ (thí nghiệm R9).
+    TIER_LEGACY_ALGORITHMS_ENABLED: bool = False
 
     # Một hạn chót cho cả job: mọi lượt EP, lần giải mã GA / SA và bước sửa cân bằng dùng chung hạn của request
     # (tắt: mỗi lượt EP nhận hạn mới = time_limit_sec, job có thể chạy gần gấp đôi giới hạn).
@@ -90,6 +101,25 @@ class Settings(BaseSettings):
     # (không quá nửa giới hạn) để còn thời gian kiểm phương án vừa dựng. RATIO = 0 tắt.
     OPTIMIZATION_CHECK_RESERVE_RATIO: float = 0.15
     OPTIMIZATION_CHECK_RESERVE_MIN_SEC: float = 2.0
+    # M9 (D1, 26/11/2026): bước EP dựng phương án bằng bộ dựng chung của LoadMaster_AI (app/ml/lmai: state / packer,
+    # EP-DBLF, EP-trọng-tâm, 4 bộ trọng số Heuristic-4), kiểm cuối vẫn bằng luật của service. Tắt = bộ dựng EP cũ.
+    # Bài có kiện ghim / thiếu numpy / không cách xếp nào qua kiểm → tự lùi về bộ dựng cũ (app/service/optimize/lmai_builder.py).
+    # Bật mặc định ở mọi môi trường từ 27/11/2026 (chủ dự án): 420 bài BASIC — hợp lệ 89,3 → 100 %, hàng lên xe +15,7
+    # điểm [+13,3; +18,3], job trung bình 50 → 7,7 s. numpy vì thế nằm trong requirements.txt (không cần INSTALL_AI).
+    OPTIMIZATION_LMAI_BUILDER_ENABLED: bool = True
+    # M10 (KE-HOACH-TOI-UU, spec R2): gói PRO / ULTIMATE thay GA + SA cũ (giải mã bằng bộ dựng EP cũ) bằng SA tối đa J trên
+    # bộ dựng lmai (app/service/optimize/lmai_sa.py) — một chuỗi cho mỗi hồ sơ A / B / C khi PLAN_SCORE_J bật. Cần
+    # bộ dựng M9 đã chạy. LMAI_SA_BUDGET_SEC: trần thời gian cho cả các chuỗi (còn bị giới hạn bởi hạn chót của job).
+    # Bật mặc định từ 28/11/2026 (đủ điều kiện chủ dự án đặt 27/11): 420 bài PRO 60 s, luật mới + J — J(A) +3,23
+    # [+2,60; +3,89], J(B) +5,36, J(C) +5,86 so với GA + SA cũ; hợp lệ 100 → 100 %; job quá 45 s 19 → 3 (cả 3 do bước EP
+    # trên bài 230–290 kiện, SA không chạy), quá 60 s 0 → 0 (LoadMaster_AI runs/do-sau-cp3b-20261128/m10/tong_hop.md).
+    OPTIMIZATION_LMAI_SA_ENABLED: bool = True
+    # 15 s (chủ dự án 27/11): đo dev, SA 15 s hơn Heuristic-4 tốt nhất +3,7 J (default) / +9,8 J (hồ sơ C).
+    LMAI_SA_BUDGET_SEC: float = 15.0
+    # Mục tiêu thời gian của cả job cho các bước tối ưu thêm mới (SA lmai M10, biết tính trước M11): các bước này dừng
+    # trước job_start + LMAI_JOB_TARGET_SEC (vẫn trong hạn của request) để còn dư khi máy chủ yếu hơn máy đo
+    # (chủ dự án 27/11: 45 s; giả định máy chủ 2–4 nhân tới khi có Q-D6). Không đổi các bước cũ.
+    LMAI_JOB_TARGET_SEC: float = 45.0
 
     LOADMASTER_SERVICE_URL: str = "http://localhost:8080"
     REDIS_URL: str = "redis://localhost:6379"

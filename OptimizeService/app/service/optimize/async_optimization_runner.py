@@ -23,6 +23,7 @@ from app.dto.optimization.engine.packing_profile_orientation import parse_profil
 from app.service.optimize.engine_exception_handler import EngineExceptionHandler, TerminalStatusPersistenceError
 from app.service.optimize.optimization_client import OptimizationClient
 from app.service.optimize.optimization_job_service import JobAlreadyFinishedError, OptimizationJobService
+from app.service.optimize import job_progress
 
 logger = logging.getLogger(__name__)
 
@@ -622,10 +623,19 @@ class AsyncOptimizationRunner:
                     return  # DB uncertainty is fail-closed; never publish without a final DB check.
         thread = threading.Thread(target=pulse, name="optimization-lease", daemon=True)
         thread.start()
+        # Tiến độ sống (V58) ghi ở thread riêng, nhịp riêng: heartbeat của lease giữ nguyên nhịp và ngữ nghĩa.
+        writer = progress_thread = progress_token = None
         try:
             problem = ProblemRequest.model_validate_json(problem_json)
+            writer, progress_thread, progress_token = _start_progress(protocol, uuid, generation, problem, stop)
             result = asyncio.run(self.optimization_client.solve(problem))
+            # Engine từ xa không báo gì: giữ progress trống, không dựng một SAVING rỗng.
+            if writer is not None and writer.reporter.snapshot() is not None and not lost.is_set():
+                job_progress.stage(job_progress.SAVING)
+                writer.flush()
             validate_result_rotations(problem, result)
+            if writer is not None:
+                writer.close()
             if lost.is_set():
                 return
             status = _status_value(self.engine_exception_handler.classify_result(result))
@@ -647,7 +657,13 @@ class AsyncOptimizationRunner:
                     logger.warning("optimization_execution job_uuid=%s stage=terminal_not_committed", uuid)
         finally:
             stop.set()
+            if writer is not None:
+                writer.close()
+            if progress_token is not None:
+                job_progress.deactivate(progress_token)
             thread.join(timeout=1)
+            if progress_thread is not None:
+                progress_thread.join(timeout=1)
             # Spring reconciles the durable terminal ledger. Never refund here.
 
     async def _refund(self, company_id, job_uuid_str: str) -> None:
@@ -658,6 +674,22 @@ class AsyncOptimizationRunner:
             await self.credit_client.refund_credit(company_id, job_uuid_str)
         except Exception as ref_err:
             logger.error(f"Error refunding credit for job {job_uuid_str}: {ref_err}")
+
+
+def _start_progress(protocol, uuid, generation, problem, stop):
+    """Bật bộ báo tiến độ cho thread worker này và thread ghi tiến độ. Lỗi ở đây không chặn job:
+    trả (None, None, None) và job chạy như khi không báo tiến độ."""
+    import threading
+    try:
+        reporter = job_progress.ProgressReporter(total_packages=len(problem.packages or []))
+        writer = job_progress.ProgressWriter(
+            reporter, lambda payload: protocol.write_progress(uuid, generation, payload))
+        progress_thread = threading.Thread(target=writer.loop, args=(stop,), name="optimization-progress", daemon=True)
+        progress_thread.start()
+        return writer, progress_thread, job_progress.activate(reporter)
+    except Exception as exc:
+        logger.warning("optimization_progress job_uuid=%s stage=disabled exception_type=%s", uuid, type(exc).__name__)
+        return None, None, None
 
 
 def _status_value(status) -> Optional[str]:

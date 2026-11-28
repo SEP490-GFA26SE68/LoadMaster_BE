@@ -32,4 +32,8 @@ public class OptimizationJobStatusResponse {
     private String creditStatus;
     /** Cảnh báo dữ liệu đầu vào của lần chạy (kiện thiếu σ, kiện không có loại kiện …); không chặn job. */
     private List<DataWarningResponse> dataWarnings;
+    /** Thời gian đã chạy (ms, theo đồng hồ PostgreSQL) khi job đang RUNNING và đã bắt đầu; null trong mọi trường hợp khác. */
+    private Long elapsedMs;
+    /** Tiến độ sống do OptimizeService báo; null khi job chưa báo gì (PENDING, engine từ xa, job cũ). */
+    private OptimizationJobProgressResponse progress;
 }

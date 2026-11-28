@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import fu.se184491.loadmaster_be.dto.response.optimization.LoadPlanDetailResponse;
 import fu.se184491.loadmaster_be.dto.response.optimization.DataWarningResponse;
+import fu.se184491.loadmaster_be.dto.response.optimization.OptimizationJobProgressResponse;
 import fu.se184491.loadmaster_be.dto.response.optimization.OptimizationJobStatusResponse;
 import fu.se184491.loadmaster_be.dto.response.optimization.PlacementDetailResponse;
 import fu.se184491.loadmaster_be.dto.response.optimization.UnplacedPackageResponse;
@@ -16,6 +17,7 @@ import org.springframework.stereotype.Repository;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Calendar;
 import java.util.Collection;
@@ -112,6 +114,10 @@ public class LoadPlanReadRepository {
         List<OptimizationJobStatusResponse> rows = jdbc.query("""
                         SELECT j.id, j.job_uuid, j.trip_id, j.objective, j.time_limit_sec, j.status,
                                j.computation_ms, j.created_at, j.algorithm_name, j.failure_code, j.data_warnings,
+                               j.progress,
+                               CASE WHEN j.status = 'RUNNING' AND j.execution_started_at IS NOT NULL
+                                    THEN CAST(EXTRACT(EPOCH FROM (clock_timestamp() - j.execution_started_at)) * 1000 AS BIGINT)
+                               END AS elapsed_ms,
                                (SELECT CASE WHEN tx.amount=0 THEN 'ZERO_DEBIT'
                                     WHEN tx.refunded THEN 'REFUNDED'
                                     WHEN j.execution_generation IS NOT NULL AND ((j.status IN ('TIMEOUT','NO_SOLUTION') AND j.execution_generation>0 AND j.execution_started_at IS NOT NULL)
@@ -150,6 +156,8 @@ public class LoadPlanReadRepository {
                             .failureCode(rs.getString("failure_code"))
                             .creditStatus(rs.getString("credit_status"))
                             .dataWarnings(dataWarnings(rs))
+                            .elapsedMs(nullableLong(rs, "elapsed_ms"))
+                            .progress(progress(rs))
                             .build();
                 });
         return rows.stream().findFirst();
@@ -324,6 +332,53 @@ public class LoadPlanReadRepository {
             return List.copyOf(warnings);
         } catch (Exception ignored) {
             return List.of();
+        }
+    }
+
+    private static final Set<String> PROGRESS_STAGES = Set.of("BUILDING", "IMPROVING", "SELECTING", "SAVING");
+
+    /**
+     * Tiến độ sống do OptimizeService ghi (V58, khoá snake_case). Cột trống, JSON hỏng hay giai đoạn lạ → null;
+     * khoá nào thiếu hoặc sai kiểu thì riêng trường đó null — không bịa số.
+     */
+    private static OptimizationJobProgressResponse progress(ResultSet rs) throws SQLException {
+        String raw = rs.getString("progress");
+        if (raw == null || raw.isBlank()) {
+            return null;
+        }
+        try {
+            JsonNode node = JSON.readTree(raw);
+            if (node == null || !node.isObject() || !node.path("stage").isTextual()
+                    || !PROGRESS_STAGES.contains(node.get("stage").asText())) {
+                return null;
+            }
+            return new OptimizationJobProgressResponse(
+                    node.get("stage").asText(),
+                    node.path("algorithm").isTextual() ? node.get("algorithm").asText() : null,
+                    jsonInt(node, "layouts_tried"),
+                    jsonInt(node, "total_packages"),
+                    jsonInt(node, "best_placed_count"),
+                    node.path("best_volume_percent").isNumber() ? node.get("best_volume_percent").asDouble() : null,
+                    jsonInstant(node, "updated_at"));
+        } catch (Exception ignored) {
+            return null;
+        }
+    }
+
+    private static Integer jsonInt(JsonNode node, String key) {
+        JsonNode value = node.path(key);
+        return value.isIntegralNumber() && value.canConvertToInt() ? value.asInt() : null;
+    }
+
+    private static Instant jsonInstant(JsonNode node, String key) {
+        JsonNode value = node.path(key);
+        if (!value.isTextual()) {
+            return null;
+        }
+        try {
+            return Instant.parse(value.asText());
+        } catch (Exception ignored) {
+            return null;
         }
     }
 

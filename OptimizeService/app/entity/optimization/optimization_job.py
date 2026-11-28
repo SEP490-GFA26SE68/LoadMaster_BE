@@ -31,6 +31,8 @@ class OptimizationJob(Base):
     created_at = Column(DateTime, default=vietnam_now)
     # Cảnh báo dữ liệu đầu vào của lần chạy (V55): [{"code": ..., "package_ids": [...]}]. Không chặn job.
     data_warnings = Column(JSON().with_variant(JSONB(), "postgresql"), nullable=False, default=list)
+    # Tiến độ sống của lần chạy đang RUNNING (V58), do job_progress.ProgressWriter ghi; trống = chưa báo gì.
+    progress = Column(JSON().with_variant(JSONB(), "postgresql"), nullable=True)
 
     failure_code = Column(String(64), nullable=True)
     execution_generation = Column(BigInteger, nullable=True)

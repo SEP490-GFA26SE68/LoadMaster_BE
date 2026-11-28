@@ -1,6 +1,6 @@
 # Phụ thuộc chạy dịch vụ và test, ghim theo bản đang chạy được (Python 3.12).
-# Mô hình AI của gói ULTIMATE (torch, numpy) nằm riêng ở requirements-ai.txt để cài thường không kéo vài GB;
-# thiếu chúng thì gói ULTIMATE chạy heuristic và dịch vụ ghi cảnh báo lúc khởi động và mỗi lần chạy.
+# Mô hình AI của gói ULTIMATE (torch) nằm riêng ở requirements-ai.txt để cài thường không kéo vài GB;
+# thiếu nó thì gói ULTIMATE chạy heuristic và dịch vụ ghi cảnh báo lúc khởi động và mỗi lần chạy.
 fastapi==0.162.0
 uvicorn[standard]==0.54.0
 sqlalchemy==2.1.8
@@ -13,5 +13,8 @@ pyjwt[crypto]==2.15.1
 cryptography==50.0.2
 python-dotenv==1.2.4
 websockets==17.4
+# Bộ dựng chung LoadMaster_AI của bước EP (M9, OPTIMIZATION_LMAI_BUILDER_ENABLED, bật mặc định): cần ở mọi bản build,
+# kể cả INSTALL_AI=false (trước 27/11 numpy chỉ có trong requirements-ai.txt).
+numpy==2.4.6
 pytest==9.2.0
 pytest-asyncio==1.4.1.post1
