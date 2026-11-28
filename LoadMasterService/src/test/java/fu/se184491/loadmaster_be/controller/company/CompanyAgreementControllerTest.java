@@ -14,6 +14,7 @@ import fu.se184491.loadmaster_be.entity.account.User;
 import fu.se184491.loadmaster_be.entity.company.Company;
 import fu.se184491.loadmaster_be.exception.GlobalExceptionHandler;
 import fu.se184491.loadmaster_be.helpers.CurrentUserService;
+import fu.se184491.loadmaster_be.service.assistant.gate.ClientIpResolver;
 import fu.se184491.loadmaster_be.service.company.CompanyAgreementService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -41,7 +42,7 @@ import org.springframework.security.oauth2.server.resource.authentication.JwtAut
 import org.springframework.security.test.context.support.WithMockUser;
 
 @WebMvcTest(CompanyAgreementController.class)
-@Import(WebSecurityConfig.class)
+@Import({WebSecurityConfig.class, ClientIpResolver.class})
 @AutoConfigureMockMvc(addFilters = false)
 @WithMockUser(roles = "ADMIN")
 class CompanyAgreementControllerTest {
@@ -133,7 +134,7 @@ class CompanyAgreementControllerTest {
                 .hoursRemaining(0)
                 .build();
 
-        when(agreementService.signAgreement(eq(adminUser), any(SignAgreementRequest.class), any()))
+        when(agreementService.signAgreement(eq(adminUser), any(SignAgreementRequest.class), any(), any()))
                 .thenReturn(signedResponse);
 
         SignAgreementRequest request = SignAgreementRequest.builder()

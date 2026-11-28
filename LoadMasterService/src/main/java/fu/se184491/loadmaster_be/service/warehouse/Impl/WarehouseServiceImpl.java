@@ -363,6 +363,7 @@ public class WarehouseServiceImpl implements WarehouseService {
                 .maxPayloadKg(type != null ? type.getMaxPayloadKg() : null)
                 .obstacles(type == null ? List.of()
                         : fu.se184491.loadmaster_be.dto.response.trip.TripVehicleConfigResponse.of(vehicle).obstacles())
+                .bodyStyle(fu.se184491.loadmaster_be.constant.vehicle.VehicleBodyStyle.nameOf(type))
                 .totalPackages(steps.size())
                 .confirmedCount(confirmedCount)
                 .deviationCount(deviationCount)

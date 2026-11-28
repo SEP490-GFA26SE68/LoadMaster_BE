@@ -127,6 +127,7 @@ public enum ErrorCode {
     VEHICLE_AXLE_CONFIG_INCOMPLETE("Phải nhập đủ sáu thông số trục (vị trí, giới hạn tải, tải xe rỗng của trục trước và trục sau) hoặc để trống cả sáu", HttpStatus.BAD_REQUEST),
     VEHICLE_AXLE_ORDER("Vị trí trục sau phải lớn hơn vị trí trục trước", HttpStatus.BAD_REQUEST),
     VEHICLE_SIZE("Kích thước cửa xe phải lớn hơn 0", HttpStatus.BAD_REQUEST),
+    VEHICLE_BODY_STYLE_INVALID("Kiểu thân xe không hợp lệ (VAN_MINI_FLAT, VAN_MINI_HOOD, VAN_MID, VAN_LARGE, TRUCK_BOX, TRUCK_CANVAS, TRUCK_FLATBED, TRUCK_REEFER)", HttpStatus.BAD_REQUEST),
     WIDTH_RATIO("Chiều rộng cửa không được vượt quá chiều rộng thùng xe", HttpStatus.BAD_REQUEST),
 
     HIGH_RATIO("Chiều cao cửa không được vượt quá chiều cao thùng xe", HttpStatus.BAD_REQUEST),
