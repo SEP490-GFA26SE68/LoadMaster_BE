@@ -1,4 +1,4 @@
-"""P21 / P13 (KE-HOACH-TOI-UU, M8a): một hạn chót cho cả job (cờ OPTIMIZATION_SHARED_DEADLINE_ENABLED, mặc định tắt)."""
+"""P21 / P13 (KE-HOACH-TOI-UU, M8a): một hạn chót cho cả job (cờ OPTIMIZATION_SHARED_DEADLINE_ENABLED, mặc định bật từ M8)."""
 import time
 
 import pytest
@@ -14,10 +14,10 @@ def shared_deadline(monkeypatch):
 
 
 
-def test_shared_deadline_flag_is_off_by_default():
+def test_shared_deadline_flag_is_on_by_default():
     from app.config.settings import Settings
     fresh = Settings(_env_file=None, KEYCLOAK_CLIENT_SECRET="x")
-    assert fresh.OPTIMIZATION_SHARED_DEADLINE_ENABLED is False
+    assert fresh.OPTIMIZATION_SHARED_DEADLINE_ENABLED is True
 
 
 def test_job_deadline_is_ignored_when_flag_off(monkeypatch):

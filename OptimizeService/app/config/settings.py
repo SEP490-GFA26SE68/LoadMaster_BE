@@ -73,17 +73,23 @@ class Settings(BaseSettings):
 
     # Một hạn chót cho cả job: mọi lượt EP, lần giải mã GA / SA và bước sửa cân bằng dùng chung hạn của request
     # (tắt: mỗi lượt EP nhận hạn mới = time_limit_sec, job có thể chạy gần gấp đôi giới hạn).
-    OPTIMIZATION_SHARED_DEADLINE_ENABLED: bool = False
+    # Bật mặc định từ 26/11/2026 (M8, D1 đã duyệt): đo M7 — tắt thì job tới 113 s, 23 % phương án rỗng ở rb_vua.
+    OPTIMIZATION_SHARED_DEADLINE_ENABLED: bool = True
     # Bước sửa cân bằng (LoadBalanceSearch) có giới hạn: ngân sách = phần của time_limit_sec cho mỗi lần sửa,
     # dừng sau PATIENCE lần xếp lại liên tiếp không hơn, và mỗi lần kiểm dỡ hàng trong bước sửa tối đa
     # UNLOAD_CHECK_SEC giây (quá thì coi như chưa chứng minh được → không nhận, vẫn fail-closed).
-    LOAD_BALANCE_BOUNDED_ENABLED: bool = False
+    # Bật mặc định từ 26/11/2026 (M8, D1); cùng cờ trên: hàng lên xe rb_vua +13,4 [+9,5; +17,4], rb_lon +10,5 điểm.
+    LOAD_BALANCE_BOUNDED_ENABLED: bool = True
     LOAD_BALANCE_BUDGET_RATIO: float = 0.25
     LOAD_BALANCE_PATIENCE: int = 4
     LOAD_BALANCE_UNLOAD_CHECK_SEC: float = 3.0
     # Phương án của bộ dựng được kiểm dỡ hàng trong tối đa INITIAL_CHECK_RATIO × thời gian còn lại của lượt
     # (không dưới UNLOAD_CHECK_SEC): đủ cho phương án lớn hợp lệ, mà phương án sai khó chứng minh không ăn hết lượt.
     LOAD_BALANCE_INITIAL_CHECK_RATIO: float = 0.5
+    # M8 (26/11/2026, D1): bộ dựng EP dừng sớm hơn hạn chót của lượt một khoảng = max(MIN, RATIO × time_limit_sec)
+    # (không quá nửa giới hạn) để còn thời gian kiểm phương án vừa dựng. RATIO = 0 tắt.
+    OPTIMIZATION_CHECK_RESERVE_RATIO: float = 0.15
+    OPTIMIZATION_CHECK_RESERVE_MIN_SEC: float = 2.0
 
     LOADMASTER_SERVICE_URL: str = "http://localhost:8080"
     REDIS_URL: str = "redis://localhost:6379"

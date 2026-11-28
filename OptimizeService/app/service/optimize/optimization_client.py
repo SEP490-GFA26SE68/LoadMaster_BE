@@ -53,6 +53,16 @@ def _lifo_code() -> str:
     return LIFO_BLOCKED if ConstraintEngine.physics_v2() else "MULTI_DROP_LIFO_VIOLATION"
 
 
+def check_reserve_sec(problem: ProblemRequest) -> float:
+    """M8: thời gian giữ lại cho bước kiểm phương án = max(MIN, RATIO × time_limit_sec), không quá nửa giới hạn.
+    RATIO <= 0 tắt (bộ dựng chạy tới hạn chót như trước)."""
+    ratio = float(settings.OPTIMIZATION_CHECK_RESERVE_RATIO)
+    if ratio <= 0:
+        return 0.0
+    limit = max(float(problem.time_limit_sec or 60), 1)
+    return min(max(float(settings.OPTIMIZATION_CHECK_RESERVE_MIN_SEC), ratio * limit), limit / 2)
+
+
 class OptimizationClient:
     """
     Client tương tác với Optimization Engine.
@@ -111,8 +121,10 @@ class OptimizationClient:
         # Cách xếp mang nhãn EP_DBLF phải là EP thuần: gói có Lumo chấm điểm thì tắt nó ở đây
         # (Lumo-R1.1 chấm chỗ đặt là một cách xếp riêng, EP_LUMO_R1_1).
         ep_kwargs = {"use_lumo_scorer": False} if uses_lumo(problem.algorithm_name) else {}
+        reserve = check_reserve_sec(problem)
         for strategy in layout_strategies_for(problem.vehicle):
-            if layouts and time.monotonic() >= deadline:
+            # M8: không mở lượt mới khi phần còn lại chỉ đủ cho bước kiểm của lượt đó.
+            if layouts and time.monotonic() >= deadline - reserve:
                 break
             layout = self.solve_in_process(problem, strategy=strategy, job_deadline=deadline, **ep_kwargs)
             layout = layout.model_copy(update={"algorithm_name": PlanAlgorithm.EP_DBLF.value})
@@ -300,6 +312,9 @@ class OptimizationClient:
         stop_sequences = [stop.sequence for stop in problem.stops]
         if len(stop_ids) != len(set(stop_ids)) or len(stop_sequences) != len(set(stop_sequences)):
             raise ValueError("Stop IDs and sequences must be unique")
+        # M8: bộ dựng (EP, dựng lại hai lượt H13) dừng ở build_deadline; phần còn lại dành cho kiểm phương án
+        # (lần kiểm đầu trong LoadBalanceSearch và kiểm cuối) để phương án đã dựng không bị bỏ vì hết giờ.
+        build_deadline = deadline - check_reserve_sec(problem)
         search = LoadBalanceSearch(problem, deadline)
         input_codes = [code for code in search.input_violations() if code != "PINNED_PLACEMENT_UNSUPPORTED"]
         logger.info("[INPUT CHECK] Packages=%d Violations=%s", len(ids), input_codes)
@@ -432,7 +447,8 @@ class OptimizationClient:
         pass_i = 0
         while True:
             if pass_i == len(zone_passes):
-                if two_pass_allowed and not two_pass and must_load_missing(problem, placements):
+                if (two_pass_allowed and not two_pass and time.monotonic() < build_deadline
+                        and must_load_missing(problem, placements)):
                     one_pass_state = (placements, unplaced, total_placed_weight, total_placed_volume)
                     placements, unplaced = list(pinned_placements), []
                     context["existing_placements"] = placements
@@ -444,7 +460,7 @@ class OptimizationClient:
                 break
             zone, must_pass = zone_passes[pass_i]
             pass_i += 1
-            if time.monotonic() >= deadline: break
+            if time.monotonic() >= build_deadline: break
             zone_pkgs = [
                 p for p in stops_dict.get(zone.stop_id, [])
                 if str(p.id) not in pinned_ids and (must_pass is None or bool(p.must_load) == must_pass)
@@ -536,7 +552,7 @@ class OptimizationClient:
                             ep_list.append(candidate_pt)
 
             for pkg in sorted_pkgs:
-                if time.monotonic() >= deadline: break
+                if time.monotonic() >= build_deadline: break
                 if vt.max_payload_kg > 0 and (total_placed_weight + pkg.weight > vt.max_payload_kg):
                     unplaced.append(UnplacedData(
                         package_id=pkg.id,
@@ -655,7 +671,7 @@ class OptimizationClient:
                 for pt in sorted_eps:
                     px, py, pz = pt
                     for (ol, ow, oh, rot_type) in orientations:
-                        if time.monotonic() >= deadline: break
+                        if time.monotonic() >= build_deadline: break
                         # 1. Bounds check trong zone
                         if px + ol > zone.zone_end_x + 1e-4:
                             continue
@@ -754,7 +770,7 @@ class OptimizationClient:
                     for pt in all_vehicle_eps:
                         px, py, pz = pt
                         for (ol, ow, oh, rot_type) in orientations:
-                            if time.monotonic() >= deadline: break
+                            if time.monotonic() >= build_deadline: break
                             if px + ol > vt.inner_l + 1e-4 or py + ow > vt.inner_w + 1e-4 or pz + oh > vt.inner_h + 1e-4:
                                 continue
                             if self._check_overlap(px, py, pz, ol, ow, oh, placements):
