@@ -13,14 +13,15 @@ Hàm điểm phương án J và hồ sơ ưu tiên (spec "Ràng buộc vật lý
       "liền kề" khi hai mặt đối diện cách nhau ≤ adjacent_gap_cm và giao nhau dương trên hai trục còn lại.
   S6  V₆ = trung bình (L − mặt phía cửa) / L của kiện đã xếp có priority ≥ high_priority_min.
   S7, S8 (giai đoạn sau): V = 0, computed = False.
-Mỗi Vₖ kẹp vào [0, 1]. Trọng số và hồ sơ đọc từ app/config/plan_profiles.json (số GIẢ ĐỊNH, Q-D4).
+Mỗi Vₖ kẹp vào [0, 1]. Trọng số và hồ sơ đọc từ app/config/plan_profiles.json (chốt 26/11/2026, Q-D4).
+Assumed = false khi trọng số đã chốt; khoá `decided_on` của file ghi ngày chốt.
 
 Chỉ chấm phương án đã qua toàn bộ ràng buộc cứng: phương án rỗng (bộ giải trả rỗng khi vi phạm) không có J.
 
 CHỌN phương án (`selection_key`, `selection_scalar`): rỗng đứng sau mọi phương án có kiện; khi `pack_count_first`
-(cấu hình, GIẢ ĐỊNH, mặc định bật) thì so số kiện xếp được trước, rồi mới tới J. Lý do: với trọng số mặc định của spec
-một kiện đặt ngoài vùng bị phạt 100·w₁/N = 100/N, còn xếp thêm kiện đó chỉ được 100·w_n/N = 50/N (+ phần thể tích) —
-J thuần sẽ chọn bỏ kiện ở kho thay vì một lần dỡ-xếp lại. Tắt `pack_count_first` = chọn đúng theo J của spec.
+(cấu hình, chốt bật cho cả 4 hồ sơ ngày 26/11/2026) thì so số kiện xếp được trước, rồi mới tới J. Lý do: giao thiếu
+hàng nặng hơn mọi bất tiện; với w_n = 0,5 J thuần có thể chọn bỏ một kiện ở kho thay vì chịu phạt dỡ-xếp lại / tách
+nhóm (dữ liệu M7: mất 0,4–3,9 % số kiện). Tắt `pack_count_first` = chọn đúng theo J của spec.
 J hiển thị luôn là J của spec. Bản `lmai/plan_score.py` của LoadMaster_AI dùng đúng các công thức này.
 """
 from __future__ import annotations

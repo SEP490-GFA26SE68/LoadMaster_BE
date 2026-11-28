@@ -108,14 +108,14 @@ def test_demo5_over_capacity_reports_the_rule_for_each_package():
 
 
 # ---------------------------------------------------------------------------------------------- J (M6, spec 6 + 11)
-# Số chốt bằng máy trên phương án một lượt ở trên, hồ sơ "default" (trọng số giả định). Đổi bộ dựng thì chạy lại và
+# Số chốt bằng máy trên phương án một lượt ở trên, hồ sơ "default" (trọng số chốt 26/11/2026, Q-D4). Đổi bộ dựng thì chạy lại và
 # cập nhật cùng lúc với số kiện ở các test trên.
 DEMO_J = {
-    "1-hon-hop-nhieu-co": (0.0, 0.164005, 52.905534),
-    "2-nang-va-sigma-thap": (0.0, 0.220879, 140.579509),
-    "3-nam-diem-giao": (0.0, 0.172766, 40.172144),
-    "4-don-lech": (0.0, 0.147756, 47.389171),
-    "5-vuot-suc-chua": (0.0, 0.147619, 43.39922),
+    "1-hon-hop-nhieu-co": (0.0, 0.164005, 58.071831),
+    "2-nang-va-sigma-thap": (0.0, 0.220879, 145.289754),
+    "3-nam-diem-giao": (0.0, 0.172766, 48.69098),
+    "4-don-lech": (0.0, 0.147756, 51.480428),
+    "5-vuot-suc-chua": (0.0, 0.147619, 46.782737),
 }
 
 

@@ -1,6 +1,6 @@
 # Chép từ LoadMaster_AI/lmai/profiles.py (E:/SEP490/LoadMaster_AI) để OptimizeService chạy suy luận Lumo — không sửa nội dung, sửa ở dự án gốc rồi chép lại.
 """Hồ sơ ưu tiên của hàm điểm J (spec mục 6.3; KE-HOACH-TOI-UU M6) — đọc `lmai/plan_profiles.json`, bản sao giống hệt
-`OptimizeService/app/config/plan_profiles.json` của backend (tests/test_parity_j.py kiểm). Mọi trọng số là GIẢ ĐỊNH (Q-D4).
+`OptimizeService/app/config/plan_profiles.json` của backend (tests/test_parity_j.py kiểm). Trọng số chốt 26/11/2026 (Q-D4).
 """
 from __future__ import annotations
 
