@@ -42,11 +42,11 @@ public class MyAccountTool implements AssistantTool {
                           Subscription subscription) {
     }
 
-    /** Gói của công ty; Ultimate không giới hạn credit nên không có số dư. Giờ là giờ Việt Nam. */
+    /** Gói của công ty; mọi gói (kể cả Ultimate) có số dư và credit tháng. Giờ là giờ Việt Nam. */
     @JsonInclude(JsonInclude.Include.NON_NULL)
     public record Subscription(String planName, SubscriptionTier tier, SubscriptionStatus status,
                                LocalDateTime expiresAt, Boolean autoRenew, Integer creditsBalance,
-                               Integer creditsMonthlyGrant, boolean unlimitedCredits) {
+                               Integer creditsMonthlyGrant) {
     }
 
     @Override
@@ -71,10 +71,8 @@ public class MyAccountTool implements AssistantTool {
     }
 
     private static Subscription subscriptionOf(SubscriptionCurrentResponse current) {
-        boolean unlimited = current.getTier() == SubscriptionTier.ULTIMATE;
         return new Subscription(current.getPlanName(), current.getTier(), current.getStatus(), current.getExpiresAt(),
-                current.getAutoRenew(), unlimited ? null : current.getCreditsBalance(),
-                unlimited ? null : current.getCreditsMonthlyGrant(), unlimited);
+                current.getAutoRenew(), current.getCreditsBalance(), current.getCreditsMonthlyGrant());
     }
 
     private static Jwt currentJwt() {

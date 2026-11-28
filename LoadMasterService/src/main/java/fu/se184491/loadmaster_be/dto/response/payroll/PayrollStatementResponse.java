@@ -27,6 +27,10 @@ public record PayrollStatementResponse(
         Boolean kpiAchieved,
         /** Tiền thưởng KPI đã cộng vào lương (màn lương trên mobile đọc đúng tên này); null khi bảng chưa chốt. */
         BigDecimal kpiBonusVnd,
+        /** Tiền phạt đã trừ vào lương; null khi bảng chưa chốt (tài xế xem). */
+        BigDecimal penaltyVnd,
+        /** Lý do phạt; null khi không phạt hoặc bảng chưa chốt. */
+        String penaltyNote,
         BigDecimal totalSalaryVnd,
         List<PayrollTripLineResponse> trips
 ) {

@@ -91,7 +91,7 @@ public class CreditServiceTest {
         creditAccount = CreditAccount.builder().id(10L).company(company).balance(5).build();
 
         proPlan = SubscriptionPlan.builder().id(1L).tier(SubscriptionTier.PRO).build();
-        ultimatePlan = SubscriptionPlan.builder().id(2L).tier(SubscriptionTier.ULTIMATE).build();
+        ultimatePlan = SubscriptionPlan.builder().id(2L).tier(SubscriptionTier.ULTIMATE).monthlyCredits(30000).build();
 
         subscription = CompanySubscription.builder()
                 .id(1L)
@@ -140,20 +140,17 @@ public class CreditServiceTest {
     }
 
     @Test
-    @DisplayName("Get balance on an ACTIVE ULTIMATE plan is unlimited; once expired it is not")
+    @DisplayName("Get balance on an ACTIVE ULTIMATE plan is a real balance like every plan (no unlimited tier)")
     void getBalance_ultimatePlan() {
         subscription.setPlan(ultimatePlan);
         when(creditAccountRepository.findByCompanyIdForUpdate(1L)).thenReturn(Optional.of(creditAccount));
-        when(companySubscriptionRepository.findByCompanyId(1L)).thenReturn(Optional.of(subscription));
+        lenient().when(companySubscriptionRepository.findByCompanyId(1L)).thenReturn(Optional.of(subscription));
 
         CreditBalanceResponse response = creditService.getBalance(1L);
 
         assertNotNull(response);
         assertEquals(5, response.getBalance());
-        assertTrue(response.getIsUnlimited());
-
-        subscription.setStatus(SubscriptionStatus.EXPIRED);
-        assertFalse(creditService.getBalance(1L).getIsUnlimited());
+        assertFalse(response.getIsUnlimited());
     }
 
     @Test
@@ -205,23 +202,33 @@ public class CreditServiceTest {
     }
 
     @Test
-    @DisplayName("Deduct credit on an ACTIVE ULTIMATE subscription records a 0-credit usage and keeps the balance")
-    void deductCredit_ultimatePlan_isUnlimited() {
+    @DisplayName("Deduct credit on an ACTIVE ULTIMATE subscription charges 2 credits like every plan")
+    void deductCredit_ultimatePlan_chargesLikeOtherPlans() {
         subscription.setPlan(ultimatePlan);
-        creditAccount.setBalance(0);
         when(creditAccountRepository.findByCompanyIdForUpdate(1L)).thenReturn(Optional.of(creditAccount));
-        when(companySubscriptionRepository.findByCompanyId(1L)).thenReturn(Optional.of(subscription));
+        lenient().when(companySubscriptionRepository.findByCompanyId(1L)).thenReturn(Optional.of(subscription));
+        when(creditAccountRepository.save(any(CreditAccount.class))).thenReturn(creditAccount);
 
         creditService.deductCredit(1L, "job-uuid-123");
 
-        assertEquals(0, creditAccount.getBalance());
-        verify(creditAccountRepository, never()).save(any());
+        assertEquals(3, creditAccount.getBalance());
         verify(creditTransactionRepository).save(argThat(tx ->
-                tx.getAmount() == 0 &&
+                tx.getAmount() == -2 &&
                 tx.getType() == CreditTransactionType.USAGE &&
                 "job-uuid-123".equals(tx.getReference())
         ));
-        verify(auditLogRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("ULTIMATE with too few credits is refused like every plan")
+    void deductCredit_ultimatePlan_insufficientCredits() {
+        subscription.setPlan(ultimatePlan);
+        creditAccount.setBalance(1);
+        when(creditAccountRepository.findByCompanyIdForUpdate(1L)).thenReturn(Optional.of(creditAccount));
+        lenient().when(companySubscriptionRepository.findByCompanyId(1L)).thenReturn(Optional.of(subscription));
+
+        assertThrows(InsufficientCreditsException.class, () -> creditService.deductCredit(1L, "job-uuid-124"));
+        verify(creditTransactionRepository, never()).save(any());
     }
 
     @Test
@@ -495,7 +502,7 @@ public class CreditServiceTest {
     }
 
     @Test
-    @DisplayName("getPricing - chưa có gói tính như Basic, nạp được; gói hết hạn không nạp được; Ultimate đang dùng là không giới hạn")
+    @DisplayName("getPricing - chưa có gói tính như Basic, nạp được; gói hết hạn không nạp được; Ultimate có ngưỡng sắp hết như mọi gói")
     void pricingWithoutPlanExpiredAndUltimate() {
         when(companySubscriptionRepository.findByCompanyId(1L)).thenReturn(Optional.empty());
         var none = creditService.getPricing(1L);
@@ -510,8 +517,8 @@ public class CreditServiceTest {
         subscription.setStatus(SubscriptionStatus.ACTIVE);
         subscription.setPlan(ultimatePlan);
         var ultimate = creditService.getPricing(1L);
-        assertTrue(ultimate.getUnlimited());
-        assertNull(ultimate.getLowBalanceThreshold());
+        assertFalse(ultimate.getUnlimited());
+        assertEquals(7500, ultimate.getLowBalanceThreshold());
         assertNull(none.getLowBalanceThreshold());
         assertEquals(new BigDecimal("263"), ultimate.getPricePerCreditVnd());
     }

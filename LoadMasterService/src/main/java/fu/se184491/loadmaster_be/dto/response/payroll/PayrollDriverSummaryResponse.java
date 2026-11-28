@@ -13,6 +13,10 @@ public record PayrollDriverSummaryResponse(
         boolean kpiAchieved,
         /** Tiền thưởng KPI đã cộng vào lương (0 khi không đạt hoặc công ty không dùng KPI). */
         BigDecimal kpiAmountVnd,
+        /** Tiền phạt quản lý nhập tay (0 khi không phạt). */
+        BigDecimal penaltyVnd,
+        /** Lý do phạt; null khi không phạt. */
+        String penaltyNote,
         BigDecimal totalSalaryVnd
 ) {
 }

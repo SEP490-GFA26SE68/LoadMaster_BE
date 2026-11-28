@@ -49,6 +49,22 @@ public final class PayrollMath {
     }
 
     /**
+     * Lương tháng của tài xế: lương cứng + hoa hồng + bốc dỡ + thưởng KPI - tiền phạt; không bao giờ âm
+     * (tính lại sau khi chuyến bị bỏ có thể làm khoản cộng nhỏ hơn tiền phạt đã nhập).
+     */
+    public static BigDecimal netSalary(
+            BigDecimal baseSalary, BigDecimal kgAmount, BigDecimal handlingAmount, BigDecimal kpiBonus, BigDecimal penalty) {
+        BigDecimal net = grossSalary(baseSalary, kgAmount, handlingAmount, kpiBonus).subtract(penalty);
+        return net.signum() < 0 ? BigDecimal.ZERO : net;
+    }
+
+    /** Tổng các khoản cộng của lương tài xế (trước khi trừ tiền phạt). */
+    public static BigDecimal grossSalary(
+            BigDecimal baseSalary, BigDecimal kgAmount, BigDecimal handlingAmount, BigDecimal kpiBonus) {
+        return baseSalary.add(kgAmount).add(handlingAmount).add(kpiBonus);
+    }
+
+    /**
      * Tiền theo kg đã xếp của nhân viên kho trong tháng: tổng kg × đơn giá, làm tròn đồng HALF_UP một lần trên tổng tháng
      * (như hoa hồng theo kg của tài xế làm tròn từng khoản về đồng).
      */

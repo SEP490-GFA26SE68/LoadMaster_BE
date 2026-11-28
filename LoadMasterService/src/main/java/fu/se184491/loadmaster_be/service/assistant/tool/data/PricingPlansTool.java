@@ -21,7 +21,7 @@ import java.util.Set;
 
 /**
  * Gói cước đang bán và giá credit — thông tin công khai, nên cả khách cũng dùng được. Dựng bản gọn từ danh mục gói:
- * không mã gói, không số công ty đang dùng. Ultimate không giới hạn credit (theo hạng, như {@code CreditServiceImpl}).
+ * không mã gói, không số công ty đang dùng. Mọi gói, kể cả Ultimate, có credit tháng và trừ credit như nhau.
  */
 @Component
 @RequiredArgsConstructor
@@ -29,9 +29,8 @@ public class PricingPlansTool implements AssistantTool {
 
     private final SubscriptionPlanService plans;
 
-    /** {@code monthlyCredits} là {@code null} khi không giới hạn. */
     public record Plan(String name, SubscriptionTier tier, BigDecimal priceVnd, Integer monthlyCredits,
-                       boolean unlimitedCredits, BillingCycle billingCycle) {
+                       BillingCycle billingCycle) {
     }
 
     /**
@@ -55,7 +54,7 @@ public class PricingPlansTool implements AssistantTool {
     }
 
     @Tool(name = "get_pricing_plans", description = """
-            Các gói cước LoadMaster đang bán: tên, hạng, giá (VND), credit mỗi tháng (null là không giới hạn), chu \
+            Các gói cước LoadMaster đang bán: tên, hạng, giá (VND), credit mỗi tháng, chu \
             kỳ thanh toán; số credit của một lần tối ưu xếp hàng (một lần chạy ra ba phương án A, B, C; "Chạy lại \
             giữ ghim" cũng là một lần tối ưu như vậy và tốn đúng số credit này); giá một credit khi nạp thêm theo \
             hạng gói. Dùng khi hỏi về giá, gói, credit hay chọn gói.""")
@@ -74,8 +73,7 @@ public class PricingPlansTool implements AssistantTool {
     }
 
     private static Plan planOf(SubscriptionPlanResponse plan) {
-        boolean unlimited = plan.getTier() == SubscriptionTier.ULTIMATE;
-        return new Plan(plan.getName(), plan.getTier(), plan.getPriceVnd(),
-                unlimited ? null : plan.getMonthlyCredits(), unlimited, plan.getBillingCycle());
+        return new Plan(plan.getName(), plan.getTier(), plan.getPriceVnd(), plan.getMonthlyCredits(),
+                plan.getBillingCycle());
     }
 }
