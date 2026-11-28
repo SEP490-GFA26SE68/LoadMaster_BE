@@ -208,7 +208,7 @@ class OptimizationClient:
             try:
                 from app.ml.lumo_models import run_lumo_models
 
-                ai = run_lumo_models(problem, ai_codes, self, deadline=deadline)
+                ai = run_lumo_models(problem, ai_codes, self, deadline=deadline, target=lmai_target(start, deadline))
                 tried.extend(code for code in ai.tried)
                 layouts += ai.layouts
             except Exception as exc:  # không bao giờ làm hỏng job vì AI
