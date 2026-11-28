@@ -25,6 +25,9 @@ FP, FC, FG = 10, 22, 14
 # CP2 (đầu vào v2): thêm cột cho ứng viên / toàn cục + token hàng còn lại + bản đồ độ cao. Cột cũ giữ nguyên vị trí
 # nên mô hình v1 (Lumo-R1.x) vẫn chạy được trên quan sát v2 (chỉ đọc phần đầu).
 FC2, FG2, FR = 4, 8, 10
+# Lumo-R3 (đầu vào v3, HUONG-DAN-TRAIN-LUMO-R3 mục 2.5): +4 cột ứng viên (biên áp lực, biên tải sàn, must_load, priority
+# cao), +8 cột toàn cục (trọng số hồ sơ). Cột v1 giữ nguyên vị trí → mô hình v1 chạy được trên quan sát v3.
+FC3, FG3 = 4, 8
 
 
 @dataclass
@@ -39,9 +42,38 @@ class EnvConfig:
     n_rem: int = 16           # số kiện còn lại đưa vào quan sát
     hmap_x: int = 16          # lưới bản đồ độ cao (dọc thùng × ngang khung cửa)
     hmap_y: int = 8
+    # --- Lumo-R3 (HUONG-DAN-TRAIN-LUMO-R3 2.5–2.7)
+    obs_v3: bool = False      # đầu vào v3: hồ sơ + biên vật lý (không dùng cùng obs_v2)
+    reward_j: bool = False    # thưởng = J_train / 100 theo hồ sơ của lượt (thay thưởng thể tích / hàng + out_zone_penalty)
+    reward_w_n: float = 3.0   # w_n của J_train (chốt 26/11/2026); sản phẩm vẫn w_n của file hồ sơ + so số kiện trước
+    profile: str = "default"  # hồ sơ cố định khi không lấy mẫu (kiểm định, chấm)
+    profile_sample: bool = False   # train: mỗi lượt lấy mẫu một hồ sơ (profiles.sample_profile)
+    p_preset: float = 0.4
+    log_sigma: float = 0.5
+    p_zero: float = 0.2
+
+
+def env_from_cfg(cfg: dict) -> EnvConfig:
+    """EnvConfig từ một file config train: khối `env` + khối `profiles` (Lumo-R3, HUONG-DAN-TRAIN-LUMO-R3 2.6–2.7).
+    Có `profiles` → mặc định bật thưởng J_train và lấy mẫu hồ sơ mỗi lượt; trọng số 4 hồ sơ mẫu luôn đọc từ
+    lmai/plan_profiles.json, config chỉ đặt reward_w_n và vùng lấy mẫu."""
+    d = dict(cfg.get("env") or {})
+    pr = cfg.get("profiles")
+    if pr:
+        d.setdefault("reward_j", True)
+        d.setdefault("profile_sample", True)
+        for k in ("reward_w_n", "p_preset", "log_sigma", "p_zero"):
+            if k in pr:
+                d[k] = pr[k]
+    return EnvConfig(**d)
 
 
 def obs_spec(cfg: EnvConfig) -> Dict[str, Tuple[int, ...]]:
+    if cfg.obs_v3:
+        if cfg.obs_v2:
+            raise ValueError("obs_v3 không dùng cùng obs_v2 (CP2 không qua cửa)")
+        return {"placed": (cfg.max_placed, FP), "placed_mask": (cfg.max_placed,), "cand": (cfg.max_candidates, FC + FC3),
+                "cand_mask": (cfg.max_candidates,), "glob": (FG + FG3,)}
     if not cfg.obs_v2:
         return {"placed": (cfg.max_placed, FP), "placed_mask": (cfg.max_placed,), "cand": (cfg.max_candidates, FC),
                 "cand_mask": (cfg.max_candidates,), "glob": (FG,)}
@@ -60,7 +92,8 @@ class PackingEnv:
         self.t0 = 0.0
 
     # ---------------------------------------------------------------- vòng đời
-    def reset(self, problem: Optional[Problem] = None):
+    def reset(self, problem: Optional[Problem] = None, profile=None):
+        """profile: mã hồ sơ hoặc PlanProfile (w_n của sản phẩm); None → lấy mẫu (profile_sample) hoặc cfg.profile."""
         self.problem = problem if problem is not None else self.problem_fn()
         self.t0 = time.perf_counter()
         self.packer = Packer(self.problem, self.pack_cfg)
@@ -71,7 +104,30 @@ class PackingEnv:
         for p in self.problem.packages:
             self.zone_cargo[p.stop_index] = self.zone_cargo.get(p.stop_index, 0.0) + p.volume
         self.ret = 0.0
+        self._set_profile(profile)
         return self.observe()
+
+    def _set_profile(self, profile) -> None:
+        from . import profiles as PF
+        cfg = self.cfg
+        if not (cfg.reward_j or cfg.obs_v3) and profile is None:
+            self.profile = self.profile_train = None
+            return
+        if isinstance(profile, str):
+            profile = PF.get(profile)
+        if profile is None:
+            if cfg.profile_sample:
+                rng = np.random.default_rng([int(self.problem.seed or 0), 7])
+                profile = PF.sample_profile(rng, cfg.p_preset, cfg.log_sigma, cfg.p_zero)
+            else:   # suy luận: hồ sơ của job (plan_score.set_profile — lookahead, AISolver, backend), không có thì cfg.profile
+                from .plan_score import active_profile
+                profile = active_profile() or PF.get(cfg.profile)
+        self.profile = profile                                  # hồ sơ sản phẩm (w_n của file) — thầy / chọn phương án
+        self.profile_train = PF.with_w_n(profile, cfg.reward_w_n)   # thưởng + quan sát
+        self._v3_cache = None
+        v = self.problem.vehicle
+        self.v_cont = max(1e-9, float(v.inner_l * v.inner_w * v.inner_h))
+        self.n_total = max(1, len(self.problem.packages))
 
     @property
     def done(self) -> bool:
@@ -79,11 +135,22 @@ class PackingEnv:
 
     def step(self, action: int):
         c, oz = self.packer.apply(int(action))
-        r = c.l * c.w * c.h / self.cargo - (self.cfg.out_zone_penalty if oz else 0.0)
+        if self.cfg.reward_j:   # mục 2.6: Σr của lượt hợp lệ = J_train / 100
+            pt = self.profile_train
+            r = (pt.w_vol * c.l * c.w * c.h / self.v_cont + pt.w_n / self.n_total
+                 - (pt.weights[0] / self.n_total if oz else 0.0))
+        else:
+            r = c.l * c.w * c.h / self.cargo - (self.cfg.out_zone_penalty if oz else 0.0)
         info: Dict = {}
         if self.done:
             res = self.result("AI")
             info["result"] = res
+            if self.cfg.reward_j and res.verdict.valid:
+                # bước cuối: trừ S2–S6 (tính trên phương án cuối) + phần lệch của S1 (nếu có) → tổng đúng J_train / 100
+                from .plan_score import score
+                j = score(self.problem, res.placements, self.profile_train).j if res.placements else 0.0
+                info["j_train"] = j
+                r += j / 100.0 - (self.ret + r)
             if not res.verdict.valid:
                 ver = res.verdict
                 v = self.problem.vehicle
@@ -187,7 +254,42 @@ class PackingEnv:
         obs = {"placed": placed, "placed_mask": pmask, "cand": cand, "cand_mask": cmask, "glob": glob}
         if cfg.obs_v2:
             self._observe_v2(obs)
+        if cfg.obs_v3:
+            self._observe_v3(obs)
         return obs
+
+    # ---------------------------------------------------------------- Lumo-R3: đầu vào v3
+    def _observe_v3(self, obs: Dict[str, np.ndarray]) -> None:
+        from . import profiles as PF
+        pk, st, prob = self.packer, self.packer.state, self.problem
+        if getattr(self, "_v3_cache", None) is None:   # hồ sơ cố định trong một lượt: tính một lần (_set_profile xoá)
+            self._v3_cache = (np.asarray(PF.glob_features(self.profile_train), np.float32),
+                              int(PF.config().get("high_priority_min", 2)))
+        gfeat, hp = self._v3_cache
+        obs["glob"] = np.concatenate([obs["glob"], gfeat])
+        C = obs["cand"].shape[0]
+        extra = np.zeros((C, FC3), np.float32)
+        fq = st.floor_q if (prob.physics_v2 and not st.skip_h10) else None
+        for i, c in enumerate(pk.candidates[:C]):
+            pkg = prob.packages[c.pkg_idx]
+            press, floor = 1.0, 1.0
+            if c.z <= 1e-6:
+                if fq:
+                    floor = 1.0 - (pkg.weight / (c.l * c.w / 1e4)) / fq
+            elif prob.physics_v2 and c.supporters:
+                direct = dict(c.supporters)
+                for j, d in st._stack_deltas(c.supporters, pkg.weight).items():
+                    recv = st.received[j] + d
+                    sig = st.sigma[j]
+                    if not st.skip_h7:
+                        area = (st.contact_top[j] + direct.get(j, 0.0)) / 1e4
+                        m = 1.0 - (recv / area) / sig if (sig > 0 and area > 0) else 0.0
+                        press = min(press, m)
+                    if fq and st.box[j, 2] <= 1e-6:
+                        floor = min(floor, 1.0 - ((st.weight[j] + recv) / (st.box[j, 3] * st.box[j, 4] / 1e4)) / fq)
+            extra[i] = (min(max(press, 0.0), 1.0), min(max(floor, 0.0), 1.0), float(bool(pkg.must_load)),
+                        float(pkg.priority is not None and int(pkg.priority) >= hp))
+        obs["cand"] = np.concatenate([obs["cand"], extra], 1).astype(np.float32)
 
     @staticmethod
     def _load_columns_v2(st) -> Tuple[np.ndarray, np.ndarray]:

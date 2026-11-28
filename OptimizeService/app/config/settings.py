@@ -90,6 +90,12 @@ class Settings(BaseSettings):
     # (không quá nửa giới hạn) để còn thời gian kiểm phương án vừa dựng. RATIO = 0 tắt.
     OPTIMIZATION_CHECK_RESERVE_RATIO: float = 0.15
     OPTIMIZATION_CHECK_RESERVE_MIN_SEC: float = 2.0
+    # M9 (D1, 26/11/2026): bước EP dựng phương án bằng bộ dựng chung của LoadMaster_AI (app/ml/lmai: state / packer,
+    # EP-DBLF, EP-trọng-tâm, 4 bộ trọng số Heuristic-4), kiểm cuối vẫn bằng luật của service. Tắt = bộ dựng EP cũ.
+    # Bài có kiện ghim / thiếu numpy / không cách xếp nào qua kiểm → tự lùi về bộ dựng cũ (app/service/optimize/lmai_builder.py).
+    # Bật mặc định ở mọi môi trường từ 27/11/2026 (chủ dự án): 420 bài BASIC — hợp lệ 89,3 → 100 %, hàng lên xe +15,7
+    # điểm [+13,3; +18,3], job trung bình 50 → 7,7 s. numpy vì thế nằm trong requirements.txt (không cần INSTALL_AI).
+    OPTIMIZATION_LMAI_BUILDER_ENABLED: bool = True
 
     LOADMASTER_SERVICE_URL: str = "http://localhost:8080"
     REDIS_URL: str = "redis://localhost:6379"

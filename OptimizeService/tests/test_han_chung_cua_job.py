@@ -35,6 +35,8 @@ def test_expired_job_deadline_stops_ep_pass_when_flag_on(shared_deadline):
 
 
 def test_solve_candidates_gives_every_ep_pass_the_same_job_deadline(monkeypatch):
+    # Lượt EP của bộ dựng cũ (đường lùi khi bộ dựng lmai của M9 không dùng được; cờ M9 bật mặc định từ 27/11/2026).
+    monkeypatch.setattr(settings, "OPTIMIZATION_LMAI_BUILDER_ENABLED", False)
     seen = []
     real = OptimizationClient.solve_in_process
 
