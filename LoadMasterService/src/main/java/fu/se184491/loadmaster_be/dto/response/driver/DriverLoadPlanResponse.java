@@ -32,6 +32,8 @@ public class DriverLoadPlanResponse {
     private Integer doorWidth;
     private Integer doorHeight;
     private BigDecimal maxPayloadKg;
+    /** Kiểu thân xe của loại xe (tên của VehicleBodyStyle), cho hình xe trong khung 3D; null khi chưa chọn hoặc chưa có loại. */
+    private String bodyStyle;
     private List<Stop> stops;
     private List<Placement> placements;
 

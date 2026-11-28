@@ -1,5 +1,6 @@
 package fu.se184491.loadmaster_be.entity.vehicle;
 
+import fu.se184491.loadmaster_be.constant.vehicle.VehicleBodyStyle;
 import fu.se184491.loadmaster_be.entity.company.Company;
 
 
@@ -91,6 +92,11 @@ public class VehicleType {
     @Builder.Default
     @Column(name = "hazardous_capable", nullable = false)
     private Boolean hazardousCapable = false;
+
+    // Kiểu thân xe: chỉ đổi hình xe trong khung 3D, không vào phương án xếp hàng. Trống = web chọn theo kích thước lòng thùng.
+    @Enumerated(EnumType.STRING)
+    @Column(name = "body_style", length = 32)
+    private VehicleBodyStyle bodyStyle;
 
     @OneToMany(
             mappedBy = "vehicleType",

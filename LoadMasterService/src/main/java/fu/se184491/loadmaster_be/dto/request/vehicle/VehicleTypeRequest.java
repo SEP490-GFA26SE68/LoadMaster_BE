@@ -46,4 +46,10 @@ public class VehicleTypeRequest {
     @Positive(message = "Max COG Offset Ratio phải lớn hơn 0")
     private BigDecimal maxCogOffsetRatio;
 
+    /** Kiểu thân xe (tên của VehicleBodyStyle), tuỳ chọn; chỉ đổi hình xe trong khung 3D. */
+    private String bodyStyle;
+
+    /** {@code true}: bỏ kiểu thân xe về trống ({@code bodyStyle: null} không đổi gì). */
+    private Boolean clearBodyStyle;
+
 }

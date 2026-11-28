@@ -28,9 +28,13 @@ public record TripVehicleConfigResponse(
         BigDecimal emptyFrontAxleLoadKg,
         BigDecimal emptyRearAxleLoadKg,
 
-        List<Obstacle> obstacles
+        List<Obstacle> obstacles,
+
+        // Kiểu thân xe của loại xe đang gắn (tên của VehicleBodyStyle); null khi chưa chọn. Chỉ đổi hình xe trong khung 3D,
+        // không thuộc đầu vào tối ưu.
+        String bodyStyle
 ) {
-    /** Cấu hình của một xe (loại xe đang gắn: kích thước, cửa, giới hạn, trục, vật cản). */
+    /** Cấu hình của một xe (loại xe đang gắn: kích thước, cửa, giới hạn, trục, vật cản, kiểu thân xe). */
     public static TripVehicleConfigResponse of(fu.se184491.loadmaster_be.entity.vehicle.Vehicle vehicle) {
         fu.se184491.loadmaster_be.entity.vehicle.VehicleType type = vehicle.getVehicleType();
         List<Obstacle> obstacles = type.getObstacles() == null ? List.of() : type.getObstacles().stream()
@@ -41,7 +45,8 @@ public record TripVehicleConfigResponse(
                 type.getId(), type.getName(), type.getInnerLength(), type.getInnerWidth(), type.getInnerHeight(),
                 type.getDoorWidth(), type.getDoorHeight(), type.getMaxPayloadKg(), type.getFrontAxleLimitKg(),
                 type.getRearAxleLimitKg(), type.getMaxCogOffsetRatio(), type.getFrontAxleX(), type.getRearAxleX(),
-                type.getEmptyFrontAxleLoadKg(), type.getEmptyRearAxleLoadKg(), obstacles);
+                type.getEmptyFrontAxleLoadKg(), type.getEmptyRearAxleLoadKg(), obstacles,
+                fu.se184491.loadmaster_be.constant.vehicle.VehicleBodyStyle.nameOf(type));
     }
 
     public record Obstacle(
