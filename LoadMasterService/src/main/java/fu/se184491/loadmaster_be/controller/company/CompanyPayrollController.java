@@ -3,6 +3,7 @@ package fu.se184491.loadmaster_be.controller.company;
 import fu.se184491.loadmaster_be.dto.ApiResponse;
 import fu.se184491.loadmaster_be.dto.request.payroll.CompanyPayrollRateRequest;
 import fu.se184491.loadmaster_be.dto.request.payroll.DriverBaseSalaryRequest;
+import fu.se184491.loadmaster_be.dto.request.payroll.DriverPayrollPenaltyRequest;
 import fu.se184491.loadmaster_be.dto.request.payroll.SetTripPayrollDriversRequest;
 import fu.se184491.loadmaster_be.dto.response.payroll.CompanyPayrollRateResponse;
 import fu.se184491.loadmaster_be.dto.response.payroll.DriverBaseSalaryResponse;
@@ -81,6 +82,17 @@ public class CompanyPayrollController {
     ) {
         return ApiResponse.success(payrollService.getCompanyDriverStatement(
                 currentUserService.getCurrentCompanyId(), driverId, period));
+    }
+
+    /** Tiền phạt quản lý nhập tay cho một tài xế trong tháng (penaltyVnd = 0 là bỏ phạt); chỉ bảng nháp. */
+    @PutMapping("/periods/{period}/drivers/{driverId}/penalty")
+    public ApiResponse<PayrollPeriodResponse> setDriverPenalty(
+            @PathVariable String period,
+            @PathVariable Long driverId,
+            @Valid @RequestBody DriverPayrollPenaltyRequest request
+    ) {
+        return ApiResponse.success(payrollService.setDriverPenalty(
+                currentUserService.getCurrentCompanyId(), period, driverId, request));
     }
 
     @PostMapping("/periods/{period}/lock")

@@ -35,9 +35,9 @@ class PricingPlansToolTest {
     }
 
     @Test
-    void plansAreCompactCheapestFirstAndUltimateIsUnlimited() {
+    void plansAreCompactCheapestFirstAndUltimateHasItsMonthlyCredits() {
         when(plans.getActivePlans()).thenReturn(List.of(
-                plan(3, "Gói Toàn Diện (Ultimate AI)", SubscriptionTier.ULTIMATE, "7900000", 999),
+                plan(3, "Gói Toàn Diện (Ultimate AI)", SubscriptionTier.ULTIMATE, "7900000", 30000),
                 plan(1, "Gói Cơ Bản (Basic)", SubscriptionTier.BASIC, "1200000", 3000),
                 plan(2, "Gói Chuyên Nghiệp (Pro)", SubscriptionTier.PRO, "3500000", 10000)));
 
@@ -50,8 +50,8 @@ class PricingPlansToolTest {
         assertThat(rows).extracting(row -> row.get("tier").asString()).containsExactly("BASIC", "PRO", "ULTIMATE");
         assertThat(rows.get(0).get("monthlyCredits").asInt()).isEqualTo(3000);
         assertThat(rows.get(0).get("priceVnd").decimalValue()).isEqualByComparingTo("1200000");
-        assertThat(rows.get(2).get("monthlyCredits").isNull()).isTrue();
-        assertThat(rows.get(2).get("unlimitedCredits").asBoolean()).isTrue();
+        assertThat(rows.get(2).get("monthlyCredits").asInt()).isEqualTo(30000);
+        assertThat(json).doesNotContain("unlimited");
         assertThat(rows.get(2).get("billingCycle").asString()).isEqualTo("MONTHLY");
     }
 

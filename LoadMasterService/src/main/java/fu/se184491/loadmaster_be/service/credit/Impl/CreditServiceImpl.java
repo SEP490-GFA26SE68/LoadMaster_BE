@@ -84,7 +84,7 @@ public class CreditServiceImpl implements CreditService {
         return CreditBalanceResponse.builder()
                 .companyId(companyId)
                 .balance(account.getBalance())
-                .isUnlimited(isUnlimited(subOpt))
+                .isUnlimited(false)
                 .build();
     }
 
@@ -115,7 +115,7 @@ public class CreditServiceImpl implements CreditService {
                 .rerunCost(RERUN_OPTIMIZATION_CREDIT_COST)
                 .minTopUpCredits(MIN_TOPUP_CREDITS)
                 .maxTopUpCredits(null)
-                .unlimited(isUnlimited(subOpt))
+                .unlimited(false)
                 .topUpAllowed(subOpt.isEmpty() || active)
                 .lowBalanceThreshold(lowBalanceThreshold(subOpt))
                 .build();
@@ -216,8 +216,8 @@ public class CreditServiceImpl implements CreditService {
         Optional<CompanySubscription> subOpt = companySubscriptionRepository.findByCompanyId(companyId);
         applyCycleGrantIfDue(companyId, account, subOpt);
 
-        // Gói Ultimate đang hoạt động: ghi lượt dùng 0 credit để giữ dấu vết và hoàn được.
-        int charged = isUnlimited(subOpt) ? 0 : creditsToDeduct;
+        // Mọi gói (kể cả Ultimate) trừ credit như nhau: lần đầu 2, chạy lại 1.
+        int charged = creditsToDeduct;
         int before = account.getBalance() == null ? 0 : account.getBalance();
         if (before < charged) {
             log.warn("Company {} has insufficient credits (balance: {}, required: {}) for reference {}",
@@ -386,7 +386,7 @@ public class CreditServiceImpl implements CreditService {
         int refundAmount = Math.abs(originalUsage.getAmount());
 
         if (refundAmount == 0) {
-            // Lượt của gói không giới hạn: không có gì để cộng lại.
+            // Lượt 0 credit cũ (thời Ultimate còn không giới hạn): không có gì để cộng lại.
             originalUsage.setRefunded(true);
             creditTransactionRepository.save(originalUsage);
             return;
@@ -569,17 +569,9 @@ public class CreditServiceImpl implements CreditService {
                 companyId, cycleMonth, baseMonthlyCredits);
     }
 
-    /** Không giới hạn: gói Ultimate đang hoạt động. Hết hạn hay đã huỷ thì trừ credit như mọi gói. */
-    private static boolean isUnlimited(Optional<CompanySubscription> subOpt) {
-        return subOpt
-                .filter(sub -> sub.getStatus() == SubscriptionStatus.ACTIVE && sub.getPlan() != null)
-                .map(sub -> sub.getPlan().getTier() == SubscriptionTier.ULTIMATE)
-                .orElse(false);
-    }
-
-    /** Ngưỡng báo sắp hết credit; chưa có gói, gói không giới hạn hay gói không ghi credit tháng thì {@code null}. */
+    /** Ngưỡng báo sắp hết credit; chưa có gói hay gói không ghi credit tháng thì {@code null}. */
     static Integer lowBalanceThreshold(Optional<CompanySubscription> subOpt) {
-        if (subOpt.isEmpty() || isUnlimited(subOpt)) {
+        if (subOpt.isEmpty()) {
             return null;
         }
         CompanySubscription sub = subOpt.get();

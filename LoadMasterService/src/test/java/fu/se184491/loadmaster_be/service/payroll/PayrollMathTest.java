@@ -132,6 +132,27 @@ class PayrollMathTest {
     }
 
     @Test
+    void netSalarySubtractsPenaltyFromEveryPositiveItem() {
+        // 8.000.000 + 27.937 + 18.625 + 150 - 50.000 = 7.996.712
+        assertEquals(new BigDecimal("7996712"), PayrollMath.netSalary(
+                new BigDecimal("8000000"), new BigDecimal("27937"), new BigDecimal("18625"),
+                new BigDecimal("150"), new BigDecimal("50000")));
+    }
+
+    @Test
+    void netSalaryWithoutPenaltyIsTheSumOfItems() {
+        assertEquals(new BigDecimal("8046712"), PayrollMath.netSalary(
+                new BigDecimal("8000000"), new BigDecimal("27937"), new BigDecimal("18625"),
+                new BigDecimal("150"), BigDecimal.ZERO));
+    }
+
+    @Test
+    void netSalaryNeverGoesBelowZero() {
+        assertEquals(BigDecimal.ZERO, PayrollMath.netSalary(
+                new BigDecimal("100"), BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, new BigDecimal("500")));
+    }
+
+    @Test
     void kpiBonusIsPaidWhenTotalKgReachesTheTarget() {
         assertEquals(new BigDecimal("500000"),
                 PayrollMath.kpiBonus(new BigDecimal("1200.500"), new BigDecimal("1000"), new BigDecimal("500000")));

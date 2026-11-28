@@ -7,6 +7,8 @@ import fu.se184491.loadmaster_be.constant.payroll.PayrollPeriodStatus;
 import fu.se184491.loadmaster_be.constant.trip.TripStatus;
 import fu.se184491.loadmaster_be.dto.request.payroll.CompanyPayrollRateRequest;
 import fu.se184491.loadmaster_be.dto.request.payroll.DriverBaseSalaryRequest;
+import fu.se184491.loadmaster_be.dto.request.payroll.DriverPayrollPenaltyRequest;
+import fu.se184491.loadmaster_be.exception.ErrorCode;
 import fu.se184491.loadmaster_be.dto.request.payroll.SetTripPayrollDriversRequest;
 import fu.se184491.loadmaster_be.dto.response.payroll.PayrollPeriodResponse;
 import fu.se184491.loadmaster_be.entity.account.User;
@@ -52,6 +54,7 @@ import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -1001,6 +1004,127 @@ class DriverPayrollServiceImplTest {
         when(loadPlanRepository.findFirstByJobTripIdAndApprovedTrueOrderByIdDesc(77L)).thenReturn(Optional.of(loadPlan));
         when(packagePlacementRepository.findByLoadPlanId(55L)).thenReturn(List.of(placement));
         return service.calculatePeriod(10L, "2026-11");
+    }
+
+    // ---- Tiền phạt (V60): quản lý nhập tay cho từng tài xế, từng tháng ----
+
+    /** Bảng nháp tháng 11: tài xế Một có 8.000.000 lương cứng + 15.000 hoa hồng + 127.500 bốc dỡ = 8.142.500. */
+    private DriverPayroll novemberLine(BigDecimal penalty, String note) {
+        return DriverPayroll.builder()
+                .id(101L).driver(driverOne)
+                .baseSalaryVnd(new BigDecimal("8000000")).totalKg(new BigDecimal("1000.000"))
+                .kgAmountVnd(new BigDecimal("15000")).handlingAmountVnd(new BigDecimal("127500"))
+                .kpiAmountVnd(BigDecimal.ZERO).penaltyVnd(penalty).penaltyNote(note)
+                .totalSalaryVnd(new BigDecimal("8142500").subtract(penalty))
+                .build();
+    }
+
+    private PayrollPeriod novemberPeriod(PayrollPeriodStatus status, DriverPayroll line) {
+        PayrollPeriod period = PayrollPeriod.builder()
+                .id(99L).company(company).payrollRate(kpiRate(company, null, BigDecimal.ZERO))
+                .periodStart(LocalDate.of(2026, 11, 1)).status(status)
+                .driverPayrolls(new java.util.ArrayList<>(List.of(line)))
+                .build();
+        line.setPayrollPeriod(period);
+        return period;
+    }
+
+    private void stubNovemberPeriod(PayrollPeriod period) {
+        when(periodRepository.findByCompanyIdAndPeriodStartForUpdate(10L, LocalDate.of(2026, 11, 1)))
+                .thenReturn(Optional.of(period));
+    }
+
+    @Test
+    void penaltyIsSubtractedFromTheDriversSalaryAndTheTrimmedReasonIsKept() {
+        stubNovemberPeriod(novemberPeriod(PayrollPeriodStatus.DRAFT, novemberLine(BigDecimal.ZERO, null)));
+
+        var response = service.setDriverPenalty(10L, "2026-11", 21L,
+                new DriverPayrollPenaltyRequest(new BigDecimal("50000"), "  Giao trễ chuyến TRIP-0077  "));
+
+        var line = response.drivers().get(0);
+        assertEquals(new BigDecimal("50000"), line.penaltyVnd());
+        assertEquals("Giao trễ chuyến TRIP-0077", line.penaltyNote());
+        assertEquals(new BigDecimal("8092500"), line.totalSalaryVnd());
+    }
+
+    @Test
+    void penaltyNeedsAReasonThatIsNotJustSpaces() {
+        stubNovemberPeriod(novemberPeriod(PayrollPeriodStatus.DRAFT, novemberLine(BigDecimal.ZERO, null)));
+
+        AppException error = assertThrows(AppException.class, () -> service.setDriverPenalty(10L, "2026-11", 21L,
+                new DriverPayrollPenaltyRequest(new BigDecimal("50000"), "   ")));
+
+        assertEquals(ErrorCode.PAYROLL_PENALTY_NOTE_REQUIRED, error.getErrorCode());
+    }
+
+    @Test
+    void penaltyCannotExceedTheDriversOwnSalaryButMayEqualIt() {
+        stubNovemberPeriod(novemberPeriod(PayrollPeriodStatus.DRAFT, novemberLine(BigDecimal.ZERO, null)));
+
+        AppException error = assertThrows(AppException.class, () -> service.setDriverPenalty(10L, "2026-11", 21L,
+                new DriverPayrollPenaltyRequest(new BigDecimal("8142501"), "Làm mất hàng")));
+        assertEquals(ErrorCode.PAYROLL_PENALTY_EXCEEDS_SALARY, error.getErrorCode());
+
+        var response = service.setDriverPenalty(10L, "2026-11", 21L,
+                new DriverPayrollPenaltyRequest(new BigDecimal("8142500"), "Làm mất hàng"));
+        assertEquals(new BigDecimal("0"), response.drivers().get(0).totalSalaryVnd());
+    }
+
+    @Test
+    void penaltyCannotBeChangedOnALockedPayroll() {
+        stubNovemberPeriod(novemberPeriod(PayrollPeriodStatus.LOCKED, novemberLine(BigDecimal.ZERO, null)));
+
+        AppException error = assertThrows(AppException.class, () -> service.setDriverPenalty(10L, "2026-11", 21L,
+                new DriverPayrollPenaltyRequest(new BigDecimal("50000"), "Giao trễ")));
+
+        assertEquals(ErrorCode.PAYROLL_PERIOD_LOCKED, error.getErrorCode());
+    }
+
+    @Test
+    void settingPenaltyBackToZeroRemovesItAndItsReason() {
+        stubNovemberPeriod(novemberPeriod(PayrollPeriodStatus.DRAFT, novemberLine(new BigDecimal("50000"), "Giao trễ")));
+
+        var response = service.setDriverPenalty(10L, "2026-11", 21L,
+                new DriverPayrollPenaltyRequest(BigDecimal.ZERO, "Giao trễ"));
+
+        var line = response.drivers().get(0);
+        assertEquals(BigDecimal.ZERO, line.penaltyVnd());
+        assertNull(line.penaltyNote());
+        assertEquals(new BigDecimal("8142500"), line.totalSalaryVnd());
+    }
+
+    @Test
+    void penaltyForADriverWithoutALineInThatMonthIsRefused() {
+        stubNovemberPeriod(novemberPeriod(PayrollPeriodStatus.DRAFT, novemberLine(BigDecimal.ZERO, null)));
+
+        AppException error = assertThrows(AppException.class, () -> service.setDriverPenalty(10L, "2026-11", 22L,
+                new DriverPayrollPenaltyRequest(new BigDecimal("50000"), "Giao trễ")));
+
+        assertEquals(ErrorCode.USER_NOT_FOUND, error.getErrorCode());
+    }
+
+    @Test
+    void recalculatingThePayrollKeepsTheEnteredPenalty() {
+        LocalDate periodStart = LocalDate.of(2026, 11, 1);
+        CompanyPayrollRate rate = kpiRate(company, null, BigDecimal.ZERO);
+        stubNovemberPeriod(novemberPeriod(PayrollPeriodStatus.DRAFT, novemberLine(new BigDecimal("50000"), "Giao trễ")));
+        when(rateRepository.findFirstByCompanyIdAndEffectiveFromLessThanEqualOrderByEffectiveFromDesc(10L, periodStart))
+                .thenReturn(Optional.of(rate));
+        when(userRepository.findByCompanyIdAndUserRoleTypeAndStatus(10L, UserRole.DRIVER, UserStatus.ACTIVE))
+                .thenReturn(List.of(driverOne));
+        when(tripRepository.findByCompanyIdAndStatusAndCompletedAtGreaterThanEqualAndCompletedAtLessThan(
+                10L, TripStatus.DELIVERED, periodStart.atStartOfDay(), periodStart.plusMonths(1).atStartOfDay()))
+                .thenReturn(List.of(trip));
+        when(loadPlanRepository.findFirstByJobTripIdAndApprovedTrueOrderByIdDesc(77L))
+                .thenReturn(Optional.of(LoadPlan.builder().id(55L).approved(true).build()));
+        when(packagePlacementRepository.findByLoadPlanId(55L)).thenReturn(List.of(PackagePlacement.builder()
+                .cargoPackage(CargoPackage.builder().actualWeightKg(new BigDecimal("1000")).build()).build()));
+
+        var line = service.calculatePeriod(10L, "2026-11").drivers().get(0);
+
+        assertEquals(new BigDecimal("50000"), line.penaltyVnd());
+        assertEquals("Giao trễ", line.penaltyNote());
+        assertEquals(new BigDecimal("8092500"), line.totalSalaryVnd());
     }
 
     @Test

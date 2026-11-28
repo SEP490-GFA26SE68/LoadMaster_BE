@@ -468,7 +468,7 @@ public class DriverDeliveryServiceImpl implements DriverDeliveryService {
                 .build();
     }
 
-    /** Giờ của {@code EtaCalculationService} ({@code MonitoringTime.toIso}: giờ Việt Nam viết kèm offset 0) về lại giờ Việt Nam. */
+    /** Giờ của {@code EtaCalculationService} ({@code MonitoringTime.toIso}: giờ Việt Nam kèm offset +07:00; bản cũ ghi offset 0) về lại giờ Việt Nam. */
     static LocalDateTime localOf(String iso) {
         if (iso == null || iso.isBlank()) {
             return null;
