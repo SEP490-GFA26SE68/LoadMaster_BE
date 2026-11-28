@@ -122,7 +122,8 @@ class DriverDeliveryServiceImplTest {
         company = Company.builder().id(1L).build();
         driver = User.builder().id(8L).company(company).fullName("Tài xế A").build();
         VehicleType type = VehicleType.builder().id(3L).innerLength(600).innerWidth(240).innerHeight(240)
-                .doorWidth(230).doorHeight(230).maxPayloadKg(new BigDecimal("5000")).build();
+                .doorWidth(230).doorHeight(230).maxPayloadKg(new BigDecimal("5000"))
+                .bodyStyle(fu.se184491.loadmaster_be.constant.vehicle.VehicleBodyStyle.TRUCK_CANVAS).build();
         Vehicle vehicle = Vehicle.builder().id(4L).licensePlate("51C-123.45").vehicleType(type).build();
         trip = Trip.builder().id(10L).tripCode("TRIP-10").company(company).driver(driver).vehicle(vehicle)
                 .status(TripStatus.IN_TRANSIT).build();
@@ -169,6 +170,8 @@ class DriverDeliveryServiceImplTest {
         assertEquals(70L, response.getLoadPlanId());
         assertEquals(600, response.getInnerLength());
         assertEquals(230, response.getDoorWidth());
+        // Kiểu thân xe đi trong phương án: tài xế không đọc được loại xe
+        assertEquals("TRUCK_CANVAS", response.getBodyStyle());
         assertEquals(3, response.getPlacements().size());
         DriverLoadPlanResponse.Placement first = response.getPlacements().get(0);
         assertEquals(new BigDecimal("12.5"), first.getWeightKg());

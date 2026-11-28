@@ -190,6 +190,7 @@ public class DriverDeliveryServiceImpl implements DriverDeliveryService {
                 .doorWidth(type != null ? type.getDoorWidth() : null)
                 .doorHeight(type != null ? type.getDoorHeight() : null)
                 .maxPayloadKg(type != null ? type.getMaxPayloadKg() : null)
+                .bodyStyle(fu.se184491.loadmaster_be.constant.vehicle.VehicleBodyStyle.nameOf(type))
                 .stops(stops.stream().map(stop -> DriverLoadPlanResponse.Stop.builder()
                         .stopId(stop.getId())
                         .stopSequence(stop.getStopSequence())

@@ -79,6 +79,48 @@ public class CompanyAgreementServiceImpl implements CompanyAgreementService {
     }
 
     @Override
+    public CompanyAgreement createOfficialServiceAgreement(Company company, User adminUser, LocalDateTime approvedAt) {
+        String code = "AGR-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase();
+        String content = """
+            **THỎA THUẬN CUNG CẤP VÀ SỬ DỤNG DỊCH VỤ CHÍNH THỨC LOADMASTER**
+            
+            **Điều 1: Phạm vi dịch vụ**
+            LoadMaster cung cấp giải pháp chuyển đổi số logistics, tối ưu hóa xếp hàng 3D, lập kế hoạch lộ trình và quản trị vận tải cho Doanh nghiệp theo gói cước chính thức đã đăng ký.
+            
+            **Điều 2: Quyền và nghĩa vụ của Doanh nghiệp**
+            2.1. Doanh nghiệp được kích hoạt đầy đủ các tính năng của gói dịch vụ chính thức, hạn mức credit hàng tháng và hỗ trợ kỹ thuật theo cam kết dịch vụ (SLA).
+            2.2. Doanh nghiệp chịu trách nhiệm quản lý tài khoản người dùng, phân quyền nhân viên và bảo mật thông tin đăng nhập trong tổ chức.
+            
+            **Điều 3: Bảo mật thông tin**
+            Mọi dữ liệu đơn hàng, lộ trình, phương tiện và nhân sự của Doanh nghiệp được bảo mật tuyệt đối theo tiêu chuẩn an toàn thông tin của LoadMaster.
+            
+            **Điều 4: Hiệu lực thỏa thuận**
+            Thỏa thuận này có hiệu lực chính thức kể từ thời điểm Doanh nghiệp thanh toán kích hoạt gói cước thành công.
+            """;
+
+        LocalDateTime deadline = approvedAt.plusDays(365);
+        CompanyAgreement agreement = CompanyAgreement.builder()
+                .company(company)
+                .user(adminUser)
+                .agreementType(AgreementType.SERVICE_CONTRACT)
+                .agreementCode(code)
+                .title("Thỏa thuận Sử dụng Dịch vụ Chính thức LoadMaster")
+                .content(content)
+                .status(AgreementStatus.SIGNED)
+                .deadlineAt(deadline)
+                .signedAt(approvedAt)
+                .companyName(company.getCompanyName())
+                .companyCode(company.getCompanyCode())
+                .taxCode(company.getTaxCode())
+                .signerName(adminUser != null ? adminUser.getFullName() : null)
+                .signerEmail(adminUser != null ? adminUser.getEmail() : null)
+                .signerPhone(adminUser != null ? adminUser.getPhoneNumber() : null)
+                .build();
+
+        return agreementRepository.save(agreement);
+    }
+
+    @Override
     @Transactional(readOnly = true)
     public CompanyAgreementResponse getMyAgreement(User currentUser) {
         if (currentUser.getCompany() == null || currentUser.getCompany().getId() == null) {

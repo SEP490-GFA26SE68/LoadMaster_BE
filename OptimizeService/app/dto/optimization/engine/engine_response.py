@@ -64,7 +64,7 @@ class PlanScoreData(BaseModel):
     """Điểm J của phương án theo một hồ sơ ưu tiên (spec mục 6), kèm phân rã."""
     profile: str
     profile_name: str
-    assumed_weights: bool = True  # trọng số còn là số giả định (Q-D4)
+    assumed_weights: bool = True  # True = trọng số còn là số giả định; file hồ sơ ghi `assumed` (chốt 26/11/2026: false)
     j: float
     u_vol: float
     u_n: float

@@ -30,4 +30,5 @@ public class SubscriptionCurrentResponse {
     private Integer creditsBalance;
     private Integer creditsMonthlyGrant;
     private AlgorithmTier algorithmTier;
+    private Boolean isTrial;
 }

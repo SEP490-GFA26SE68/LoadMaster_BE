@@ -1,5 +1,9 @@
 package fu.se184491.loadmaster_be.service.subscription.Impl;
 
+import fu.se184491.loadmaster_be.client.BrevoClient;
+import fu.se184491.loadmaster_be.client.VnPayClient;
+import fu.se184491.loadmaster_be.constant.account.UserRole;
+import fu.se184491.loadmaster_be.constant.account.UserType;
 import fu.se184491.loadmaster_be.constant.billing.BillingCycle;
 import fu.se184491.loadmaster_be.constant.billing.PaymentGateway;
 import fu.se184491.loadmaster_be.constant.billing.PaymentStatus;
@@ -10,17 +14,21 @@ import fu.se184491.loadmaster_be.dto.response.credit.CreditBalanceResponse;
 import fu.se184491.loadmaster_be.dto.response.payment.PaymentUrlResponse;
 import fu.se184491.loadmaster_be.dto.response.subscription.SubscriptionCurrentResponse;
 import fu.se184491.loadmaster_be.dto.response.subscription.SubscriptionRenewalResponse;
+import fu.se184491.loadmaster_be.entity.account.User;
 import fu.se184491.loadmaster_be.entity.billing.PaymentTransaction;
+import fu.se184491.loadmaster_be.repository.account.UserRepository;
 import fu.se184491.loadmaster_be.repository.billing.PaymentTransactionRepository;
 import fu.se184491.loadmaster_be.entity.billing.CompanySubscription;
 import fu.se184491.loadmaster_be.entity.billing.SubscriptionPlan;
 import fu.se184491.loadmaster_be.entity.company.Company;
 import fu.se184491.loadmaster_be.exception.AppException;
 import fu.se184491.loadmaster_be.exception.ErrorCode;
+import fu.se184491.loadmaster_be.helpers.EmailTemplateBuilder;
 import fu.se184491.loadmaster_be.repository.billing.CompanySubscriptionRepository;
 import fu.se184491.loadmaster_be.repository.billing.SubscriptionPlanRepository;
 import fu.se184491.loadmaster_be.repository.company.CompanyRepository;
 import fu.se184491.loadmaster_be.service.billing.InvoiceService.SubscriptionPeriod;
+import fu.se184491.loadmaster_be.service.company.CompanyAgreementService;
 import fu.se184491.loadmaster_be.service.credit.CreditService;
 import fu.se184491.loadmaster_be.service.payment.PaymentGatewayService;
 import fu.se184491.loadmaster_be.service.subscription.SubscriptionService;
@@ -46,6 +54,10 @@ public class SubscriptionServiceImpl implements SubscriptionService {
     private final CreditService creditService;
     private final PaymentGatewayService paymentGatewayService;
     private final PaymentTransactionRepository paymentTransactionRepository;
+    private final UserRepository userRepository;
+    private final CompanyAgreementService companyAgreementService;
+    private final BrevoClient brevoClient;
+    private final VnPayClient vnPayClient;
 
     /** Gói còn hạn chỉ gia hạn được trong chừng này ngày cuối kỳ; gói đã hết hạn thì lúc nào cũng được. */
     public static final int RENEWAL_WINDOW_DAYS = 7;
@@ -58,11 +70,14 @@ public class SubscriptionServiceImpl implements SubscriptionService {
         Optional<CompanySubscription> subOpt = companySubscriptionRepository.findByCompanyId(companyId);
         CreditBalanceResponse balanceRes = creditService.getBalance(companyId);
         int balance = balanceRes != null ? balanceRes.getBalance() : 0;
+        boolean isTrial = userRepository.existsByCompanyIdAndUserType(companyId, UserType.TRIAL)
+                || (subOpt.isPresent() && subOpt.get().getStatus() == SubscriptionStatus.TRIAL);
 
         if (subOpt.isEmpty()) {
             return SubscriptionCurrentResponse.builder()
                     .status(null)
                     .creditsBalance(balance)
+                    .isTrial(isTrial)
                     .build();
         }
 
@@ -81,6 +96,7 @@ public class SubscriptionServiceImpl implements SubscriptionService {
                 .creditsBalance(balance)
                 .creditsMonthlyGrant(plan != null ? plan.getMonthlyCredits() : 0)
                 .algorithmTier(plan != null ? plan.getAlgorithmTier() : null)
+                .isTrial(isTrial)
                 .build();
     }
 
@@ -114,6 +130,8 @@ public class SubscriptionServiceImpl implements SubscriptionService {
             throw new AppException(ErrorCode.SUBSCRIPTION_PLAN_NOT_FOUND);
         }
 
+        boolean isTrial = userRepository.existsByCompanyIdAndUserType(companyId, UserType.TRIAL)
+                || (existingSubOpt.isPresent() && existingSubOpt.get().getStatus() == SubscriptionStatus.TRIAL);
         boolean isExtendingSameActivePlan = false;
         int remainingMonthsToYearCap = 12;
 
@@ -124,23 +142,27 @@ public class SubscriptionServiceImpl implements SubscriptionService {
                     && existingSub.getPlan().getId().equals(plan.getId());
 
             if (existingSub.getStatus() == SubscriptionStatus.ACTIVE && !isSamePlan) {
-                int currentRank = tierRank(existingSub.getPlan() != null ? existingSub.getPlan().getTier() : null);
-                int targetRank = tierRank(plan.getTier());
-                if (targetRank <= currentRank) {
-                    throw new AppException(
-                            ErrorCode.ACTIVE_SUBSCRIPTION_ALREADY_EXISTS,
-                            "Khi gói hiện tại đang hoạt động, doanh nghiệp chỉ có thể tự gia hạn gói đang dùng hoặc nâng cấp lên gói cao hơn."
-                    );
+                if (!isTrial) {
+                    int currentRank = tierRank(existingSub.getPlan() != null ? existingSub.getPlan().getTier() : null);
+                    int targetRank = tierRank(plan.getTier());
+                    if (targetRank <= currentRank) {
+                        throw new AppException(
+                                ErrorCode.ACTIVE_SUBSCRIPTION_ALREADY_EXISTS,
+                                "Khi gói hiện tại đang hoạt động, doanh nghiệp chỉ có thể tự gia hạn gói đang dùng hoặc nâng cấp lên gói cao hơn."
+                        );
+                    }
                 }
             } else if (existingSub.getStatus() == SubscriptionStatus.ACTIVE && isSamePlan) {
-                isExtendingSameActivePlan = true;
-                int purchasedMonths = calculatePurchasedMonths(existingSub);
-                remainingMonthsToYearCap = 12 - purchasedMonths;
-                if (remainingMonthsToYearCap <= 0) {
-                    throw new AppException(
-                            ErrorCode.ACTIVE_SUBSCRIPTION_ALREADY_EXISTS,
-                            "Gói hiện tại đã đạt tối đa 12 tháng kể từ lần kích hoạt đầu tiên. Vui lòng đợi hết hạn để gia hạn tiếp."
-                    );
+                if (!isTrial) {
+                    isExtendingSameActivePlan = true;
+                    int purchasedMonths = calculatePurchasedMonths(existingSub);
+                    remainingMonthsToYearCap = 12 - purchasedMonths;
+                    if (remainingMonthsToYearCap <= 0) {
+                        throw new AppException(
+                                ErrorCode.ACTIVE_SUBSCRIPTION_ALREADY_EXISTS,
+                                "Gói hiện tại đã đạt tối đa 12 tháng kể từ lần kích hoạt đầu tiên. Vui lòng đợi hết hạn để gia hạn tiếp."
+                        );
+                    }
                 }
             }
         }
@@ -201,7 +223,10 @@ public class SubscriptionServiceImpl implements SubscriptionService {
                         .build());
 
         LocalDateTime now = LocalDateTime.now().truncatedTo(ChronoUnit.SECONDS);
-        boolean isExtendingSameActivePlan = sub.getStatus() == SubscriptionStatus.ACTIVE
+        boolean isTrial = userRepository.existsByCompanyIdAndUserType(companyId, UserType.TRIAL)
+                || (sub.getStatus() == SubscriptionStatus.TRIAL);
+        boolean isExtendingSameActivePlan = !isTrial
+                && sub.getStatus() == SubscriptionStatus.ACTIVE
                 && sub.getPlan() != null
                 && sub.getPlan().getId() != null
                 && sub.getPlan().getId().equals(plan.getId())
@@ -231,6 +256,33 @@ public class SubscriptionServiceImpl implements SubscriptionService {
 
         companySubscriptionRepository.save(sub);
         log.info("Activated subscription id={} for company={} plan={}", sub.getId(), companyId, plan.getName());
+
+        if (isTrial) {
+            List<User> companyUsers = userRepository.findByCompanyId(companyId);
+            for (User u : companyUsers) {
+                if (u.getUserType() == UserType.TRIAL) {
+                    u.setUserType(UserType.OFFICIAL);
+                    userRepository.save(u);
+                }
+            }
+            log.info("Converted {} users of company id={} from TRIAL to OFFICIAL", companyUsers.size(), companyId);
+
+            try {
+                User adminUser = companyUsers.stream()
+                        .filter(u -> u.getUserRoleType() == UserRole.ADMIN)
+                        .findFirst()
+                        .orElse(null);
+                companyAgreementService.createOfficialServiceAgreement(company, adminUser, now);
+            } catch (Exception e) {
+                log.warn("Failed to create official service agreement for company id={}: {}", companyId, e.getMessage());
+            }
+
+            try {
+                sendOfficialUpgradeEmail(company, plan, requestedCycle);
+            } catch (Exception e) {
+                log.warn("Failed to send official upgrade email to company id={}: {}", companyId, e.getMessage());
+            }
+        }
         // Gói không giới hạn hay không ghi credit tháng không đi qua lượt cấp credit bên dưới: vẫn phải có tài khoản.
         creditService.ensureAccount(companyId);
 
@@ -351,15 +403,27 @@ public class SubscriptionServiceImpl implements SubscriptionService {
     private SubscriptionRenewalResponse.PendingPayment pendingPlanPayment(Long companyId) {
         return paymentTransactionRepository
                 .findFirstByCompanyIdAndStatusAndOrderTypeInOrderByIdDesc(companyId, PaymentStatus.PENDING, PLAN_ORDERS)
-                .map(txn -> SubscriptionRenewalResponse.PendingPayment.builder()
-                        .id(txn.getId())
-                        .transactionId(txn.getGatewayTransactionId())
-                        .paymentUrl(mockCheckoutUrl(txn))
-                        .orderType(txn.getOrderType())
-                        .planId(txn.getTargetId())
-                        .amountVnd(txn.getAmountVnd())
-                        .createdAt(txn.getCreatedAt())
-                        .build())
+                .map(txn -> {
+                    String paymentUrl = null;
+                    if (txn.getGateway() == PaymentGateway.MOCK) {
+                        paymentUrl = mockCheckoutUrl(txn);
+                    } else if (txn.getGateway() == PaymentGateway.VNPAY) {
+                        SubscriptionPlan plan = txn.getTargetId() != null
+                                ? subscriptionPlanRepository.findById(txn.getTargetId()).orElse(null)
+                                : null;
+                        String orderInfo = plan != null ? "Dang ky goi " + plan.getName() : "Thanh toan goi cuoc";
+                        paymentUrl = vnPayClient != null ? vnPayClient.createPaymentUrl(txn, orderInfo, "127.0.0.1") : null;
+                    }
+                    return SubscriptionRenewalResponse.PendingPayment.builder()
+                            .id(txn.getId())
+                            .transactionId(txn.getGatewayTransactionId())
+                            .paymentUrl(paymentUrl)
+                            .orderType(txn.getOrderType())
+                            .planId(txn.getTargetId())
+                            .amountVnd(txn.getAmountVnd())
+                            .createdAt(txn.getCreatedAt())
+                            .build();
+                })
                 .orElse(null);
     }
 
@@ -416,5 +480,54 @@ public class SubscriptionServiceImpl implements SubscriptionService {
             return start.plusYears(1);
         }
         return start.plusMonths(1);
+    }
+
+    private void sendOfficialUpgradeEmail(Company company, SubscriptionPlan plan, BillingCycle cycle) {
+        if (company == null || company.getBillingEmail() == null || company.getBillingEmail().isBlank()) {
+            return;
+        }
+
+        String cycleTextVi = (cycle == BillingCycle.YEARLY) ? "12 tháng (Theo năm)" : "1 tháng (Theo tháng)";
+        String cycleTextEn = (cycle == BillingCycle.YEARLY) ? "12 months (Yearly)" : "1 month (Monthly)";
+        String creditsText = (plan.getMonthlyCredits() != null && plan.getMonthlyCredits() > 0)
+                ? plan.getMonthlyCredits() + " credit/tháng (credits/month)"
+                : "Không giới hạn / Unlimited";
+
+        List<EmailTemplateBuilder.AccountProvisionItem> items = List.of(
+                new EmailTemplateBuilder.AccountProvisionItem("Tên doanh nghiệp", "Company Name", company.getCompanyName()),
+                new EmailTemplateBuilder.AccountProvisionItem("Gói dịch vụ chính thức", "Official Service Plan", plan.getName()),
+                new EmailTemplateBuilder.AccountProvisionItem("Chu kỳ thanh toán", "Billing Cycle", cycleTextVi + " / " + cycleTextEn),
+                new EmailTemplateBuilder.AccountProvisionItem("Hạn mức Credit", "Credit Quota", creditsText),
+                new EmailTemplateBuilder.AccountProvisionItem("Trạng thái tài khoản", "Account Status", "Đã kích hoạt chính thức cho toàn bộ nhân sự / Officially activated for all members")
+        );
+
+        List<String> noticesVi = List.of(
+                "Toàn bộ tài khoản quản trị và nhân viên trong doanh nghiệp đã được nâng cấp chính thức.",
+                "Thỏa thuận sử dụng dịch vụ chính thức đã được kích hoạt trên hệ thống.",
+                "Quý khách có thể bắt đầu sử dụng đầy đủ các tính năng tối ưu hóa và quản trị vận tải."
+        );
+        List<String> noticesEn = List.of(
+                "All administrator and employee accounts in the company have been upgraded to official status.",
+                "Official service agreement has been activated on the system.",
+                "You can now enjoy all load optimization and transport management capabilities."
+        );
+
+        String html = EmailTemplateBuilder.buildAccountProvisionEmailHtml(
+                company.getCompanyName(),
+                "Xác nhận Nâng cấp Tài khoản Chính thức",
+                "Official Account Upgrade Confirmation",
+                "Chúc mừng Quý khách đã nâng cấp thành công lên tài khoản chính thức của LoadMaster.",
+                "Congratulations on successfully upgrading to LoadMaster official account.",
+                items,
+                null,
+                noticesVi,
+                noticesEn
+        );
+
+        brevoClient.sendEmail(
+                company.getBillingEmail(),
+                "LoadMaster - Xác nhận Nâng cấp Tài khoản Chính thức / Official Upgrade Confirmation",
+                html
+        );
     }
 }

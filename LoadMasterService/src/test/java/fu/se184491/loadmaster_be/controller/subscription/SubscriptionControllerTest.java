@@ -10,6 +10,7 @@ import fu.se184491.loadmaster_be.dto.request.subscription.SubscribeRequest;
 import fu.se184491.loadmaster_be.dto.response.payment.PaymentUrlResponse;
 import fu.se184491.loadmaster_be.dto.response.subscription.SubscriptionCurrentResponse;
 import fu.se184491.loadmaster_be.helpers.CurrentUserService;
+import fu.se184491.loadmaster_be.service.assistant.gate.ClientIpResolver;
 import fu.se184491.loadmaster_be.service.subscription.SubscriptionService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -36,7 +37,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @WebMvcTest(SubscriptionController.class)
-@Import(WebSecurityConfig.class)
+@Import({WebSecurityConfig.class, ClientIpResolver.class})
 @AutoConfigureMockMvc(addFilters = false)
 @WithMockUser(roles = "ADMIN")
 public class SubscriptionControllerTest {

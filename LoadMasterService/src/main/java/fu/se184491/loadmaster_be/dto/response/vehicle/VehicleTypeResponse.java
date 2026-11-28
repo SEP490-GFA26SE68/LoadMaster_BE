@@ -31,6 +31,8 @@ public record VehicleTypeResponse(
         BigDecimal maxCogOffsetRatioY,
         BigDecimal floorLoadCapacityKgM2,
         Boolean hazardousCapable,
+        // Kiểu thân xe (tên của VehicleBodyStyle); null khi chưa chọn. Chỉ đổi hình xe trong khung 3D.
+        String bodyStyle,
 
         List<VehicleTypeObstacleResponse> obstacles,
 

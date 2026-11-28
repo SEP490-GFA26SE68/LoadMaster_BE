@@ -50,8 +50,8 @@ def hand_example(**vkw):
       S5  nhóm = điểm giao: điểm 2 có A và C cách nhau 100 cm → 2 cụm; điểm 1: 1 cụm → (3 − 2)/3 = 1/3.
       S6  B: (400 − 380)/400 = 0,05.
       U_vol = 2,5·10⁶ / 16·10⁶ = 0,15625; U_n = 1.
-    J(default) = 100·(0,15625 + 0,5 − (1/3 + 0,2·5/6 + 0,3·0,02 + 0,1·0,21875 + 0,2/3 + 0,2·0,05))
-               = 100·(0,65625 − 0,6045416…) = 5,170833…
+    J(default) = 100·(0,15625 + 0,5 − (0,5/3 + 0,15·5/6 + 0,15·0,02 + 0,05·0,21875 + 0,1/3 + 0,1·0,05))
+               = 100·(0,65625 − 0,3439375) = 31,23125   (trọng số chốt 26/11/2026, Q-D4)
     """
     a, b, c = pkg("A", weight=100, stop=2), pkg("B", stop=1, priority=3), pkg("C", h=50, stop=2)
     problem = ProblemRequest(vehicle=vehicle(**vkw), packages=[a, b, c],
@@ -67,8 +67,9 @@ def test_j_hand_example():
     expected = {"S1": 1 / 3, "S2": 5 / 6, "S3": 0.02, "S4": 0.21875, "S5": 1 / 3, "S6": 0.05, "S7": 0.0, "S8": 0.0}
     for code, value in expected.items():
         assert s.values[code] == pytest.approx(value, abs=1e-12), code
-    assert s.j == pytest.approx(100 * (0.65625 - (1 / 3 + 0.2 * 5 / 6 + 0.3 * 0.02 + 0.1 * 0.21875 + 0.2 / 3 + 0.2 * 0.05)))
-    assert s.j == pytest.approx(5.170833333, abs=1e-6)
+    assert s.j == pytest.approx(100 * (0.65625 - (0.5 / 3 + 0.15 * 5 / 6 + 0.15 * 0.02 + 0.05 * 0.21875 + 0.1 / 3
+                                                  + 0.1 * 0.05)))
+    assert s.j == pytest.approx(31.23125, abs=1e-6)
     data = PS.to_data(s)
     assert sum(c.contribution for c in data.components) == pytest.approx(s.j - 100 * (0.15625 + 0.5))
     assert [c.computed for c in data.components] == [True] * 6 + [False, False]
@@ -82,7 +83,7 @@ def test_s3_not_computed_without_axle_data():
 
 def test_profiles_from_config_and_request_override():
     known = PS.profiles()
-    assert set(known) == {"default", "A", "B", "C"} and all(p.assumed for p in known.values())
+    assert set(known) == {"default", "A", "B", "C"} and not any(p.assumed for p in known.values())
     assert known["A"].w_vol > known["default"].w_vol
     assert known["C"].weights[0] > known["default"].weights[0]          # S1
     custom = PS.resolve_profile(PlanProfileRequest(code="B", weights={"S1": 5.0}))
@@ -113,8 +114,9 @@ def test_abc_by_j_marks_duplicates(j_on):
 
 def test_pure_j_may_leave_a_package_behind(j_on, monkeypatch):
     """
-    Ghi lại hệ quả của trọng số giả định: bỏ C (đặt ngoài vùng, tách nhóm) làm J cao hơn ở hồ sơ default, B, C
-    (default 5,17 → 30,37; B −71,65 → −26,06; C −89,66 → 28,87); hồ sơ A vẫn giữ đủ kiện (51,02 > 50,60).
+    Ghi lại hệ quả của trọng số (chốt 26/11/2026): bỏ C (đặt ngoài vùng, tách nhóm) làm J cao hơn ở hồ sơ default, B, C
+    (default 31,23 → 35,32; B −1,92 → 11,14; C −16,44 → 34,32); hồ sơ A vẫn giữ đủ kiện (58,92 > 48,91).
+    Vì vậy sản phẩm giữ pack_count_first = true cho cả 4 hồ sơ.
     """
     problem, placements = hand_example()
     for code in ("default", "B", "C"):
